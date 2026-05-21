@@ -837,11 +837,7 @@ function _renderDashComApt(dt, ln, tp, ops){
 
     // Soma total realizado
     var tr=0;
-    ops.forEach(function(o){
-      tr += aptsPorOp[o.fbKey]||0;
-      console.log('[DASH] OP:'+o.id+' prog:'+o.prog+' real:'+o.real+' apt:'+aptsPorOp[o.fbKey]+' temApt:'+!!opsComApt[o.fbKey]);
-    });
-    console.log('[DASH TOTAL] dt='+dt+' tr='+tr+' tp='+tp);
+    ops.forEach(function(o){ tr += aptsPorOp[o.fbKey]||0; });
 
     // Perda: perdas_diarias primeiro
     var tperda=0;
