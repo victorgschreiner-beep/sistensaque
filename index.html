@@ -783,53 +783,70 @@ function renderDash(){
 
 function _renderDashComApt(dt, ln, tp, ops){
   var turnoFiltro = G('dash-turno') ? parseInt(G('dash-turno').value)||0 : 0;
+  // Intervalo do dia para filtrar por ts (apontamentos antigos sem campo data)
+  var tsInicio=dt+'T00:00:00.000Z';
+  var tsFim=dt+'T23:59:59.999Z';
   Promise.all([
     DB.ref('apontamentos').orderByChild('data').equalTo(dt).once('value'),
+    DB.ref('apontamentos').orderByChild('ts').startAt(tsInicio).endAt(tsFim).once('value'),
     DB.ref('perdas_diarias').orderByChild('data').equalTo(dt).once('value')
   ]).then(function(results){
-    var snap=results[0], snapPerda=results[1];
-    var aptsPorOp={};  // apontamentos com campo data
-    var opsComApt={};  // quais OPs tem pelo menos 1 apontamento com data
+    var snap=results[0], snapTs=results[1], snapPerda=results[2];
+    var aptsPorOp={};
+    var opsComApt={};
     var dadosPorTurno={1:{real:0,perda:0,sc:0,bg:0,kg:0},2:{real:0,perda:0,sc:0,bg:0,kg:0},3:{real:0,perda:0,sc:0,bg:0,kg:0}};
+    var idsProcessados={}; // evitar duplicatas entre as duas queries
 
-    // Coleta apontamentos que tem campo data=dt
-    if(snap.exists()){
-      snap.forEach(function(c){
-        var a=c.val();
-        if(a.data!==dt) return;
-        if(a.tipo==='correcao_pcp') return;
-        if(turnoFiltro>0 && (a.turno||0)!==turnoFiltro) return;
-        if(ln){
-          var opRef=null;
-          for(var i=0;i<OPS.length;i++){if(OPS[i].fbKey===a.opId){opRef=OPS[i];break;}}
-          if(!opRef||opRef.linha!==ln) return;
+    function processaApt(c){
+      var a=c.val();
+      if(a.tipo==='correcao_pcp') return;
+      if(idsProcessados[a.id]) return;
+      var dataApt=a.data||(a.ts?a.ts.slice(0,10):null);
+      if(dataApt!==dt) return;
+      idsProcessados[a.id]=true;
+      if(turnoFiltro>0 && (a.turno||0)!==turnoFiltro) return;
+      if(ln){
+        var opRef=null;
+        for(var i=0;i<OPS.length;i++){if(OPS[i].fbKey===a.opId){opRef=OPS[i];break;}}
+        if(!opRef||opRef.linha!==ln) return;
+      }
+      var realApt=Number(a.real)||0;
+      if(!aptsPorOp[a.opId]) aptsPorOp[a.opId]=0;
+      aptsPorOp[a.opId]+=realApt;
+      opsComApt[a.opId]=true;
+      var t=a.turno||0;
+      if(t>=1&&t<=3){
+        var opRef2=null;
+        for(var i=0;i<OPS.length;i++){if(OPS[i].fbKey===a.opId){opRef2=OPS[i];break;}}
+        dadosPorTurno[t].real+=realApt;
+        if(opRef2){
+          if(opRef2.tipo==='SC') dadosPorTurno[t].sc+=Math.round(realApt/25);
+          else if(opRef2.tipo==='BG') dadosPorTurno[t].bg+=Math.round(realApt/750);
+          else dadosPorTurno[t].kg+=realApt;
         }
-        var realApt=Number(a.real)||0;
-        if(!aptsPorOp[a.opId]) aptsPorOp[a.opId]=0;
-        aptsPorOp[a.opId]+=realApt;
-        opsComApt[a.opId]=true;
-        // Acumula por turno
-        var t=a.turno||0;
-        if(t>=1&&t<=3){
-          var opRef2=null;
-          for(var i=0;i<OPS.length;i++){if(OPS[i].fbKey===a.opId){opRef2=OPS[i];break;}}
-          dadosPorTurno[t].real+=realApt;
-          if(opRef2){
-            if(opRef2.tipo==='SC') dadosPorTurno[t].sc+=Math.round(realApt/25);
-            else if(opRef2.tipo==='BG') dadosPorTurno[t].bg+=Math.round(realApt/750);
-            else dadosPorTurno[t].kg+=realApt;
-          }
-        }
-      });
+      }
     }
+    if(snap.exists()) snap.forEach(processaApt);
+    if(snapTs.exists()) snapTs.forEach(processaApt);
 
     // Fallback SOMENTE para OPs sem NENHUM apontamento com data
     // (dados completamente antigos — antes de implementar o campo data)
-    if(!turnoFiltro){
-      ops.forEach(function(o){
-        if(!opsComApt[o.fbKey]){
-          var realOp=Number(o.real)||0;
-          if(realOp>0){
+    ops.forEach(function(o){
+      if(!opsComApt[o.fbKey]){
+        var realOp=Number(o.real)||0;
+        if(realOp>0){
+          if(turnoFiltro>0){
+            // Com filtro de turno: usa o campo t1/t2/t3 da OP
+            var vTurno=Number(o['t'+turnoFiltro])||0;
+            if(vTurno>0){
+              aptsPorOp[o.fbKey]=vTurno;
+              dadosPorTurno[turnoFiltro].real+=vTurno;
+              if(o.tipo==='SC') dadosPorTurno[turnoFiltro].sc+=Math.round(vTurno/25);
+              else if(o.tipo==='BG') dadosPorTurno[turnoFiltro].bg+=Math.round(vTurno/750);
+              else dadosPorTurno[turnoFiltro].kg+=vTurno;
+            }
+          } else {
+            // Sem filtro: usa o total real da OP
             aptsPorOp[o.fbKey]=realOp;
             [1,2,3].forEach(function(t){
               var v=Number(o['t'+t])||0;
@@ -840,8 +857,8 @@ function _renderDashComApt(dt, ln, tp, ops){
             });
           }
         }
-      });
-    }
+      }
+    });
 
     // Soma total realizado = TODOS os apontamentos com data===dt (independente da OP ser do dia)
     var tr=0;
