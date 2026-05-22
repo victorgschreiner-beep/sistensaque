@@ -805,7 +805,8 @@ function _renderDashComApt(dt, ln, tp, ops){
 
     function processaApt(c){
       var a=c.val();
-      if(a.substituido) return; // original substituído por correção PCP — ignorar
+      if(a.tipo==='correcao_pcp') return;
+      if(a.substituido) return;
       if(idsProcessados[a.id]) return;
       var dataApt=a.data||(a.ts?a.ts.slice(0,10):null);
       if(dataApt!==dt) return;
@@ -819,7 +820,7 @@ function _renderDashComApt(dt, ln, tp, ops){
       var realApt=Number(a.real)||0;
       if(!aptsPorOp[a.opId]) aptsPorOp[a.opId]=0;
       aptsPorOp[a.opId]+=realApt;
-      opsComApt[a.opId]=true;
+      opsComApt[a.opId]=true; // só marca quando efetivamente processado
       var t=a.turno||0;
       if(t>=1&&t<=3){
         var opRef2=null;
