@@ -783,94 +783,43 @@ function renderDash(){
 
 function _renderDashComApt(dt, ln, tp, ops){
   var turnoFiltro = G('dash-turno') ? parseInt(G('dash-turno').value)||0 : 0;
-  // Intervalo do dia compensando fuso UTC-3 (Brasil)
-  // Dia local 00:00 = UTC 03:00 | Dia local 23:59 = UTC+1 02:59
-  var tsInicio=dt+'T03:00:00.000Z';
-  var tsFim=dt+'T23:59:59.999Z';
-  // Também pega a madrugada do dia seguinte (00:00~02:59 local = UTC dia+1 03:00~05:59)
-  var dtAmanha=new Date(dt+'T03:00:00.000Z');
-  dtAmanha.setUTCDate(dtAmanha.getUTCDate()+1);
-  var tsFimAmanha=dtAmanha.toISOString().slice(0,10)+'T02:59:59.999Z';
-  Promise.all([
-    DB.ref('apontamentos').orderByChild('data').equalTo(dt).once('value'),
-    DB.ref('apontamentos').orderByChild('ts').startAt(tsInicio).endAt(tsFim).once('value'),
-    DB.ref('apontamentos').orderByChild('ts').startAt(dtAmanha.toISOString().slice(0,10)+'T00:00:00.000Z').endAt(tsFimAmanha).once('value'),
-    DB.ref('perdas_diarias').orderByChild('data').equalTo(dt).once('value')
-  ]).then(function(results){
-    var snap=results[0], snapTs=results[1], snapTs2=results[2], snapPerda=results[3];
+  DB.ref('perdas_diarias').orderByChild('data').equalTo(dt).once('value').then(function(snapPerda){
     var aptsPorOp={};
-    var opsComApt={};
     var dadosPorTurno={1:{real:0,perda:0,sc:0,bg:0,kg:0},2:{real:0,perda:0,sc:0,bg:0,kg:0},3:{real:0,perda:0,sc:0,bg:0,kg:0}};
-    var idsProcessados={}; // evitar duplicatas entre as duas queries
 
-    function processaApt(c){
-      var a=c.val();
-      if(a.tipo==='correcao_pcp') return;
-      if(a.substituido) return;
-      if(idsProcessados[a.id]) return;
-      var dataApt=a.data||(a.ts?a.ts.slice(0,10):null);
-      if(dataApt!==dt) return;
-      idsProcessados[a.id]=true;
-      if(turnoFiltro>0 && (a.turno||0)!==turnoFiltro) return;
-      if(ln){
-        var opRef=null;
-        for(var i=0;i<OPS.length;i++){if(OPS[i].fbKey===a.opId){opRef=OPS[i];break;}}
-        if(!opRef||opRef.linha!==ln) return;
-      }
-      var realApt=Number(a.real)||0;
-      if(!aptsPorOp[a.opId]) aptsPorOp[a.opId]=0;
-      aptsPorOp[a.opId]+=realApt;
-      opsComApt[a.opId]=true; // só marca quando efetivamente processado
-      var t=a.turno||0;
-      if(t>=1&&t<=3){
-        var opRef2=null;
-        for(var i=0;i<OPS.length;i++){if(OPS[i].fbKey===a.opId){opRef2=OPS[i];break;}}
-        dadosPorTurno[t].real+=realApt;
-        if(opRef2){
-          if(opRef2.tipo==='SC') dadosPorTurno[t].sc+=Math.round(realApt/25);
-          else if(opRef2.tipo==='BG') dadosPorTurno[t].bg+=Math.round(realApt/750);
-          else dadosPorTurno[t].kg+=realApt;
-        }
-      }
-    }
-    if(snap.exists()) snap.forEach(processaApt);
-    if(snapTs.exists()) snapTs.forEach(processaApt);
-    if(snapTs2.exists()) snapTs2.forEach(processaApt);
-
-    // Fallback SOMENTE para OPs sem NENHUM apontamento com data
-    // (dados completamente antigos — antes de implementar o campo data)
+    // FONTE DE VERDADE: realPorData[dt] de cada OP
+    // Fallback para o.real se OP não tem realPorData (dados antigos)
     ops.forEach(function(o){
-      if(!opsComApt[o.fbKey]){
-        var realOp=Number(o.real)||0;
-        if(realOp>0){
-          if(turnoFiltro>0){
-            // Com filtro de turno: usa o campo t1/t2/t3 da OP
-            var vTurno=Number(o['t'+turnoFiltro])||0;
-            if(vTurno>0){
-              aptsPorOp[o.fbKey]=vTurno;
-              dadosPorTurno[turnoFiltro].real+=vTurno;
-              if(o.tipo==='SC') dadosPorTurno[turnoFiltro].sc+=Math.round(vTurno/25);
-              else if(o.tipo==='BG') dadosPorTurno[turnoFiltro].bg+=Math.round(vTurno/750);
-              else dadosPorTurno[turnoFiltro].kg+=vTurno;
-            }
-          } else {
-            // Sem filtro: usa o total real da OP
-            aptsPorOp[o.fbKey]=realOp;
-            [1,2,3].forEach(function(t){
-              var v=Number(o['t'+t])||0;
-              dadosPorTurno[t].real+=v;
-              if(o.tipo==='SC') dadosPorTurno[t].sc+=Math.round(v/25);
-              else if(o.tipo==='BG') dadosPorTurno[t].bg+=Math.round(v/750);
-              else dadosPorTurno[t].kg+=v;
-            });
-          }
-        }
+      var rpd=o.realPorData||null;
+      var realOp=rpd?( Number(rpd[dt])||0 ):( Number(o.real)||0 );
+      if(realOp<=0) return;
+      if(ln && o.linha!==ln) return;
+      aptsPorOp[o.fbKey]=realOp;
+      // Distribui por turno via t1/t2/t3 da OP
+      if(turnoFiltro>0){
+        var vTurno=rpd ? (Number(o['t'+turnoFiltro])||0) : (Number(o['t'+turnoFiltro])||0);
+        dadosPorTurno[turnoFiltro].real+=vTurno;
+        if(o.tipo==='SC') dadosPorTurno[turnoFiltro].sc+=Math.round(vTurno/25);
+        else if(o.tipo==='BG') dadosPorTurno[turnoFiltro].bg+=Math.round(vTurno/750);
+        else dadosPorTurno[turnoFiltro].kg+=vTurno;
+      } else {
+        [1,2,3].forEach(function(t){
+          var v=Number(o['t'+t])||0;
+          dadosPorTurno[t].real+=v;
+          if(o.tipo==='SC') dadosPorTurno[t].sc+=Math.round(v/25);
+          else if(o.tipo==='BG') dadosPorTurno[t].bg+=Math.round(v/750);
+          else dadosPorTurno[t].kg+=v;
+        });
       }
     });
 
-    // Soma total realizado = TODOS os apontamentos com data===dt (independente da OP ser do dia)
+    // Soma total realizado
     var tr=0;
-    Object.keys(aptsPorOp).forEach(function(k){ tr += aptsPorOp[k]||0; });
+    if(turnoFiltro>0){
+      tr=dadosPorTurno[turnoFiltro].real;
+    } else {
+      Object.keys(aptsPorOp).forEach(function(k){ tr+=aptsPorOp[k]||0; });
+    }
 
     // Perda: perdas_diarias primeiro
     var tperda=0;
@@ -1437,15 +1386,22 @@ function salvarApt(){
   // Busca apontamentos anteriores desta OP para calcular real total por data
   ld(true,'Salvando...');
 
-  // Salva o apontamento com a data
-  // Salva apontamento separado por turno com data correta de cada um
-  var promises=[
-    DB.ref('ops/'+fbKey).update({
-      t1:t1, t2:t2, t3:t3, real:real,
-      t1sc:t1sc, t2sc:t2sc, t3sc:t3sc,
-      perda:totalPerda, ultimoApt:dtApt, status:'Em andamento'
-    })
-  ];
+  // Calcula realPorData — busca o que já existe e incrementa
+  DB.ref('ops/'+fbKey).child('realPorData').once('value').then(function(snapRPD){
+    var rpd=snapRPD.val()||{};
+    // Incrementa cada turno na data correta
+    if(novoT1sc>0) rpd[dtT1]=(rpd[dtT1]||0)+novoT1sc*fator;
+    if(novoT2sc>0) rpd[dtT2]=(rpd[dtT2]||0)+novoT2sc*fator;
+    if(novoT3sc>0) rpd[dtT3]=(rpd[dtT3]||0)+novoT3sc*fator;
+
+    var promises=[
+      DB.ref('ops/'+fbKey).update({
+        t1:t1, t2:t2, t3:t3, real:real,
+        t1sc:t1sc, t2sc:t2sc, t3sc:t3sc,
+        perda:totalPerda, ultimoApt:dtApt, status:'Em andamento',
+        realPorData:rpd
+      })
+    ];
   // Apontamento T1
   if(novoT1sc>0) promises.push(DB.ref('apontamentos').push({
     id:uid(), opId:fbKey, data:dtT1, turno:1,
@@ -1470,13 +1426,14 @@ function salvarApt(){
     t1:0, t2:0, t3:0, real:0, perda:perdaKG,
     obs:G('aob').value, operador:SES.login, ts:agora()
   }));
-  // Perda na data correta do turno
-  if(perdaKG>0) promises.push(DB.ref('perdas_diarias').push({
-    opId:fbKey, data:dtApt, turno:turno,
-    perdaKG:perdaKG, operador:SES.login, ts:agora()
-  }));
+    // Perda na data correta do turno
+    if(perdaKG>0) promises.push(DB.ref('perdas_diarias').push({
+      opId:fbKey, data:dtApt, turno:turno,
+      perdaKG:perdaKG, operador:SES.login, ts:agora()
+    }));
 
-  Promise.all(promises).then(function(){
+    return Promise.all(promises);
+  }).then(function(){
     ld(false);
     var dtsStr='';
     if(novoT1sc>0&&dtT1!==hoje()) dtsStr+=' T1:'+dtT1;
@@ -1904,12 +1861,18 @@ function salvarCorrecao(){
     return Promise.all(promisesSubst);
   }).then(function(){
     // Passo 2: salva os novos registros corrigidos
+    // Recalcula realPorData do zero com as datas corretas de cada turno
+    var rpdCorr={};
+    if(t1sc*fator>0) rpdCorr[dtC1]=(rpdCorr[dtC1]||0)+t1sc*fator;
+    if(t2sc*fator>0) rpdCorr[dtC2]=(rpdCorr[dtC2]||0)+t2sc*fator;
+    if(t3sc*fator>0) rpdCorr[dtC3]=(rpdCorr[dtC3]||0)+t3sc*fator;
+
     var promises=[];
     promises.push(DB.ref('ops/'+fbKey).update({
       t1:t1sc*fator, t2:t2sc*fator, t3:t3sc*fator,
       real:real, t1sc:t1sc, t2sc:t2sc, t3sc:t3sc,
       perda:novaPerda, perdaT1:pe1, perdaT2:pe2, perdaT3:pe3,
-      ultimoApt:dataCorr
+      ultimoApt:dataCorr, realPorData:rpdCorr
     }));
     promises.push(DB.ref('apontamentos').push({
       id:uid(), opId:fbKey, data:dataCorr, turno:0,
