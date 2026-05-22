@@ -366,17 +366,17 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="fg" id="apt-row-t1" style="flex:1;min-width:130px">
       <label class="fl" id="apt-lbl1">Turno 1</label>
       <input type="number" id="at1" min="0" value="0">
-      <input type="date" id="adt1" style="margin-top:4px;font-size:11px;padding:5px 8px">
+      <span id="adt1-info" style="font-size:10px;color:#739630;display:block;margin-top:2px"></span>
     </div>
     <div class="fg" id="apt-row-t2" style="flex:1;min-width:130px">
       <label class="fl" id="apt-lbl2">Turno 2</label>
       <input type="number" id="at2" min="0" value="0">
-      <input type="date" id="adt2" style="margin-top:4px;font-size:11px;padding:5px 8px">
+      <span id="adt2-info" style="font-size:10px;color:#739630;display:block;margin-top:2px"></span>
     </div>
     <div class="fg" id="apt-row-t3" style="flex:1;min-width:130px">
       <label class="fl" id="apt-lbl3">Turno 3</label>
       <input type="number" id="at3" min="0" value="0">
-      <input type="date" id="adt3" style="margin-top:4px;font-size:11px;padding:5px 8px">
+      <span id="adt3-info" style="font-size:10px;color:#739630;display:block;margin-top:2px"></span>
     </div>
   </div>
   <div class="fr"><div class="fg"><label class="fl">Perdas / Refugos <span style="color:#739630;font-size:11px">(sempre em KG)</span></label><input type="number" id="ape" min="0" value="0" placeholder="kg"></div><div class="fg"><label class="fl">Operador</label><input type="text" id="aop" readonly style="opacity:.6"></div></div>
@@ -569,6 +569,38 @@ function G(id){ return document.getElementById(id); }
 function fN(n){ return (Number(n)||0).toLocaleString('pt-BR'); }
 function pct(r,p){ return (p&&Number(p))?Math.min(Math.round((Number(r)||0)/Number(p)*100),999):0; }
 function hoje(){ return new Date().toISOString().slice(0,10); }
+
+// Calcula a data correta do turno baseado no horário atual (fuso Brasil UTC-3)
+// Turno 1: 21h→05h — data = dia que o turno TERMINA
+//   se hora >= 21h → amanhã (turno termina no próximo dia)
+//   se hora < 05h  → hoje (turno começou ontem, termina hoje)
+// Turno 2: 05h→13h — data = hoje sempre
+// Turno 3: 13h→21h — data = hoje sempre
+function dataTurno(turno){
+  var agora=new Date();
+  var horaLocal=agora.getUTCHours()-3; // UTC-3
+  if(horaLocal<0) horaLocal+=24;
+  if(turno===1){
+    if(horaLocal>=21){
+      // Após 21h — turno termina amanhã
+      var amanha=new Date(agora);
+      amanha.setUTCDate(amanha.getUTCDate()+1);
+      return amanha.toISOString().slice(0,10);
+    }
+    // Antes das 05h — turno termina hoje
+    return hoje();
+  }
+  // Turno 2 e 3 — sempre hoje
+  return hoje();
+}
+
+// Retorna label legível da data do turno
+function labelDataTurno(turno){
+  var dt=dataTurno(turno);
+  var hj=hoje();
+  if(dt===hj) return 'Data: hoje ('+dt+')';
+  return 'Data: amanhã ('+dt+')';
+}
 function agora(){ return new Date().toISOString(); }
 function horaAtual(){ return new Date().toTimeString().slice(0,5); }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,5); }
@@ -1320,16 +1352,11 @@ function abrirApt(fbKey){
   }
   G('akg').style.display=(tipo==='KG')?'block':'none';
 
-  // Data por turno — automatica para operador, editavel para PCP
-  var isPCP=SES.perfil==='pcp'||SES.perfil==='admin';
+  // Mostra data calculada automaticamente para cada turno
   [1,2,3].forEach(function(t){
-    var dtEl=G('adt'+t);
-    if(!dtEl) return;
-    dtEl.value=hoje();
-    dtEl.disabled=!isPCP;
-    dtEl.style.opacity=isPCP?'1':'.5';
-    dtEl.style.cursor=isPCP?'':'not-allowed';
-    dtEl.title=isPCP?'PCP pode alterar a data deste turno':'Data preenchida automaticamente';
+    var infoEl=G('adt'+t+'-info');
+    if(!infoEl) return;
+    infoEl.textContent=labelDataTurno(t);
   });
   G('mapt').classList.add('on');
 }
@@ -1375,12 +1402,12 @@ function salvarApt(){
   var totalStr=tipo==='SC'?fN(t1sc+t2sc+t3sc)+' SC = '+fN(real)+' kg':fN(real)+' kg';
   var fatorStr=' (+'+novosStr+' | Total: '+totalStr+')';
 
-  // Data por turno — cada turno pode ter sua propria data
+  // Data calculada automaticamente por turno — sem input manual do operador
   var isPCP=SES.perfil==='pcp'||SES.perfil==='admin';
-  var dtT1=G('adt1')&&G('adt1').value?G('adt1').value:hoje();
-  var dtT2=G('adt2')&&G('adt2').value?G('adt2').value:hoje();
-  var dtT3=G('adt3')&&G('adt3').value?G('adt3').value:hoje();
-  var dtApt=turno===1?dtT1:turno===2?dtT2:turno===3?dtT3:hoje(); // data principal para status da OP
+  var dtT1=dataTurno(1);
+  var dtT2=dataTurno(2);
+  var dtT3=dataTurno(3);
+  var dtApt=turno===1?dtT1:turno===2?dtT2:turno===3?dtT3:hoje();
 
   // Recalcula totais acumulados por data
   // Busca apontamentos anteriores desta OP para calcular real total por data
