@@ -868,6 +868,28 @@ function _renderDashComApt(dt, ln, tp, ops){
 
     // ── AUDITORIA DE CÁLCULO ─────────────────────────────────────────
     console.group('%c[AUDITORIA DASHBOARD] '+dt, 'color:#024f2b;font-weight:bold;font-size:13px');
+    // Diagnóstico: apontamentos brutos recebidos do Firebase
+    var totalAptsSnap=0, aptsComData=0, aptsOutraData=0, aptsCorrecao=0;
+    if(snap.exists()){
+      snap.forEach(function(c){
+        var a=c.val(); totalAptsSnap++;
+        if(a.tipo==='correcao_pcp'){aptsCorrecao++;return;}
+        if(a.data===dt) aptsComData++;
+        else aptsOutraData++;
+      });
+    }
+    console.log('── Apontamentos do Firebase ─────────────────────────────');
+    console.log('Total recebidos para data='+dt+': '+totalAptsSnap+' | Com data correta: '+aptsComData+' | Outra data: '+aptsOutraData+' | Correções PCP: '+aptsCorrecao);
+    if(totalAptsSnap===0) console.warn('%c⚠ Nenhum apontamento encontrado para '+dt+' — verifique se o dia tem produção ou se o formato de data está diferente no Firebase', 'color:orange');
+    // Diagnóstico: fator SC — o.prog já está em KG ou em sacas?
+    console.log('── Diagnóstico fator SC (primeiras 3 OPs SC) ───────────');
+    var scCount=0;
+    ops.forEach(function(o){
+      if(o.tipo==='SC' && scCount<3){
+        scCount++;
+        console.log(o.id+' | o.prog='+o.prog+' | ×25='+((o.prog||0)*25)+' | o.real(kg)='+o.real+' | ratio prog/real='+(o.real?Math.round((o.prog||0)/o.real*100)/100:'N/A')+' ← se ratio≈25 então prog está em SACAS; se ratio≈1 então prog já está em KG');
+      }
+    });
     console.log('%cTOTAL PROGRAMADO (kg): '+tp.toLocaleString('pt-BR'), 'color:#0055cc;font-weight:bold');
     console.log('%cTOTAL REALIZADO BOM (kg): '+tr.toLocaleString('pt-BR'), 'color:#024f2b;font-weight:bold');
     console.log('%cTOTAL PERDA (kg): '+tperda.toLocaleString('pt-BR'), 'color:#c0392b;font-weight:bold');
