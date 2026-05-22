@@ -783,15 +783,21 @@ function renderDash(){
 
 function _renderDashComApt(dt, ln, tp, ops){
   var turnoFiltro = G('dash-turno') ? parseInt(G('dash-turno').value)||0 : 0;
-  // Intervalo do dia para filtrar por ts (apontamentos antigos sem campo data)
-  var tsInicio=dt+'T00:00:00.000Z';
+  // Intervalo do dia compensando fuso UTC-3 (Brasil)
+  // Dia local 00:00 = UTC 03:00 | Dia local 23:59 = UTC+1 02:59
+  var tsInicio=dt+'T03:00:00.000Z';
   var tsFim=dt+'T23:59:59.999Z';
+  // Também pega a madrugada do dia seguinte (00:00~02:59 local = UTC dia+1 03:00~05:59)
+  var dtAmanha=new Date(dt+'T03:00:00.000Z');
+  dtAmanha.setUTCDate(dtAmanha.getUTCDate()+1);
+  var tsFimAmanha=dtAmanha.toISOString().slice(0,10)+'T02:59:59.999Z';
   Promise.all([
     DB.ref('apontamentos').orderByChild('data').equalTo(dt).once('value'),
     DB.ref('apontamentos').orderByChild('ts').startAt(tsInicio).endAt(tsFim).once('value'),
+    DB.ref('apontamentos').orderByChild('ts').startAt(dtAmanha.toISOString().slice(0,10)+'T00:00:00.000Z').endAt(tsFimAmanha).once('value'),
     DB.ref('perdas_diarias').orderByChild('data').equalTo(dt).once('value')
   ]).then(function(results){
-    var snap=results[0], snapTs=results[1], snapPerda=results[2];
+    var snap=results[0], snapTs=results[1], snapTs2=results[2], snapPerda=results[3];
     var aptsPorOp={};
     var opsComApt={};
     var dadosPorTurno={1:{real:0,perda:0,sc:0,bg:0,kg:0},2:{real:0,perda:0,sc:0,bg:0,kg:0},3:{real:0,perda:0,sc:0,bg:0,kg:0}};
@@ -799,7 +805,7 @@ function _renderDashComApt(dt, ln, tp, ops){
 
     function processaApt(c){
       var a=c.val();
-      if(a.tipo==='correcao_pcp') return;
+      if(a.substituido) return; // original substituído por correção PCP — ignorar
       if(idsProcessados[a.id]) return;
       var dataApt=a.data||(a.ts?a.ts.slice(0,10):null);
       if(dataApt!==dt) return;
@@ -828,6 +834,7 @@ function _renderDashComApt(dt, ln, tp, ops){
     }
     if(snap.exists()) snap.forEach(processaApt);
     if(snapTs.exists()) snapTs.forEach(processaApt);
+    if(snapTs2.exists()) snapTs2.forEach(processaApt);
 
     // Fallback SOMENTE para OPs sem NENHUM apontamento com data
     // (dados completamente antigos — antes de implementar o campo data)
@@ -1883,7 +1890,17 @@ function salvarCorrecao(){
 
   ld(true,'Salvando correcao...');
 
-  var promises=[
+  // Primeiro: marca todos apontamentos originais da OP como substituídos
+  // Assim a query por data não os conta mais — só conta os novos correcao_pcp
+  var promises=[];
+  DB.ref('apontamentos').orderByChild('opId').equalTo(fbKey).once('value').then(function(snapApts){
+    snapApts.forEach(function(c){
+      var a=c.val();
+      if(a.tipo==='correcao_pcp') return; // já é correção, ignora
+      promises.push(DB.ref('apontamentos/'+c.key).update({substituido:true}));
+    });
+
+    promises.push(
     DB.ref('ops/'+fbKey).update({
       t1:t1sc*fator, t2:t2sc*fator, t3:t3sc*fator,
       real:real, t1sc:t1sc, t2sc:t2sc, t3sc:t3sc,
@@ -1920,7 +1937,8 @@ function salvarCorrecao(){
   if(pe2>0) promises.push(DB.ref('perdas_diarias').push({opId:fbKey,data:dtC2,turno:2,perdaKG:pe2,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()}));
   if(pe3>0) promises.push(DB.ref('perdas_diarias').push({opId:fbKey,data:dtC3,turno:3,perdaKG:pe3,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()}));
 
-  Promise.all(promises).then(function(){
+    return Promise.all(promises);
+  }).then(function(){
     ld(false);
     var dtInfo=dtC1===dtC2&&dtC2===dtC3?' | Data: '+dtC1:' | T1:'+dtC1+' T2:'+dtC2+' T3:'+dtC3;
     toast('Correcao salva!'+dtInfo+' | Bom: '+fN(real)+' kg | Perda: '+fN(novaPerda)+' kg','ok');
