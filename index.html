@@ -214,6 +214,14 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="ch"><span class="ct">OPs Recentes</span><button class="btn bsm" onclick="go('ops',document.getElementById('nb-ops'))">Ver todas</button></div>
     <div class="tw"><table><thead><tr><th>OP</th><th>Produto</th><th>Linha</th><th>Tipo</th><th>Prog.</th><th>Real.</th><th>%</th><th>Status</th></tr></thead><tbody id="dops"></tbody></table></div>
   </div>
+  <div class="card">
+    <div class="ch"><span class="ct">Aderência por SKU</span><span id="dash-sku-resumo" style="font-size:11px;color:#4a664a;margin-left:8px"></span></div>
+    <div class="tw"><table>
+      <thead><tr><th>Código</th><th>Produto</th><th style="text-align:right">Prog. (kg)</th><th style="text-align:right">Real. (kg)</th><th style="text-align:right">%</th><th>Aderência</th></tr></thead>
+      <tbody id="dash-sku-body"></tbody>
+      <tfoot id="dash-sku-foot"></tfoot>
+    </table></div>
+  </div>
 </div>
 
 <!-- OPs -->
@@ -863,59 +871,7 @@ function _renderDashComApt(dt, ln, tp, ops){
     var adh=tp?Math.round(tr/tp*100):0;
     var ttotal=tr+tperda;
 
-    // ── AUDITORIA DE CÁLCULO ─────────────────────────────────────────
-    console.group('%c[AUDITORIA DASHBOARD] '+dt, 'color:#024f2b;font-weight:bold;font-size:13px');
-    // Diagnóstico: apontamentos brutos recebidos do Firebase
-    var totalAptsSnap=0, aptsComData=0, aptsOutraData=0, aptsCorrecao=0;
-    if(snap.exists()){
-      snap.forEach(function(c){
-        var a=c.val(); totalAptsSnap++;
-        if(a.tipo==='correcao_pcp'){aptsCorrecao++;return;}
-        if(a.data===dt) aptsComData++;
-        else aptsOutraData++;
-      });
-    }
-    console.log('── Apontamentos do Firebase ─────────────────────────────');
-    console.log('Total recebidos para data='+dt+': '+totalAptsSnap+' | Com data correta: '+aptsComData+' | Outra data: '+aptsOutraData+' | Correções PCP: '+aptsCorrecao);
-    if(totalAptsSnap===0) console.warn('%c⚠ Nenhum apontamento encontrado para '+dt+' — verifique se o dia tem produção ou se o formato de data está diferente no Firebase', 'color:orange');
-    // Diagnóstico: fator SC — o.prog já está em KG ou em sacas?
-    console.log('── Diagnóstico fator SC (primeiras 3 OPs SC) ───────────');
-    var scCount=0;
-    ops.forEach(function(o){
-      if(o.tipo==='SC' && scCount<3){
-        scCount++;
-        console.log(o.id+' | o.prog='+o.prog+' | ×25='+((o.prog||0)*25)+' | o.real(kg)='+o.real+' | ratio prog/real='+(o.real?Math.round((o.prog||0)/o.real*100)/100:'N/A')+' ← se ratio≈25 então prog está em SACAS; se ratio≈1 então prog já está em KG');
-      }
-    });
-    console.log('%cTOTAL PROGRAMADO (kg): '+tp.toLocaleString('pt-BR'), 'color:#0055cc;font-weight:bold');
-    console.log('%cTOTAL REALIZADO BOM (kg): '+tr.toLocaleString('pt-BR'), 'color:#024f2b;font-weight:bold');
-    console.log('%cTOTAL PERDA (kg): '+tperda.toLocaleString('pt-BR'), 'color:#c0392b;font-weight:bold');
-    console.log('%cTOTAL PROCESSADO (bom+perda): '+ttotal.toLocaleString('pt-BR'), 'color:#739630;font-weight:bold');
-    console.log('%cADERÊNCIA: '+adh+'%', 'color:#d29922;font-weight:bold');
-    console.log('── Detalhamento por OP ──────────────────────────────────');
-    var tpSC=0,tpKG=0,tpBG=0,trSC=0,trKG=0,trBG=0;
-    ops.forEach(function(o){
-      var realKgOp=aptsPorOp[o.fbKey]||0;
-      var pctOp=o.prog?Math.round(realKgOp/(Number(o.prog)||1)*100):0;
-      if(o.tipo==='SC'){tpSC+=(Number(o.prog)||0);trSC+=realKgOp;}
-      else if(o.tipo==='BG'){tpBG+=(Number(o.prog)||0);trBG+=realKgOp;}
-      else{tpKG+=(Number(o.prog)||0);trKG+=realKgOp;}
-      console.log(
-        o.id+' | '+o.tipo+
-        ' | Prog: '+(o.tipo==='SC'?Math.round((o.prog||0)/25)+' sc = ':o.tipo==='BG'?Math.round((o.prog||0)/750)+' bg = ':'')+fN(Number(o.prog)||0)+' kg'+
-        ' | Real: '+fN(realKgOp)+' kg'+
-        ' | %: '+pctOp+'%'+
-        ' | '+o.status
-      );
-    });
-    console.log('── Subtotais por tipo ───────────────────────────────────');
-    if(tpSC>0) console.log('SC  → Prog: '+tpSC.toLocaleString('pt-BR')+' kg | Real: '+trSC.toLocaleString('pt-BR')+' kg');
-    if(tpBG>0) console.log('BG  → Prog: '+tpBG.toLocaleString('pt-BR')+' kg | Real: '+trBG.toLocaleString('pt-BR')+' kg');
-    if(tpKG>0) console.log('KG  → Prog: '+tpKG.toLocaleString('pt-BR')+' kg | Real: '+trKG.toLocaleString('pt-BR')+' kg');
-    console.log('SC+BG+KG Prog: '+(tpSC+tpBG+tpKG).toLocaleString('pt-BR')+' kg  ← deve = TOTAL PROGRAMADO: '+tp.toLocaleString('pt-BR')+' kg  '+(Math.abs(tpSC+tpBG+tpKG-tp)<1?'✅ OK':'❌ DIVERGÊNCIA'));
-    console.log('SC+BG+KG Real: '+(trSC+trBG+trKG).toLocaleString('pt-BR')+' kg  ← deve = TOTAL REALIZADO: '+tr.toLocaleString('pt-BR')+' kg  '+(Math.abs(trSC+trBG+trKG-tr)<1?'✅ OK':'❌ DIVERGÊNCIA'));
-    console.groupEnd();
-    // ────────────────────────────────────────────────────────────────
+
 
     G('dmetrics').innerHTML=
       '<div class="mc"><div class="ml">Programado</div><div class="mv cb">'+fN(tp)+'</div><div class="ms">OPs do dia</div></div>'+
@@ -968,6 +924,7 @@ function _renderDashComApt(dt, ln, tp, ops){
     }
     G('dops').innerHTML=h||'<tr><td colspan="8" style="text-align:center;color:#4a664a;padding:20px">Nenhuma OP para esta data.</td></tr>';
     renderCharts(ops, aptsPorOp);
+    renderAderenciaSKU(ops, aptsPorOp);
   }).catch(function(e){ console.error('Erro dashboard:',e); });
 }
 
@@ -1004,6 +961,83 @@ function renderCharts(ops, aptsPorOp){
   var leg='';
   for(var i=0;i<stL.length;i++) leg+='<span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:2px;background:'+stC[i]+'"></span>'+stL[i]+' ('+stD[i]+')</span>';
   G('legS').innerHTML=leg;
+}
+
+// ============================================================
+// ADERÊNCIA POR SKU
+// ============================================================
+function renderAderenciaSKU(ops, aptsPorOp){
+  var body=G('dash-sku-body');
+  var foot=G('dash-sku-foot');
+  var resumo=G('dash-sku-resumo');
+  if(!body) return;
+
+  // Agrupa por código de produto
+  var skus={};
+  ops.forEach(function(o){
+    var cod=o.cod||'SEM_COD';
+    var desc=o.desc||o.cod||'—';
+    if(!skus[cod]) skus[cod]={cod:cod,desc:desc,prog:0,real:0};
+    skus[cod].prog += Number(o.prog)||0;
+    skus[cod].real += aptsPorOp[o.fbKey]||0;
+  });
+
+  // Converte para array e ordena: primeiro os com prog > 0, depois % crescente (pior primeiro)
+  var lista=Object.values(skus);
+  lista.sort(function(a,b){
+    var pa=a.prog?Math.round(a.real/a.prog*100):0;
+    var pb=b.prog?Math.round(b.real/b.prog*100):0;
+    return pa-pb; // pior aderência primeiro
+  });
+
+  // Totais gerais
+  var totalProg=0, totalReal=0;
+  lista.forEach(function(s){ totalProg+=s.prog; totalReal+=s.real; });
+  var totalPct=totalProg?Math.round(totalReal/totalProg*100):0;
+
+  // Renderiza linhas
+  var h='';
+  lista.forEach(function(s){
+    var p=s.prog?Math.round(s.real/s.prog*100):0;
+    var cor=p>=90?'#024f2b':p>=60?'#d29922':'#c0392b';
+    var bgBarra=p>=90?'rgba(2,79,43,.12)':p>=60?'rgba(210,153,34,.12)':'rgba(192,57,43,.08)';
+    var largBarra=Math.min(p,100)+'%';
+    h+='<tr>';
+    h+='<td style="font-size:11px;color:#4a664a;white-space:nowrap">'+s.cod+'</td>';
+    h+='<td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+s.desc+'">'+s.desc+'</td>';
+    h+='<td style="text-align:right;font-weight:600">'+fN(s.prog)+'</td>';
+    h+='<td style="text-align:right;font-weight:600;color:'+cor+'">'+fN(s.real)+'</td>';
+    h+='<td style="text-align:right;font-weight:700;color:'+cor+'">'+p+'%</td>';
+    h+='<td style="min-width:80px;padding:4px 8px">';
+    h+='<div style="background:#f0f0f0;border-radius:4px;height:8px;overflow:hidden">';
+    h+='<div style="background:'+cor+';width:'+largBarra+';height:100%;border-radius:4px;transition:width .4s"></div>';
+    h+='</div></td>';
+    h+='</tr>';
+  });
+
+  if(!lista.length){
+    body.innerHTML='<tr><td colspan="6" style="text-align:center;color:#4a664a;padding:20px">Nenhuma OP para esta data.</td></tr>';
+    if(foot) foot.innerHTML='';
+    if(resumo) resumo.textContent='';
+    return;
+  }
+
+  body.innerHTML=h;
+
+  // Rodapé com totais — deve bater com os cards do topo
+  var corTot=totalPct>=90?'#024f2b':totalPct>=60?'#d29922':'#c0392b';
+  if(foot) foot.innerHTML=
+    '<tr style="background:#f5f9f2;font-weight:700;border-top:2px solid #024f2b">'+
+    '<td colspan="2" style="padding:6px 8px;color:#024f2b">TOTAL GERAL</td>'+
+    '<td style="text-align:right;padding:6px 8px">'+fN(totalProg)+'</td>'+
+    '<td style="text-align:right;padding:6px 8px;color:'+corTot+'">'+fN(totalReal)+'</td>'+
+    '<td style="text-align:right;padding:6px 8px;color:'+corTot+'">'+totalPct+'%</td>'+
+    '<td></td>'+
+    '</tr>';
+
+  // Resumo no cabeçalho
+  var skusOk=lista.filter(function(s){return s.prog&&Math.round(s.real/s.prog*100)>=90;}).length;
+  if(resumo) resumo.textContent=lista.length+' SKUs | '+skusOk+' com aderência ≥90%';
 }
 
 // ============================================================
