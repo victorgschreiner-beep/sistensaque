@@ -999,20 +999,20 @@ function renderAderenciaSKU(ops, aptsPorOp){
   // Converte para array e ordena: primeiro os com prog > 0, depois % crescente (pior primeiro)
   var lista=Object.values(skus);
   lista.sort(function(a,b){
-    var pa=a.prog?Math.round(a.real/a.prog*100):0;
-    var pb=b.prog?Math.round(b.real/b.prog*100):0;
+    var pa=a.prog?Math.min(Math.round(a.real/a.prog*100),100):0;
+    var pb=b.prog?Math.min(Math.round(b.real/b.prog*100),100):0;
     return pa-pb; // pior aderência primeiro
   });
 
   // Totais gerais
   var totalProg=0, totalReal=0;
   lista.forEach(function(s){ totalProg+=s.prog; totalReal+=s.real; });
-  var totalPct=totalProg?Math.round(totalReal/totalProg*100):0;
+  var totalPct=totalProg?Math.min(Math.round(totalReal/totalProg*100),100):0;
 
   // Renderiza linhas
   var h='';
   lista.forEach(function(s){
-    var p=s.prog?Math.round(s.real/s.prog*100):0;
+    var p=s.prog?Math.min(Math.round(s.real/s.prog*100),100):0;
     var cor=p>=90?'#024f2b':p>=60?'#d29922':'#c0392b';
     var bgBarra=p>=90?'rgba(2,79,43,.12)':p>=60?'rgba(210,153,34,.12)':'rgba(192,57,43,.08)';
     var largBarra=Math.min(p,100)+'%';
@@ -1050,7 +1050,7 @@ function renderAderenciaSKU(ops, aptsPorOp){
     '</tr>';
 
   // Resumo no cabeçalho
-  var skusOk=lista.filter(function(s){return s.prog&&Math.round(s.real/s.prog*100)>=90;}).length;
+  var skusOk=lista.filter(function(s){return s.prog&&Math.min(Math.round(s.real/s.prog*100),100)>=90;}).length;
   if(resumo) resumo.textContent=lista.length+' SKUs | '+skusOk+' com aderência ≥90%';
 }
 
