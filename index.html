@@ -765,7 +765,10 @@ function renderDash(){
   // Programado: OPs cuja data programada e igual ao dia filtrado
   var opsDia=OPS.filter(function(o){ return o.data===dt; });
   if(ln) opsDia=opsDia.filter(function(o){ return o.linha===ln; });
-  var tp=opsDia.reduce(function(a,o){return a+(Number(o.prog)||0);},0);
+  var tp=opsDia.reduce(function(a,o){
+    var fator=o.tipo==='SC'?25:o.tipo==='BG'?750:1;
+    return a+(Number(o.prog)||0)*fator;
+  },0);
   var ops=opsDia;
 
   // Realizado: busca apontamentos desta data — pode incluir OPs de outras datas
@@ -863,6 +866,40 @@ function _renderDashComApt(dt, ln, tp, ops){
     var adh=tp?Math.round(tr/tp*100):0;
     var ttotal=tr+tperda;
 
+    // ── AUDITORIA DE CÁLCULO ─────────────────────────────────────────
+    console.group('%c[AUDITORIA DASHBOARD] '+dt, 'color:#024f2b;font-weight:bold;font-size:13px');
+    console.log('%cTOTAL PROGRAMADO (kg): '+tp.toLocaleString('pt-BR'), 'color:#0055cc;font-weight:bold');
+    console.log('%cTOTAL REALIZADO BOM (kg): '+tr.toLocaleString('pt-BR'), 'color:#024f2b;font-weight:bold');
+    console.log('%cTOTAL PERDA (kg): '+tperda.toLocaleString('pt-BR'), 'color:#c0392b;font-weight:bold');
+    console.log('%cTOTAL PROCESSADO (bom+perda): '+ttotal.toLocaleString('pt-BR'), 'color:#739630;font-weight:bold');
+    console.log('%cADERÊNCIA: '+adh+'%', 'color:#d29922;font-weight:bold');
+    console.log('── Detalhamento por OP ──────────────────────────────────');
+    var tpSC=0,tpKG=0,tpBG=0,trSC=0,trKG=0,trBG=0;
+    ops.forEach(function(o){
+      var fator=o.tipo==='SC'?25:o.tipo==='BG'?750:1;
+      var progKgOp=(Number(o.prog)||0)*fator;
+      var realKgOp=aptsPorOp[o.fbKey]||0;
+      var pctOp=progKgOp?Math.round(realKgOp/progKgOp*100):0;
+      if(o.tipo==='SC'){tpSC+=progKgOp;trSC+=realKgOp;}
+      else if(o.tipo==='BG'){tpBG+=progKgOp;trBG+=realKgOp;}
+      else{tpKG+=progKgOp;trKG+=realKgOp;}
+      console.log(
+        o.id+' | '+o.tipo+
+        ' | Prog: '+(o.tipo==='SC'?Math.round(o.prog/25)+' sc = ':o.tipo==='BG'?Math.round(o.prog/750)+' bg = ':'')+progKgOp.toLocaleString('pt-BR')+' kg'+
+        ' | Real: '+realKgOp.toLocaleString('pt-BR')+' kg'+
+        ' | %: '+pctOp+'%'+
+        ' | '+o.status
+      );
+    });
+    console.log('── Subtotais por tipo ───────────────────────────────────');
+    if(tpSC>0) console.log('SC  → Prog: '+tpSC.toLocaleString('pt-BR')+' kg | Real: '+trSC.toLocaleString('pt-BR')+' kg');
+    if(tpBG>0) console.log('BG  → Prog: '+tpBG.toLocaleString('pt-BR')+' kg | Real: '+trBG.toLocaleString('pt-BR')+' kg');
+    if(tpKG>0) console.log('KG  → Prog: '+tpKG.toLocaleString('pt-BR')+' kg | Real: '+trKG.toLocaleString('pt-BR')+' kg');
+    console.log('SC+BG+KG Prog: '+(tpSC+tpBG+tpKG).toLocaleString('pt-BR')+' kg  ← deve = TOTAL PROGRAMADO: '+tp.toLocaleString('pt-BR')+' kg  '+(Math.abs(tpSC+tpBG+tpKG-tp)<1?'✅ OK':'❌ DIVERGÊNCIA'));
+    console.log('SC+BG+KG Real: '+(trSC+trBG+trKG).toLocaleString('pt-BR')+' kg  ← deve = TOTAL REALIZADO: '+tr.toLocaleString('pt-BR')+' kg  '+(Math.abs(trSC+trBG+trKG-tr)<1?'✅ OK':'❌ DIVERGÊNCIA'));
+    console.groupEnd();
+    // ────────────────────────────────────────────────────────────────
+
     G('dmetrics').innerHTML=
       '<div class="mc"><div class="ml">Programado</div><div class="mv cb">'+fN(tp)+'</div><div class="ms">OPs do dia</div></div>'+
       '<div class="mc"><div class="ml">Prod. Bom</div><div class="mv '+(adh>=90?'cg':adh>=60?'co':'cr')+'">'+fN(tr)+'</div><div class="ms">'+adh+'% do prog.</div></div>'+
@@ -896,9 +933,12 @@ function _renderDashComApt(dt, ln, tp, ops){
     var h='';
     var slice=ops.slice(0,8);
     for(var i=0;i<slice.length;i++){
-      var o=slice[i]; var p2=pct(o.real,o.prog); var c=p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b';
-      var prog=o.tipo==='SC'?fN(Math.round((o.prog||0)/25))+' sc':fN(o.prog)+' kg';
+      var o=slice[i];
+      var fatorO=o.tipo==='SC'?25:o.tipo==='BG'?750:1;
+      var progKg=(Number(o.prog)||0)*fatorO;
       var realDia=aptsPorOp[o.fbKey]||0;
+      var p2=pct(realDia,progKg); var c=p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b';
+      var prog=o.tipo==='SC'?fN(Math.round((o.prog||0)/25))+' sc':fN(o.prog)+' kg';
       var realStr=o.tipo==='SC'?fN(Math.round(realDia/25))+' sc':fN(realDia)+' kg';
       h+='<tr>'+
         '<td style="font-weight:600">'+o.id+'</td>'+
@@ -922,7 +962,10 @@ function renderCharts(ops, aptsPorOp){
   var lbl=LINHAS.map(function(l){return l.nome;});
   var lp=LINHAS.map(function(l){
     var nm=l.nome+' ('+l.maq+')';
-    return ops.filter(function(o){return o.linha===nm;}).reduce(function(a,o){return a+(Number(o.prog)||0);},0);
+    return ops.filter(function(o){return o.linha===nm;}).reduce(function(a,o){
+      var fator=o.tipo==='SC'?25:o.tipo==='BG'?750:1;
+      return a+(Number(o.prog)||0)*fator;
+    },0);
   });
   // Realizado por linha: soma dos apontamentos do dia por linha
   var lr=LINHAS.map(function(l){
@@ -975,8 +1018,10 @@ function renderOPs(){
   var can=SES&&SES.perfil!=='operador';
   var h='';
   for(var i=0;i<ops.length;i++){
-    var o=ops[i]; var p2=pct(o.real,o.prog); var fid=o.fbKey;
-    var c=p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b';
+    var o=ops[i]; var fid=o.fbKey;
+    var fatorO2=o.tipo==='SC'?25:o.tipo==='BG'?750:1;
+    var progKg2=(Number(o.prog)||0)*fatorO2;
+    var p2=pct(o.real,progKg2); var c=p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b';
     var prog=o.tipo==='SC'?fN(Math.round((o.prog||0)/25))+' sc':fN(o.prog)+' kg';
     var real=o.tipo==='SC'?fN(o.t1sc!==undefined?(o.t1sc+o.t2sc+o.t3sc):Math.round((o.real||0)/25))+' sc ('+fN(o.real)+' kg)':fN(o.real)+' kg';
     var loteBadge='<span style="font-size:12px;font-weight:700;color:#024f2b;background:rgba(2,79,43,.08);padding:2px 7px;border-radius:4px">'+(o.lote||'---')+'</span>';
@@ -1159,8 +1204,10 @@ function renderOpCards(){
   }
   var h='';
   for(var i=0;i<ops.length;i++){
-    var o=ops[i]; var p2=pct(o.real,o.prog); var fid=o.fbKey;
-    var c=p2>=90?'var(--gr)':p2>=60?'var(--or)':'var(--rd)';
+    var o=ops[i]; var fid=o.fbKey;
+    var fatorO3=o.tipo==='SC'?25:o.tipo==='BG'?750:1;
+    var progKg3=(Number(o.prog)||0)*fatorO3;
+    var p2=pct(o.real,progKg3); var c=p2>=90?'var(--gr)':p2>=60?'var(--or)':'var(--rd)';
     var posTag=o.filaPosicao!==undefined?'<span style="font-size:10px;background:#024f2b;color:#fff;padding:1px 8px;border-radius:10px;margin-left:6px;font-weight:600">#'+(o.filaPosicao+1)+' na fila</span>':'';
     var prog=o.tipo==='SC'?fN(o.t1sc!==undefined?(o.t1sc+o.t2sc+o.t3sc):Math.round((o.real||0)/25))+' sc':fN(o.real)+' kg';
     h+='<div class="opcard '+(o.status==='Em andamento'?'and':'')+'">';
