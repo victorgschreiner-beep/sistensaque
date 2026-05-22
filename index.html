@@ -1892,51 +1892,51 @@ function salvarCorrecao(){
 
   // Primeiro: marca todos apontamentos originais da OP como substituídos
   // Assim a query por data não os conta mais — só conta os novos correcao_pcp
-  var promises=[];
+  // Passo 1: marca apontamentos originais como substituídos
   DB.ref('apontamentos').orderByChild('opId').equalTo(fbKey).once('value').then(function(snapApts){
+    var promisesSubst=[];
     snapApts.forEach(function(c){
       var a=c.val();
-      if(a.tipo==='correcao_pcp') return; // já é correção, ignora
-      promises.push(DB.ref('apontamentos/'+c.key).update({substituido:true}));
+      if(a.tipo==='correcao_pcp') return;
+      promisesSubst.push(DB.ref('apontamentos/'+c.key).update({substituido:true}));
     });
-
-    promises.push(
-    DB.ref('ops/'+fbKey).update({
+    return Promise.all(promisesSubst);
+  }).then(function(){
+    // Passo 2: salva os novos registros corrigidos
+    var promises=[];
+    promises.push(DB.ref('ops/'+fbKey).update({
       t1:t1sc*fator, t2:t2sc*fator, t3:t3sc*fator,
       real:real, t1sc:t1sc, t2sc:t2sc, t3sc:t3sc,
       perda:novaPerda, perdaT1:pe1, perdaT2:pe2, perdaT3:pe3,
       ultimoApt:dataCorr
-    }),
-    DB.ref('apontamentos').push({
+    }));
+    promises.push(DB.ref('apontamentos').push({
       id:uid(), opId:fbKey, data:dataCorr, turno:0,
       t1:t1sc*fator, t2:t2sc*fator, t3:t3sc*fator,
       real:real, perda:0,
       operador:SES.login, tipo:'correcao_pcp', motivo:motivo, ts:agora()
-    }),
-    DB.ref('correcoes/'+fbKey).push({
+    }));
+    promises.push(DB.ref('correcoes/'+fbKey).push({
       ts:agora(), pcp:SES.login, motivo:motivo, data:dataCorr,
       perdaAnterior:perdaAnt, perdaNova:novaPerda,
       perdaT1:pe1, perdaT2:pe2, perdaT3:pe3,
       real:real, totalProcessado:totalProc
-    })
-  ];
-  // Salva perda e apontamento com data correta de cada turno
-  if(t1sc*fator>0) promises.push(DB.ref('apontamentos').push({
-    id:uid(),opId:fbKey,data:dtC1,turno:1,t1:t1sc*fator,t2:0,t3:0,
-    real:t1sc*fator,perda:0,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
-  }));
-  if(t2sc*fator>0) promises.push(DB.ref('apontamentos').push({
-    id:uid(),opId:fbKey,data:dtC2,turno:2,t1:0,t2:t2sc*fator,t3:0,
-    real:t2sc*fator,perda:0,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
-  }));
-  if(t3sc*fator>0) promises.push(DB.ref('apontamentos').push({
-    id:uid(),opId:fbKey,data:dtC3,turno:3,t1:0,t2:0,t3:t3sc*fator,
-    real:t3sc*fator,perda:0,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
-  }));
-  if(pe1>0) promises.push(DB.ref('perdas_diarias').push({opId:fbKey,data:dtC1,turno:1,perdaKG:pe1,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()}));
-  if(pe2>0) promises.push(DB.ref('perdas_diarias').push({opId:fbKey,data:dtC2,turno:2,perdaKG:pe2,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()}));
-  if(pe3>0) promises.push(DB.ref('perdas_diarias').push({opId:fbKey,data:dtC3,turno:3,perdaKG:pe3,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()}));
-
+    }));
+    if(t1sc*fator>0) promises.push(DB.ref('apontamentos').push({
+      id:uid(),opId:fbKey,data:dtC1,turno:1,t1:t1sc*fator,t2:0,t3:0,
+      real:t1sc*fator,perda:0,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
+    }));
+    if(t2sc*fator>0) promises.push(DB.ref('apontamentos').push({
+      id:uid(),opId:fbKey,data:dtC2,turno:2,t1:0,t2:t2sc*fator,t3:0,
+      real:t2sc*fator,perda:0,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
+    }));
+    if(t3sc*fator>0) promises.push(DB.ref('apontamentos').push({
+      id:uid(),opId:fbKey,data:dtC3,turno:3,t1:0,t2:0,t3:t3sc*fator,
+      real:t3sc*fator,perda:0,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
+    }));
+    if(pe1>0) promises.push(DB.ref('perdas_diarias').push({opId:fbKey,data:dtC1,turno:1,perdaKG:pe1,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()}));
+    if(pe2>0) promises.push(DB.ref('perdas_diarias').push({opId:fbKey,data:dtC2,turno:2,perdaKG:pe2,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()}));
+    if(pe3>0) promises.push(DB.ref('perdas_diarias').push({opId:fbKey,data:dtC3,turno:3,perdaKG:pe3,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()}));
     return Promise.all(promises);
   }).then(function(){
     ld(false);
