@@ -972,28 +972,15 @@ function renderAderenciaSKU(ops, aptsPorOp){
   var resumo=G('dash-sku-resumo');
   if(!body) return;
 
-  // Mapa fbKey → {cod, desc} para todos os produtos conhecidos
-  var mapaOp={};
-  OPS.forEach(function(o){ mapaOp[o.fbKey]={cod:o.cod||'SEM_COD',desc:o.desc||o.cod||'—'}; });
-
-  // Programado: agrupa OPs do dia por SKU
+  // Programado + Realizado: só OPs programadas para o dia
+  // Real = o.real da OP (acumula todos apontamentos independente de data do apontamento)
   var skus={};
   ops.forEach(function(o){
     var cod=o.cod||'SEM_COD';
     var desc=o.desc||o.cod||'—';
     if(!skus[cod]) skus[cod]={cod:cod,desc:desc,prog:0,real:0};
     skus[cod].prog += Number(o.prog)||0;
-  });
-
-  // Realizado: soma TODOS os apontamentos do dia (aptsPorOp já filtrado por data===dt)
-  // agrupa pelo SKU da OP correspondente, mesmo que a OP seja de outro dia
-  Object.keys(aptsPorOp).forEach(function(opId){
-    var ref=mapaOp[opId];
-    if(!ref) return; // OP não encontrada no cadastro
-    var cod=ref.cod;
-    var desc=ref.desc;
-    if(!skus[cod]) skus[cod]={cod:cod,desc:desc,prog:0,real:0}; // SKU só com real (OP de outro dia)
-    skus[cod].real += aptsPorOp[opId]||0;
+    skus[cod].real += Number(o.real)||0;
   });
 
   // Converte para array e ordena: primeiro os com prog > 0, depois % crescente (pior primeiro)
