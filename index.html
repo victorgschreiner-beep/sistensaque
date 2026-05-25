@@ -337,8 +337,14 @@ tr:hover td{background:rgba(2,79,43,.03)}
 
 <!-- MODAIS -->
 <div class="ov" id="mop"><div class="modal">
-  <div class="mt">Nova Ordem de Producao</div>
-  <div class="fr"><div class="fg"><label class="fl">Produto</label><select id="nopc" onchange="fillDesc()"></select></div><div class="fg"><label class="fl">Descricao</label><input type="text" id="nopd" readonly style="opacity:.6"></div></div>
+  <div class="mt">Nova Ordem de Producao
+    <label style="float:right;cursor:pointer;font-size:12px;background:#739630;color:#fff;padding:4px 10px;border-radius:4px;font-weight:600" title="Importar dados do PDF do TOTVS">
+      📄 Importar PDF
+      <input type="file" id="pdfUpload" accept=".pdf" style="display:none" onchange="importarPDF(this)">
+    </label>
+  </div>
+  <div id="pdf-status" style="display:none;padding:6px 10px;border-radius:4px;font-size:12px;margin-bottom:8px"></div>
+  <div class="fr"><div class="fg"><label class="fl">No da OP <span style="color:#739630;font-size:11px">(do TOTVS)</span></label><input type="text" id="nopid" placeholder="ex: 06296101001"></div><div class="fg"><label class="fl">Produto</label><select id="nopc" onchange="fillDesc()"></select></div><div class="fg"><label class="fl">Descricao</label><input type="text" id="nopd" readonly style="opacity:.6"></div></div>
   <div class="fr fr3"><div class="fg"><label class="fl">Lote</label><input type="text" id="nopl" placeholder="LOT-2026-XXX"></div><div class="fg"><label class="fl">Tipo</label><select id="nopt"><option value="SC">Sacaria (SC)</option><option value="BG">Big Bag (BG)</option><option value="KG">KG Granel</option></select></div><div class="fg"><label class="fl">Linha</label><select id="nopln"><option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option><option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option></select></div></div>
   <div class="fr"><div class="fg"><label class="fl">Quantidade Programada</label><input type="number" id="nopq" min="0"></div><div class="fg"><label class="fl">Data</label><input type="date" id="nopdt"></div></div>
   <div class="fg"><label class="fl">Observacoes</label><input type="text" id="nopo" placeholder="Instrucoes para o operador..."></div>
@@ -522,6 +528,8 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div class="mfoot"><button class="btn bsm" onclick="fM('mpdf')">Fechar</button><button class="btn bsm bp" onclick="dlOP(true)">&#8659; Baixar PDF</button></div>
 </div></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -1107,9 +1115,141 @@ function renderOPs(){
 // ============================================================
 // NOVA OP
 // ============================================================
+// ============================================================
+// IMPORTADOR PDF TOTVS
+// ============================================================
+function importarPDF(input){
+  var file=input.files[0];
+  if(!file) return;
+  var status=G('pdf-status');
+  status.style.display='block';
+  status.style.background='rgba(115,150,48,.1)';
+  status.style.color='#4a5e10';
+  status.style.border='1px solid rgba(115,150,48,.3)';
+  status.textContent='Lendo PDF...';
+
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var typedarray=new Uint8Array(e.target.result);
+    // Usa pdfjsLib se disponível, senão usa FileReader como texto
+    if(window.pdfjsLib){
+      pdfjsLib.getDocument(typedarray).promise.then(function(pdf){
+        var textoTotal='';
+        var paginas=[];
+        for(var i=1;i<=pdf.numPages;i++) paginas.push(i);
+        Promise.all(paginas.map(function(n){
+          return pdf.getPage(n).then(function(page){
+            return page.getTextContent().then(function(tc){
+              return tc.items.map(function(item){return item.str;}).join(' ');
+            });
+          });
+        })).then(function(textos){
+          textoTotal=textos.join('\n');
+          preencherCamposPDF(textoTotal,status);
+        });
+      }).catch(function(e){
+        status.style.background='rgba(192,57,43,.1)';
+        status.style.color='#c0392b';
+        status.style.border='1px solid rgba(192,57,43,.3)';
+        status.textContent='Erro ao ler PDF: '+e.message;
+      });
+    } else {
+      // Fallback: tenta ler como texto simples
+      var text=new TextDecoder('utf-8').decode(typedarray);
+      preencherCamposPDF(text,status);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  input.value=''; // reset para permitir reimport
+}
+
+function preencherCamposPDF(texto, status){
+  // ── Extrai número da OP ──────────────────────────────────
+  var opMatch=texto.match(/ORDEM\s+DE\s+PRODUCAO\s+NRO:\s*(\d+)/i)||
+               texto.match(/NRO:\s*(\d+)/i);
+  var numOP=opMatch?opMatch[1]:'';
+
+  // ── Extrai código do produto ─────────────────────────────
+  var codMatch=texto.match(/Produto:\s*([A-Z0-9]+)\s/)||
+               texto.match(/^([A-Z]{3}[A-Z0-9]+)\s/m);
+  var codProd=codMatch?codMatch[1]:'';
+
+  // ── Extrai quantidade ────────────────────────────────────
+  var qtdMatch=texto.match(/Quantidade:\s*([\d.,]+)/i);
+  var qtd=qtdMatch?parseFloat(qtdMatch[1].replace('.','').replace(',','.')):0;
+
+  // ── Extrai unidade de medida ─────────────────────────────
+  var unidMatch=texto.match(/Unid\.\s*Medida:\s*(KG|SC|BG)/i);
+  var unid=unidMatch?unidMatch[1].toUpperCase():'KG';
+
+  // ── Extrai data prevista ─────────────────────────────────
+  var dtMatch=texto.match(/Prev\.:\s*(\d{2})\/(\d{2})\/(\d{4})/);
+  var dtISO=dtMatch?dtMatch[3]+'-'+dtMatch[2]+'-'+dtMatch[1]:'';
+
+  // ── Extrai linha de produção ─────────────────────────────
+  // Padrão: ENSAQUE (L1), ENSAQUE (L2), ENSAQUE (L4), ENSAQUE (L5)
+  var linhaMatch=texto.match(/ENSAQUE\s*\(L(\d)\)/i);
+  var linhaNum=linhaMatch?linhaMatch[1]:'';
+  var linhaMap={'1':'Linha 1 (E-240)','2':'Linha 2 (E-200)','4':'Linha 4 (Andritz I)','5':'Linha 5 (Andritz II)'};
+  var linhaNome=linhaMap[linhaNum]||'';
+
+  // ── Preenche os campos ───────────────────────────────────
+  if(numOP) G('nopid').value=numOP;
+  if(qtd>0) G('nopq').value=unid==='SC'?Math.round(qtd/25):qtd; // SC: armazena em KG
+  if(dtISO) G('nopdt').value=dtISO;
+
+  // Tipo
+  var nopt=G('nopt');
+  if(nopt&&unid){
+    for(var i=0;i<nopt.options.length;i++){
+      if(nopt.options[i].value===unid){nopt.selectedIndex=i;break;}
+    }
+  }
+
+  // Linha
+  var nopln=G('nopln');
+  if(nopln&&linhaNome){
+    for(var i=0;i<nopln.options.length;i++){
+      if(nopln.options[i].text===linhaNome||nopln.options[i].value===linhaNome){
+        nopln.selectedIndex=i;break;
+      }
+    }
+  }
+
+  // Produto — tenta encontrar pelo código
+  if(codProd){
+    var nopc=G('nopc');
+    if(nopc){
+      for(var i=0;i<nopc.options.length;i++){
+        if(nopc.options[i].value===codProd||nopc.options[i].text.indexOf(codProd)>=0){
+          nopc.selectedIndex=i;
+          if(typeof fillDesc==='function') fillDesc();
+          break;
+        }
+      }
+    }
+  }
+
+  // ── Feedback ─────────────────────────────────────────────
+  var ok=numOP&&qtd>0&&dtISO&&linhaNome;
+  status.style.background=ok?'rgba(2,79,43,.1)':'rgba(210,153,34,.1)';
+  status.style.color=ok?'#024f2b':'#d29922';
+  status.style.border=ok?'1px solid rgba(2,79,43,.3)':'1px solid rgba(210,153,34,.3)';
+  var campos=[];
+  if(!numOP) campos.push('Nº OP');
+  if(!linhaNome) campos.push('Linha');
+  if(!dtISO) campos.push('Data');
+  if(qtd<=0) campos.push('Quantidade');
+  status.textContent=ok
+    ?'✅ PDF lido! OP: '+numOP+' | '+linhaNome+' | '+qtd+(unid==='SC'?' sc':' '+unid)+' | '+dtISO+' — Preencha o lote e confirme.'
+    :'⚠️ Lido parcialmente. Faltou: '+campos.join(', ')+'. Preencha manualmente.';
+}
+
 function abrirNovaOP(){
   if(SES&&SES.perfil==='operador') return;
   G('nopc').value='';G('nopd').value='';G('nopl').value='';G('nopq').value='';G('nopo').value='';G('nopdt').value=hoje();
+  if(G('nopid')) G('nopid').value='';
+  if(G('pdf-status')){G('pdf-status').style.display='none';G('pdf-status').textContent='';}
   G('mop').classList.add('on');
 }
 
@@ -1118,8 +1258,9 @@ function salvarOP(){
   if(!cod){toast('Selecione o produto','err');return;}
   var prod=null;
   for(var i=0;i<PRODS.length;i++){if(PRODS[i].cod===cod){prod=PRODS[i];break;}}
+  var nopidVal=G('nopid')&&G('nopid').value.trim()?G('nopid').value.trim():'';
   var op={
-    id:'OP-'+new Date().getFullYear()+'-'+uid().slice(0,6).toUpperCase(),
+    id:nopidVal||('OP-'+new Date().getFullYear()+'-'+uid().slice(0,6).toUpperCase()),
     cod:cod,desc:prod?prod.desc:cod,
     lote:G('nopl').value||('LOT-'+Date.now()),
     tipo:G('nopt').value,linha:G('nopln').value,
