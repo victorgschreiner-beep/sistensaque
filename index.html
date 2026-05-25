@@ -193,9 +193,9 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
     <h2 style="font-size:16px;font-weight:700;color:#024f2b">Dashboard <span style="font-size:11px;color:#739630;font-weight:500">&#9679; ao vivo</span></h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <input type="date" id="ddt" style="width:auto" onchange="carregarDados()">
-      <select id="dash-fln" style="width:auto" onchange="carregarDados()"><option value="">Todas as linhas</option><option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option><option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option></select>
-      <select id="dash-turno" style="width:auto" onchange="carregarDados()"><option value="0">Todos os turnos</option><option value="1">Turno 1</option><option value="2">Turno 2</option><option value="3">Turno 3</option></select>
+      <input type="date" id="ddt" style="width:auto" onchange="renderDash()">
+      <select id="dash-fln" style="width:auto" onchange="renderDash()"><option value="">Todas as linhas</option><option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option><option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option></select>
+      <select id="dash-turno" style="width:auto" onchange="renderDash()"><option value="0">Todos os turnos</option><option value="1">Turno 1</option><option value="2">Turno 2</option><option value="3">Turno 3</option></select>
     </div>
   </div>
   <div class="mrow" id="dmetrics"></div>
