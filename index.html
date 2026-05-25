@@ -809,85 +809,63 @@ function fillDesc(){
 function renderDash(){
   var dt=G('ddt')?G('ddt').value:hoje();
   var ln=G('dash-fln')?G('dash-fln').value:'';
+  var turnoFiltro=G('dash-turno')?parseInt(G('dash-turno').value)||0:0;
 
-  // Programado: OPs cuja data programada e igual ao dia filtrado
-  var opsDia=OPS.filter(function(o){ return o.data===dt; });
-  if(ln) opsDia=opsDia.filter(function(o){ return o.linha===ln; });
-  var tp=opsDia.reduce(function(a,o){return a+(Number(o.prog)||0);},0);
-  var ops=opsDia;
+  // OPs do dia filtrado
+  var ops=OPS.filter(function(o){ return o.data===dt; });
+  if(ln) ops=ops.filter(function(o){ return o.linha===ln; });
 
-  // Realizado: busca apontamentos desta data — pode incluir OPs de outras datas
-  // cuja data foi ajustada pelo PCP
-  _renderDashComApt(dt, ln, tp, ops);
-}
+  // PROGRAMADO
+  var tp=ops.reduce(function(a,o){return a+(Number(o.prog)||0);},0);
 
-function _renderDashComApt(dt, ln, tp, ops){
-  var turnoFiltro = G('dash-turno') ? parseInt(G('dash-turno').value)||0 : 0;
-  DB.ref('perdas_diarias').orderByChild('data').equalTo(dt).once('value').then(function(snapPerda){
-    var aptsPorOp={};
-    var dadosPorTurno={1:{real:0,perda:0,sc:0,bg:0,kg:0},2:{real:0,perda:0,sc:0,bg:0,kg:0},3:{real:0,perda:0,sc:0,bg:0,kg:0}};
+  // REALIZADO — realPorData[dt] se existir, senão o.real (mesmo dia)
+  var dadosPorTurno={1:{real:0,perda:0,sc:0,bg:0,kg:0},2:{real:0,perda:0,sc:0,bg:0,kg:0},3:{real:0,perda:0,sc:0,bg:0,kg:0}};
+  var aptsPorOp={};
 
-    // FONTE DE VERDADE: realPorData[dt] de cada OP
-    // Fallback para o.real SOMENTE para OPs do próprio dia (sem realPorData ainda)
-    ops.forEach(function(o){
-      var rpd=o.realPorData||null;
-      var realOp=rpd?(Number(rpd[dt])||0):(Number(o.real)||0);
-      // ops já está filtrado por data===dt, então o fallback é seguro
-      if(realOp<=0) return;
-      if(ln && o.linha!==ln) return;
-      aptsPorOp[o.fbKey]=realOp;
-      // Distribui por turno via t1/t2/t3 da OP
-      if(turnoFiltro>0){
-        var vTurno=rpd ? (Number(o['t'+turnoFiltro])||0) : (Number(o['t'+turnoFiltro])||0);
-        dadosPorTurno[turnoFiltro].real+=vTurno;
-        if(o.tipo==='SC') dadosPorTurno[turnoFiltro].sc+=Math.round(vTurno/25);
-        else if(o.tipo==='BG') dadosPorTurno[turnoFiltro].bg+=Math.round(vTurno/750);
-        else dadosPorTurno[turnoFiltro].kg+=vTurno;
-      } else {
-        [1,2,3].forEach(function(t){
-          var v=Number(o['t'+t])||0;
-          dadosPorTurno[t].real+=v;
-          if(o.tipo==='SC') dadosPorTurno[t].sc+=Math.round(v/25);
-          else if(o.tipo==='BG') dadosPorTurno[t].bg+=Math.round(v/750);
-          else dadosPorTurno[t].kg+=v;
-        });
-      }
-    });
-
-    // Soma total realizado
-    var tr=0;
+  ops.forEach(function(o){
+    var rpd=o.realPorData||null;
+    var realOp=rpd?(Number(rpd[dt])||0):(Number(o.real)||0);
+    if(realOp<=0) return;
+    aptsPorOp[o.fbKey]=realOp;
     if(turnoFiltro>0){
-      tr=dadosPorTurno[turnoFiltro].real;
+      var vT=Number(o['t'+turnoFiltro])||0;
+      dadosPorTurno[turnoFiltro].real+=vT;
+      if(o.tipo==='SC') dadosPorTurno[turnoFiltro].sc+=Math.round(vT/25);
+      else if(o.tipo==='BG') dadosPorTurno[turnoFiltro].bg+=Math.round(vT/750);
+      else dadosPorTurno[turnoFiltro].kg+=vT;
     } else {
-      Object.keys(aptsPorOp).forEach(function(k){ tr+=aptsPorOp[k]||0; });
+      [1,2,3].forEach(function(t){
+        var v=Number(o['t'+t])||0;
+        dadosPorTurno[t].real+=v;
+        if(o.tipo==='SC') dadosPorTurno[t].sc+=Math.round(v/25);
+        else if(o.tipo==='BG') dadosPorTurno[t].bg+=Math.round(v/750);
+        else dadosPorTurno[t].kg+=v;
+      });
     }
+  });
 
-    // Perda: perdas_diarias primeiro
+  var tr=turnoFiltro>0?dadosPorTurno[turnoFiltro].real:Object.keys(aptsPorOp).reduce(function(a,k){return a+(aptsPorOp[k]||0);},0);
+
+  // PERDA
+  DB.ref('perdas_diarias').orderByChild('data').equalTo(dt).once('value').then(function(snapPerda){
     var tperda=0;
     if(snapPerda.exists()){
       snapPerda.forEach(function(c){
         var p=c.val();
         if(p.data!==dt) return;
         if(ln){
-          var opRef=null;
-          for(var i=0;i<OPS.length;i++){if(OPS[i].fbKey===p.opId){opRef=OPS[i];break;}}
+          var opRef=OPS.filter(function(o){return o.fbKey===p.opId;})[0];
           if(!opRef||opRef.linha!==ln) return;
         }
-        tperda += Number(p.perdaKG)||0;
+        tperda+=Number(p.perdaKG)||0;
       });
     }
-    // Fallback perda: OPs sem perdas_diarias
-    if(tperda===0){
-      ops.forEach(function(o){
-        if(!opsComApt[o.fbKey]) tperda += Number(o.perda)||0;
-      });
-    }
+    if(tperda===0) ops.forEach(function(o){ tperda+=Number(o.perda)||0; });
 
-    var adh=tp?Math.round(tr/tp*100):0;
+    var adh=tp?Math.min(Math.round(tr/tp*100),999):0;
     var ttotal=tr+tperda;
 
-
-
+    // Cards
     G('dmetrics').innerHTML=
       '<div class="mc"><div class="ml">Programado</div><div class="mv cb">'+fN(tp)+'</div><div class="ms">OPs do dia</div></div>'+
       '<div class="mc"><div class="ml">Prod. Bom</div><div class="mv '+(adh>=90?'cg':adh>=60?'co':'cr')+'">'+fN(tr)+'</div><div class="ms">'+adh+'% do prog.</div></div>'+
@@ -908,17 +886,15 @@ function _renderDashComApt(dt, ln, tp, ops){
       var h='';
       h+='<div class="mc"><div class="ml">Prod. Bom T'+turnoFiltro+'</div><div class="mv '+(pctT>=90?'cg':pctT>=60?'co':'cr')+'">'+fN(d.real)+'</div><div class="ms">kg &bull; '+pctT+'% do prog.</div></div>';
       h+='<div class="mc"><div class="ml">Perda T'+turnoFiltro+'</div><div class="mv cr">'+fN(d.perda)+'</div><div class="ms">kg perdidos</div></div>';
-      if(d.sc>0) h+='<div class="mc"><div class="ml">Sacaria (SC)</div><div class="mv cb">'+fN(d.sc)+'</div><div class="ms">sc &bull; '+fN(d.sc*25)+' kg</div></div>';
-      if(d.bg>0) h+='<div class="mc"><div class="ml">Big Bag (BG)</div><div class="mv cb">'+fN(d.bg)+'</div><div class="ms">bg &bull; '+fN(d.bg*750)+' kg</div></div>';
-      if(d.kg>0) h+='<div class="mc"><div class="ml">Granel (KG)</div><div class="mv cb">'+fN(d.kg)+'</div><div class="ms">kg</div></div>';
-      h+='<div class="mc"><div class="ml">Total Proc. T'+turnoFiltro+'</div><div class="mv cg">'+fN(d.real+d.perda)+'</div><div class="ms">bom + perda</div></div>';
+      if(d.sc>0) h+='<div class="mc"><div class="ml">SC T'+turnoFiltro+'</div><div class="mv">'+fN(d.sc)+'</div><div class="ms">sacas</div></div>';
+      if(d.kg>0) h+='<div class="mc"><div class="ml">KG T'+turnoFiltro+'</div><div class="mv">'+fN(d.kg)+'</div><div class="ms">kg</div></div>';
       metricsTurno.innerHTML=h;
     } else if(blocoTurno){
       blocoTurno.style.display='none';
     }
 
     // Tabela OPs recentes
-    var h='';
+    var h2='';
     var slice=ops.slice(0,8);
     for(var i=0;i<slice.length;i++){
       var o=slice[i];
@@ -926,23 +902,22 @@ function _renderDashComApt(dt, ln, tp, ops){
       var p2=pct(realDia,o.prog); var c=p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b';
       var prog=o.tipo==='SC'?fN(Math.round((o.prog||0)/25))+' sc':fN(o.prog)+' kg';
       var realStr=o.tipo==='SC'?fN(Math.round(realDia/25))+' sc':fN(realDia)+' kg';
-      h+='<tr>'+
+      h2+='<tr>'+
         '<td style="font-weight:600">'+o.id+'</td>'+
         '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">'+(o.desc||o.cod)+'</td>'+
         '<td>'+o.linha+'</td>'+
         '<td><span class="badge bcz">'+o.tipo+'</span></td>'+
         '<td>'+prog+'</td>'+
         '<td>'+realStr+'</td>'+
-        '<td style="white-space:nowrap"><span style="color:'+c+';font-weight:600">'+p2+'%</span></td>'+
-        '<td>'+sbadge(o.status)+'</td>'+
+        '<td style="font-weight:700;color:'+c+'">'+p2+'%</td>'+
+        '<td><span class="badge" style="background:'+(o.status==='Concluida'?'rgba(2,79,43,.12)':o.status==='Em andamento'?'rgba(210,153,34,.12)':'rgba(74,102,74,.1)')+';color:'+(o.status==='Concluida'?'#024f2b':o.status==='Em andamento'?'#d29922':'#4a664a')+'">'+o.status+'</span></td>'+
         '</tr>';
     }
-    G('dops').innerHTML=h||'<tr><td colspan="8" style="text-align:center;color:#4a664a;padding:20px">Nenhuma OP para esta data.</td></tr>';
+    G('dops').innerHTML=h2||'<tr><td colspan="8" style="text-align:center;color:#4a664a;padding:20px">Nenhuma OP para esta data.</td></tr>';
     renderCharts(ops, aptsPorOp);
     renderAderenciaSKU(ops, aptsPorOp);
   }).catch(function(e){ console.error('Erro dashboard:',e); });
 }
-
 
 function renderCharts(ops, aptsPorOp){
   aptsPorOp=aptsPorOp||{};
