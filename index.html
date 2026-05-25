@@ -828,10 +828,11 @@ function _renderDashComApt(dt, ln, tp, ops){
     var dadosPorTurno={1:{real:0,perda:0,sc:0,bg:0,kg:0},2:{real:0,perda:0,sc:0,bg:0,kg:0},3:{real:0,perda:0,sc:0,bg:0,kg:0}};
 
     // FONTE DE VERDADE: realPorData[dt] de cada OP
-    // Fallback para o.real se OP não tem realPorData (dados antigos)
+    // Fallback para o.real SOMENTE para OPs do próprio dia (sem realPorData ainda)
     ops.forEach(function(o){
       var rpd=o.realPorData||null;
-      var realOp=rpd?( Number(rpd[dt])||0 ):( Number(o.real)||0 );
+      var realOp=rpd?(Number(rpd[dt])||0):(Number(o.real)||0);
+      // ops já está filtrado por data===dt, então o fallback é seguro
       if(realOp<=0) return;
       if(ln && o.linha!==ln) return;
       aptsPorOp[o.fbKey]=realOp;
