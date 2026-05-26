@@ -295,11 +295,19 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
   <div id="et1" style="display:none">
     <div class="card"><div class="ch"><span class="ct">Relatorio PDF</span></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="excard" onclick="genRelPDF('mensal')"><div style="font-size:28px;margin-bottom:8px">&#128202;</div><div style="font-weight:700;margin-bottom:4px">Relatorio Mensal</div><div style="font-size:11px;color:#4a664a">Producao, aderencia, eficiencia</div></div>
-        <div class="excard" onclick="genRelPDF('paradas')"><div style="font-size:28px;margin-bottom:8px">&#128721;</div><div style="font-weight:700;margin-bottom:4px">Relatorio de Paradas</div><div style="font-size:11px;color:#4a664a">Paradas, motivos, maquinas</div></div>
-        <div class="excard" onclick="genRelPDF('silos')"><div style="font-size:28px;margin-bottom:8px">&#127981;</div><div style="font-weight:700;margin-bottom:4px">Rastreabilidade Silos</div><div style="font-size:11px;color:#4a664a">Destino KG, lote, horario</div></div>
-        <div class="excard" onclick="genRelPDF('turno')"><div style="font-size:28px;margin-bottom:8px">&#128119;</div><div style="font-weight:700;margin-bottom:4px">Produtividade Turno</div><div style="font-size:11px;color:#4a664a">Volume e eficiencia</div></div>
+      <div class="fr" style="margin-bottom:16px">
+        <div class="fg"><label class="fl">Data do relatório</label><input type="date" id="exp-dt" value=""></div>
+        <div class="fg"><label class="fl">Linha (opcional)</label><select id="exp-ln"><option value="">Todas as linhas</option><option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option><option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option></select></div>
+      </div>
+      <div style="margin-bottom:16px">
+        <div class="excard" onclick="genRelPDF('diario')" style="display:flex;align-items:center;gap:16px;padding:16px">
+          <div style="font-size:32px">📋</div>
+          <div>
+            <div style="font-weight:700;font-size:14px;margin-bottom:4px">Relatório Diário de Produção</div>
+            <div style="font-size:11px;color:#4a664a">OPs do dia · Programado vs Realizado · Produção por turno · Aderência</div>
+          </div>
+          <button class="btn bp" style="margin-left:auto">↓ Gerar PDF</button>
+        </div>
       </div>
     </div>
   </div>
@@ -769,7 +777,7 @@ function iniciarApp(){
       else if(id==='scr-fila') renderFila();
       else if(id==='scr-fila-op') renderFilaOp();
       else if(id==='scr-operador') renderOpCards();
-      else if(id==='scr-exportar') popOPSel();
+      else if(id==='scr-exportar'){ popOPSel(); if(G('exp-dt')&&!G('exp-dt').value) G('exp-dt').value=hoje(); }
     }
   }, function(err){
     ld(false);
@@ -2171,165 +2179,517 @@ function dlOP(fromModal){
 }
 
 function _gerarPDFOP(op, apts, fromModal){
-  var jsPDF=jspdf.jsPDF, doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'}), p2=pct(op.real,op.prog);
-  var totalProc=(Number(op.real)||0)+(Number(op.perda)||0);
+  if(typeof jspdf==='undefined'){toast('jsPDF nao disponivel','err');return;}
+  var jsPDF=jspdf.jsPDF;
+  var doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
   var fator=op.tipo==='SC'?25:op.tipo==='BG'?750:1;
+  var unid=op.tipo==='SC'?'sc':op.tipo==='BG'?'bg':'kg';
+  var W=190, ML=10, y=0;
 
-  // Cabecalho
-  doc.setFont('helvetica','bold');doc.setFontSize(16);doc.setTextColor(2,79,43);doc.text('ORDEM DE PRODUCAO',20,20);
-  doc.setFontSize(9);doc.setTextColor(100,100,100);doc.text('Raguife — Sistema de Ensaque',20,27);
-  doc.setFontSize(14);doc.setTextColor(2,79,43);doc.text(op.id,190,20,{align:'right'});
-  doc.setFontSize(8);doc.setTextColor(100,100,100);
-  doc.text('Emitido: '+new Date().toLocaleString('pt-BR'),190,26,{align:'right'});
-  doc.text('Por: '+(SES?SES.nome:''),190,31,{align:'right'});
-  doc.setDrawColor(2,79,43);doc.setLineWidth(.4);doc.line(20,35,190,35);
-
-  var y=44;
-  var row=function(k,v,alt){
-    if(alt){doc.setFillColor(234,245,234);doc.rect(20,y-4,170,8,'F');}
-    doc.setFont('helvetica','bold');doc.setTextColor(2,79,43);doc.setFontSize(9);doc.text(k,22,y);
-    doc.setFont('helvetica','normal');doc.setTextColor(20,20,20);doc.text(String(v||'-').slice(0,60),72,y);y+=9;
-  };
-  row('Codigo:',op.cod,true);row('Produto:',op.desc||op.cod);
-  row('Lote:',op.lote||'-',true);row('Linha:',op.linha);
-  row('Tipo:',op.tipo,true);row('Data:',op.data);row('Status:',op.status,true);
-  if(op.obs) row('Obs:',op.obs);
-  y+=4;
-
-  // Resumo de producao
-  doc.setFillColor(2,79,43);doc.rect(20,y,170,8,'F');
-  doc.setFont('helvetica','bold');doc.setTextColor(255,255,255);doc.setFontSize(9);
-  ['Programado','Prod. Bom','Perda (kg)','Total Proc.','% Bom','Saldo'].forEach(function(h2,i){doc.text(h2,22+i*28,y+5.5);});
-  y+=9;doc.setFillColor(240,246,240);doc.rect(20,y,170,9,'F');
-  doc.setFont('helvetica','normal');doc.setTextColor(20,20,20);doc.setFontSize(9);
-  [fN(op.prog),fN(op.real),fN(op.perda||0),fN(totalProc),p2+'%',fN((Number(op.prog)||0)-(Number(op.real)||0))].forEach(function(v,i){
-    if(i===2) doc.setTextColor(192,57,43); else doc.setTextColor(20,20,20);
-    doc.text(v,22+i*28,y+6.5);
-  });
-  doc.setTextColor(20,20,20);
-  y+=14;
-
-  // Turnos
-  doc.setFillColor(2,79,43);doc.rect(20,y,170,7,'F');
-  doc.setFont('helvetica','bold');doc.setTextColor(255,255,255);doc.setFontSize(9);
-  doc.text('Turno',22,y+5);doc.text('Producao',72,y+5);doc.text('Perda (kg)',120,y+5);doc.text('% do Total',160,y+5);
-  y+=8;
-  [['Turno 1',op.t1||0,op.perdaT1||0],['Turno 2',op.t2||0,op.perdaT2||0],['Turno 3',op.t3||0,op.perdaT3||0]].forEach(function(tt,i){
-    if(i%2===0){doc.setFillColor(247,252,247);doc.rect(20,y,170,7,'F');}
-    doc.setFont('helvetica','normal');doc.setTextColor(30,30,30);doc.setFontSize(9);
-    doc.text(tt[0],22,y+5);
-    var prodStr=op.tipo!=='KG'?fN(Math.round(tt[1]/fator))+' '+(op.tipo==='SC'?'sc':'bg')+' ('+fN(tt[1])+' kg)':fN(tt[1])+' kg';
-    doc.text(prodStr,72,y+5);
-    doc.setTextColor(192,57,43);doc.text(fN(tt[2])+' kg',120,y+5);
-    doc.setTextColor(30,30,30);doc.text((op.real?Math.round(tt[1]/op.real*100):0)+'%',160,y+5);
-    y+=7;
-  });
-  doc.setFillColor(220,240,220);doc.rect(20,y,170,8,'F');
-  doc.setFont('helvetica','bold');doc.setTextColor(2,79,43);doc.setFontSize(10);
-  doc.text('TOTAL BOM',22,y+5.5);doc.text(fN(op.real)+' kg',72,y+5.5);
-  doc.setTextColor(192,57,43);doc.text(fN(op.perda||0)+' kg',120,y+5.5);
-  doc.setTextColor(2,79,43);doc.text('100%',160,y+5.5);
-  y+=14;
-
-  // Silos
-  if(op.silos){
-    doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(2,79,43);
-    doc.text('Silos: ',20,y);doc.setFont('helvetica','normal');doc.setTextColor(30,30,30);
-    doc.text(String(op.silos).slice(0,100),38,y);y+=10;
+  // ── Helpers ─────────────────────────────────────────────
+  function toUnid(kg){ return op.tipo!=='KG'?fN(Math.round(kg/fator))+' '+unid+' ('+fN(kg)+' kg)':fN(kg)+' kg'; }
+  function pBar(doc,x,yy,w,h,pct,cor){ // barra de progresso
+    doc.setFillColor(230,240,230); doc.rect(x,yy,w,h,'F');
+    var wFill=Math.min(pct/100,1)*w;
+    doc.setFillColor(cor[0],cor[1],cor[2]); doc.rect(x,yy,wFill,h,'F');
   }
+  function corPct(p){ return p>=90?[2,79,43]:p>=60?[210,153,34]:[192,57,43]; }
 
-  // Historico de apontamentos
+  // ── CABEÇALHO ────────────────────────────────────────────
+  doc.setFillColor(2,79,43); doc.rect(0,0,210,22,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(255,255,255);
+  doc.text('ORDEM DE PRODUCAO',ML,14);
+  doc.setFontSize(18); doc.text(op.id,200,14,{align:'right'});
+  doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(180,220,180);
+  doc.text('Raguife — Sistema de Ensaque',ML,20);
+  doc.text('Emitido: '+new Date().toLocaleString('pt-BR')+' | Por: '+(SES?SES.nome:''),200,20,{align:'right'});
+  y=30;
+
+  // ── DADOS DA OP ──────────────────────────────────────────
+  doc.setFillColor(245,250,245); doc.rect(ML,y,W,38,'F');
+  doc.setDrawColor(200,220,200); doc.rect(ML,y,W,38,'S');
+  doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(2,79,43);
+  doc.text('DADOS DA ORDEM',ML+4,y+6);
+  doc.setDrawColor(2,79,43); doc.setLineWidth(0.3); doc.line(ML+4,y+8,ML+60,y+8);
+
+  var cols=[[ML+4,y+16],[ML+50,y+16],[ML+100,y+16],[ML+145,y+16],
+            [ML+4,y+26],[ML+50,y+26],[ML+100,y+26],[ML+145,y+26],
+            [ML+4,y+35],[ML+100,y+35]];
+  var campos=[
+    ['Produto',op.cod],['Descricao',(op.desc||op.cod||'').slice(0,28)],
+    ['Linha',op.linha||'-'],['Tipo',op.tipo],
+    ['Data',op.data||'-'],['Lote',op.lote||'-'],
+    ['Status',op.status||'-'],['Lote',op.lote||'-'],
+    ['Obs.',op.obs||'-'],['Silos',op.silos||'-']
+  ];
+  // Layout manual 2 colunas
+  var dadosOp=[
+    {l:'Produto',v:op.cod,x:ML+4,yy:y+16},
+    {l:'Descricao',v:(op.desc||op.cod||'').slice(0,30),x:ML+50,yy:y+16},
+    {l:'Linha',v:op.linha||'-',x:ML+125,yy:y+16},
+    {l:'Data',v:op.data||'-',x:ML+4,yy:y+26},
+    {l:'Lote',v:op.lote||'-',x:ML+50,yy:y+26},
+    {l:'Tipo',v:op.tipo,x:ML+125,yy:y+26},
+    {l:'Status',v:op.status||'-',x:ML+155,yy:y+26}
+  ];
+  if(op.obs) dadosOp.push({l:'Obs.',v:op.obs.slice(0,50),x:ML+4,yy:y+35});
+  dadosOp.forEach(function(d){
+    doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(100,130,100);
+    doc.text(d.l,d.x,d.yy-2);
+    doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(20,20,20);
+    doc.text(String(d.v||'-'),d.x,d.yy+3);
+  });
+  y+=44;
+
+  // ── RESUMO DE PRODUÇÃO ───────────────────────────────────
+  var realKg=Number(op.real)||0;
+  var progKg=Number(op.prog)||0;
+  var perdaKg=Number(op.perda)||0;
+  var totalProc=realKg+perdaKg;
+  var p2=progKg?Math.min(Math.round(realKg/progKg*100),999):0;
+  var saldo=progKg-realKg;
+  var cor=corPct(p2);
+
+  doc.setFillColor(2,79,43); doc.rect(ML,y,W,7,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+  doc.text('RESUMO DE PRODUCAO',ML+4,y+5);
+  y+=8;
+
+  var cards=[
+    {l:'PROGRAMADO',v:toUnid(progKg),c:[50,80,50]},
+    {l:'PROD. BOM',v:toUnid(realKg),c:cor},
+    {l:'PERDA',v:fN(perdaKg)+' kg',c:[192,57,43]},
+    {l:'TOTAL PROC.',v:fN(totalProc)+' kg',c:[50,80,50]},
+    {l:'ADERENCIA',v:p2+'%',c:cor},
+    {l:'SALDO',v:toUnid(saldo),c:saldo>0?[192,57,43]:[2,79,43]}
+  ];
+  var cw=(W-5)/6;
+  cards.forEach(function(card,i){
+    var cx=ML+i*cw+(i>0?1:0);
+    doc.setFillColor(245,250,245); doc.rect(cx,y,cw-1,16,'F');
+    doc.setDrawColor(200,220,200); doc.rect(cx,y,cw-1,16,'S');
+    doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(100,130,100);
+    doc.text(card.l,cx+(cw-1)/2,y+5,{align:'center'});
+    doc.setFont('helvetica','bold'); doc.setFontSize(8);
+    doc.setTextColor(card.c[0],card.c[1],card.c[2]);
+    doc.text(card.v,cx+(cw-1)/2,y+12,{align:'center'});
+  });
+  // Barra de progresso
+  y+=18;
+  pBar(doc,ML,y,W,4,p2,cor);
+  doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(cor[0],cor[1],cor[2]);
+  doc.text(p2+'% atingido',ML+W/2,y+8,{align:'center'});
+  y+=14;
+
+  // ── PARTICIPAÇÃO POR TURNO ───────────────────────────────
+  doc.setFillColor(2,79,43); doc.rect(ML,y,W,7,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+  doc.text('PRODUCAO POR TURNO',ML+4,y+5);
+  y+=8;
+
+  var turnos=[
+    {nome:'Turno 1 (21h—05h)',real:Number(op.t1)||0,perda:Number(op.perdaT1)||0},
+    {nome:'Turno 2 (05h—13h)',real:Number(op.t2)||0,perda:Number(op.perdaT2)||0},
+    {nome:'Turno 3 (13h—21h)',real:Number(op.t3)||0,perda:Number(op.perdaT3)||0}
+  ];
+
+  // Cabeçalho tabela turnos
+  doc.setFillColor(220,235,220); doc.rect(ML,y,W,7,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(2,79,43);
+  var cols2=[ML+4, ML+50, ML+95, ML+130, ML+155, ML+170];
+  var heads=['TURNO','PROD. BOM','% PARTE.','PERDA','% PERDA','BARRA'];
+  heads.forEach(function(h,i){ doc.text(h,cols2[i],y+5); });
+  y+=8;
+
+  var totalRealTurnos=turnos.reduce(function(a,t){return a+t.real;},0)||1;
+  var coresTurno=[[0,100,60],[20,140,80],[100,170,100]];
+
+  turnos.forEach(function(t,i){
+    if(i%2===0){doc.setFillColor(248,253,248); doc.rect(ML,y,W,10,'F');}
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(30,30,30);
+    var pParte=totalRealTurnos>0?Math.round(t.real/totalRealTurnos*100):0;
+    var pPerda=t.real+t.perda>0?Math.round(t.perda/(t.real+t.perda)*100):0;
+    doc.text(t.nome,cols2[0],y+7);
+    doc.setFont('helvetica','bold');
+    doc.setTextColor(coresTurno[i][0],coresTurno[i][1],coresTurno[i][2]);
+    doc.text(toUnid(t.real),cols2[1],y+7);
+    doc.setTextColor(2,79,43); doc.text(pParte+'%',cols2[2],y+7);
+    doc.setTextColor(192,57,43); doc.text(fN(t.perda)+' kg',cols2[3],y+7);
+    doc.text(pPerda+'%',cols2[4],y+7);
+    // Mini barra participação
+    doc.setFillColor(220,240,220); doc.rect(cols2[5],y+3,25,4,'F');
+    doc.setFillColor(coresTurno[i][0],coresTurno[i][1],coresTurno[i][2]);
+    doc.rect(cols2[5],y+3,Math.round(pParte/100*25),4,'F');
+    y+=11;
+  });
+
+  // Linha total turnos
+  doc.setFillColor(220,240,220); doc.rect(ML,y,W,8,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(2,79,43);
+  doc.text('TOTAL',cols2[0],y+6);
+  doc.text(toUnid(realKg),cols2[1],y+6);
+  doc.text('100%',cols2[2],y+6);
+  doc.setTextColor(192,57,43);
+  doc.text(fN(perdaKg)+' kg',cols2[3],y+6);
+  y+=14;
+
+  // ── HISTÓRICO DE APONTAMENTOS ────────────────────────────
   if(apts && apts.length>0){
     if(y>220){doc.addPage();y=20;}
-    doc.setFillColor(2,79,43);doc.rect(20,y,170,8,'F');
-    doc.setFont('helvetica','bold');doc.setTextColor(255,255,255);doc.setFontSize(9);
-    doc.text('HISTORICO DE APONTAMENTOS',105,y+5.5,{align:'center'});
-    y+=10;
-    doc.setFillColor(234,245,234);doc.rect(20,y,170,7,'F');
-    doc.setFont('helvetica','bold');doc.setTextColor(2,79,43);doc.setFontSize(8);
-    doc.text('Data',22,y+5);doc.text('Turno',52,y+5);doc.text('Prod. Bom',72,y+5);doc.text('Perda',115,y+5);doc.text('Total',145,y+5);doc.text('Operador',168,y+5);
+    doc.setFillColor(2,79,43); doc.rect(ML,y,W,7,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+    doc.text('HISTORICO DE APONTAMENTOS',ML+4,y+5);
     y+=8;
+
+    // Cabeçalho
+    doc.setFillColor(220,235,220); doc.rect(ML,y,W,7,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(2,79,43);
+    var hcols=[ML+4,ML+32,ML+52,ML+95,ML+130,ML+158];
+    ['DATA','TURNO','PROD. BOM','PERDA','TOTAL PROC.','OPERADOR'].forEach(function(h,i){
+      doc.text(h,hcols[i],y+5);
+    });
+    y+=8;
+
+    // Agrupa por data+turno ignorando correcao_pcp
     var gruposDT={};
     apts.forEach(function(a){
+      if(a.substituido) return;
       var dt2=a.data||(a.ts?a.ts.slice(0,10):'s/data');
       var tk=dt2+'_t'+(a.turno||0);
       if(!gruposDT[tk]) gruposDT[tk]={data:dt2,turno:a.turno||0,real:0,perda:0,operador:a.operador||'',ts:a.ts||''};
-      if(a.tipo!=='correcao_pcp'){
-        gruposDT[tk].real+=(Number(a.real)||0);
-        gruposDT[tk].perda+=(Number(a.perda)||0);
-      }
+      gruposDT[tk].real+=(Number(a.real)||0);
+      gruposDT[tk].perda+=(Number(a.perda)||0);
       if((a.ts||'')>gruposDT[tk].ts) gruposDT[tk].operador=a.operador||'';
     });
     var grupos=Object.values(gruposDT).filter(function(g){return g.real>0||g.perda>0;});
     grupos.sort(function(a,b){return a.data>b.data?1:a.data<b.data?-1:a.turno-b.turno;});
+
     grupos.forEach(function(g,gi){
       if(y>270){doc.addPage();y=20;}
-      if(gi%2===0){doc.setFillColor(247,252,247);doc.rect(20,y,170,7,'F');}
-      doc.setFont('helvetica','normal');doc.setTextColor(30,30,30);doc.setFontSize(8);
-      var realStr=op.tipo!=='KG'?fN(Math.round(g.real/fator))+' '+(op.tipo==='SC'?'sc':'bg')+' ('+fN(g.real)+' kg)':fN(g.real)+' kg';
-      doc.text(g.data,22,y+5);
-      doc.text(g.turno?'T'+g.turno:'Todos',52,y+5);
-      doc.text(realStr,72,y+5);
-      doc.setTextColor(192,57,43);doc.text(fN(g.perda)+' kg',115,y+5);
-      doc.setTextColor(2,79,43);doc.text(fN(g.real+g.perda)+' kg',145,y+5);
-      doc.setTextColor(80,80,80);doc.text((g.operador||'').slice(0,14),168,y+5);
+      if(gi%2===0){doc.setFillColor(248,253,248);doc.rect(ML,y,W,7,'F');}
+      doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(30,30,30);
+      var realStr=toUnid(g.real);
+      var totStr=fN(g.real+g.perda)+' kg';
+      doc.text(g.data,hcols[0],y+5);
+      doc.text(g.turno?'T'+g.turno:'Todos',hcols[1],y+5);
+      doc.setFont('helvetica','bold'); doc.setTextColor(2,79,43);
+      doc.text(realStr,hcols[2],y+5);
+      doc.setFont('helvetica','normal'); doc.setTextColor(192,57,43);
+      doc.text(fN(g.perda)+' kg',hcols[3],y+5);
+      doc.setTextColor(50,80,50);
+      doc.text(totStr,hcols[4],y+5);
+      doc.setTextColor(100,100,100);
+      doc.text((g.operador||'').slice(0,14),hcols[5],y+5);
       y+=7;
     });
+
+    // Totais histórico
     var totR=grupos.reduce(function(a,g){return a+g.real;},0);
     var totP=grupos.reduce(function(a,g){return a+g.perda;},0);
-    y+=4;
-    doc.setFillColor(220,240,220);doc.rect(20,y,170,8,'F');
-    doc.setFont('helvetica','bold');doc.setTextColor(2,79,43);doc.setFontSize(9);
-    doc.text('TOTAL: Bom '+fN(totR)+' kg | Perda '+fN(totP)+' kg | Processado '+fN(totR+totP)+' kg',105,y+5.5,{align:'center'});
+    y+=2;
+    doc.setFillColor(220,240,220); doc.rect(ML,y,W,8,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(2,79,43);
+    doc.text('CONSOLIDADO: Bom '+toUnid(totR)+' | Perda '+fN(totP)+' kg | Processado '+fN(totR+totP)+' kg',ML+W/2,y+5.5,{align:'center'});
     y+=14;
   }
 
-  // Assinaturas
+  // ── RESUMO CONSOLIDADO POR TURNO (rodapé) ───────────────
+  if(y>245){doc.addPage();y=20;}
+  doc.setFillColor(2,79,43); doc.rect(ML,y,W,7,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+  doc.text('RESUMO CONSOLIDADO POR TURNO',ML+4,y+5);
+  y+=8;
+
+  // Cards por turno
+  var tw=(W-4)/3;
+  turnos.forEach(function(t,i){
+    var cx=ML+i*(tw+2);
+    var pParte=realKg>0?Math.round(t.real/realKg*100):0;
+    var cor2=coresTurno[i];
+    doc.setFillColor(cor2[0],cor2[1],cor2[2]); doc.rect(cx,y,tw,5,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+    doc.text(t.nome.split(' (')[0],cx+tw/2,y+3.5,{align:'center'});
+    doc.setFillColor(245,252,245); doc.rect(cx,y+5,tw,20,'F');
+    doc.setDrawColor(cor2[0],cor2[1],cor2[2]); doc.rect(cx,y,tw,25,'S');
+    doc.setFont('helvetica','bold'); doc.setFontSize(11);
+    doc.setTextColor(cor2[0],cor2[1],cor2[2]);
+    doc.text(toUnid(t.real),cx+tw/2,y+14,{align:'center'});
+    doc.setFontSize(7); doc.setTextColor(100,130,100);
+    doc.text(pParte+'% do total | Perda: '+fN(t.perda)+' kg',cx+tw/2,y+21,{align:'center'});
+    // Mini barra
+    pBar(doc,cx+2,y+23,tw-4,2,pParte,cor2);
+  });
+  y+=32;
+
+  // ── ASSINATURAS ──────────────────────────────────────────
   if(y>260){doc.addPage();y=20;}
   y+=4;
-  [20,80,140].forEach(function(x){doc.setDrawColor(150,150,150);doc.line(x,y+18,x+50,y+18);});
-  doc.setFontSize(8);doc.setTextColor(100,100,100);
-  doc.text('PCP / Programacao',45,y+23,{align:'center'});
-  doc.text('Supervisor',105,y+23,{align:'center'});
-  doc.text('Operador',165,y+23,{align:'center'});
-  doc.setFontSize(7);doc.setTextColor(160,160,160);
-  doc.text('Raguife Ensaque - '+op.id+' - '+op.data+' - '+new Date().toLocaleString('pt-BR'),105,285,{align:'center'});
+  [ML,ML+60,ML+120].forEach(function(x){
+    doc.setDrawColor(150,150,150); doc.setLineWidth(0.3);
+    doc.line(x,y+14,x+48,y+14);
+  });
+  doc.setFontSize(7.5); doc.setTextColor(100,100,100);
+  doc.text('PCP / Programacao',ML+24,y+19,{align:'center'});
+  doc.text('Supervisor',ML+84,y+19,{align:'center'});
+  doc.text('Operador',ML+144,y+19,{align:'center'});
+
+  // Rodapé
+  doc.setFontSize(6.5); doc.setTextColor(160,160,160);
+  doc.text('Raguife Ensaque  |  OP: '+op.id+'  |  Data: '+op.data+'  |  Gerado em: '+new Date().toLocaleString('pt-BR'),105,285,{align:'center'});
+
   doc.save('OP_'+op.id+'.pdf');
   if(fromModal) fM('mpdf');
   addLog('PDF_OP',op.id);
   toast('PDF gerado!','ok');
 }
-
 function genRelPDF(tipo){
   if(typeof jspdf==='undefined'){toast('jsPDF nao disponivel','err');return;}
-  var ops=OPS.slice();
-  var titles={mensal:'Relatorio Mensal',paradas:'Relatorio de Paradas',silos:'Rastreabilidade Silos',turno:'Produtividade por Turno'};
-  var jsPDF=jspdf.jsPDF, doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
-  doc.setFont('helvetica','bold');doc.setFontSize(15);doc.setTextColor(2,79,43);doc.text(titles[tipo],148,18,{align:'center'});
-  doc.setFontSize(9);doc.setTextColor(100,100,100);doc.text('Raguife - '+new Date().toLocaleString('pt-BR')+' - '+(SES?SES.nome:''),148,25,{align:'center'});
-  doc.setDrawColor(2,79,43);doc.line(14,28,283,28);
-  var y=36;doc.setFillColor(2,79,43);doc.rect(14,y,269,8,'F');
-  doc.setFont('helvetica','bold');doc.setTextColor(255,255,255);doc.setFontSize(8);
-  var cx=[14,34,90,120,148,164,182,198,213,228,243,258];
-  ['OP','Produto','Lote','Linha','Tipo','Prog.','Real.','Perda','%','T1','T2','T3'].forEach(function(h2,i){doc.text(h2,cx[i]+1,y+5.5);});
-  y+=9;
-  ops.forEach(function(o,j){
-    if(y>188){doc.addPage();y=20;}
-    if(j%2===0){doc.setFillColor(245,252,245);doc.rect(14,y-3,269,7,'F');}
-    doc.setFont('helvetica','normal');doc.setTextColor(20,20,20);doc.setFontSize(7.5);
-    [o.id,(o.desc||o.cod).slice(0,28),o.lote||'',o.linha,o.tipo,fN(o.prog),fN(o.real),fN(o.perda||0),pct(o.real,o.prog)+'%',fN(o.t1),fN(o.t2),fN(o.t3)].forEach(function(v,k){doc.text(String(v),cx[k]+1,y+3.5);});
-    y+=7;
-  });
-  var tp=ops.reduce(function(a,o){return a+(Number(o.prog)||0);},0),tr=ops.reduce(function(a,o){return a+(Number(o.real)||0);},0);
-  y+=8;doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(2,79,43);
-  var tperdaRel=OPS.reduce(function(a,o){return a+(Number(o.perda)||0);},0);
-  var ttotalRel=tr+tperdaRel;
-  doc.text('Prog: '+fN(tp)+' | Bom: '+fN(tr)+' | Perda: '+fN(tperdaRel)+' kg | Total Proc: '+fN(ttotalRel)+' kg | Ader: '+(tp?Math.round(tr/tp*100):0)+'%',14,y);
-  doc.setFontSize(7);doc.setTextColor(160,160,160);doc.text('Raguife - '+titles[tipo]+' - '+new Date().toLocaleString('pt-BR'),148,200,{align:'center'});
-  doc.save('Raguife_'+tipo+'_'+hoje()+'.pdf');
-  addLog('PDF_REL',tipo);toast('Relatorio gerado!','ok');
-}
 
+  // Pega data e linha do filtro ativo na tela de exportar
+  var dtFiltro=G('exp-dt')?G('exp-dt').value:hoje();
+  var lnFiltro=G('exp-ln')?G('exp-ln').value:'';
+
+  // Filtra OPs pelo dia e linha selecionados (sem duplicatas por id)
+  var vistosId={};
+  var ops=[];
+  OPS.forEach(function(o){
+    if(dtFiltro && o.data!==dtFiltro) return;
+    if(lnFiltro && o.linha!==lnFiltro) return;
+    if(vistosId[o.id]){
+      if((Number(o.real)||0)>(Number(vistosId[o.id].real)||0)){
+        ops=ops.filter(function(x){return x.id!==o.id;});
+        vistosId[o.id]=o; ops.push(o);
+      }
+      return;
+    }
+    vistosId[o.id]=o; ops.push(o);
+  });
+
+  var jsPDF=jspdf.jsPDF;
+  var doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  var W=277, ML=10, y=0;
+
+  // ── Helpers ─────────────────────────────────────────────
+  function fNr(n){ return (Number(n)||0).toLocaleString('pt-BR'); }
+  function pBar(x,yy,w,h,pct,cor){
+    doc.setFillColor(220,235,220); doc.rect(x,yy,w,h,'F');
+    var wf=Math.min(Math.max(pct,0),100)/100*w;
+    doc.setFillColor(cor[0],cor[1],cor[2]); doc.rect(x,yy,wf,h,'F');
+  }
+  function corP(p){ return p>=90?[2,79,43]:p>=60?[210,153,34]:[192,57,43]; }
+  function toU(kg,tipo){
+    var f=tipo==='SC'?25:tipo==='BG'?750:1;
+    return tipo!=='KG'?fNr(Math.round(kg/f))+(tipo==='SC'?' sc':' bg')+' ('+fNr(kg)+' kg)':fNr(kg)+' kg';
+  }
+
+  // ── CABEÇALHO ────────────────────────────────────────────
+  doc.setFillColor(2,79,43); doc.rect(0,0,297,20,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(255,255,255);
+  doc.text('RELATÓRIO DE PRODUÇÃO DIÁRIA',ML,13);
+  doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(180,220,180);
+  doc.text('Raguife — Sistema de Ensaque  |  Data: '+dtFiltro+(lnFiltro?' | Linha: '+lnFiltro:'')+'  |  Emitido: '+new Date().toLocaleString('pt-BR')+'  |  '+(SES?SES.nome:''),ML,18);
+  y=26;
+
+  // ── TOTAIS GERAIS (cards) ────────────────────────────────
+  var tp=ops.reduce(function(a,o){return a+(Number(o.prog)||0);},0);
+  var tr=ops.reduce(function(a,o){
+    var rpd=o.realPorData||null;
+    return a+(rpd?(Number(rpd[dtFiltro])||0):(Number(o.real)||0));
+  },0);
+  var tperda=ops.reduce(function(a,o){return a+(Number(o.perda)||0);},0);
+  var tT1=ops.reduce(function(a,o){return a+(Number(o.t1)||0);},0);
+  var tT2=ops.reduce(function(a,o){return a+(Number(o.t2)||0);},0);
+  var tT3=ops.reduce(function(a,o){return a+(Number(o.t3)||0);},0);
+  var tproc=tr+tperda;
+  var adh=tp?Math.min(Math.round(tr/tp*100),999):0;
+  var corAdh=corP(adh);
+
+  // Cards resumo geral
+  var cards=[
+    {l:'PROGRAMADO',v:fNr(tp)+' kg',c:[50,80,50]},
+    {l:'PROD. BOM',v:fNr(tr)+' kg',c:corAdh},
+    {l:'PERDA',v:fNr(tperda)+' kg',c:[192,57,43]},
+    {l:'TOTAL PROC.',v:fNr(tproc)+' kg',c:[50,80,50]},
+    {l:'ADERENCIA',v:adh+'%',c:corAdh},
+    {l:'OPs DIA',v:ops.length+' OPs',c:[50,80,50]}
+  ];
+  var cw=(W-5)/6;
+  cards.forEach(function(card,i){
+    var cx=ML+i*cw+(i>0?1:0);
+    doc.setFillColor(245,250,245); doc.rect(cx,y,cw-1,14,'F');
+    doc.setDrawColor(200,220,200); doc.rect(cx,y,cw-1,14,'S');
+    doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(100,130,100);
+    doc.text(card.l,cx+(cw-1)/2,y+4.5,{align:'center'});
+    doc.setFont('helvetica','bold'); doc.setFontSize(9);
+    doc.setTextColor(card.c[0],card.c[1],card.c[2]);
+    doc.text(card.v,cx+(cw-1)/2,y+11,{align:'center'});
+  });
+  // Barra aderência geral
+  y+=16;
+  pBar(ML,y,W,3,adh,corAdh);
+  doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(corAdh[0],corAdh[1],corAdh[2]);
+  doc.text(adh+'% de aderência geral do dia',ML+W/2,y+7,{align:'center'});
+  y+=12;
+
+  // ── CONSOLIDADO POR TURNO ────────────────────────────────
+  doc.setFillColor(2,79,43); doc.rect(ML,y,W,6,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+  doc.text('CONSOLIDADO POR TURNO',ML+4,y+4.5);
+  y+=7;
+
+  var coresTurno=[[0,100,60],[20,140,80],[100,170,100]];
+  var turnoDados=[
+    {nome:'Turno 1  (21h — 05h)',real:tT1,perda:0},
+    {nome:'Turno 2  (05h — 13h)',real:tT2,perda:0},
+    {nome:'Turno 3  (13h — 21h)',real:tT3,perda:0}
+  ];
+  var tw2=(W-4)/3;
+  turnoDados.forEach(function(t,i){
+    var cx=ML+i*(tw2+2);
+    var pProg=tp>0?Math.min(Math.round(t.real/tp*100),100):0;
+    var pReal=tr>0?Math.round(t.real/tr*100):0;
+    var cor2=coresTurno[i];
+    // Header card
+    doc.setFillColor(cor2[0],cor2[1],cor2[2]); doc.rect(cx,y,tw2,5,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(255,255,255);
+    doc.text(t.nome,cx+tw2/2,y+3.5,{align:'center'});
+    // Body card
+    doc.setFillColor(245,253,245); doc.rect(cx,y+5,tw2,22,'F');
+    doc.setDrawColor(cor2[0],cor2[1],cor2[2]); doc.rect(cx,y,tw2,27,'S');
+    // Quantidade
+    doc.setFont('helvetica','bold'); doc.setFontSize(11);
+    doc.setTextColor(cor2[0],cor2[1],cor2[2]);
+    doc.text(fNr(t.real)+' kg',cx+tw2/2,y+13,{align:'center'});
+    // % do programado e % do realizado
+    doc.setFontSize(7); doc.setTextColor(80,110,80);
+    doc.text(pProg+'% do prog.  |  '+pReal+'% do realizado',cx+tw2/2,y+19,{align:'center'});
+    // Barra % programado
+    pBar(cx+3,y+22,tw2-6,2.5,pProg,cor2);
+    // Label da barra
+    doc.setFontSize(6); doc.setTextColor(cor2[0],cor2[1],cor2[2]);
+    doc.text(pProg+'%',cx+tw2-5,y+25,{align:'right'});
+  });
+  y+=33;
+
+  // ── TABELA DE OPs ─────────────────────────────────────────
+  doc.setFillColor(2,79,43); doc.rect(ML,y,W,6,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+  doc.text('ORDENS DE PRODUCAO DO DIA',ML+4,y+4.5);
+  y+=7;
+
+  // Cabeçalho tabela
+  var cx2=[ML+1,ML+27,ML+83,ML+115,ML+130,ML+148,ML+163,ML+178,ML+192,ML+207,ML+223,ML+242,ML+258];
+  var heads=['OP','PRODUTO','LINHA','TIPO','PROG.','REAL.','%','PERDA','T1','T1%','T2','T2%','T3','T3%'];
+  // Ajusta colunas para caber
+  var cx3=[ML+1,ML+24,ML+78,ML+107,ML+121,ML+140,ML+158,ML+170,ML+185,ML+198,ML+213,ML+227,ML+242,ML+256];
+
+  doc.setFillColor(220,235,220); doc.rect(ML,y,W,6,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(2,79,43);
+  ['OP','PRODUTO','LINHA','TIPO','PROG.','REAL. BOM','%','PERDA','T1','T1%','T2','T2%','T3','T3%'].forEach(function(h,i){
+    doc.text(h,cx3[i]+0.5,y+4.5);
+  });
+  y+=7;
+
+  ops.forEach(function(o,j){
+    if(y>185){
+      doc.addPage();
+      y=15;
+      // Repetir cabeçalho
+      doc.setFillColor(220,235,220); doc.rect(ML,y,W,6,'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(2,79,43);
+      ['OP','PRODUTO','LINHA','TIPO','PROG.','REAL. BOM','%','PERDA','T1','T1%','T2','T2%','T3','T3%'].forEach(function(h,i){
+        doc.text(h,cx3[i]+0.5,y+4.5);
+      });
+      y+=7;
+    }
+
+    var realOp=o.realPorData?(Number((o.realPorData||{})[dtFiltro])||0):(Number(o.real)||0);
+    var p2=o.prog?Math.min(Math.round(realOp/o.prog*100),999):0;
+    var cor2=corP(p2);
+    var t1=Number(o.t1)||0, t2=Number(o.t2)||0, t3=Number(o.t3)||0;
+    var t1p=realOp>0?Math.round(t1/realOp*100):0;
+    var t2p=realOp>0?Math.round(t2/realOp*100):0;
+    var t3p=realOp>0?Math.round(t3/realOp*100):0;
+
+    if(j%2===0){doc.setFillColor(248,253,248);doc.rect(ML,y-1,W,8,'F');}
+    doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(30,30,30);
+
+    // OP
+    doc.setFont('helvetica','bold'); doc.setTextColor(2,79,43);
+    doc.text(o.id,cx3[0],y+4.5);
+    // Produto
+    doc.setFont('helvetica','normal'); doc.setTextColor(30,30,30);
+    doc.text((o.desc||o.cod).slice(0,26),cx3[1],y+4.5);
+    // Linha
+    doc.text((o.linha||'').replace(' (E-240)','').replace(' (E-200)','').replace(' (Andritz I)','').replace(' (Andritz II)',''),cx3[2],y+4.5);
+    // Tipo
+    doc.setFont('helvetica','bold');
+    doc.text(o.tipo||'',cx3[3],y+4.5);
+    // Prog
+    doc.setFont('helvetica','normal'); doc.setTextColor(50,80,50);
+    doc.text(toU(Number(o.prog)||0,o.tipo),cx3[4],y+4.5);
+    // Real
+    doc.setFont('helvetica','bold'); doc.setTextColor(cor2[0],cor2[1],cor2[2]);
+    doc.text(toU(realOp,o.tipo),cx3[5],y+4.5);
+    // %
+    doc.text(p2+'%',cx3[6],y+4.5);
+    // Perda
+    doc.setFont('helvetica','normal'); doc.setTextColor(192,57,43);
+    doc.text(fNr(o.perda||0)+' kg',cx3[7],y+4.5);
+    // T1
+    doc.setTextColor(0,100,60);
+    doc.text(fNr(t1)+' kg',cx3[8],y+4.5);
+    doc.setFontSize(6.5); doc.setTextColor(80,130,80);
+    doc.text(t1p+'%',cx3[9],y+4.5);
+    // T2
+    doc.setFontSize(7); doc.setTextColor(20,140,80);
+    doc.text(fNr(t2)+' kg',cx3[10],y+4.5);
+    doc.setFontSize(6.5); doc.setTextColor(80,130,80);
+    doc.text(t2p+'%',cx3[11],y+4.5);
+    // T3
+    doc.setFontSize(7); doc.setTextColor(100,170,100);
+    doc.text(fNr(t3)+' kg',cx3[12],y+4.5);
+    doc.setFontSize(6.5); doc.setTextColor(80,130,80);
+    doc.text(t3p+'%',cx3[13],y+4.5);
+
+    // Mini barra aderência por OP
+    pBar(cx3[5],y+5.5,30,1.5,p2,cor2);
+    y+=8;
+  });
+
+  // ── TOTAIS FINAIS ─────────────────────────────────────────
+  y+=2;
+  doc.setFillColor(220,240,220); doc.rect(ML,y,W,9,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(2,79,43);
+  doc.text('TOTAL GERAL',cx3[0],y+6);
+  doc.text(fNr(tp)+' kg',cx3[4],y+6);
+  doc.setTextColor(corAdh[0],corAdh[1],corAdh[2]);
+  doc.text(fNr(tr)+' kg',cx3[5],y+6);
+  doc.text(adh+'%',cx3[6],y+6);
+  doc.setTextColor(192,57,43);
+  doc.text(fNr(tperda)+' kg',cx3[7],y+6);
+  doc.setTextColor(0,100,60);
+  doc.text(fNr(tT1)+' kg',cx3[8],y+6);
+  doc.setTextColor(2,79,43);
+  doc.text(tr>0?Math.round(tT1/tr*100)+'%':'0%',cx3[9],y+6);
+  doc.setTextColor(20,140,80);
+  doc.text(fNr(tT2)+' kg',cx3[10],y+6);
+  doc.setTextColor(2,79,43);
+  doc.text(tr>0?Math.round(tT2/tr*100)+'%':'0%',cx3[11],y+6);
+  doc.setTextColor(100,170,100);
+  doc.text(fNr(tT3)+' kg',cx3[12],y+6);
+  doc.setTextColor(2,79,43);
+  doc.text(tr>0?Math.round(tT3/tr*100)+'%':'0%',cx3[13],y+6);
+  y+=14;
+
+  // Rodapé
+  doc.setFontSize(6.5); doc.setTextColor(160,160,160);
+  doc.text('Raguife Ensaque  |  Relatorio do dia '+dtFiltro+'  |  Gerado em: '+new Date().toLocaleString('pt-BR')+'  |  Por: '+(SES?SES.nome:''),148,202,{align:'center'});
+
+  doc.save('Relatorio_'+dtFiltro+'.pdf');
+  addLog('PDF_REL','diario_'+dtFiltro);
+  toast('Relatorio gerado!','ok');
+}
 function tabExp(i,btn){
   for(var j=0;j<3;j++){var e=G('et'+j);if(e)e.style.display=j===i?'':'none';}
   document.querySelectorAll('.tab').forEach(function(e){e.classList.remove('on');});
