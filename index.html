@@ -400,16 +400,19 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="fg" style="flex:1;min-width:130px">
       <label class="fl" id="corr-lbl1">Turno 1</label>
       <input type="number" id="crt1" min="0" value="0" oninput="atualizarTotaisCorr()">
+      <span id="corr-hint1" style="font-size:10px;color:#739630;display:block;margin-top:2px"></span>
       <input type="date" id="corr-dt1" style="margin-top:4px;font-size:11px;padding:5px 8px" title="Data do Turno 1">
     </div>
     <div class="fg" style="flex:1;min-width:130px">
       <label class="fl" id="corr-lbl2">Turno 2</label>
       <input type="number" id="crt2" min="0" value="0" oninput="atualizarTotaisCorr()">
+      <span id="corr-hint2" style="font-size:10px;color:#739630;display:block;margin-top:2px"></span>
       <input type="date" id="corr-dt2" style="margin-top:4px;font-size:11px;padding:5px 8px" title="Data do Turno 2">
     </div>
     <div class="fg" style="flex:1;min-width:130px">
       <label class="fl" id="corr-lbl3">Turno 3</label>
       <input type="number" id="crt3" min="0" value="0" oninput="atualizarTotaisCorr()">
+      <span id="corr-hint3" style="font-size:10px;color:#739630;display:block;margin-top:2px"></span>
       <input type="date" id="corr-dt3" style="margin-top:4px;font-size:11px;padding:5px 8px" title="Data do Turno 3">
     </div>
   </div>
@@ -811,31 +814,57 @@ function renderDash(){
   var ln=G('dash-fln')?G('dash-fln').value:'';
   var turnoFiltro=G('dash-turno')?parseInt(G('dash-turno').value)||0:0;
 
-  // OPs do dia filtrado
-  var ops=OPS.filter(function(o){ return o.data===dt; });
-  if(ln) ops=ops.filter(function(o){ return o.linha===ln; });
+  // OPs do dia — proteção contra duplicatas de mesmo id/número
+  var vistosId={};
+  var ops=[];
+  OPS.forEach(function(o){
+    if(o.data!==dt) return;
+    if(ln && o.linha!==ln) return;
+    if(vistosId[o.id]!==undefined){
+      // Mantém a OP com maior real (mais atualizada)
+      if((Number(o.real)||0)>(Number(vistosId[o.id].real)||0)){
+        ops=ops.filter(function(x){return x.id!==o.id;});
+        vistosId[o.id]=o;
+        ops.push(o);
+      }
+      return;
+    }
+    vistosId[o.id]=o;
+    ops.push(o);
+  });
 
-  // PROGRAMADO
+  // PROGRAMADO — soma o.prog (sempre em KG)
   var tp=ops.reduce(function(a,o){return a+(Number(o.prog)||0);},0);
 
-  // REALIZADO — realPorData[dt] se existir, senão o.real (mesmo dia)
-  var dadosPorTurno={1:{real:0,perda:0,sc:0,bg:0,kg:0},2:{real:0,perda:0,sc:0,bg:0,kg:0},3:{real:0,perda:0,sc:0,bg:0,kg:0}};
+  // REALIZADO — realPorData[dt] se existir, senão o.real (OPs antigas sem rpd)
   var aptsPorOp={};
+  var dadosPorTurno={
+    1:{real:0,perda:0,sc:0,bg:0,kg:0},
+    2:{real:0,perda:0,sc:0,bg:0,kg:0},
+    3:{real:0,perda:0,sc:0,bg:0,kg:0}
+  };
 
   ops.forEach(function(o){
     var rpd=o.realPorData||null;
     var realOp=rpd?(Number(rpd[dt])||0):(Number(o.real)||0);
     if(realOp<=0) return;
     aptsPorOp[o.fbKey]=realOp;
+
+    // Distribuição por turno proporcional ao real do dia
+    // Evita somar acumulado total quando OP tem múltiplos dias
+    var realTotal=Number(o.real)||0;
+    var ratio=realTotal>0?(realOp/realTotal):1;
     if(turnoFiltro>0){
-      var vT=Number(o['t'+turnoFiltro])||0;
+      var vTTotal=Number(o['t'+turnoFiltro])||0;
+      var vT=Math.round(vTTotal*ratio);
       dadosPorTurno[turnoFiltro].real+=vT;
       if(o.tipo==='SC') dadosPorTurno[turnoFiltro].sc+=Math.round(vT/25);
       else if(o.tipo==='BG') dadosPorTurno[turnoFiltro].bg+=Math.round(vT/750);
       else dadosPorTurno[turnoFiltro].kg+=vT;
     } else {
       [1,2,3].forEach(function(t){
-        var v=Number(o['t'+t])||0;
+        var vTotal=Number(o['t'+t])||0;
+        var v=Math.round(vTotal*ratio);
         dadosPorTurno[t].real+=v;
         if(o.tipo==='SC') dadosPorTurno[t].sc+=Math.round(v/25);
         else if(o.tipo==='BG') dadosPorTurno[t].bg+=Math.round(v/750);
@@ -844,11 +873,14 @@ function renderDash(){
     }
   });
 
-  var tr=turnoFiltro>0?dadosPorTurno[turnoFiltro].real:Object.keys(aptsPorOp).reduce(function(a,k){return a+(aptsPorOp[k]||0);},0);
+  var tr=turnoFiltro>0
+    ?dadosPorTurno[turnoFiltro].real
+    :Object.keys(aptsPorOp).reduce(function(a,k){return a+(aptsPorOp[k]||0);},0);
 
-  // PERDA
+  // PERDA — busca perdas_diarias do dia
   DB.ref('perdas_diarias').orderByChild('data').equalTo(dt).once('value').then(function(snapPerda){
     var tperda=0;
+    var opIdsComPerda={};
     if(snapPerda.exists()){
       snapPerda.forEach(function(c){
         var p=c.val();
@@ -858,14 +890,20 @@ function renderDash(){
           if(!opRef||opRef.linha!==ln) return;
         }
         tperda+=Number(p.perdaKG)||0;
+        opIdsComPerda[p.opId]=true;
       });
     }
-    if(tperda===0) ops.forEach(function(o){ tperda+=Number(o.perda)||0; });
+    // Fallback perda: só OPs sem perdas_diarias E sem realPorData (dados antigos)
+    // Evita somar perda acumulada de múltiplos dias
+    ops.forEach(function(o){
+      if(!opIdsComPerda[o.fbKey] && !o.realPorData){
+        tperda+=Number(o.perda)||0;
+      }
+    });
 
     var adh=tp?Math.min(Math.round(tr/tp*100),999):0;
     var ttotal=tr+tperda;
 
-    // Cards
     G('dmetrics').innerHTML=
       '<div class="mc"><div class="ml">Programado</div><div class="mv cb">'+fN(tp)+'</div><div class="ms">OPs do dia</div></div>'+
       '<div class="mc"><div class="ml">Prod. Bom</div><div class="mv '+(adh>=90?'cg':adh>=60?'co':'cr')+'">'+fN(tr)+'</div><div class="ms">'+adh+'% do prog.</div></div>'+
@@ -874,7 +912,6 @@ function renderDash(){
       '<div class="mc"><div class="ml">OPs programadas</div><div class="mv">'+ops.length+'</div><div class="ms">'+ops.filter(function(o){return o.status==='Em andamento';}).length+' andamento</div></div>'+
       '<div class="mc"><div class="ml">Concluidas</div><div class="mv cg">'+ops.filter(function(o){return o.status==='Concluida';}).length+'</div><div class="ms">de '+ops.length+' OPs</div></div>';
 
-    // Bloco turno
     var blocoTurno=G('dash-turno-bloco');
     var metricsTurno=G('dash-turno-metrics');
     if(turnoFiltro>0 && blocoTurno && metricsTurno){
@@ -893,15 +930,15 @@ function renderDash(){
       blocoTurno.style.display='none';
     }
 
-    // Tabela OPs recentes
     var h2='';
     var slice=ops.slice(0,8);
     for(var i=0;i<slice.length;i++){
       var o=slice[i];
       var realDia=aptsPorOp[o.fbKey]||0;
-      var p2=pct(realDia,o.prog); var c=p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b';
+      var p2=pct(realDia,o.prog);
+      var c=p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b';
       var prog=o.tipo==='SC'?fN(Math.round((o.prog||0)/25))+' sc':fN(o.prog)+' kg';
-      var realStr=o.tipo==='SC'?fN(Math.round(realDia/25))+' sc':fN(realDia)+' kg';
+      var realStr=o.tipo==='SC'?fN(Math.round(realDia/25))+' sc ('+fN(realDia)+' kg)':fN(realDia)+' kg';
       h2+='<tr>'+
         '<td style="font-weight:600">'+o.id+'</td>'+
         '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">'+(o.desc||o.cod)+'</td>'+
@@ -918,7 +955,6 @@ function renderDash(){
     renderAderenciaSKU(ops, aptsPorOp);
   }).catch(function(e){ console.error('Erro dashboard:',e); });
 }
-
 function renderCharts(ops, aptsPorOp){
   aptsPorOp=aptsPorOp||{};
   var lbl=LINHAS.map(function(l){return l.nome;});
@@ -1909,9 +1945,9 @@ function abrirCorrecao(fbKey){
   var tipo=op.tipo, fator=tipo==='SC'?25:tipo==='BG'?750:1, unid=tipo==='SC'?'SC':tipo==='BG'?'BG':'kg';
   G('corr-titulo').textContent=op.id;
   G('crfbkey').value=fbKey; G('crtipo').value=tipo;
-  G('corr-lbl1').textContent='Turno 1 ('+unid+')';
-  G('corr-lbl2').textContent='Turno 2 ('+unid+')';
-  G('corr-lbl3').textContent='Turno 3 ('+unid+')';
+  G('corr-lbl1').textContent='Turno 1 ('+unid+(unid==='SC'?' — digite em sacas':unid==='BG'?' — digite em big bags':' — digite em kg')+')';
+  G('corr-lbl2').textContent='Turno 2 ('+unid+(unid==='SC'?' — digite em sacas':unid==='BG'?' — digite em big bags':' — digite em kg')+')';
+  G('corr-lbl3').textContent='Turno 3 ('+unid+(unid==='SC'?' — digite em sacas':unid==='BG'?' — digite em big bags':' — digite em kg')+')';
   G('crt1').value=op.t1sc!==undefined?op.t1sc:Math.round((op.t1||0)/fator);
   G('crt2').value=op.t2sc!==undefined?op.t2sc:Math.round((op.t2||0)/fator);
   G('crt3').value=op.t3sc!==undefined?op.t3sc:Math.round((op.t3||0)/fator);
@@ -1948,12 +1984,14 @@ function abrirCorrecao(fbKey){
 
 function atualizarTotaisCorr(){
   var tipo=G('crtipo').value, fator=tipo==='SC'?25:tipo==='BG'?750:1;
-  var tot=(parseInt(G('crt1').value)||0)+(parseInt(G('crt2').value)||0)+(parseInt(G('crt3').value)||0);
+  var v1=parseInt(G('crt1').value)||0;
+  var v2=parseInt(G('crt2').value)||0;
+  var v3=parseInt(G('crt3').value)||0;
+  var tot=v1+v2+v3;
   var pe1=parseInt(G('crpe1')?G('crpe1').value:0)||0;
   var pe2=parseInt(G('crpe2')?G('crpe2').value:0)||0;
   var pe3=parseInt(G('crpe3')?G('crpe3').value:0)||0;
   var perda=pe1+pe2+pe3;
-  // Sync hidden crpe
   if(G('crpe')) G('crpe').value=perda;
   var real=tot*fator;
   var totalProc=real+perda;
@@ -1962,6 +2000,16 @@ function atualizarTotaisCorr(){
   if(tipo!=='KG') txt+=' = '+fN(real)+' kg';
   txt+=' | Perda T1:'+fN(pe1)+' T2:'+fN(pe2)+' T3:'+fN(pe3)+' | Total:'+fN(perda)+' kg | Proc:'+fN(totalProc)+' kg';
   G('corr-totais').textContent=txt;
+  // Hints de conversão por turno
+  if(tipo!=='KG'){
+    if(G('corr-hint1')) G('corr-hint1').textContent=v1>0?'= '+fN(v1*fator)+' kg':'';
+    if(G('corr-hint2')) G('corr-hint2').textContent=v2>0?'= '+fN(v2*fator)+' kg':'';
+    if(G('corr-hint3')) G('corr-hint3').textContent=v3>0?'= '+fN(v3*fator)+' kg':'';
+  } else {
+    if(G('corr-hint1')) G('corr-hint1').textContent='';
+    if(G('corr-hint2')) G('corr-hint2').textContent='';
+    if(G('corr-hint3')) G('corr-hint3').textContent='';
+  }
 }
 
 function salvarCorrecao(){
