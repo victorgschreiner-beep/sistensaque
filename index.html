@@ -836,8 +836,8 @@ function renderDash(){
   // PROGRAMADO — soma o.prog (sempre em KG)
   var tp=ops.reduce(function(a,o){return a+(Number(o.prog)||0);},0);
 
-  // REALIZADO — realPorData[dt] se existir (produção do dia), senão o.real (OPs antigas)
-  // Lógica C: OP que cruza dias mostra só o que foi produzido em cada dia
+  // REALIZADO — usa o.real das OPs programadas para o dia
+  // Mesma fonte da aderência por SKU — valores sempre consistentes
   var aptsPorOp={};
   var dadosPorTurno={
     1:{real:0,perda:0,sc:0,bg:0,kg:0},
@@ -845,39 +845,19 @@ function renderDash(){
     3:{real:0,perda:0,sc:0,bg:0,kg:0}
   };
 
-  // Também busca OPs de outros dias que têm realPorData[dt] > 0
-  // (OP programada para dia 25 mas produziu no dia 26)
-  var todasOps=OPS;
-  var fbKeysJaAdicionados={};
-  ops.forEach(function(o){ fbKeysJaAdicionados[o.fbKey]=true; });
-
-  // OPs de outros dias com produção no dia filtrado
-  var opsExtras=[];
-  todasOps.forEach(function(o){
-    if(fbKeysJaAdicionados[o.fbKey]) return; // já está em ops
-    if(!o.realPorData) return;
-    var v=Number(o.realPorData[dt])||0;
-    if(v>0) opsExtras.push(o);
-  });
-
-  ops.concat(opsExtras).forEach(function(o){
-    var rpd=o.realPorData||null;
-    var realOp=rpd?(Number(rpd[dt])||0):(Number(o.real)||0);
+  ops.forEach(function(o){
+    var realOp=Number(o.real)||0;
     if(realOp<=0) return;
     aptsPorOp[o.fbKey]=realOp;
-
-    // Distribuição por turno proporcional ao real do dia
-    var realTotal=Number(o.real)||0;
-    var ratio=realTotal>0?(realOp/realTotal):1;
     if(turnoFiltro>0){
-      var vT=Math.round((Number(o['t'+turnoFiltro])||0)*ratio);
+      var vT=Number(o['t'+turnoFiltro])||0;
       dadosPorTurno[turnoFiltro].real+=vT;
       if(o.tipo==='SC') dadosPorTurno[turnoFiltro].sc+=Math.round(vT/25);
       else if(o.tipo==='BG') dadosPorTurno[turnoFiltro].bg+=Math.round(vT/750);
       else dadosPorTurno[turnoFiltro].kg+=vT;
     } else {
       [1,2,3].forEach(function(t){
-        var v=Math.round((Number(o['t'+t])||0)*ratio);
+        var v=Number(o['t'+t])||0;
         dadosPorTurno[t].real+=v;
         if(o.tipo==='SC') dadosPorTurno[t].sc+=Math.round(v/25);
         else if(o.tipo==='BG') dadosPorTurno[t].bg+=Math.round(v/750);
@@ -1129,6 +1109,7 @@ function renderOPs(){
       h+='<button class="btn bxs" data-key="'+fid+'" onclick="abrirEd(this.dataset.key)">Editar</button>';
       h+='<button class="btn bxs" style="color:#024f2b;border-color:#024f2b" data-key="'+fid+'" onclick="abrirCorrecao(this.dataset.key)">Corrigir</button>';
       if(o.status!=='Concluida') h+='<button class="btn bxs" style="background:#739630;border-color:#739630;color:#fff" data-key="'+fid+'" onclick="abrirFin(this.dataset.key)">Finalizar</button>';
+      if(o.status!=='Concluida') h+='<button class="btn bxs" style="color:#d29922;border-color:#d29922" data-key="'+fid+'" onclick="reprogramarOP(this.dataset.key)" title="Mover OP para o próximo dia">&#8594; Amanhã</button>';
       h+='<button class="btn bxs" style="color:#c0392b;border-color:#c0392b" data-key="'+fid+'" onclick="abrirExcluir(this.dataset.key)">Excluir</button>';
     }
     h+='<button class="btn bxs" data-key="'+fid+'" onclick="abrirPDF(this.dataset.key)">PDF</button>';
@@ -1905,6 +1886,43 @@ function salvarParada(){
 // ============================================================
 // FINALIZAR
 // ============================================================
+function reprogramarOP(fbKey){
+  var op=OPS.filter(function(o){return o.fbKey===fbKey;})[0];
+  if(!op) return;
+  if(op.status==='Concluida'){toast('OP já concluída','err');return;}
+
+  // Calcula próximo dia a partir da data atual da OP
+  var dtAtual=op.data||hoje();
+  var dtProx=new Date(dtAtual+'T12:00:00');
+  dtProx.setDate(dtProx.getDate()+1);
+  var dtNova=dtProx.toISOString().slice(0,10);
+
+  // Saldo restante
+  var saldo=(Number(op.prog)||0)-(Number(op.real)||0);
+  var fator=op.tipo==='SC'?25:op.tipo==='BG'?750:1;
+  var saldoStr=op.tipo!=='KG'?fN(Math.round(saldo/fator))+' '+(op.tipo==='SC'?'sc':'bg')+' ('+fN(saldo)+' kg)':fN(saldo)+' kg';
+
+  if(!confirm(
+    'Reprogramar OP '+op.id+' para '+dtNova+'?\n\n'+
+    'Programado: '+fN(op.prog)+' kg\n'+
+    'Realizado:  '+fN(op.real)+' kg\n'+
+    'Saldo:      '+saldoStr+'\n\n'+
+    'A OP será movida para '+dtNova+' mantendo o histórico de apontamentos.'
+  )) return;
+
+  ld(true,'Reprogramando...');
+  DB.ref('ops/'+fbKey).update({
+    data:dtNova,
+    status:'Reprogramada',
+    reprogramadaDe:dtAtual,
+    reprogramadaEm:agora()
+  }).then(function(){
+    ld(false);
+    toast('OP '+op.id+' reprogramada para '+dtNova,'ok');
+    addLog('REPROGRAMAR',op.id+' | '+dtAtual+' → '+dtNova);
+  }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
+}
+
 function abrirFin(fbKey){
   var op=null;
   for(var i=0;i<OPS.length;i++){if(OPS[i].fbKey===fbKey){op=OPS[i];break;}}
