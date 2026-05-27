@@ -849,7 +849,8 @@ function renderDash(){
   // PROGRAMADO — soma o.prog (sempre em KG)
   var tp=ops.reduce(function(a,o){return a+(Number(o.prog)||0);},0);
 
-  // REALIZADO — realPorData[dt] se existir, senão o.real (OPs antigas sem rpd)
+  // REALIZADO — usa o.real da OP (mesma fonte da aderência por SKU)
+  // Garante que PROD. BOM do dashboard bate com total da aderência por SKU
   var aptsPorOp={};
   var dadosPorTurno={
     1:{real:0,perda:0,sc:0,bg:0,kg:0},
@@ -858,26 +859,18 @@ function renderDash(){
   };
 
   ops.forEach(function(o){
-    var rpd=o.realPorData||null;
-    var realOp=rpd?(Number(rpd[dt])||0):(Number(o.real)||0);
+    var realOp=Number(o.real)||0;
     if(realOp<=0) return;
     aptsPorOp[o.fbKey]=realOp;
-
-    // Distribuição por turno proporcional ao real do dia
-    // Evita somar acumulado total quando OP tem múltiplos dias
-    var realTotal=Number(o.real)||0;
-    var ratio=realTotal>0?(realOp/realTotal):1;
     if(turnoFiltro>0){
-      var vTTotal=Number(o['t'+turnoFiltro])||0;
-      var vT=Math.round(vTTotal*ratio);
+      var vT=Number(o['t'+turnoFiltro])||0;
       dadosPorTurno[turnoFiltro].real+=vT;
       if(o.tipo==='SC') dadosPorTurno[turnoFiltro].sc+=Math.round(vT/25);
       else if(o.tipo==='BG') dadosPorTurno[turnoFiltro].bg+=Math.round(vT/750);
       else dadosPorTurno[turnoFiltro].kg+=vT;
     } else {
       [1,2,3].forEach(function(t){
-        var vTotal=Number(o['t'+t])||0;
-        var v=Math.round(vTotal*ratio);
+        var v=Number(o['t'+t])||0;
         dadosPorTurno[t].real+=v;
         if(o.tipo==='SC') dadosPorTurno[t].sc+=Math.round(v/25);
         else if(o.tipo==='BG') dadosPorTurno[t].bg+=Math.round(v/750);
