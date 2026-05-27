@@ -822,15 +822,20 @@ function renderDash(){
   var ln=G('dash-fln')?G('dash-fln').value:'';
   var turnoFiltro=G('dash-turno')?parseInt(G('dash-turno').value)||0:0;
 
-  // OPs do dia — proteção contra duplicatas de mesmo id/número
+  // OPs do dia — proteção robusta contra duplicatas de mesmo número
   var vistosId={};
   var ops=[];
   OPS.forEach(function(o){
     if(o.data!==dt) return;
     if(ln && o.linha!==ln) return;
+    var rpd=o.realPorData||null;
+    var realDt=rpd?(Number(rpd[dt])||0):(Number(o.real)||0);
     if(vistosId[o.id]!==undefined){
-      // Mantém a OP com maior real (mais atualizada)
-      if((Number(o.real)||0)>(Number(vistosId[o.id].real)||0)){
+      // Desempate: usa realPorData[dt] — valor mais preciso do dia
+      var anterior=vistosId[o.id];
+      var rpdAnt=anterior.realPorData||null;
+      var realDtAnt=rpdAnt?(Number(rpdAnt[dt])||0):(Number(anterior.real)||0);
+      if(realDt>realDtAnt){
         ops=ops.filter(function(x){return x.id!==o.id;});
         vistosId[o.id]=o;
         ops.push(o);
@@ -1007,14 +1012,14 @@ function renderAderenciaSKU(ops, aptsPorOp){
   if(!body) return;
 
   // Programado + Realizado: só OPs programadas para o dia
-  // Real = o.real da OP (acumula todos apontamentos independente de data do apontamento)
+  // Real = aptsPorOp[fbKey] que já usa realPorData[dt] — valor correto do dia
   var skus={};
   ops.forEach(function(o){
     var cod=o.cod||'SEM_COD';
     var desc=o.desc||o.cod||'—';
     if(!skus[cod]) skus[cod]={cod:cod,desc:desc,prog:0,real:0};
     skus[cod].prog += Number(o.prog)||0;
-    skus[cod].real += Number(o.real)||0;
+    skus[cod].real += aptsPorOp[o.fbKey]||0;
   });
 
   // Converte para array e ordena: primeiro os com prog > 0, depois % crescente (pior primeiro)
