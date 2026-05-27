@@ -836,8 +836,8 @@ function renderDash(){
   // PROGRAMADO — soma o.prog (sempre em KG)
   var tp=ops.reduce(function(a,o){return a+(Number(o.prog)||0);},0);
 
-  // REALIZADO — usa o.real da OP (mesma fonte da aderência por SKU)
-  // Garante que PROD. BOM do dashboard bate com total da aderência por SKU
+  // REALIZADO — realPorData[dt] se existir (produção do dia), senão o.real (OPs antigas)
+  // Lógica C: OP que cruza dias mostra só o que foi produzido em cada dia
   var aptsPorOp={};
   var dadosPorTurno={
     1:{real:0,perda:0,sc:0,bg:0,kg:0},
@@ -845,19 +845,39 @@ function renderDash(){
     3:{real:0,perda:0,sc:0,bg:0,kg:0}
   };
 
-  ops.forEach(function(o){
-    var realOp=Number(o.real)||0;
+  // Também busca OPs de outros dias que têm realPorData[dt] > 0
+  // (OP programada para dia 25 mas produziu no dia 26)
+  var todasOps=OPS;
+  var fbKeysJaAdicionados={};
+  ops.forEach(function(o){ fbKeysJaAdicionados[o.fbKey]=true; });
+
+  // OPs de outros dias com produção no dia filtrado
+  var opsExtras=[];
+  todasOps.forEach(function(o){
+    if(fbKeysJaAdicionados[o.fbKey]) return; // já está em ops
+    if(!o.realPorData) return;
+    var v=Number(o.realPorData[dt])||0;
+    if(v>0) opsExtras.push(o);
+  });
+
+  ops.concat(opsExtras).forEach(function(o){
+    var rpd=o.realPorData||null;
+    var realOp=rpd?(Number(rpd[dt])||0):(Number(o.real)||0);
     if(realOp<=0) return;
     aptsPorOp[o.fbKey]=realOp;
+
+    // Distribuição por turno proporcional ao real do dia
+    var realTotal=Number(o.real)||0;
+    var ratio=realTotal>0?(realOp/realTotal):1;
     if(turnoFiltro>0){
-      var vT=Number(o['t'+turnoFiltro])||0;
+      var vT=Math.round((Number(o['t'+turnoFiltro])||0)*ratio);
       dadosPorTurno[turnoFiltro].real+=vT;
       if(o.tipo==='SC') dadosPorTurno[turnoFiltro].sc+=Math.round(vT/25);
       else if(o.tipo==='BG') dadosPorTurno[turnoFiltro].bg+=Math.round(vT/750);
       else dadosPorTurno[turnoFiltro].kg+=vT;
     } else {
       [1,2,3].forEach(function(t){
-        var v=Number(o['t'+t])||0;
+        var v=Math.round((Number(o['t'+t])||0)*ratio);
         dadosPorTurno[t].real+=v;
         if(o.tipo==='SC') dadosPorTurno[t].sc+=Math.round(v/25);
         else if(o.tipo==='BG') dadosPorTurno[t].bg+=Math.round(v/750);
