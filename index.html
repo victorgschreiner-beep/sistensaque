@@ -683,14 +683,15 @@ function aplicarSessao(){
   G('unm').textContent=SES.nome+(SES.turno?' [T'+SES.turno+']':'');
   var ini=SES.nome.split(' ').map(function(w){return w[0];}).join('').slice(0,2).toUpperCase();
   G('uav').textContent=ini;
-  var c={pcp:'#1f6feb',operador:'#2ea043',admin:'#8b5cf6'}[p]||'#444';
+  var c={pcp:'#1f6feb',operador:'#2ea043',admin:'#8b5cf6',supervisor:'#d29922'}[p]||'#444';
   G('uav').style.background=c+'22'; G('uav').style.color=c;
   var isPCP=(p==='pcp'||p==='admin');
+  var isSup=(p==='supervisor');
   var isOP=(p==='operador');
   G('nb-ops').style.display=isOP?'none':'';
   G('nb-fila').style.display=isOP?'none':'';
-  G('nb-fila-op').style.display=isPCP?'none':'';
-  G('nb-op').style.display=isPCP?'none':'';
+  G('nb-fila-op').style.display=(isPCP||isSup)?'none':'';
+  G('nb-op').style.display=(isPCP||isSup)?'none':'';
   G('nb-exp').style.display=isOP?'none':'';
   G('nb-adm').style.display=(p==='admin')?'':'none';
   var pb=G('pcpbar'); if(pb) pb.style.display=isOP?'none':'';
@@ -786,6 +787,7 @@ function iniciarApp(){
 
   // Navega para tela inicial
   if(SES.perfil==='operador') go('operador',G('nb-op'));
+  else if(SES.perfil==='supervisor') go('dashboard',G('nb-dash'));
   else go('dashboard',G('nb-dash'));
 }
 
@@ -1081,7 +1083,8 @@ function renderOPs(){
     G('opsbody').innerHTML='<tr><td colspan="13" style="text-align:center;color:#4a664a;padding:20px">Nenhuma OP encontrada. Crie uma nova OP ou limpe os filtros.</td></tr>';
     return;
   }
-  var can=SES&&SES.perfil!=='operador';
+  var can=SES&&(SES.perfil==='pcp'||SES.perfil==='admin');
+  var canSup=SES&&SES.perfil==='supervisor';
   var h='';
   for(var i=0;i<ops.length;i++){
     var o=ops[i]; var fid=o.fbKey;
@@ -1111,6 +1114,9 @@ function renderOPs(){
       if(o.status!=='Concluida') h+='<button class="btn bxs" style="background:#739630;border-color:#739630;color:#fff" data-key="'+fid+'" onclick="abrirFin(this.dataset.key)">Finalizar</button>';
       if(o.status!=='Concluida') h+='<button class="btn bxs" style="color:#d29922;border-color:#d29922" data-key="'+fid+'" onclick="reprogramarOP(this.dataset.key)" title="Mover OP para o próximo dia">&#8594; Amanhã</button>';
       h+='<button class="btn bxs" style="color:#c0392b;border-color:#c0392b" data-key="'+fid+'" onclick="abrirExcluir(this.dataset.key)">Excluir</button>';
+    }
+    if(canSup && o.status!=='Concluida'){
+      h+='<button class="btn bxs" style="color:#d29922;border-color:#d29922" data-key="'+fid+'" onclick="reprogramarOP(this.dataset.key)" title="Mover OP para o próximo dia">&#8594; Amanhã</button>';
     }
     h+='<button class="btn bxs" data-key="'+fid+'" onclick="abrirPDF(this.dataset.key)">PDF</button>';
     h+='</td></tr>';
@@ -1252,7 +1258,7 @@ function preencherCamposPDF(texto, status){
 }
 
 function abrirNovaOP(){
-  if(SES&&SES.perfil==='operador') return;
+  if(SES&&(SES.perfil==='operador'||SES.perfil==='supervisor')) return;
   G('nopc').value='';G('nopd').value='';G('nopl').value='';G('nopq').value='';G('nopo').value='';G('nopdt').value=hoje();
   if(G('nopid')) G('nopid').value='';
   if(G('pdf-status')){G('pdf-status').style.display='none';G('pdf-status').textContent='';}
@@ -2741,7 +2747,7 @@ function loadUsers(){
     var h='';
     if(snap.exists()) snap.forEach(function(c){
       var u=c.val(), fbKey=c.key, ativo=u.ativo!==false, isSelf=(u.login===SES.login);
-      var pcls=u.perfil==='admin'?'bpx':u.perfil==='pcp'?'baz':'bvd';
+      var pcls=u.perfil==='admin'?'bpx':u.perfil==='pcp'?'baz':u.perfil==='supervisor'?'bam':'bvd';
       h+='<tr style="opacity:'+(ativo?'1':'.55')+'">';
       h+='<td style="font-weight:600">'+u.login+'</td><td>'+u.nome+'</td>';
       h+='<td><span class="badge '+pcls+'">'+u.perfil+(u.turno?' T'+u.turno:'')+'</span></td>';
