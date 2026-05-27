@@ -2066,19 +2066,33 @@ function salvarCorrecao(){
     return Promise.all(promisesSubst);
   }).then(function(){
     // Passo 2: salva os novos registros corrigidos
-    // Recalcula realPorData do zero com as datas corretas de cada turno
+    // Reconstrói realPorData do zero — inclui todas as datas com seus valores
+    // Datas zeradas ficam explicitamente como null para remover do Firebase
     var rpdCorr={};
+    // Adiciona valor de cada turno na data correta (mesmo que seja 0)
+    [dtC1,dtC2,dtC3].forEach(function(d){ if(d) rpdCorr[d]=0; }); // inicializa com 0
     if(t1sc*fator>0) rpdCorr[dtC1]=(rpdCorr[dtC1]||0)+t1sc*fator;
     if(t2sc*fator>0) rpdCorr[dtC2]=(rpdCorr[dtC2]||0)+t2sc*fator;
     if(t3sc*fator>0) rpdCorr[dtC3]=(rpdCorr[dtC3]||0)+t3sc*fator;
+    // Remove datas com valor 0 — Firebase remove o campo com null
+    Object.keys(rpdCorr).forEach(function(d){ if(!rpdCorr[d]) rpdCorr[d]=null; });
 
     var promises=[];
+    // Apaga realPorData existente e reescreve do zero
+    // Garante que datas antigas não persistam após correção
+    promises.push(DB.ref('ops/'+fbKey+'/realPorData').remove());
     promises.push(DB.ref('ops/'+fbKey).update({
       t1:t1sc*fator, t2:t2sc*fator, t3:t3sc*fator,
       real:real, t1sc:t1sc, t2sc:t2sc, t3sc:t3sc,
       perda:novaPerda, perdaT1:pe1, perdaT2:pe2, perdaT3:pe3,
-      ultimoApt:dataCorr, realPorData:rpdCorr
+      ultimoApt:dataCorr
     }));
+    // Reescreve realPorData apenas com valores > 0
+    var rpdFinal={};
+    if(t1sc*fator>0) rpdFinal[dtC1]=(rpdFinal[dtC1]||0)+t1sc*fator;
+    if(t2sc*fator>0) rpdFinal[dtC2]=(rpdFinal[dtC2]||0)+t2sc*fator;
+    if(t3sc*fator>0) rpdFinal[dtC3]=(rpdFinal[dtC3]||0)+t3sc*fator;
+    if(Object.keys(rpdFinal).length>0) promises.push(DB.ref('ops/'+fbKey+'/realPorData').update(rpdFinal));
     promises.push(DB.ref('apontamentos').push({
       id:uid(), opId:fbKey, data:dataCorr, turno:0,
       t1:t1sc*fator, t2:t2sc*fator, t3:t3sc*fator,
