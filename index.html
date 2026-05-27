@@ -1012,14 +1012,14 @@ function renderAderenciaSKU(ops, aptsPorOp){
   if(!body) return;
 
   // Programado + Realizado: só OPs programadas para o dia
-  // Real = aptsPorOp[fbKey] que já usa realPorData[dt] — valor correto do dia
+  // Real = o.real da OP (total acumulado — reflete se a OP foi entregue)
   var skus={};
   ops.forEach(function(o){
     var cod=o.cod||'SEM_COD';
     var desc=o.desc||o.cod||'—';
     if(!skus[cod]) skus[cod]={cod:cod,desc:desc,prog:0,real:0};
     skus[cod].prog += Number(o.prog)||0;
-    skus[cod].real += aptsPorOp[o.fbKey]||0;
+    skus[cod].real += Number(o.real)||0;
   });
 
   // Converte para array e ordena: primeiro os com prog > 0, depois % crescente (pior primeiro)
