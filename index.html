@@ -822,27 +822,14 @@ function renderDash(){
   var ln=G('dash-fln')?G('dash-fln').value:'';
   var turnoFiltro=G('dash-turno')?parseInt(G('dash-turno').value)||0:0;
 
-  // OPs do dia — proteção robusta contra duplicatas de mesmo número
-  var vistosId={};
+  // OPs do dia — usa fbKey como identificador único (não o.id que pode repetir para SC/KG)
+  var vistosFbKey={};
   var ops=[];
   OPS.forEach(function(o){
     if(o.data!==dt) return;
     if(ln && o.linha!==ln) return;
-    var rpd=o.realPorData||null;
-    var realDt=rpd?(Number(rpd[dt])||0):(Number(o.real)||0);
-    if(vistosId[o.id]!==undefined){
-      // Desempate: usa realPorData[dt] — valor mais preciso do dia
-      var anterior=vistosId[o.id];
-      var rpdAnt=anterior.realPorData||null;
-      var realDtAnt=rpdAnt?(Number(rpdAnt[dt])||0):(Number(anterior.real)||0);
-      if(realDt>realDtAnt){
-        ops=ops.filter(function(x){return x.id!==o.id;});
-        vistosId[o.id]=o;
-        ops.push(o);
-      }
-      return;
-    }
-    vistosId[o.id]=o;
+    if(vistosFbKey[o.fbKey]) return; // evita só duplicata exata de mesmo registro
+    vistosFbKey[o.fbKey]=true;
     ops.push(o);
   });
 
