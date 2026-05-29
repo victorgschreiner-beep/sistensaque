@@ -192,6 +192,10 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <div class="topbar-left">
       <span class="topbar-logo">🏭 Raguife — Extrusão</span>
       <span class="topbar-badge" id="top-turno">T1</span>
+      <span class="topbar-badge" style="background:rgba(255,255,255,.1);cursor:pointer;display:flex;align-items:center;gap:6px" onclick="document.getElementById('dt-fila-inp').click()">
+        📅 <span id="top-data-fila"></span>
+        <input type="date" id="dt-fila-inp" style="display:none" onchange="trocarDataFila(this.value)">
+      </span>
     </div>
     <div class="topbar-right">
       <span class="top-user" id="top-user"></span>
@@ -393,6 +397,8 @@ function iniciarApp(){
   G("top-user").textContent=SES.nome;
   G("top-turno").textContent="Turno "+SES.turno;
   G("linhas-grid").style.gridTemplateColumns=LINHAS_USER.length===1?"1fr":"1fr 1fr";
+  DT_FILA=hoje();
+  atualizarDataFila();
   carregarOPs();
   carregarExtrusao();
   iniciarRelogio();
@@ -400,9 +406,36 @@ function iniciarApp(){
 }
 
 // ── FIREBASE DATA ─────────────────────────────────────────
+function atualizarDataFila(){
+  var el=G("top-data-fila");
+  if(!el) return;
+  var parts=DT_FILA.split("-");
+  el.textContent=parts[2]+"/"+parts[1]+"/"+parts[0];
+  var inp=G("dt-fila-inp");
+  if(inp) inp.value=DT_FILA;
+}
+
+function trocarDataFila(dt){
+  if(!dt) return;
+  DT_FILA=dt;
+  atualizarDataFila();
+  carregarOPs();
+  // Reinicia listeners de extrusão para nova data
+  LINHAS_USER.forEach(function(l){EST[l]={opAtiva:null,apts:[],paradas:[]};});
+  carregarExtrusao();
+  renderLinhas();
+  toast("Fila do dia "+dt.split("-").reverse().join("/"),"ok");
+}
+
 function carregarOPs(){
-  if(!DB){renderLinhas();return;}
-  DB.ref("ops").orderByChild("data").equalTo(hoje()).on("value",function(s){
+  if(!DB){
+    // Sem Firebase — mostra aviso nos cards
+    OPS=[];
+    renderLinhas();
+    toast("Sem conexão com servidor — suba online para ver as OPs","err");
+    return;
+  }
+  DB.ref("ops").orderByChild("data").equalTo(DT_FILA).on("value",function(s){
     OPS=[];
     if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;OPS.push(v);});
     renderLinhas();
@@ -411,7 +444,7 @@ function carregarOPs(){
 
 function carregarExtrusao(){
   if(!DB) return;
-  var dt=hoje(), t=SES.turno;
+  var dt=DT_FILA||hoje(), t=SES.turno;
   LINHAS_USER.forEach(function(linha){
     DB.ref("extrusao_apts").orderByChild("data").equalTo(dt).on("value",function(s){
       EST[linha].apts=[];
