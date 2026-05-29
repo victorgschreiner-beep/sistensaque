@@ -470,12 +470,14 @@ function carregarExtrusao(){
 // ── RENDER ────────────────────────────────────────────────
 function renderLinhas(){
   var grid=G("linhas-grid"); if(!grid) return;
-  // Preserva conteúdo existente se já renderizado
-  if(!grid.innerHTML){
-    var h="";
-    LINHAS_USER.forEach(function(l){h+='<div id="card-'+encId(l)+'"></div>';});
-    grid.innerHTML=h;
-  }
+  // Sempre garante que os divs dos cards existem
+  LINHAS_USER.forEach(function(l){
+    if(!G("card-"+encId(l))){
+      var div=document.createElement("div");
+      div.id="card-"+encId(l);
+      grid.appendChild(div);
+    }
+  });
   LINHAS_USER.forEach(function(l){renderLinhaCard(l);});
 }
 
@@ -485,7 +487,10 @@ function getOpsLinha(linha){
 }
 
 function renderLinhaCard(linha){
-    LINHAS_USER.forEach(function(l){h+='<div id="card-'+encId(l)+'"></div>';});
+  var grid=G("linhas-grid");
+  var card=G("card-"+encId(linha));
+  if(!card&&grid){card=document.createElement("div");card.id="card-"+encId(linha);grid.appendChild(card);}
+  if(!card) return;
   var e=EST[linha]||{opAtiva:null,apts:[],paradas:[]};
   var opsLinha=getOpsLinha(linha);
   var opAtiva=e.opAtiva?OPS.find(function(o){return o.fbKey===e.opAtiva;})||null:null;
