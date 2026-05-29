@@ -637,9 +637,9 @@ function renderLinhaCardHTML(linha){
 
   // Botões
   h+='<div class="btn-row" style="margin-bottom:10px">';
-  h+='<button class="btn btn-apontar" onclick="abrirApt(''+linha+'')">⚡ Apontar</button>';
-  h+='<button class="btn btn-parada" onclick="abrirParada(''+linha+'')">🔴 Parada</button>';
-  h+='<button class="btn btn-setup" onclick="abrirSetup(''+linha+'')">⚙️ Setup</button>';
+  h+='<button class="btn btn-apontar" onclick="abrirApt(this.dataset.l)" data-l="'+linha+'">⚡ Apontar</button>';
+  h+='<button class="btn btn-parada" onclick="abrirParada(this.dataset.l)" data-l="'+linha+'">🔴 Parada</button>';
+  h+='<button class="btn btn-setup" onclick="abrirSetup(this.dataset.l)" data-l="'+linha+'">⚙️ Setup</button>';
   h+='</div>';
 
   // Histórico do turno
@@ -840,7 +840,7 @@ function renderParadas(filtro){
   Object.keys(grupos).sort().forEach(function(g){
     h+='<div class="grupo-section"><div class="grupo-label">'+g+'</div>';
     grupos[g].forEach(function(p){
-      h+='<div class="parada-opt" id="popt-'+p.cod+'" onclick="selecionarParada('+p.cod+',''+p.desc.replace(/'/g,"\'")+'')">';
+      h+='<div class="parada-opt" id="popt-'+p.cod+'" data-cod="'+p.cod+'" onclick="selecionarParada(this)">'+p.desc+'</div>';
       h+=p.desc;
       h+='</div>';
     });
@@ -851,13 +851,13 @@ function renderParadas(filtro){
 
 function filtrarParadas(v){ renderParadas(v); }
 
-function selecionarParada(cod,desc){
+function selecionarParada(el){
+  var cod=el.dataset.cod, desc=el.textContent.trim();
   G('para-cod').value=cod;
   G('para-desc-sel').value=desc;
   G('para-sel-label').textContent='✔ '+desc;
-  // Visual seleção
-  document.querySelectorAll('.parada-opt').forEach(function(el){el.classList.remove('sel');});
-  var el=G('popt-'+cod); if(el) el.classList.add('sel');
+  document.querySelectorAll('.parada-opt').forEach(function(e){e.classList.remove('sel');});
+  el.classList.add('sel');
 }
 
 function salvarParada(){
