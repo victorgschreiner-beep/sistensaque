@@ -495,82 +495,55 @@ function renderLinhaCard(linha){
   var opsLinha=getOpsLinha(linha);
   var opAtiva=e.opAtiva?OPS.find(function(o){return o.fbKey===e.opAtiva;})||null:null;
   var metaH=opAtiva?getMetaHora(opAtiva.cod,linha):0;
-
-  // Total extrusão no turno
   var totalTurno=e.apts.reduce(function(a,x){return a+(Number(x.real)||0);},0);
-
-  // Total extrusão na OP ativa
-  var totalOpExt=opAtiva?e.apts.filter(function(a){return a.opFbKey===opAtiva.fbKey;})
-    .reduce(function(a,x){return a+(Number(x.real)||0);},0):0;
-
-  // Parada aberta
+  var totalOpExt=opAtiva?e.apts.filter(function(a){return a.opFbKey===opAtiva.fbKey;}).reduce(function(a,x){return a+(Number(x.real)||0);},0):0;
   var paradaAberta=e.paradas.some(function(p){return !p.horaFim;});
   var statusTxt=paradaAberta?"EM PARADA":opAtiva?"PRODUZINDO":"SEM OP ATIVA";
   var statusCls=paradaAberta?"st-para":opAtiva?"st-prod":"st-idle";
   var nomeL=linha.replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");
 
   var h="";
-  // Header
-  h+='<div class="linha-header"><span class="linha-titulo">"+nomeL+"</span><span class="linha-st "+statusCls+"">"+statusTxt+"</span></div>';
-
+  h+='<div class="linha-header">';
+  h+='<span class="linha-titulo">'+nomeL+'</span>';
+  h+='<span class="linha-st '+statusCls+'">'+statusTxt+'</span>';
+  h+='</div>';
   h+='<div class="linha-body">';
 
-
-  // OP Ativa
   if(opAtiva){
     var progExt=opAtiva.prog?Math.min(Math.round(totalOpExt/(Number(opAtiva.prog)||1)*100),100):0;
     var corProg=progExt>=90?"prog-gr":progExt>=60?"prog-gr2":"prog-or";
-    h+='<div class="op-ativa-box" onclick="abrirSelOp(\'"+linha+"\')">';
-
-    h+='<div class="op-num">▶ EM EXTRUSÃO — OP: "+opAtiva.id+"</div>';
-
-    h+='<div class="op-desc">"+(opAtiva.desc||opAtiva.cod)+"</div>';
-
-    h+='<div class="op-meta">Meta: "+fN(metaH)+" kg/h · Prog: "+fN(opAtiva.prog)+" kg</div>';
-
-    h+="</div>";
-    // Barra progresso extrusão
+    h+='<div class="op-ativa-box" onclick="abrirSelOp(this.dataset.l)" data-l="'+linha+'">';
+    h+='<div class="op-num">▶ EM EXTRUSÃO — OP: '+opAtiva.id+'</div>';
+    h+='<div class="op-desc">'+(opAtiva.desc||opAtiva.cod)+'</div>';
+    h+='<div class="op-meta">Meta: '+fN(metaH)+' kg/h · Prog: '+fN(opAtiva.prog)+' kg</div>';
+    h+='</div>';
     h+='<div class="prog-wrap">';
-
-    h+='<div class="prog-label"><span>Extrusão na OP</span><span>"+fN(totalOpExt)+" / "+fN(opAtiva.prog)+" kg ("+progExt+"%)</span></div>';
-
-    h+='<div class="prog-bar"><div class="prog-fill "+corProg+"" style="width:"+progExt+"%"></div></div>';
-
-    h+="</div>";
-    // Barra turno
+    h+='<div class="prog-label"><span>Extrusão na OP</span><span>'+fN(totalOpExt)+' / '+fN(opAtiva.prog)+' kg ('+progExt+'%)</span></div>';
+    h+='<div class="prog-bar"><div class="prog-fill '+corProg+'" style="width:'+progExt+'%"></div></div>';
+    h+='</div>';
     var metaTurno=metaH*8;
     var progTurno=metaTurno?Math.min(Math.round(totalTurno/metaTurno*100),100):0;
     h+='<div class="prog-wrap">';
-
-    h+='<div class="prog-label"><span>Produção do Turno</span><span>"+fN(totalTurno)+" kg</span></div>';
-
-    h+='<div class="prog-bar"><div class="prog-fill prog-gr2" style="width:"+progTurno+"%"></div></div>';
-
-    h+="</div>";
+    h+='<div class="prog-label"><span>Produção do Turno</span><span>'+fN(totalTurno)+' kg</span></div>';
+    h+='<div class="prog-bar"><div class="prog-fill prog-gr2" style="width:'+progTurno+'%"></div></div>';
+    h+='</div>';
   } else {
-    h+='<div class="op-sem-ativa" onclick="abrirSelOp(\'"+linha+"\')">Toque para selecionar OP em extrusão</div>';
-
+    h+='<div class="op-sem-ativa" onclick="abrirSelOp(this.dataset.l)" data-l="'+linha+'">Toque para selecionar OP em extrusão</div>';
   }
 
-  // Botões
   h+='<div class="btn-row">';
+  h+='<button class="btn btn-apt" data-l="'+linha+'" onclick="abrirApt(this.dataset.l)">⚡ Apontar</button>';
+  h+='<button class="btn btn-para" data-l="'+linha+'" onclick="abrirParada(this.dataset.l)">🔴 Parada</button>';
+  h+='<button class="btn btn-setup" data-l="'+linha+'" onclick="abrirSetup(this.dataset.l)">⚙️ Setup</button>';
+  h+='</div>';
 
-  h+='<button class="btn btn-apt" data-l=""+linha+"" onclick="abrirApt(this.dataset.l)">⚡ Apontar</button>';
-
-  h+='<button class="btn btn-para" data-l=""+linha+"" onclick="abrirParada(this.dataset.l)">🔴 Parada</button>';
-
-  h+='<button class="btn btn-setup" data-l=""+linha+"" onclick="abrirSetup(this.dataset.l)">⚙️ Setup</button>';
-
-  h+="</div>";
-
-  // Fila de OPs
-  h+='<div class="fila-titulo"><span>FILA DO DIA ("+opsLinha.length+" OPs)</span><span style="font-size:10px;color:#739630;cursor:pointer" onclick="abrirSelOp(\'"+linha+"\')">trocar OP ▾</span></div>';
-
+  h+='<div class="fila-titulo">';
+  h+='<span>FILA DO DIA ('+opsLinha.length+' OPs)</span>';
+  h+='<span style="font-size:10px;color:#739630;cursor:pointer" data-l="'+linha+'" onclick="abrirSelOp(this.dataset.l)">trocar OP ▾</span>';
+  h+='</div>';
   h+='<div class="fila-scroll">';
-
   if(!opsLinha.length){
     h+='<div style="text-align:center;padding:12px;font-size:12px;color:#4a664a">Nenhuma OP para hoje</div>';
-
   } else {
     opsLinha.forEach(function(o){
       var isAtiva=opAtiva&&o.fbKey===opAtiva.fbKey;
@@ -578,58 +551,44 @@ function renderLinhaCard(linha){
       var extTotal=e.apts.filter(function(a){return a.opFbKey===o.fbKey;}).reduce(function(a,x){return a+(Number(x.real)||0);},0);
       var pct=o.prog?Math.min(Math.round(extTotal/(Number(o.prog)||1)*100),100):0;
       var corPct=pct>=90?"#024f2b":pct>=60?"#d29922":"#4a664a";
-      h+='<div class="fila-op"+(isAtiva?" ativa":"")+(o.status==="Concluida"?" concluida":"")+"" data-fk=""+o.fbKey+"" data-l=""+linha+"" onclick="selecionarOpAtiva(this.dataset.l,this.dataset.fk)">';
-
-      h+='<div><div class="fila-op-num">"+o.id+"</div></div>';
-
-      h+='<div class="fila-op-desc">"+(o.desc||o.cod)+"</div>';
-
-      h+='<span class="badge-st "+badgeCls+"">"+o.status+"</span>';
-
-      h+='<div class="fila-op-prog" style="color:"+corPct+"">"+pct+"%</div>';
-
-      h+="</div>";
+      h+='<div class="fila-op'+(isAtiva?" ativa":"")+(o.status==="Concluida"?" concluida":"")+'" data-fk="'+o.fbKey+'" data-l="'+linha+'" onclick="selecionarOpAtiva(this.dataset.l,this.dataset.fk)">';
+      h+='<div><div class="fila-op-num">'+o.id+'</div></div>';
+      h+='<div class="fila-op-desc">'+(o.desc||o.cod)+'</div>';
+      h+='<span class="badge-st '+badgeCls+'">'+o.status+'</span>';
+      h+='<div class="fila-op-prog" style="color:'+corPct+'">'+pct+'%</div>';
+      h+='</div>';
     });
   }
-  h+="</div>";
+  h+='</div>';
 
-  // Histórico do turno
   var hist=[];
   e.apts.forEach(function(a){hist.push({tipo:"apt",hora:a.horaIni,d:a});});
   e.paradas.forEach(function(p){hist.push({tipo:"para",hora:p.horaIni,d:p});});
   hist.sort(function(a,b){return a.hora>b.hora?1:-1;});
   if(hist.length){
     h+='<div style="margin-top:10px">';
-
     hist.slice(-6).forEach(function(item){
       if(item.tipo==="apt"){
         var a=item.d;
         var ef=metaH?Math.round((Number(a.real)||0)/metaH*100):0;
         var corEf=ef>=90?"#024f2b":ef>=70?"#d29922":"#c0392b";
         h+='<div class="hist-item hist-apt">';
-
-        h+='<span class="hist-hora">"+a.horaIni+" → "+a.horaFim+"</span>';
-
-        h+='<span class="hist-val">"+fN(a.real)+" kg</span>';
-
-        h+='<span class="hist-info" style="color:"+corEf+"">"+ef+"% meta</span>';
-
-        h+="</div>";
+        h+='<span class="hist-hora">'+a.horaIni+' → '+a.horaFim+'</span>';
+        h+='<span class="hist-val">'+fN(a.real)+' kg</span>';
+        h+='<span class="hist-info" style="color:'+corEf+'">'+ef+'% meta</span>';
+        h+='</div>';
       } else {
         var p=item.d;
         h+='<div class="hist-item hist-para">';
-
-        h+='<span class="hist-hora">"+p.horaIni+" → "+(p.horaFim||"...")+"\</span>';
-
-        h+='<span class="hist-info">"+p.descricao+"</span>';
-
-        h+="</div>";
+        h+='<span class="hist-hora">'+p.horaIni+' → '+(p.horaFim||'...')+'</span>';
+        h+='<span class="hist-info">'+p.descricao+'</span>';
+        h+='</div>';
       }
     });
-    h+="</div>";
+    h+='</div>';
   }
 
-  h+="</div>"; // linha-body
+  h+='</div>';
   card.className="linha-card"+(paradaAberta?" em-parada":"");
   card.innerHTML=h;
 }
