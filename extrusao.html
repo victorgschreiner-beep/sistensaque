@@ -330,7 +330,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
 </div>
 
 <!-- MODAL CORREÇÃO ADMIN -->
-<div class="ov" id="m-admin-corr">
+<div class="ov" id="m-admin-corr" style="z-index:300">
   <div class="modal" style="width:500px;max-width:98vw">
     <div class="mh">🔧 Correção Admin — <span id="adm-corr-tipo"></span></div>
     <div id="adm-corr-corpo"></div>
@@ -339,7 +339,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
 </div>
 
 <!-- MODAL LISTA APONTAMENTOS ADMIN -->
-<div class="ov" id="m-admin-lista">
+<div class="ov" id="m-admin-lista" style="z-index:250">
   <div class="modal" style="width:600px;max-width:98vw">
     <div class="mh">🔧 Admin — Apontamentos e Paradas</div>
     <div style="display:flex;gap:8px;margin-bottom:12px">
@@ -463,6 +463,17 @@ function iniciarApp(){
 }
 
 // ── FIREBASE DATA ─────────────────────────────────────────
+function carregarTotalOp(linha, opFbKey){
+  if(!DB||!opFbKey) return;
+  // Busca todos os apontamentos da OP em todos os turnos e datas
+  DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(opFbKey).once("value",function(s){
+    var total=0;
+    if(s.exists()) s.forEach(function(c){total+=(Number(c.val().real)||0);});
+    EST[linha].totalOp[opFbKey]=total;
+    renderLinhaCard(linha);
+  });
+}
+
 function atualizarDataFila(){
   var el=G("top-data-fila");
   if(el){var parts=DT_FILA.split("-");el.textContent=parts[2]+"/"+parts[1]+"/"+parts[0];}
@@ -551,7 +562,15 @@ function renderLinhaCard(linha){
   var opAtiva=e.opAtiva?OPS.find(function(o){return o.fbKey===e.opAtiva;})||null:null;
   var metaH=opAtiva?getMetaHora(opAtiva.cod,linha):0;
   var totalTurno=e.apts.reduce(function(a,x){return a+(Number(x.real)||0);},0);
-  var totalOpExt=opAtiva?e.apts.filter(function(a){return a.opFbKey===opAtiva.fbKey;}).reduce(function(a,x){return a+(Number(x.real)||0);},0):0;
+  // Total da OP = todos os turnos (usa cache totalOp se disponível)
+  var totalOpExt=0;
+  if(opAtiva){
+    if(e.totalOp&&e.totalOp[opAtiva.fbKey]!==undefined){
+      totalOpExt=e.totalOp[opAtiva.fbKey];
+    } else {
+      totalOpExt=e.apts.filter(function(a){return a.opFbKey===opAtiva.fbKey;}).reduce(function(a,x){return a+(Number(x.real)||0);},0);
+    }
+  }
   var paradaAberta=e.paradas.some(function(p){return !p.horaFim;});
   var statusTxt=paradaAberta?"EM PARADA":opAtiva?"PRODUZINDO":"SEM OP ATIVA";
   var statusCls=paradaAberta?"st-para":opAtiva?"st-prod":"st-idle";
@@ -603,7 +622,7 @@ function renderLinhaCard(linha){
     opsLinha.forEach(function(o){
       var isAtiva=opAtiva&&o.fbKey===opAtiva.fbKey;
       var badgeCls=o.status==="Concluida"?"badge-con":o.status==="Em andamento"?"badge-and":o.status==="Reprogramada"?"badge-rep":"badge-lib";
-      var extTotal=e.apts.filter(function(a){return a.opFbKey===o.fbKey;}).reduce(function(a,x){return a+(Number(x.real)||0);},0);
+      var extTotal=(e.totalOp&&e.totalOp[o.fbKey]!==undefined)?e.totalOp[o.fbKey]:e.apts.filter(function(a){return a.opFbKey===o.fbKey;}).reduce(function(a,x){return a+(Number(x.real)||0);},0);
       var pct=o.prog?Math.min(Math.round(extTotal/(Number(o.prog)||1)*100),100):0;
       var corPct=pct>=90?"#024f2b":pct>=60?"#d29922":"#4a664a";
       h+='<div class="fila-op'+(isAtiva?" ativa":"")+(o.status==="Concluida"?" concluida":"")+'" data-fk="'+o.fbKey+'" data-l="'+linha+'" onclick="selecionarOpAtiva(this.dataset.l,this.dataset.fk)">';
@@ -735,6 +754,8 @@ function salvarApt(){
   DB.ref("extrusao_apts").push(apt).then(function(){
     fM("m-apt");
     toast("Apontamento salvo!","ok");
+    // Atualiza total da OP em todos os turnos
+    if(op) carregarTotalOp(linhaAtiva, op.fbKey);
     setTimeout(function(){gerarPrint(linhaAtiva);},600);
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
