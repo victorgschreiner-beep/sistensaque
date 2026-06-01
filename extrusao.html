@@ -169,10 +169,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
 <!-- LOGIN -->
 <div id="login-screen">
   <div class="login-box">
-    <div class="login-logo">
-      <h1>🏭 Raguife</h1>
-      <p>Módulo de Extrusão</p>
-    </div>
+    <div class="login-logo"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyODAgODAiIHdpZHRoPSIyODAiIGhlaWdodD0iODAiPgogIDwhLS0gQmxvY28gdmVyZGUgZXNjdXJvIGNvbSAicmFndWlmZSIgLS0+CiAgPHJlY3QgeD0iMCIgeT0iMCIgd2lkdGg9IjE4MCIgaGVpZ2h0PSI3MCIgcng9IjQiIGZpbGw9IiMwMjRmMmIiLz4KICA8dGV4dCB4PSI5MCIgeT0iNDciIGZvbnQtZmFtaWx5PSJBcmlhbCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjM4IiBmb250LXdlaWdodD0iYm9sZCIgZmlsbD0iI2ZmZmZmZiIgdGV4dC1hbmNob3I9Im1pZGRsZSI+cmFndWlmZTwvdGV4dD4KICAKICA8IS0tIFF1YWRyYWRvIGJvcmRhIHZlcmRlIGNsYXJvIC0tPgogIDxyZWN0IHg9IjE4OCIgeT0iMCIgd2lkdGg9IjcwIiBoZWlnaHQ9IjcwIiByeD0iNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNzM5NjMwIiBzdHJva2Utd2lkdGg9IjQiLz4KICAKICA8IS0tIFPDrW1ib2xvICJ3IiBjb20gMyBib2xpbmhhcyAtLT4KICA8IS0tIEJvbGluaGEgZXNxdWVyZGEgLS0+CiAgPGNpcmNsZSBjeD0iMjA4IiBjeT0iMjQiIHI9IjciIGZpbGw9IiM3Mzk2MzAiLz4KICA8IS0tIEJvbGluaGEgY2VudHJvIC0tPgogIDxjaXJjbGUgY3g9IjIyMyIgY3k9IjI0IiByPSI3IiBmaWxsPSIjNzM5NjMwIi8+CiAgPCEtLSBCb2xpbmhhIGRpcmVpdGEgLS0+CiAgPGNpcmNsZSBjeD0iMjM4IiBjeT0iMjQiIHI9IjciIGZpbGw9IiM3Mzk2MzAiLz4KICA8IS0tIEN1cnZhcyBkbyB3IC0tPgogIDxwYXRoIGQ9Ik0yMDEgMzUgUTIwOCA1MiAyMTUgNDAgUTIyMyA1MiAyMzEgNDAgUTIzOCA1MiAyNDUgMzUiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzczOTYzMCIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPC9zdmc+Cg==" style="height:56px;display:block;margin:0 auto 4px" alt="Raguife"><p style="color:#739630;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-top:8px;text-align:center">Módulo de Extrusão</p></div>
     <input type="text" id="lg-login" placeholder="Login" autocomplete="username" onkeydown="if(event.key==='Enter')fazerLogin()">
     <input type="password" id="lg-senha" placeholder="Senha" autocomplete="current-password" onkeydown="if(event.key==='Enter')fazerLogin()">
     <button class="btn-login" onclick="fazerLogin()">Entrar</button>
@@ -190,7 +187,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
 <div id="app">
   <div class="topbar">
     <div class="topbar-left">
-      <span class="topbar-logo">🏭 Raguife — Extrusão</span>
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyODAgODAiIHdpZHRoPSIyODAiIGhlaWdodD0iODAiPgogIDwhLS0gQmxvY28gdmVyZGUgZXNjdXJvIGNvbSAicmFndWlmZSIgLS0+CiAgPHJlY3QgeD0iMCIgeT0iMCIgd2lkdGg9IjE4MCIgaGVpZ2h0PSI3MCIgcng9IjQiIGZpbGw9IiMwMjRmMmIiLz4KICA8dGV4dCB4PSI5MCIgeT0iNDciIGZvbnQtZmFtaWx5PSJBcmlhbCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjM4IiBmb250LXdlaWdodD0iYm9sZCIgZmlsbD0iI2ZmZmZmZiIgdGV4dC1hbmNob3I9Im1pZGRsZSI+cmFndWlmZTwvdGV4dD4KICAKICA8IS0tIFF1YWRyYWRvIGJvcmRhIHZlcmRlIGNsYXJvIC0tPgogIDxyZWN0IHg9IjE4OCIgeT0iMCIgd2lkdGg9IjcwIiBoZWlnaHQ9IjcwIiByeD0iNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNzM5NjMwIiBzdHJva2Utd2lkdGg9IjQiLz4KICAKICA8IS0tIFPDrW1ib2xvICJ3IiBjb20gMyBib2xpbmhhcyAtLT4KICA8IS0tIEJvbGluaGEgZXNxdWVyZGEgLS0+CiAgPGNpcmNsZSBjeD0iMjA4IiBjeT0iMjQiIHI9IjciIGZpbGw9IiM3Mzk2MzAiLz4KICA8IS0tIEJvbGluaGEgY2VudHJvIC0tPgogIDxjaXJjbGUgY3g9IjIyMyIgY3k9IjI0IiByPSI3IiBmaWxsPSIjNzM5NjMwIi8+CiAgPCEtLSBCb2xpbmhhIGRpcmVpdGEgLS0+CiAgPGNpcmNsZSBjeD0iMjM4IiBjeT0iMjQiIHI9IjciIGZpbGw9IiM3Mzk2MzAiLz4KICA8IS0tIEN1cnZhcyBkbyB3IC0tPgogIDxwYXRoIGQ9Ik0yMDEgMzUgUTIwOCA1MiAyMTUgNDAgUTIyMyA1MiAyMzEgNDAgUTIzOCA1MiAyNDUgMzUiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzczOTYzMCIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPC9zdmc+Cg==" style="height:36px;display:block" alt="Raguife"><span style="color:rgba(255,255,255,.5);font-size:12px;margin-left:4px">Extrusão</span>
       <span class="topbar-badge" id="top-turno">T1</span>
       <span class="topbar-badge" style="background:rgba(255,255,255,.1);cursor:pointer;display:flex;align-items:center;gap:6px" onclick="document.getElementById('dt-fila-inp').click()">
         📅 <span id="top-data-fila"></span>
@@ -199,7 +196,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     </div>
     <div class="topbar-right">
       <span class="top-user" id="top-user"></span>
-      <button class="btn-sair" onclick="sair()">Sair</button>
+      <button id="btn-admin" onclick="abrirAdmin()" style="display:none;background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;margin-right:4px">🔧 Admin</button><button class="btn-sair" onclick="sair()">Sair</button>
     </div>
   </div>
 
@@ -219,6 +216,12 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       <button class="btn-resumo" onclick="abrirResumo()">📋 Resumo Turno</button>
     </div>
 
+    <div style="background:#fff3cd;border:2px solid #d29922;border-radius:10px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
+      <span style="font-size:20px">📅</span>
+      <span style="font-size:13px;font-weight:600;color:#856404;flex:1">Visualizando fila do dia:</span>
+      <input type="date" id="dt-fila-vis" style="padding:8px 12px;border:2px solid #d29922;border-radius:8px;font-size:14px;font-weight:700;color:#024f2b;outline:none;cursor:pointer" onchange="trocarDataFila(this.value)">
+      <button onclick="trocarDataFila(hoje())" style="background:#d29922;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Hoje</button>
+    </div>
     <div class="linhas-grid" id="linhas-grid"></div>
   </div>
 </div>
@@ -267,6 +270,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       <input class="fi" type="text" id="para-busca" placeholder="Digite para filtrar..." oninput="filtrarParadas(this.value)">
     </div>
     <div class="p-sel-lbl" id="para-sel-lbl">Nenhum motivo selecionado</div>
+    <div id="para-setup-aviso" style="display:none;background:#fff3cd;border-radius:8px;padding:8px 12px;font-size:12px;color:#856404;margin-bottom:8px">⚙️ <strong>Parada de Setup:</strong> Após salvar, você poderá selecionar a próxima OP da fila.</div>
     <div class="p-scroll" id="para-lista"></div>
     <input type="hidden" id="para-cod">
     <input type="hidden" id="para-desc">
@@ -310,6 +314,57 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
   </div>
 </div>
 
+
+<!-- MODAL PRÓXIMA OP (setup) -->
+<div class="ov" id="m-prox-op">
+  <div class="modal">
+    <div class="mh">🔄 Próxima OP após Setup — <span id="prox-op-linha"></span></div>
+    <div style="background:#fff3cd;border-radius:8px;padding:10px;margin-bottom:14px;font-size:12px;color:#856404">
+      <strong>Parada de Setup registrada.</strong> Selecione qual será a próxima OP na extrusora:
+    </div>
+    <div id="prox-op-lista"></div>
+    <div class="mr">
+      <button class="btn-cancel" onclick="fM('m-prox-op')">Pular</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CORREÇÃO ADMIN -->
+<div class="ov" id="m-admin-corr">
+  <div class="modal" style="width:500px;max-width:98vw">
+    <div class="mh">🔧 Correção Admin — <span id="adm-corr-tipo"></span></div>
+    <div id="adm-corr-corpo"></div>
+    <div class="mr" id="adm-corr-btns"></div>
+  </div>
+</div>
+
+<!-- MODAL LISTA APONTAMENTOS ADMIN -->
+<div class="ov" id="m-admin-lista">
+  <div class="modal" style="width:600px;max-width:98vw">
+    <div class="mh">🔧 Admin — Apontamentos e Paradas</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <div class="fg" style="flex:1"><label class="fl">Data</label><input class="fi" type="date" id="adm-dt"></div>
+      <div class="fg" style="flex:1"><label class="fl">Linha</label>
+        <select class="fi" id="adm-ln">
+          <option value="">Todas</option>
+          <option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option>
+          <option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:6px;padding-bottom:12px">
+        <button class="btn-ok" style="padding:10px 16px" onclick="admBuscar()">🔍 Buscar</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button onclick="admAba('apts')" id="adm-tab-apts" style="flex:1;padding:8px;border:2px solid #024f2b;background:#024f2b;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">⚡ Apontamentos</button>
+      <button onclick="admAba('paradas')" id="adm-tab-paradas" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🔴 Paradas</button>
+    </div>
+    <div id="adm-lista-corpo" style="max-height:400px;overflow-y:auto"></div>
+    <div class="mr" style="margin-top:12px">
+      <button class="btn-cancel" onclick="fM('m-admin-lista')">Fechar</button>
+    </div>
+  </div>
+</div>
 <div id="toast"></div>
 
 <script>
@@ -408,11 +463,9 @@ function iniciarApp(){
 // ── FIREBASE DATA ─────────────────────────────────────────
 function atualizarDataFila(){
   var el=G("top-data-fila");
-  if(!el) return;
-  var parts=DT_FILA.split("-");
-  el.textContent=parts[2]+"/"+parts[1]+"/"+parts[0];
-  var inp=G("dt-fila-inp");
-  if(inp) inp.value=DT_FILA;
+  if(el){var parts=DT_FILA.split("-");el.textContent=parts[2]+"/"+parts[1]+"/"+parts[0];}
+  var inp=G("dt-fila-inp"); if(inp) inp.value=DT_FILA;
+  var vis=G("dt-fila-vis"); if(vis) vis.value=DT_FILA;
 }
 
 function trocarDataFila(dt){
@@ -620,6 +673,7 @@ function abrirSelOp(linha){
 }
 
 function selecionarOpAtiva(linha,fbKey){
+  toast("OP selecionada","ok");
   if(!EST[linha]) return;
   EST[linha].opAtiva=fbKey;
   // Persiste no Firebase
@@ -1014,7 +1068,222 @@ function gerarPrint(linha){
 }
 
 
-document.addEventListener("keydown",function(e){if(e.key==="Escape")["m-apt","m-para","m-setup","m-resumo","m-sel-op"].forEach(fM);});
+document.addEventListener("keydown",function(e){if(e.key==="Escape")["m-apt","m-para","m-setup","m-resumo","m-sel-op","m-prox-op","m-admin-corr","m-admin-lista"].forEach(fM);});
+
+// ── PRÓXIMA OP (setup) ────────────────────────────────────
+function abrirProxOp(linha){
+  linhaAtiva=linha;
+  G("prox-op-linha").textContent=linha.replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");
+  var ops=getOpsLinha(linha).filter(function(o){return o.status!=="Concluida";});
+  var atualFk=EST[linha]&&EST[linha].opAtiva;
+  var h="";
+  if(!ops.length){h='<div style="text-align:center;padding:20px;color:#4a664a;font-size:13px">Nenhuma OP pendente na fila</div>';}
+  ops.forEach(function(o){
+    var isAt=o.fbKey===atualFk;
+    h+='<div class="op-sel-item'+(isAt?' ativa':'')+'" data-fk="'+o.fbKey+'" data-l="'+linha+'" onclick="selecionarOpAtiva(this.dataset.l,this.dataset.fk);G(this.dataset.close).classList.remove(\"on\")" data-close="m-prox-op">';
+    h+='<div class="op-sel-dot" style="background:'+(o.status==="Em andamento"?"#d29922":"#aaa")+'"></div>';
+    h+='<div class="op-sel-info">';
+    h+='<div class="op-sel-num">'+o.id+(isAt?" ← ATUAL":"")+'</div>';
+    h+='<div class="op-sel-desc">'+(o.desc||o.cod)+'</div>';
+    h+='<div class="op-sel-sub">Prog: '+fN(o.prog)+' kg · Meta: '+fN(getMetaHora(o.cod,linha))+' kg/h</div>';
+    h+='</div></div>';
+  });
+  G("prox-op-lista").innerHTML=h;
+  aM("m-prox-op");
+}
+
+// ── ADMIN ─────────────────────────────────────────────────
+var ADM_ABA="apts";
+var ADM_DADOS={apts:[],paradas:[]};
+
+function abrirAdmin(){
+  if(!SES||SES.perfil!=="admin") return;
+  G("adm-dt").value=DT_FILA||hoje();
+  G("adm-ln").value="";
+  G("adm-lista-corpo").innerHTML="";
+  aM("m-admin-lista");
+}
+
+function admAba(aba){
+  ADM_ABA=aba;
+  G("adm-tab-apts").style.background=aba==="apts"?"#024f2b":"#fff";
+  G("adm-tab-apts").style.color=aba==="apts"?"#fff":"#024f2b";
+  G("adm-tab-apts").style.borderColor=aba==="apts"?"#024f2b":"#d4e8d4";
+  G("adm-tab-paradas").style.background=aba==="paradas"?"#024f2b":"#fff";
+  G("adm-tab-paradas").style.color=aba==="paradas"?"#fff":"#024f2b";
+  G("adm-tab-paradas").style.borderColor=aba==="paradas"?"#024f2b":"#d4e8d4";
+  admRenderLista();
+}
+
+function admBuscar(){
+  if(!DB){toast("Firebase não conectado","err");return;}
+  var dt=G("adm-dt").value||hoje();
+  var ln=G("adm-ln").value;
+  G("adm-lista-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#4a664a">Buscando...</div>';
+
+  Promise.all([
+    DB.ref("extrusao_apts").orderByChild("data").equalTo(dt).once("value"),
+    DB.ref("extrusao_paradas").orderByChild("data").equalTo(dt).once("value")
+  ]).then(function(results){
+    ADM_DADOS.apts=[];
+    ADM_DADOS.paradas=[];
+    if(results[0].exists()) results[0].forEach(function(c){var v=c.val();v.fbKey=c.key;ADM_DADOS.apts.push(v);});
+    if(results[1].exists()) results[1].forEach(function(c){var v=c.val();v.fbKey=c.key;ADM_DADOS.paradas.push(v);});
+    if(ln){
+      ADM_DADOS.apts=ADM_DADOS.apts.filter(function(a){return a.linha===ln;});
+      ADM_DADOS.paradas=ADM_DADOS.paradas.filter(function(p){return p.linha===ln;});
+    }
+    ADM_DADOS.apts.sort(function(a,b){return (a.linha+a.horaIni)>(b.linha+b.horaIni)?1:-1;});
+    ADM_DADOS.paradas.sort(function(a,b){return (a.linha+a.horaIni)>(b.linha+b.horaIni)?1:-1;});
+    admRenderLista();
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+function admRenderLista(){
+  var corpo=G("adm-lista-corpo");
+  var lista=ADM_ABA==="apts"?ADM_DADOS.apts:ADM_DADOS.paradas;
+  if(!lista.length){corpo.innerHTML='<div style="text-align:center;padding:20px;color:#4a664a;font-size:13px">Nenhum registro encontrado</div>';return;}
+  var h="";
+  lista.forEach(function(item){
+    var nomeL=(item.linha||"").replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");
+    h+='<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;border:1px solid #e8f0e8;margin-bottom:6px;font-size:12px">';
+    h+='<div style="flex:1">';
+    if(ADM_ABA==="apts"){
+      h+='<div style="font-weight:700;color:#024f2b">'+nomeL+' · '+item.horaIni+' → '+item.horaFim+'</div>';
+      h+='<div style="color:#333">'+(item.cod||"")+'</div>';
+      h+='<div style="color:#739630;font-weight:700">'+fN(item.real)+' kg · T'+item.turno+'</div>';
+    } else {
+      h+='<div style="font-weight:700;color:#c0392b">'+nomeL+' · '+item.horaIni+' → '+(item.horaFim||"em andamento")+'</div>';
+      h+='<div style="color:#333">'+item.descricao+'</div>';
+      h+='<div style="color:#4a664a">'+item.minutos+' min · T'+item.turno+'</div>';
+    }
+    h+='</div>';
+    h+='<div style="display:flex;gap:4px">';
+    h+='<div style="display:flex;gap:4px">';
+    h+='<button data-fk="'+item.fbKey+'" onclick="admEditar(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">✏️ Editar</button>';
+    h+='<button data-fk="'+item.fbKey+'" onclick="admExcluir(this.dataset.fk)" style="background:#c0392b;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">🗑 Excluir</button>';
+    h+='</div></div>';
+    h+='</div></div>';
+  });
+  corpo.innerHTML=h;
+}
+
+function admEditar(fbKey){
+  var item=ADM_ABA==="apts"
+    ?ADM_DADOS.apts.find(function(a){return a.fbKey===fbKey;})
+    :ADM_DADOS.paradas.find(function(p){return p.fbKey===fbKey;});
+  if(!item) return;
+
+  G("adm-corr-tipo").textContent=ADM_ABA==="apts"?"Apontamento":"Parada";
+  var nomeL=(item.linha||"").replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");
+
+  var h="";
+  h+='<div style="background:#f5f9f2;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#4a664a">';
+  h+='<strong>'+nomeL+'</strong> · '+item.horaIni+' → '+(item.horaFim||"...")+'</div>';
+
+  if(ADM_ABA==="apts"){
+    h+='<div style="display:flex;gap:10px">';
+    h+='<div class="fg" style="flex:1"><label class="fl">Hora Inicial</label><input class="fi" type="time" id="adm-hi" value="'+item.horaIni+'"></div>';
+    h+='<div class="fg" style="flex:1"><label class="fl">Hora Final</label><input class="fi" type="time" id="adm-hf" value="'+(item.horaFim||"")+'"></div>';
+    h+='</div>';
+    h+='<div class="fg"><label class="fl">Quantidade (kg)</label><input class="fi fi-big" type="number" id="adm-real" value="'+item.real+'"></div>';
+    h+='<div class="fg"><label class="fl">Linha</label><select class="fi" id="adm-linha-sel">';
+    ["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"].forEach(function(l){
+      h+='<option value="'+l+'"'+(l===item.linha?" selected":"")+'>'+l+'</option>';
+    });
+    h+='</select></div>';
+    h+='<div class="fg"><label class="fl">OP</label><select class="fi" id="adm-op-sel">';
+    OPS.forEach(function(o){
+      h+='<option value="'+o.fbKey+'"'+(o.fbKey===item.opFbKey?" selected":"")+'>'+o.id+' — '+(o.desc||o.cod)+'</option>';
+    });
+    h+='</select></div>';
+  } else {
+    h+='<div style="display:flex;gap:10px">';
+    h+='<div class="fg" style="flex:1"><label class="fl">Hora Início</label><input class="fi" type="time" id="adm-hi" value="'+item.horaIni+'"></div>';
+    h+='<div class="fg" style="flex:1"><label class="fl">Hora Retorno</label><input class="fi" type="time" id="adm-hf" value="'+(item.horaFim||"")+'"></div>';
+    h+='</div>';
+    h+='<div class="fg"><label class="fl">Motivo</label>';
+    h+='<input class="fi" type="text" id="adm-busca-p" placeholder="Buscar motivo..." oninput="admFiltrarParadas(this.value)">';
+    h+='<div style="font-size:12px;color:#024f2b;font-weight:600;margin:4px 0 6px" id="adm-p-sel-lbl">Selecionado: '+item.descricao+'</div>';
+    h+='<div class="p-scroll" id="adm-p-lista" style="max-height:180px"></div>';
+    h+='<input type="hidden" id="adm-p-cod" value="'+item.codMotivo+'">';
+    h+='<input type="hidden" id="adm-p-desc" value="'+item.descricao+'">';
+    h+='</div>';
+  }
+
+  G("adm-corr-corpo").innerHTML=h;
+
+  if(ADM_ABA==="paradas") admFiltrarParadas("");
+
+  G('adm-corr-btns').innerHTML='<button class="btn-cancel" onclick="fM(\"m-admin-corr\")">Cancelar</button><button class="btn-ok" data-fk="'+fbKey+'" onclick="admSalvar(this.dataset.fk)">✔ Salvar Correção</button>';
+
+  aM("m-admin-corr");
+}
+
+function admFiltrarParadas(v){
+  var f=v.toLowerCase();
+  var grupos={};
+  PARADAS.forEach(function(p){
+    if(!f||p.desc.toLowerCase().includes(f)||p.grupo.toLowerCase().includes(f)){
+      if(!grupos[p.grupo]) grupos[p.grupo]=[];
+      grupos[p.grupo].push(p);
+    }
+  });
+  var h="";
+  Object.keys(grupos).sort().forEach(function(g){
+    h+='<div class="grupo-lbl">'+g+'</div>';
+    grupos[g].forEach(function(p){
+      h+='<div class="p-opt" data-cod="'+p.cod+'" data-desc="'+p.desc+'" onclick="admSelParada(this)">'+p.desc+'</div>';
+    });
+  });
+  var el=G("adm-p-lista");
+  if(el) el.innerHTML=h||"<div style='padding:10px;color:#999'>Sem resultados</div>";
+}
+
+function admSelParada(el){
+  G("adm-p-cod").value=el.dataset.cod;
+  G("adm-p-desc").value=el.dataset.desc||el.textContent.trim();
+  G("adm-p-sel-lbl").textContent="Selecionado: "+(el.dataset.desc||el.textContent.trim());
+  document.querySelectorAll("#adm-p-lista .p-opt").forEach(function(e){e.classList.remove("sel");});
+  el.classList.add("sel");
+}
+
+function admSalvar(fbKey){
+  if(!DB){toast("Firebase não conectado","err");return;}
+  var updates={};
+  if(ADM_ABA==="apts"){
+    updates.horaIni=G("adm-hi").value;
+    updates.horaFim=G("adm-hf").value;
+    updates.real=parseInt(G("adm-real").value)||0;
+    updates.linha=G("adm-linha-sel").value;
+    var opSel=OPS.find(function(o){return o.fbKey===G("adm-op-sel").value;});
+    if(opSel){updates.opFbKey=opSel.fbKey;updates.opNum=opSel.id;updates.cod=opSel.cod;}
+    DB.ref("extrusao_apts/"+fbKey).update(updates).then(function(){
+      fM("m-admin-corr");toast("Apontamento corrigido!","ok");admBuscar();
+    }).catch(function(e){toast("Erro: "+e.message,"err");});
+  } else {
+    updates.horaIni=G("adm-hi").value;
+    updates.horaFim=G("adm-hf").value;
+    updates.codMotivo=parseInt(G("adm-p-cod").value)||0;
+    updates.descricao=G("adm-p-desc").value;
+    if(updates.horaIni&&updates.horaFim){
+      var a=updates.horaIni.split(":"),b=updates.horaFim.split(":");
+      updates.minutos=(parseInt(b[0])*60+parseInt(b[1]))-(parseInt(a[0])*60+parseInt(a[1]));
+    }
+    DB.ref("extrusao_paradas/"+fbKey).update(updates).then(function(){
+      fM("m-admin-corr");toast("Parada corrigida!","ok");admBuscar();
+    }).catch(function(e){toast("Erro: "+e.message,"err");});
+  }
+}
+
+function admExcluir(fbKey){
+  if(!confirm("Confirma exclusão deste registro? Esta ação não pode ser desfeita.")) return;
+  if(!DB){toast("Firebase não conectado","err");return;}
+  var ref=ADM_ABA==="apts"?"extrusao_apts/":"extrusao_paradas/";
+  DB.ref(ref+fbKey).remove().then(function(){
+    toast("Registro excluído!","ok");admBuscar();
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
 </script>
 </body>
 </html>
