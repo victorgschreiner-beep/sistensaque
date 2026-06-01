@@ -525,9 +525,12 @@ function carregarExtrusao(){
       renderLinhaCard(linha);
       atualizarBarraTurno();
     });
-    // Recupera OP ativa salva
+    // Recupera OP ativa salva e carrega total de todos os turnos
     DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t).once("value").then(function(s){
-      if(s.exists()) EST[linha].opAtiva=s.val();
+      if(s.exists()){
+        EST[linha].opAtiva=s.val();
+        carregarTotalOp(linha, EST[linha].opAtiva);
+      }
       renderLinhaCard(linha);
     });
   });
@@ -697,6 +700,7 @@ function selecionarOpAtiva(linha,fbKey){
   toast("OP selecionada","ok");
   if(!EST[linha]) return;
   EST[linha].opAtiva=fbKey;
+  carregarTotalOp(linha, fbKey);
   // Persiste no Firebase
   if(DB){
     var dt=hoje(),t=SES.turno;
@@ -749,7 +753,7 @@ function salvarApt(){
   var e=EST[linhaAtiva]||{};
   var op=e.opAtiva?OPS.find(function(o){return o.fbKey===e.opAtiva;}):null;
   var metaH=op?getMetaHora(op.cod,linhaAtiva):0;
-  var apt={id:uid(),linha:linhaAtiva,opFbKey:op?op.fbKey:"",opNum:op?op.id:"",cod:op?op.cod:"",turno:SES.turno,data:hoje(),horaIni:hi,horaFim:hf,real:real,metaH:metaH,obs:G("apt-obs").value||"",operador:SES.login,ts:agora()};
+  var apt={id:uid(),linha:linhaAtiva,opFbKey:op?op.fbKey:"",opNum:op?op.id:"",cod:op?op.cod:"",desc:op?(op.desc||op.cod):"",turno:SES.turno,data:hoje(),horaIni:hi,horaFim:hf,real:real,metaH:metaH,obs:G("apt-obs").value||"",operador:SES.login,ts:agora()};
   if(!DB){toast("Firebase não conectado","err");return;}
   DB.ref("extrusao_apts").push(apt).then(function(){
     fM("m-apt");
@@ -1023,7 +1027,7 @@ function gerarPrint(linha){
     ctx.fillStyle=corEf; ctx.font="bold 12px Segoe UI,Arial";
     ctx.fillText(fN(rAcum), C.rAc+4, y+22);
     ctx.fillStyle="#333"; ctx.font="11px Segoe UI,Arial";
-    ctx.fillText((apt.cod||"").slice(0,18), C.prod+4, y+22);
+    ctx.fillText((apt.desc||apt.cod||"").slice(0,22), C.prod+4, y+22);
 
     // Paradas na mesma linha
     if(pars.length){
