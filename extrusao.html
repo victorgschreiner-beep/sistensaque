@@ -1098,7 +1098,9 @@ var ADM_DADOS={apts:[],paradas:[]};
 
 function abrirAdmin(){
   if(!SES||SES.perfil!=="admin") return;
-  G("adm-dt").value=DT_FILA||hoje();
+  // Padrão: ontem — dia mais comum para correção de paradas
+  var ontem=new Date(); ontem.setDate(ontem.getDate()-1);
+  G("adm-dt").value=ontem.toISOString().slice(0,10);
   G("adm-ln").value="";
   G("adm-lista-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#4a664a">Carregando...</div>';
   aM("m-admin-lista");
