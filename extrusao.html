@@ -1100,8 +1100,9 @@ function abrirAdmin(){
   if(!SES||SES.perfil!=="admin") return;
   G("adm-dt").value=DT_FILA||hoje();
   G("adm-ln").value="";
-  G("adm-lista-corpo").innerHTML="";
+  G("adm-lista-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#4a664a">Carregando...</div>';
   aM("m-admin-lista");
+  admBuscar();
 }
 
 function admAba(aba){
@@ -1159,11 +1160,10 @@ function admRenderLista(){
     }
     h+='</div>';
     h+='<div style="display:flex;gap:4px">';
-    h+='<div style="display:flex;gap:4px">';
     h+='<button data-fk="'+item.fbKey+'" onclick="admEditar(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">✏️ Editar</button>';
     h+='<button data-fk="'+item.fbKey+'" onclick="admExcluir(this.dataset.fk)" style="background:#c0392b;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">🗑 Excluir</button>';
-    h+='</div></div>';
-    h+='</div></div>';
+    h+='</div>';
+    h+='</div>';
   });
   corpo.innerHTML=h;
 }
