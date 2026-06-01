@@ -654,6 +654,7 @@ function renderLinhaCard(linha){
         h+='<span class="hist-hora">'+a.horaIni+' → '+a.horaFim+'</span>';
         h+='<span class="hist-val">'+fN(a.real)+' kg</span>';
         h+='<span class="hist-info" style="color:'+corEf+'">'+ef+'% meta</span>';
+        if(a.opNum) h+='<span style="font-size:10px;color:#739630;font-weight:600;margin-left:4px">'+a.opNum+'</span>';
         h+='</div>';
       } else {
         var p=item.d;
@@ -762,6 +763,21 @@ function abrirApt(linha){
   var opFk=e.opAtiva;
   var op=opFk?OPS.find(function(o){return o.fbKey===opFk;}):null;
   var metaH=op?getMetaHora(op.cod,linha):0;
+
+  // Verifica se o último apontamento foi de uma OP diferente da atual
+  var apts=e.apts||[];
+  var ultApt=apts.length?apts[apts.length-1]:null;
+  if(ultApt && opFk && ultApt.opFbKey && ultApt.opFbKey!==opFk){
+    var opAnt=OPS.find(function(o){return o.fbKey===ultApt.opFbKey;});
+    if(opAnt && opAnt.status!=='Concluida'){
+      if(confirm('A OP anterior '+opAnt.id+' ('+( opAnt.desc||opAnt.cod)+') ainda não foi finalizada.\n\nDeseja finalizá-la agora?')){
+        if(DB) DB.ref('ops/'+opAnt.fbKey).update({status:'Concluida'}).then(function(){
+          toast('OP '+opAnt.id+' finalizada','ok');
+        });
+      }
+    }
+  }
+
   G("apt-linha-nome").textContent=linha.replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");
   G("apt-op-info").innerHTML=op
     ?"<div class=\"ib-num\">OP: "+op.id+"</div><div class=\"ib-desc\">"+(op.desc||op.cod)+"</div><div class=\"ib-sub\">Meta: "+fN(metaH)+" kg/h</div>"
