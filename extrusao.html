@@ -356,6 +356,9 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:10px">
+      <input type="text" id="adm-busca-op" placeholder="Buscar nº da OP..." class="fi" style="flex:1;padding:8px 12px;font-size:13px" oninput="admFiltrarOps(this.value)">
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
       <button onclick="admAba('apts')" id="adm-tab-apts" style="flex:1;padding:8px;border:2px solid #024f2b;background:#024f2b;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">⚡ Apontamentos</button>
       <button onclick="admAba('paradas')" id="adm-tab-paradas" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🔴 Paradas</button>
       <button onclick="admAba('ops')" id="adm-tab-ops" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📋 Ordens</button>
@@ -669,9 +672,13 @@ function renderLinhaCard(linha){
         h+='</div>';
       } else {
         var p=item.d;
-        h+='<div class="hist-item hist-para">';
+        var opAtivaSt=opAtiva?opAtiva.status:'';
+        h+='<div class="hist-item hist-para" style="justify-content:space-between">';
         h+='<span class="hist-hora">'+p.horaIni+' → '+(p.horaFim||'...')+'</span>';
-        h+='<span class="hist-info">'+p.descricao+'</span>';
+        h+='<span class="hist-info" style="flex:1">'+p.descricao+'</span>';
+        if(opAtivaSt!=='Concluida'){
+          h+='<button data-fk="'+p.fbKey+'" onclick="editarParadaOp(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0">✏️</button>';
+        }
         h+='</div>';
       }
     });
@@ -740,6 +747,17 @@ function selecionarOpAtiva(linha,fbKey){
     }
   }
   fazerTroca();
+}
+
+function editarParadaOp(fbKey){
+  // Busca a parada e abre modal de edição
+  DB.ref("extrusao_paradas/"+fbKey).once("value").then(function(s){
+    if(!s.exists()){toast("Parada não encontrada","err");return;}
+    var p=s.val(); p.fbKey=fbKey;
+    ADM_ABA="paradas";
+    ADM_DADOS.paradas=[p];
+    admEditar(fbKey);
+  });
 }
 
 function abrirParadaSetup(linha){
@@ -1173,6 +1191,47 @@ function gerarPrint(linha){
 }
 
 
+var ADM_OPS_TODOS=[];
+
+function admFiltrarOps(v){
+  var f=v.toLowerCase().trim();
+  var filtradas=f?ADM_OPS_TODOS.filter(function(o){
+    return o.id.toLowerCase().includes(f)||(o.desc||o.cod||"").toLowerCase().includes(f);
+  }):ADM_OPS_TODOS;
+  admRenderOps(filtradas);
+}
+
+function admRenderOps(ops){
+  if(!ops.length){G("adm-lista-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#4a664a">Nenhuma ordem encontrada</div>';return;}
+  var h="";
+  ops.forEach(function(o){
+    var corSt=o.status==="Concluida"?"#024f2b":o.status==="Em andamento"?"#d29922":o.status==="Reprogramada"?"#739630":"#666";
+    var bgSt=o.status==="Concluida"?"rgba(2,79,43,.08)":o.status==="Em andamento"?"rgba(210,153,34,.08)":"rgba(74,102,74,.05)";
+    h+='<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;border:1px solid #e8f0e8;margin-bottom:6px;font-size:12px;background:'+bgSt+'">';
+    h+='<div style="flex:1">';
+    h+='<div style="font-weight:700;color:#024f2b">'+o.id+' <span style="font-size:10px;color:#666">'+o.data+'</span></div>';
+    h+='<div style="color:#333;margin-top:1px">'+(o.desc||o.cod||"")+'</div>';
+    h+='<div style="margin-top:2px;display:flex;gap:8px">';
+    h+='<span style="font-size:10px;color:#4a664a">'+o.linha+'</span>';
+    h+='<span style="font-size:10px;font-weight:700;color:'+corSt+'">'+o.status+'</span>';
+    h+='<span style="font-size:10px;color:#4a664a">Prog: '+fN(o.prog)+' kg · Real: '+fN(o.real)+' kg</span>';
+    h+='</div></div>';
+    h+='<div style="display:flex;flex-direction:column;gap:4px">';
+    h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" data-desc="'+(o.desc||o.cod)+'" onclick="admVerApts(this.dataset.fk,this.dataset.id,this.dataset.desc)" style="background:#024f2b;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📋 Apontamentos</button>';
+    if(o.status==="Concluida"){
+      h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" onclick="admReopenOp(this.dataset.fk,this.dataset.id)" style="background:#d29922;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">↩ Reabrir</button>';
+    }
+    if(o.status==="Liberada"||o.status==="Reprogramada"){
+      h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" onclick="admReopenOp(this.dataset.fk,this.dataset.id)" style="background:#739630;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">▶ Iniciar</button>';
+    }
+    if(o.status==="Em andamento"){
+      h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" onclick="admCloseOp(this.dataset.fk,this.dataset.id)" style="background:#024f2b;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✔ Concluir</button>';
+    }
+    h+='</div></div>';
+  });
+  G("adm-lista-corpo").innerHTML=h;
+}
+
 function admBuscarOps(){
   if(!DB) return;
   var ln=G("adm-ln").value;
@@ -1196,36 +1255,9 @@ function admBuscarOps(){
       if(oa!==ob) return oa-ob;
       return (b.data||"")>(a.data||"")?1:-1;
     });
-
-    if(!ops.length){corpo.innerHTML='<div style="text-align:center;padding:20px;color:#4a664a">Nenhuma ordem encontrada</div>';return;}
-
-    var h="";
-    ops.forEach(function(o){
-      var corSt=o.status==="Concluida"?"#024f2b":o.status==="Em andamento"?"#d29922":o.status==="Reprogramada"?"#739630":"#666";
-      var bgSt=o.status==="Concluida"?"rgba(2,79,43,.08)":o.status==="Em andamento"?"rgba(210,153,34,.08)":"rgba(74,102,74,.05)";
-      h+='<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;border:1px solid #e8f0e8;margin-bottom:6px;font-size:12px;background:'+bgSt+'">';
-      h+='<div style="flex:1">';
-      h+='<div style="font-weight:700;color:#024f2b">'+o.id+' <span style="font-size:10px;color:#666">'+o.data+'</span></div>';
-      h+='<div style="color:#333;margin-top:1px">'+(o.desc||o.cod||"")+'</div>';
-      h+='<div style="margin-top:2px;display:flex;gap:8px">';
-      h+='<span style="font-size:10px;color:#4a664a">'+o.linha+'</span>';
-      h+='<span style="font-size:10px;font-weight:700;color:'+corSt+'">'+o.status+'</span>';
-      h+='<span style="font-size:10px;color:#4a664a">Prog: '+fN(o.prog)+' kg · Real: '+fN(o.real)+' kg</span>';
-      h+='</div></div>';
-      h+='<div style="display:flex;flex-direction:column;gap:4px">';
-      h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" data-desc="'+(o.desc||o.cod)+'" onclick="admVerApts(this.dataset.fk,this.dataset.id,this.dataset.desc)" style="background:#024f2b;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📋 Apontamentos</button>';
-      if(o.status==="Concluida"){
-        h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" onclick="admReopenOp(this.dataset.fk,this.dataset.id)" style="background:#d29922;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">↩ Reabrir</button>';
-      }
-      if(o.status==="Liberada"||o.status==="Reprogramada"){
-        h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" onclick="admReopenOp(this.dataset.fk,this.dataset.id)" style="background:#739630;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">▶ Iniciar</button>';
-      }
-      if(o.status==="Em andamento"){
-        h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" onclick="admCloseOp(this.dataset.fk,this.dataset.id)" style="background:#024f2b;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✔ Concluir</button>';
-      }
-      h+='</div></div>';
-    });
-    corpo.innerHTML=h;
+    ADM_OPS_TODOS=ops;
+    if(G("adm-busca-op")) G("adm-busca-op").value="";
+    admRenderOps(ops);
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
