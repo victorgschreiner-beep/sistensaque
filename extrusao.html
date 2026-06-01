@@ -450,6 +450,8 @@ function iniciarApp(){
   if(!LINHAS_USER.length) LINHAS_USER=["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
   LINHAS_USER.forEach(function(l){EST[l]={opAtiva:null,apts:[],paradas:[]};});
   G("top-user").textContent=SES.nome;
+  var btnAdm=G("btn-admin");
+  if(btnAdm) btnAdm.style.display=SES.perfil==="admin"?"":"none";
   G("top-turno").textContent="Turno "+SES.turno;
   G("linhas-grid").style.gridTemplateColumns=LINHAS_USER.length===1?"1fr":"1fr 1fr";
   DT_FILA=hoje();
