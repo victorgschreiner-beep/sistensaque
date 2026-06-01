@@ -341,7 +341,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
 <!-- MODAL LISTA APONTAMENTOS ADMIN -->
 <div class="ov" id="m-admin-lista" style="z-index:250">
   <div class="modal" style="width:600px;max-width:98vw">
-    <div class="mh">🔧 Admin — Apontamentos e Paradas</div>
+    <div class="mh">🔧 Admin — Gestão</div>
     <div style="display:flex;gap:8px;margin-bottom:12px">
       <div class="fg" style="flex:1"><label class="fl">Data</label><input class="fi" type="date" id="adm-dt"></div>
       <div class="fg" style="flex:1"><label class="fl">Linha</label>
@@ -358,6 +358,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <button onclick="admAba('apts')" id="adm-tab-apts" style="flex:1;padding:8px;border:2px solid #024f2b;background:#024f2b;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">⚡ Apontamentos</button>
       <button onclick="admAba('paradas')" id="adm-tab-paradas" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🔴 Paradas</button>
+      <button onclick="admAba('ops')" id="adm-tab-ops" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📋 Ordens</button>
     </div>
     <div id="adm-lista-corpo" style="max-height:400px;overflow-y:auto"></div>
     <div class="mr" style="margin-top:12px">
@@ -1162,6 +1163,79 @@ function gerarPrint(linha){
 }
 
 
+function admBuscarOps(){
+  if(!DB) return;
+  var ln=G("adm-ln").value;
+  var corpo=G("adm-lista-corpo");
+  corpo.innerHTML='<div style="text-align:center;padding:20px;color:#4a664a">Buscando ordens...</div>';
+
+  var query=ln
+    ? DB.ref("ops").orderByChild("linha").equalTo(ln)
+    : DB.ref("ops").orderByChild("data").startAt("2026-01-01");
+
+  query.once("value").then(function(s){
+    var ops=[];
+    if(s.exists()) s.forEach(function(c){
+      var o=c.val(); o.fbKey=c.key;
+      if(!ln || o.linha===ln) ops.push(o);
+    });
+    // Ordena: Em andamento primeiro, depois Liberada, depois Reprogramada, depois Concluida
+    var ordem={Liberada:0,"Em andamento":1,Reprogramada:2,Concluida:3};
+    ops.sort(function(a,b){
+      var oa=ordem[a.status]||0, ob=ordem[b.status]||0;
+      if(oa!==ob) return oa-ob;
+      return (b.data||"")>(a.data||"")?1:-1;
+    });
+
+    if(!ops.length){corpo.innerHTML='<div style="text-align:center;padding:20px;color:#4a664a">Nenhuma ordem encontrada</div>';return;}
+
+    var h="";
+    ops.forEach(function(o){
+      var corSt=o.status==="Concluida"?"#024f2b":o.status==="Em andamento"?"#d29922":o.status==="Reprogramada"?"#739630":"#666";
+      var bgSt=o.status==="Concluida"?"rgba(2,79,43,.08)":o.status==="Em andamento"?"rgba(210,153,34,.08)":"rgba(74,102,74,.05)";
+      h+='<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;border:1px solid #e8f0e8;margin-bottom:6px;font-size:12px;background:'+bgSt+'">';
+      h+='<div style="flex:1">';
+      h+='<div style="font-weight:700;color:#024f2b">'+o.id+' <span style="font-size:10px;color:#666">'+o.data+'</span></div>';
+      h+='<div style="color:#333;margin-top:1px">'+(o.desc||o.cod||"")+'</div>';
+      h+='<div style="margin-top:2px;display:flex;gap:8px">';
+      h+='<span style="font-size:10px;color:#4a664a">'+o.linha+'</span>';
+      h+='<span style="font-size:10px;font-weight:700;color:'+corSt+'">'+o.status+'</span>';
+      h+='<span style="font-size:10px;color:#4a664a">Prog: '+fN(o.prog)+' kg · Real: '+fN(o.real)+' kg</span>';
+      h+='</div></div>';
+      h+='<div style="display:flex;flex-direction:column;gap:4px">';
+      if(o.status==="Concluida"){
+        h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" onclick="admReopenOp(this.dataset.fk,this.dataset.id)" style="background:#d29922;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">↩ Reabrir</button>';
+      }
+      if(o.status==="Liberada"||o.status==="Reprogramada"){
+        h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" onclick="admReopenOp(this.dataset.fk,this.dataset.id)" style="background:#739630;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">▶ Iniciar</button>';
+      }
+      if(o.status==="Em andamento"){
+        h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" onclick="admCloseOp(this.dataset.fk,this.dataset.id)" style="background:#024f2b;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✔ Concluir</button>';
+      }
+      h+='</div></div>';
+    });
+    corpo.innerHTML=h;
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+function admReopenOp(fbKey,id){
+  if(!confirm("Reabrir OP "+id+" para Em andamento?")) return;
+  if(!DB){toast("Firebase não conectado","err");return;}
+  DB.ref("ops/"+fbKey).update({status:"Em andamento"}).then(function(){
+    toast("OP "+id+" reaberta!","ok");
+    admBuscarOps();
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+function admCloseOp(fbKey,id){
+  if(!confirm("Concluir OP "+id+"?")) return;
+  if(!DB){toast("Firebase não conectado","err");return;}
+  DB.ref("ops/"+fbKey).update({status:"Concluida"}).then(function(){
+    toast("OP "+id+" concluída!","ok");
+    admBuscarOps();
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
 document.addEventListener("keydown",function(e){if(e.key==="Escape")["m-apt","m-para","m-setup","m-resumo","m-sel-op","m-prox-op","m-admin-corr","m-admin-lista"].forEach(fM);});
 
 // ── PRÓXIMA OP (setup) ────────────────────────────────────
@@ -1203,13 +1277,14 @@ function abrirAdmin(){
 
 function admAba(aba){
   ADM_ABA=aba;
-  G("adm-tab-apts").style.background=aba==="apts"?"#024f2b":"#fff";
-  G("adm-tab-apts").style.color=aba==="apts"?"#fff":"#024f2b";
-  G("adm-tab-apts").style.borderColor=aba==="apts"?"#024f2b":"#d4e8d4";
-  G("adm-tab-paradas").style.background=aba==="paradas"?"#024f2b":"#fff";
-  G("adm-tab-paradas").style.color=aba==="paradas"?"#fff":"#024f2b";
-  G("adm-tab-paradas").style.borderColor=aba==="paradas"?"#024f2b":"#d4e8d4";
-  admRenderLista();
+  ["apts","paradas","ops"].forEach(function(a){
+    var btn=G("adm-tab-"+a); if(!btn) return;
+    btn.style.background=aba===a?"#024f2b":"#fff";
+    btn.style.color=aba===a?"#fff":"#024f2b";
+    btn.style.borderColor=aba===a?"#024f2b":"#d4e8d4";
+  });
+  if(aba==="ops") admBuscarOps();
+  else admRenderLista();
 }
 
 function admBuscar(){
