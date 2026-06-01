@@ -366,6 +366,16 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     </div>
   </div>
 </div>
+<!-- MODAL APONTAMENTOS DA OP -->
+<div class="ov" id="m-op-apts" style="z-index:350">
+  <div class="modal" style="width:580px;max-width:98vw">
+    <div class="mh" id="op-apts-titulo">Apontamentos da OP</div>
+    <div id="op-apts-corpo" style="max-height:450px;overflow-y:auto"></div>
+    <div class="mr" style="margin-top:12px">
+      <button class="btn-cancel" onclick="fM('m-op-apts')">Fechar</button>
+    </div>
+  </div>
+</div>
 <div id="toast"></div>
 
 <script>
@@ -1203,6 +1213,7 @@ function admBuscarOps(){
       h+='<span style="font-size:10px;color:#4a664a">Prog: '+fN(o.prog)+' kg · Real: '+fN(o.real)+' kg</span>';
       h+='</div></div>';
       h+='<div style="display:flex;flex-direction:column;gap:4px">';
+      h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" data-desc="'+(o.desc||o.cod)+'" onclick="admVerApts(this.dataset.fk,this.dataset.id,this.dataset.desc)" style="background:#024f2b;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📋 Apontamentos</button>';
       if(o.status==="Concluida"){
         h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" onclick="admReopenOp(this.dataset.fk,this.dataset.id)" style="background:#d29922;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">↩ Reabrir</button>';
       }
@@ -1216,6 +1227,69 @@ function admBuscarOps(){
     });
     corpo.innerHTML=h;
   }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+function admVerApts(opFbKey, opId, opDesc){
+  if(!DB){toast("Firebase não conectado","err");return;}
+  G("op-apts-titulo").textContent="OP "+opId+" — "+(opDesc||"");
+  G("op-apts-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#4a664a">Buscando...</div>';
+  aM("m-op-apts");
+
+  DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(opFbKey).once("value").then(function(s){
+    var apts=[];
+    if(s.exists()) s.forEach(function(c){var a=c.val();a.fbKey=c.key;apts.push(a);});
+    apts.sort(function(a,b){return (a.data+a.horaIni)>(b.data+b.horaIni)?1:-1;});
+
+    if(!apts.length){
+      G("op-apts-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#4a664a">Nenhum apontamento encontrado</div>';
+      return;
+    }
+
+    var totalReal=apts.reduce(function(a,x){return a+(Number(x.real)||0);},0);
+    var h='<div style="background:#f5f9f2;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#024f2b;font-weight:700">Total: '+fN(totalReal)+' kg em '+apts.length+' apontamentos</div>';
+
+    apts.forEach(function(a){
+      var nomeL=(a.linha||"").replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");
+      h+='<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;border:1px solid #e8f0e8;margin-bottom:6px;font-size:12px">';
+      h+='<div style="flex:1">';
+      h+='<div style="font-weight:700;color:#024f2b">'+nomeL+' · '+a.data+' · '+a.horaIni+' → '+a.horaFim+' · T'+a.turno+'</div>';
+      h+='<div style="color:#739630;font-weight:700;font-size:14px">'+fN(a.real)+' kg</div>';
+      if(a.obs) h+='<div style="color:#666;font-size:11px">'+a.obs+'</div>';
+      h+='</div>';
+      h+='<div style="display:flex;gap:4px">';
+      h+='<button data-fk="'+a.fbKey+'" data-opfk="'+opFbKey+'" data-opid="'+opId+'" data-opdesc="'+(opDesc||"")+'" onclick="admEditarAptOp(this)" style="background:#739630;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">✏️</button>';
+      h+='<button data-fk="'+a.fbKey+'" data-opfk="'+opFbKey+'" data-opid="'+opId+'" data-opdesc="'+(opDesc||"")+'" onclick="admExcluirAptOp(this)" style="background:#c0392b;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">🗑</button>';
+      h+='</div></div>';
+    });
+    G("op-apts-corpo").innerHTML=h;
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+function admEditarAptOp(btn){
+  var fbKey=btn.dataset.fk, opFbKey=btn.dataset.opfk, opId=btn.dataset.opid, opDesc=btn.dataset.opdesc;
+  // Usa o admEditar existente mas com contexto de OP
+  ADM_ABA="apts";
+  var item=null;
+  // Busca o apontamento diretamente
+  DB.ref("extrusao_apts/"+fbKey).once("value").then(function(s){
+    if(!s.exists()){toast("Apontamento não encontrado","err");return;}
+    item=s.val(); item.fbKey=fbKey;
+    ADM_DADOS.apts=[item];
+    admEditar(fbKey);
+    // Após salvar, recarrega a lista de apts da OP
+    var origSalvar=admSalvar;
+    G("adm-corr-btns").querySelector("[onclick*='admSalvar']") &&
+      (G("adm-corr-btns").querySelector("[onclick*='admSalvar']").dataset.opfk=opFbKey);
+  });
+}
+
+function admExcluirAptOp(btn){
+  var fbKey=btn.dataset.fk, opFbKey=btn.dataset.opfk, opId=btn.dataset.opid, opDesc=btn.dataset.opdesc;
+  if(!confirm("Excluir este apontamento?")) return;
+  DB.ref("extrusao_apts/"+fbKey).remove().then(function(){
+    toast("Excluído!","ok");
+    admVerApts(opFbKey, opId, opDesc);
+  });
 }
 
 function admReopenOp(fbKey,id){
@@ -1236,7 +1310,7 @@ function admCloseOp(fbKey,id){
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
-document.addEventListener("keydown",function(e){if(e.key==="Escape")["m-apt","m-para","m-setup","m-resumo","m-sel-op","m-prox-op","m-admin-corr","m-admin-lista"].forEach(fM);});
+document.addEventListener("keydown",function(e){if(e.key==="Escape")["m-apt","m-para","m-setup","m-resumo","m-sel-op","m-prox-op","m-admin-corr","m-admin-lista","m-op-apts"].forEach(fM);});
 
 // ── PRÓXIMA OP (setup) ────────────────────────────────────
 function abrirProxOp(linha){
@@ -1430,7 +1504,7 @@ function admSalvar(fbKey){
     var opSel=OPS.find(function(o){return o.fbKey===G("adm-op-sel").value;});
     if(opSel){updates.opFbKey=opSel.fbKey;updates.opNum=opSel.id;updates.cod=opSel.cod;}
     DB.ref("extrusao_apts/"+fbKey).update(updates).then(function(){
-      fM("m-admin-corr");toast("Apontamento corrigido!","ok");admBuscar();
+      fM("m-admin-corr");toast("Apontamento corrigido!","ok");if(ADM_DADOS.apts.length===1&&G("m-op-apts").classList.contains("on")){var a=ADM_DADOS.apts[0];admVerApts(a.opFbKey,a.opNum,a.desc);}else{admBuscar();}
     }).catch(function(e){toast("Erro: "+e.message,"err");});
   } else {
     updates.horaIni=G("adm-hi").value;
