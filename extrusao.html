@@ -244,7 +244,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <div class="mh">⚡ Apontamento — <span id="apt-linha-nome"></span></div>
     <div class="info-box" id="apt-op-info"></div>
     <div style="display:flex;gap:10px">
-      <div class="fg" style="flex:1"><label class="fl">Hora Inicial</label><input class="fi" type="time" id="apt-hi"></div>
+      <div class="fg" style="flex:1"><label class="fl">Hora Inicial</label><input class="fi" type="time" id="apt-hi" oninput="calcEfic();atualizarTurnoPreview()"></div>
       <div class="fg" style="flex:1"><label class="fl">Hora Final</label><input class="fi" type="time" id="apt-hf"></div>
     </div>
     <div class="fg">
@@ -253,6 +253,13 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       <div class="hint" id="apt-efic"></div>
     </div>
     <div class="fg"><label class="fl">Observação (opcional)</label><input class="fi" type="text" id="apt-obs" placeholder=""></div>
+    <div id="apt-admin-fields" style="display:none">
+      <div style="background:#fff3cd;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#856404">⚙️ <strong>Modo Admin</strong> — Turno e data serão calculados pela hora inicial</div>
+      <div style="display:flex;gap:10px">
+        <div class="fg" style="flex:1"><label class="fl">Data do Apontamento</label><input class="fi" type="date" id="apt-data-override"></div>
+        <div class="fg" style="flex:1"><label class="fl">Turno (auto)</label><input class="fi" type="text" id="apt-turno-preview" readonly style="background:#f5f9f2;color:#024f2b;font-weight:700"></div>
+      </div>
+    </div>
     <div class="mr">
       <button class="btn-cancel" onclick="fM('m-apt')">Cancelar</button>
       <button class="btn-ok" onclick="salvarApt()">✔ Salvar Apontamento</button>
@@ -519,6 +526,24 @@ function toast(msg,tipo){var t=G("toast");t.textContent=msg;t.style.background=t
 function fM(id){G(id).classList.remove("on");}
 function aM(id){G(id).classList.add("on");}
 function turnoAtual(){var h=new Date().getHours();return h>=21||h<5?1:h<13?2:3;}
+
+// Calcula turno baseado na hora do apontamento (não no horário atual)
+function turnoDeHora(horaStr){
+  if(!horaStr) return turnoAtual();
+  var h=parseInt(horaStr.split(":")[0]);
+  return h>=21||h<5?1:h<13?2:3;
+}
+
+// Calcula data do apontamento baseado na hora inicial
+// Turno 1 das 21h às 05h — se hora < 5, a data é o dia atual
+// mas o turno "pertence" ao dia anterior (quando começou às 21h)
+function dataDaHora(horaStr, dataBase){
+  if(!horaStr||!dataBase) return dataBase||hoje();
+  var h=parseInt(horaStr.split(":")[0]);
+  // Se é madrugada (0-4h) e turno 1, a data operacional é a data base mesmo
+  // O operador já está na data correta via DT_FILA
+  return dataBase;
+}
 function encId(s){return s.replace(/[^a-zA-Z0-9]/g,"_");}
 
 function getMetaHora(cod,linha){
@@ -921,8 +946,25 @@ function abrirApt(linha){
   G("apt-obs").value="";
   G("apt-efic").textContent="";
   G("apt-efic").className="hint";
+  // Campos extras para admin
+  var adminFields=G("apt-admin-fields");
+  if(adminFields){
+    adminFields.style.display=SES&&SES.perfil==="admin"?"":"none";
+    if(SES&&SES.perfil==="admin"){
+      G("apt-data-override").value=DT_FILA||hoje();
+      atualizarTurnoPreview();
+    }
+  }
   aM("m-apt");
   setTimeout(function(){G("apt-real").focus();},300);
+}
+
+function atualizarTurnoPreview(){
+  var hi=G("apt-hi").value;
+  if(!hi) return;
+  var t=turnoDeHora(hi);
+  var preview=G("apt-turno-preview");
+  if(preview) preview.value="Turno "+t;
 }
 
 function calcEfic(){
@@ -947,7 +989,10 @@ function salvarApt(){
   var e=EST[linhaAtiva]||{};
   var op=e.opAtiva?OPS.find(function(o){return o.fbKey===e.opAtiva;}):null;
   var metaH=op?getMetaHora(op.cod,linhaAtiva):0;
-  var apt={id:uid(),linha:linhaAtiva,opFbKey:op?op.fbKey:"",opNum:op?op.id:"",cod:op?op.cod:"",desc:op?(op.desc||op.cod):"",turno:SES.turno,data:hoje(),horaIni:hi,horaFim:hf,real:real,metaH:metaH,obs:G("apt-obs").value||"",operador:SES.login,ts:agora()};
+    var turnoApt=turnoDeHora(hi);
+  var dataOverride=G("apt-data-override");
+  var dataApt=(SES&&SES.perfil==="admin"&&dataOverride&&dataOverride.value)?dataOverride.value:(DT_FILA||hoje());
+  var apt={id:uid(),linha:linhaAtiva,opFbKey:op?op.fbKey:"",opNum:op?op.id:"",cod:op?op.cod:"",desc:op?(op.desc||op.cod):"",turno:turnoApt,data:dataApt,horaIni:hi,horaFim:hf,real:real,metaH:metaH,obs:G("apt-obs").value||"",operador:SES.login,ts:agora()};
   if(!DB){toast("Firebase não conectado","err");return;}
   DB.ref("extrusao_apts").push(apt).then(function(){
     fM("m-apt");
@@ -1009,7 +1054,9 @@ function salvarParada(){
   var min=0;
   if(hf){var a=hi.split(":"),b=hf.split(":");min=(parseInt(b[0])*60+parseInt(b[1]))-(parseInt(a[0])*60+parseInt(a[1]));}
   if(!DB){toast("Firebase não conectado","err");return;}
-  DB.ref("extrusao_paradas").push({id:uid(),linha:linhaAtiva,turno:SES.turno,data:hoje(),horaIni:hi,horaFim:hf,codMotivo:cod,descricao:desc,minutos:min,operador:SES.login,ts:agora()})
+  var turnoPara=turnoDeHora(hi);
+  var dataPara=DT_FILA||hoje();
+  DB.ref("extrusao_paradas").push({id:uid(),linha:linhaAtiva,turno:turnoPara,data:dataPara,horaIni:hi,horaFim:hf,codMotivo:cod,descricao:desc,minutos:min,operador:SES.login,ts:agora()})
     .then(function(){fM("m-para");toast("Parada registrada!","ok");})
     .catch(function(e){toast("Erro: "+e.message,"err");});
 }
