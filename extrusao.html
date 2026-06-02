@@ -6,6 +6,8 @@
 <title>Raguife — Extrusão</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-height:100vh}
@@ -213,6 +215,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       <div class="turno-item"><div class="turno-val" id="tur-prod">0 kg</div><div class="turno-lbl">Prod. Turno</div></div>
       <div class="turno-item"><div class="turno-val" id="tur-para">00:00</div><div class="turno-lbl">Paradas</div></div>
       <div class="turno-item"><div class="turno-val" id="tur-ef">100%</div><div class="turno-lbl">Eficiência</div></div>
+      <button class="btn-resumo" onclick="abrirDashboard()">📊 Dashboard</button>
       <button class="btn-resumo" onclick="abrirResumo()">📋 Resumo Turno</button>
     </div>
 
@@ -369,8 +372,109 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     </div>
   </div>
 </div>
-<!-- MODAL APONTAMENTOS DA OP -->
-<div class="ov" id="m-op-apts" style="z-index:350">
+<!-- MODAL DASHBOARD -->
+<div class="ov" id="m-dash" style="z-index:150;align-items:flex-start;padding:0;overflow-y:auto">
+  <div style="background:#f0f4f0;min-height:100vh;width:100%;max-width:1200px;margin:0 auto;padding:20px">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div>
+        <h2 style="font-size:20px;font-weight:800;color:#024f2b">📊 Dashboard Extrusão</h2>
+        <p style="font-size:12px;color:#4a664a">Análise de produção, metas e paradas</p>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="dashExportarPDF()" style="background:#739630;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">↓ PDF</button>
+        <button onclick="fM('m-dash')" style="background:#c0392b;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">✕ Fechar</button>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:14px 16px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+      <div><label style="display:block;font-size:11px;font-weight:700;color:#4a664a;margin-bottom:3px">DATA INÍCIO</label><input type="date" id="dash-di" class="fi" style="width:140px"></div>
+      <div><label style="display:block;font-size:11px;font-weight:700;color:#4a664a;margin-bottom:3px">DATA FIM</label><input type="date" id="dash-df" class="fi" style="width:140px"></div>
+      <div><label style="display:block;font-size:11px;font-weight:700;color:#4a664a;margin-bottom:3px">TURNO</label>
+        <select id="dash-turno-f" class="fi" style="width:120px">
+          <option value="">Todos</option><option value="1">Turno 1</option><option value="2">Turno 2</option><option value="3">Turno 3</option>
+        </select>
+      </div>
+      <div><label style="display:block;font-size:11px;font-weight:700;color:#4a664a;margin-bottom:3px">LINHA</label>
+        <select id="dash-linha-f" class="fi" style="width:160px">
+          <option value="">Todas</option>
+          <option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option>
+          <option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option>
+        </select>
+      </div>
+      <div><label style="display:block;font-size:11px;font-weight:700;color:#4a664a;margin-bottom:3px">PRODUTO (SKU)</label>
+        <input type="text" id="dash-sku-f" class="fi" placeholder="Código ou descrição..." style="width:200px">
+      </div>
+      <button onclick="gerarDashboard()" style="background:#024f2b;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">🔍 Gerar</button>
+    </div>
+
+    <!-- Cards resumo -->
+    <div id="dash-cards" style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px"></div>
+
+    <!-- Gráficos linha 1 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px">
+        <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">Produção Diária — Real vs Meta</div>
+        <canvas id="dash-g1" height="180"></canvas>
+      </div>
+      <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px">
+        <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">Produção por Turno (kg)</div>
+        <canvas id="dash-g2" height="180"></canvas>
+      </div>
+    </div>
+
+    <!-- Gráficos linha 2 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px">
+        <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">Aderência à Meta por Linha (%)</div>
+        <canvas id="dash-g3" height="180"></canvas>
+      </div>
+      <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px">
+        <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">Top 10 Produtos por Volume (kg)</div>
+        <canvas id="dash-g4" height="180"></canvas>
+      </div>
+    </div>
+
+    <!-- Gráficos linha 3 — Paradas -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px">
+        <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">Maiores Motivos de Parada (minutos)</div>
+        <canvas id="dash-g5" height="200"></canvas>
+      </div>
+      <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px">
+        <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">Paradas por SKU (minutos)</div>
+        <canvas id="dash-g6" height="200"></canvas>
+      </div>
+    </div>
+
+    <!-- Tabela rastreabilidade -->
+    <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px;margin-bottom:16px">
+      <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">Rastreabilidade — Apontamentos do Período</div>
+      <div style="overflow-x:auto">
+        <table id="dash-tabela" style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="background:#f5f9f2">
+              <th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">Data</th>
+              <th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">Linha</th>
+              <th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">Turno</th>
+              <th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">Hora</th>
+              <th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">OP</th>
+              <th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">Produto</th>
+              <th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">Real (kg)</th>
+              <th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">Meta (kg/h)</th>
+              <th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">%</th>
+              <th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">Operador</th>
+            </tr>
+          </thead>
+          <tbody id="dash-tabela-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
   <div class="modal" style="width:580px;max-width:98vw">
     <div class="mh" id="op-apts-titulo">Apontamentos da OP</div>
     <div id="op-apts-corpo" style="max-height:450px;overflow-y:auto"></div>
@@ -1340,6 +1444,246 @@ function admCloseOp(fbKey,id){
     toast("OP "+id+" concluída!","ok");
     admBuscarOps();
   }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────
+var DASH_CHARTS={};
+
+function abrirDashboard(){
+  var dt=DT_FILA||hoje();
+  G("dash-di").value=dt;
+  G("dash-df").value=dt;
+  G("dash-turno-f").value="";
+  G("dash-linha-f").value="";
+  G("dash-sku-f").value="";
+  aM("m-dash");
+  gerarDashboard();
+}
+
+function gerarDashboard(){
+  if(!DB){toast("Firebase não conectado","err");return;}
+  var di=G("dash-di").value, df=G("dash-df").value;
+  var turnoF=G("dash-turno-f").value;
+  var linhaF=G("dash-linha-f").value;
+  var skuF=G("dash-sku-f").value.toLowerCase().trim();
+  if(!di||!df){toast("Informe período","err");return;}
+
+  G("dash-cards").innerHTML='<div style="grid-column:1/-1;text-align:center;padding:20px;color:#4a664a">Carregando...</div>';
+
+  Promise.all([
+    DB.ref("extrusao_apts").orderByChild("data").startAt(di).endAt(df).once("value"),
+    DB.ref("extrusao_paradas").orderByChild("data").startAt(di).endAt(df).once("value")
+  ]).then(function(results){
+    var apts=[], paradas=[];
+    if(results[0].exists()) results[0].forEach(function(c){apts.push(c.val());});
+    if(results[1].exists()) results[1].forEach(function(c){paradas.push(c.val());});
+
+    // Aplica filtros
+    if(turnoF) apts=apts.filter(function(a){return String(a.turno)===turnoF;});
+    if(turnoF) paradas=paradas.filter(function(p){return String(p.turno)===turnoF;});
+    if(linhaF){apts=apts.filter(function(a){return a.linha===linhaF;});paradas=paradas.filter(function(p){return p.linha===linhaF;});}
+    if(skuF){apts=apts.filter(function(a){return (a.cod||"").toLowerCase().includes(skuF)||(a.desc||"").toLowerCase().includes(skuF);});}
+
+    dashRender(apts, paradas, di, df);
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+function dashRender(apts, paradas, di, df){
+  // ── CÁLCULOS ────────────────────────────────────────────
+  var totReal=apts.reduce(function(a,x){return a+(Number(x.real)||0);},0);
+  var totMeta=apts.reduce(function(a,x){return a+(Number(x.metaH)||0);},0);
+  var adh=totMeta?Math.min(Math.round(totReal/totMeta*100),999):0;
+  var totMinPara=paradas.reduce(function(a,p){return a+(Number(p.minutos)||0);},0);
+
+  // Por turno
+  var porTurno={1:{real:0,meta:0},2:{real:0,meta:0},3:{real:0,meta:0}};
+  apts.forEach(function(a){
+    var t=a.turno||0;
+    if(porTurno[t]){porTurno[t].real+=(Number(a.real)||0);porTurno[t].meta+=(Number(a.metaH)||0);}
+  });
+
+  // Por linha
+  var porLinha={};
+  apts.forEach(function(a){
+    var l=a.linha||""; if(!porLinha[l]) porLinha[l]={real:0,meta:0};
+    porLinha[l].real+=(Number(a.real)||0); porLinha[l].meta+=(Number(a.metaH)||0);
+  });
+
+  // Por data
+  var porData={};
+  apts.forEach(function(a){
+    var d=a.data||""; if(!porData[d]) porData[d]={real:0,meta:0};
+    porData[d].real+=(Number(a.real)||0); porData[d].meta+=(Number(a.metaH)||0);
+  });
+
+  // Por SKU
+  var porSKU={};
+  apts.forEach(function(a){
+    var k=(a.cod||"")+"||"+(a.desc||a.cod||"");
+    if(!porSKU[k]) porSKU[k]={cod:a.cod||"",desc:a.desc||a.cod||"",real:0};
+    porSKU[k].real+=(Number(a.real)||0);
+  });
+
+  // Motivos de parada
+  var porMotivo={};
+  paradas.forEach(function(p){
+    var m=p.descricao||"Sem motivo";
+    if(!porMotivo[m]) porMotivo[m]=0;
+    porMotivo[m]+=(Number(p.minutos)||0);
+  });
+
+  // Paradas por SKU (via opNum cruzando com apts)
+  var paradasPorSKU={};
+  paradas.forEach(function(p){
+    // Acha apts do mesmo período/linha/turno para pegar o SKU
+    var aptRef=apts.find(function(a){
+      return a.linha===p.linha && a.turno===p.turno && a.data===p.data;
+    });
+    var skuKey=aptRef?(aptRef.desc||aptRef.cod||"Desconhecido"):"Desconhecido";
+    if(!paradasPorSKU[skuKey]) paradasPorSKU[skuKey]=0;
+    paradasPorSKU[skuKey]+=(Number(p.minutos)||0);
+  });
+
+  // Melhor turno
+  var melhorTurno=Object.keys(porTurno).reduce(function(a,b){
+    var pA=porTurno[a].meta?porTurno[a].real/porTurno[a].meta:0;
+    var pB=porTurno[b].meta?porTurno[b].real/porTurno[b].meta:0;
+    return pB>pA?b:a;
+  });
+
+  // ── CARDS ────────────────────────────────────────────────
+  var corAdh=adh>=85?"#024f2b":adh>=70?"#d29922":"#c0392b";
+  var cards=[
+    {l:"TOTAL PRODUZIDO",v:fN(totReal)+" kg",c:"#024f2b"},
+    {l:"META ACUMULADA",v:fN(totMeta)+" kg",c:"#4a664a"},
+    {l:"ADERÊNCIA GERAL",v:adh+"%",c:corAdh},
+    {l:"TOTAL PARADAS",v:minH(totMinPara),c:"#c0392b"},
+    {l:"MELHOR TURNO",v:"T"+melhorTurno,c:"#739630"},
+    {l:"APONTAMENTOS",v:apts.length,c:"#4a664a"}
+  ];
+  G("dash-cards").innerHTML=cards.map(function(card){
+    return '<div style="background:#fff;border-radius:10px;border:1px solid #d4e8d4;padding:12px;text-align:center">'+
+      '<div style="font-size:10px;font-weight:700;color:#739630;margin-bottom:4px">'+card.l+'</div>'+
+      '<div style="font-size:18px;font-weight:800;color:'+card.c+'">'+card.v+'</div></div>';
+  }).join("");
+
+  // ── GRÁFICOS ─────────────────────────────────────────────
+  function mkChart(id,type,labels,datasets,opts){
+    if(DASH_CHARTS[id]) DASH_CHARTS[id].destroy();
+    var ctx=document.getElementById(id);
+    if(!ctx) return;
+    DASH_CHARTS[id]=new Chart(ctx,{
+      type:type,
+      data:{labels:labels,datasets:datasets},
+      options:Object.assign({responsive:true,plugins:{legend:{position:"bottom",labels:{font:{size:10},boxWidth:12}}},scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:9}}}}},opts||{})
+    });
+  }
+
+  // G1 — Real vs Meta por dia
+  var datas=Object.keys(porData).sort();
+  mkChart("dash-g1","bar",datas,[
+    {label:"Meta",data:datas.map(function(d){return porData[d].meta;}),backgroundColor:"rgba(2,79,43,.2)",borderColor:"#024f2b",borderWidth:1},
+    {label:"Real",data:datas.map(function(d){return porData[d].real;}),backgroundColor:"rgba(115,150,48,.7)",borderColor:"#739630",borderWidth:1}
+  ]);
+
+  // G2 — Por turno
+  mkChart("dash-g2","bar",["Turno 1","Turno 2","Turno 3"],[
+    {label:"Real (kg)",data:[porTurno[1].real,porTurno[2].real,porTurno[3].real],backgroundColor:["rgba(0,100,60,.8)","rgba(20,140,80,.8)","rgba(100,170,100,.8)"]},
+    {label:"Meta (kg)",data:[porTurno[1].meta,porTurno[2].meta,porTurno[3].meta],backgroundColor:["rgba(0,100,60,.2)","rgba(20,140,80,.2)","rgba(100,170,100,.2)"],borderColor:["#00643c","#148c50","#64aa78"],borderWidth:1}
+  ]);
+
+  // G3 — Aderência por linha
+  var linhas=Object.keys(porLinha);
+  var nomesL=linhas.map(function(l){return l.replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");});
+  var adhL=linhas.map(function(l){return porLinha[l].meta?Math.min(Math.round(porLinha[l].real/porLinha[l].meta*100),999):0;});
+  var coresL=adhL.map(function(p){return p>=85?"rgba(2,79,43,.8)":p>=70?"rgba(210,153,34,.8)":"rgba(192,57,43,.8)";});
+  mkChart("dash-g3","bar",nomesL,[{label:"Aderência %",data:adhL,backgroundColor:coresL}],
+    {scales:{x:{ticks:{font:{size:9}}},y:{min:0,max:110,ticks:{font:{size:9}}}}});
+
+  // G4 — Top 10 produtos
+  var skus=Object.values(porSKU).sort(function(a,b){return b.real-a.real;}).slice(0,10);
+  mkChart("dash-g4","bar",
+    skus.map(function(s){return (s.desc||s.cod).slice(0,20);}),
+    [{label:"kg",data:skus.map(function(s){return s.real;}),backgroundColor:"rgba(115,150,48,.75)"}],
+    {indexAxis:"y",scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:9}}}}});
+
+  // G5 — Top motivos parada
+  var motivos=Object.entries(porMotivo).sort(function(a,b){return b[1]-a[1];}).slice(0,10);
+  mkChart("dash-g5","bar",
+    motivos.map(function(m){return m[0].slice(0,25);}),
+    [{label:"minutos",data:motivos.map(function(m){return m[1];}),backgroundColor:"rgba(192,57,43,.75)"}],
+    {indexAxis:"y",scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:8}}}}});
+
+  // G6 — Paradas por SKU
+  var skuParadas=Object.entries(paradasPorSKU).sort(function(a,b){return b[1]-a[1];}).slice(0,10);
+  mkChart("dash-g6","bar",
+    skuParadas.map(function(s){return s[0].slice(0,20);}),
+    [{label:"minutos parado",data:skuParadas.map(function(s){return s[1];}),backgroundColor:"rgba(210,153,34,.75)"}],
+    {indexAxis:"y",scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:8}}}}});
+
+  // ── TABELA RASTREABILIDADE ───────────────────────────────
+  var aptsSorted=apts.slice().sort(function(a,b){
+    return (a.data+a.horaIni)>(b.data+b.horaIni)?1:-1;
+  });
+  var tbody=G("dash-tabela-body");
+  tbody.innerHTML=aptsSorted.map(function(a,i){
+    var ef=a.metaH?Math.min(Math.round((Number(a.real)||0)/a.metaH*100),999):0;
+    var corEf=ef>=85?"#024f2b":ef>=70?"#d29922":"#c0392b";
+    var nomeL=(a.linha||"").replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");
+    var bg=i%2===0?"#fff":"#f9fbf9";
+    return '<tr style="background:'+bg+'">'+
+      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0">'+a.data+'</td>'+
+      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0">'+nomeL+'</td>'+
+      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;text-align:center">T'+(a.turno||"")+'</td>'+
+      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0">'+a.horaIni+'→'+a.horaFim+'</td>'+
+      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;font-weight:700;color:#024f2b">'+(a.opNum||"")+'</td>'+
+      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0">'+(a.desc||a.cod||"").slice(0,25)+'</td>'+
+      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700">'+fN(a.real)+'</td>'+
+      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;text-align:right">'+fN(a.metaH||0)+'</td>'+
+      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:'+corEf+'">'+ef+'%</td>'+
+      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;color:#666">'+(a.operador||"")+'</td>'+
+      '</tr>';
+  }).join("")||'<tr><td colspan="10" style="text-align:center;padding:20px;color:#4a664a">Nenhum apontamento encontrado</td></tr>';
+}
+
+function dashExportarPDF(){
+  if(typeof jspdf==="undefined"){toast("jsPDF não disponível","err");return;}
+  var jsPDF=jspdf.jsPDF;
+  var doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  var W=277, ML=10, y=20;
+
+  doc.setFillColor(2,79,43); doc.rect(0,0,297,18,"F");
+  doc.setFont("helvetica","bold"); doc.setFontSize(12); doc.setTextColor(255,255,255);
+  doc.text("RAGUIFE — Dashboard Extrusão",ML,12);
+  doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(180,220,180);
+  doc.text("Período: "+G("dash-di").value+" a "+G("dash-df").value+"  |  Gerado: "+new Date().toLocaleString("pt-BR"),ML,17);
+  y=24;
+
+  // Cards
+  var cards=G("dash-cards").querySelectorAll("div>div");
+  // Tabela
+  doc.setFillColor(220,235,220); doc.rect(ML,y,W,7,"F");
+  doc.setFont("helvetica","bold"); doc.setFontSize(7); doc.setTextColor(2,79,43);
+  var cols=[ML+2,ML+22,ML+42,ML+58,ML+90,ML+135,ML+175,ML+205,ML+225,ML+248];
+  ["DATA","LINHA","T","HORA","OP","PRODUTO","REAL(kg)","META(kg/h)","%","OPERADOR"].forEach(function(h,i){
+    if(cols[i]) doc.text(h,cols[i],y+5);
+  });
+  y+=8;
+
+  var rows=G("dash-tabela-body").querySelectorAll("tr");
+  rows.forEach(function(row,ri){
+    if(y>195){doc.addPage();y=15;}
+    var cells=row.querySelectorAll("td");
+    if(ri%2===0){doc.setFillColor(248,253,248);doc.rect(ML,y-1,W,7,"F");}
+    doc.setFont("helvetica","normal"); doc.setFontSize(6.5); doc.setTextColor(30,30,30);
+    cells.forEach(function(td,i){
+      if(cols[i]) doc.text((td.textContent||"").slice(0,18),cols[i],y+4);
+    });
+    y+=7;
+  });
+
+  doc.save("Dashboard_Extrusao_"+G("dash-di").value+"_"+G("dash-df").value+".pdf");
+  toast("PDF gerado!","ok");
 }
 
 document.addEventListener("keydown",function(e){if(e.key==="Escape")["m-apt","m-para","m-setup","m-resumo","m-sel-op","m-prox-op","m-admin-corr","m-admin-lista","m-op-apts"].forEach(fM);});
