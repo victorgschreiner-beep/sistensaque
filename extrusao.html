@@ -481,12 +481,32 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
   </div>
 </div>
 
-<div id="toast"></div>
   <div class="modal" style="width:580px;max-width:98vw">
     <div class="mh" id="op-apts-titulo">Apontamentos da OP</div>
     <div id="op-apts-corpo" style="max-height:450px;overflow-y:auto"></div>
     <div class="mr" style="margin-top:12px">
       <button class="btn-cancel" onclick="fM('m-op-apts')">Fechar</button>
+    </div>
+  </div>
+</div>
+<!-- MODAL EDITAR APONTAMENTO OPERADOR -->
+<div class="ov" id="m-edit-apt" style="z-index:300">
+  <div class="modal" style="width:360px">
+    <div class="mh">✏️ Editar Apontamento</div>
+    <div id="edit-apt-info" style="background:#f5f9f2;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#4a664a"></div>
+    <div class="fg">
+      <label class="fl">Quantidade Produzida (kg)</label>
+      <input class="fi fi-big" type="number" id="edit-apt-real" min="0">
+      <div class="hint" id="edit-apt-efic"></div>
+    </div>
+    <div class="fg">
+      <label class="fl">Observação (opcional)</label>
+      <input class="fi" type="text" id="edit-apt-obs">
+    </div>
+    <input type="hidden" id="edit-apt-fbkey">
+    <div class="mr">
+      <button class="btn-cancel" onclick="fM('m-edit-apt')">Cancelar</button>
+      <button class="btn-ok" onclick="salvarEditApt()">✔ Salvar</button>
     </div>
   </div>
 </div>
@@ -629,8 +649,8 @@ function trocarDataFila(dt){
   DT_FILA=dt;
   atualizarDataFila();
   carregarOPs();
-  // Reinicia listeners de extrusão para nova data
-  LINHAS_USER.forEach(function(l){EST[l]={opAtiva:null,apts:[],paradas:[]};});
+  // Reseta estado completo ao trocar data
+  LINHAS_USER.forEach(function(l){EST[l]={opAtiva:null,opAtivaTs:null,apts:[],paradas:[],totalOp:{}};});
   carregarExtrusao();
   renderLinhas();
   toast("Fila do dia "+dt.split("-").reverse().join("/"),"ok");
@@ -656,19 +676,29 @@ function verificarHerancaOp(linha){
   if(!DB||EST[linha].opAtiva) return;
   var dt=DT_FILA||hoje(), t=SES.turno;
   var tAnt=t===1?3:t-1;
-  DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+tAnt).once("value").then(function(s){
+  // T1 (21h) herda T3 do dia ANTERIOR
+  var dtAnt=dt;
+  if(t===1){
+    var d=new Date(dt+'T12:00:00');
+    d.setDate(d.getDate()-1);
+    dtAnt=d.toISOString().slice(0,10);
+  }
+  DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dtAnt+"/t"+tAnt).once("value").then(function(s){
     if(!s.exists()) return;
     var opAntFk=s.val();
     if(!opAntFk) return;
-    var opAntObj=OPS.find(function(o){return o.fbKey===opAntFk;});
-    if(opAntObj && opAntObj.status!=="Concluida"){
-      EST[linha].opAtiva=opAntFk;
-      // Persiste a herança para o turno atual
-      DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t).set(opAntFk);
-      DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t+"_ts").set(agora());
-      carregarTotalOp(linha, opAntFk);
-      renderLinhaCard(linha);
-    }
+    // Busca a OP no Firebase pois pode não estar em OPS (é do dia anterior)
+    DB.ref("ops/"+opAntFk).once("value").then(function(sOp){
+      if(!sOp.exists()) return;
+      var opAntObj=sOp.val();
+      if(opAntObj && opAntObj.status!=="Concluida"){
+        EST[linha].opAtiva=opAntFk;
+        DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t).set(opAntFk);
+        DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t+"_ts").set(agora());
+        carregarTotalOp(linha, opAntFk);
+        renderLinhaCard(linha);
+      }
+    });
   });
 }
 
@@ -732,9 +762,14 @@ function renderLinhas(){
 }
 
 function getOpsLinha(linha){
+  var dt=DT_FILA||hoje();
   return OPS.filter(function(o){
-    return o.linha===linha && o.status!=='Concluida';
-  }).sort(function(a,b){return a.criadoEm>b.criadoEm?1:-1;});
+    // Só mostra OPs do dia filtrado, exceto Reprogramadas que são para hoje
+    if(o.linha!==linha) return false;
+    if(o.status==='Concluida') return false;
+    // Reprogramada só aparece se a data dela é o dia atual
+    return o.data===dt;
+  }).sort(function(a,b){return (a.criadoEm||'')>(b.criadoEm||'')?1:-1;});
 }
 
 function renderLinhaCard(linha){
@@ -831,11 +866,14 @@ function renderLinhaCard(linha){
         var a=item.d;
         var ef=metaH?Math.round((Number(a.real)||0)/metaH*100):0;
         var corEf=ef>=90?"#024f2b":ef>=70?"#d29922":"#c0392b";
-        h+='<div class="hist-item hist-apt">';
+        h+='<div class="hist-item hist-apt" style="justify-content:space-between">';
         h+='<span class="hist-hora">'+a.horaIni+' → '+a.horaFim+'</span>';
         h+='<span class="hist-val">'+fN(a.real)+' kg</span>';
         h+='<span class="hist-info" style="color:'+corEf+'">'+ef+'% meta</span>';
         if(a.opNum) h+='<span style="font-size:10px;color:#739630;font-weight:600;margin-left:4px">'+a.opNum+'</span>';
+        if(opAtiva && opAtiva.status!=='Concluida'){
+          h+='<button data-fk="'+a.fbKey+'" onclick="editarAptOperador(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;margin-left:4px">✏️</button>';
+        }
         h+='</div>';
       } else {
         var p=item.d;
@@ -914,6 +952,49 @@ function selecionarOpAtiva(linha,fbKey){
     }
   }
   fazerTroca();
+}
+
+function editarAptOperador(fbKey){
+  if(!DB){toast("Firebase não conectado","err");return;}
+  DB.ref("extrusao_apts/"+fbKey).once("value").then(function(s){
+    if(!s.exists()){toast("Apontamento não encontrado","err");return;}
+    var a=s.val();
+    var nomeL=(a.linha||"").replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");
+    var ef=a.metaH?Math.round((Number(a.real)||0)/a.metaH*100):0;
+    G("edit-apt-info").innerHTML=
+      '<strong>'+nomeL+'</strong> · '+a.horaIni+' → '+a.horaFim+' · T'+(a.turno||'')+
+      '<br>Meta: '+fN(a.metaH||0)+' kg/h · Eficiência atual: '+ef+'%';
+    G("edit-apt-real").value=a.real||0;
+    G("edit-apt-obs").value=a.obs||"";
+    G("edit-apt-fbkey").value=fbKey;
+    // Atualiza hint de eficiência
+    G("edit-apt-efic").textContent="";
+    G("edit-apt-real").oninput=function(){
+      var r=parseInt(this.value)||0;
+      var ef2=a.metaH?Math.round(r/a.metaH*100):0;
+      var hint=G("edit-apt-efic");
+      hint.textContent=ef2+"% da meta";
+      hint.className="hint "+(ef2>=85?"ok":ef2>=70?"warn":"err2");
+    };
+    aM("m-edit-apt");
+    setTimeout(function(){G("edit-apt-real").focus();G("edit-apt-real").select();},300);
+  });
+}
+
+function salvarEditApt(){
+  var fbKey=G("edit-apt-fbkey").value;
+  var real=parseInt(G("edit-apt-real").value)||0;
+  var obs=G("edit-apt-obs").value||"";
+  if(!fbKey){toast("Erro: fbKey não encontrado","err");return;}
+  if(!DB){toast("Firebase não conectado","err");return;}
+  DB.ref("extrusao_apts/"+fbKey).update({real:real,obs:obs}).then(function(){
+    fM("m-edit-apt");
+    toast("Apontamento atualizado!","ok");
+    // Recarrega totalOp das linhas ativas
+    LINHAS_USER.forEach(function(l){
+      if(EST[l].opAtiva) carregarTotalOp(l, EST[l].opAtiva);
+    });
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
 function editarParadaOp(fbKey){
