@@ -608,11 +608,11 @@ function iniciarApp(){
 // ── FIREBASE DATA ─────────────────────────────────────────
 function carregarTotalOp(linha, opFbKey){
   if(!DB||!opFbKey) return;
-  // Busca todos os apontamentos da OP em todos os turnos e datas
+  // Busca TODOS os apontamentos da OP em todos os turnos (igual ensaque)
   DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(opFbKey).once("value",function(s){
-    var total=0;
-    if(s.exists()) s.forEach(function(c){total+=(Number(c.val().real)||0);});
-    EST[linha].totalOp[opFbKey]=total;
+    var totalGeral=0;
+    if(s.exists()) s.forEach(function(c){totalGeral+=(Number(c.val().real)||0);});
+    EST[linha].totalOp[opFbKey]=totalGeral;
     renderLinhaCard(linha);
   });
 }
@@ -648,6 +648,27 @@ function carregarOPs(){
     OPS=[];
     if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;OPS.push(v);});
     renderLinhas();
+    LINHAS_USER.forEach(function(l){if(!EST[l].opAtiva) verificarHerancaOp(l);});
+  });
+}
+
+function verificarHerancaOp(linha){
+  if(!DB||EST[linha].opAtiva) return;
+  var dt=DT_FILA||hoje(), t=SES.turno;
+  var tAnt=t===1?3:t-1;
+  DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+tAnt).once("value").then(function(s){
+    if(!s.exists()) return;
+    var opAntFk=s.val();
+    if(!opAntFk) return;
+    var opAntObj=OPS.find(function(o){return o.fbKey===opAntFk;});
+    if(opAntObj && opAntObj.status!=="Concluida"){
+      EST[linha].opAtiva=opAntFk;
+      // Persiste a herança para o turno atual
+      DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t).set(opAntFk);
+      DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t+"_ts").set(agora());
+      carregarTotalOp(linha, opAntFk);
+      renderLinhaCard(linha);
+    }
   });
 }
 
@@ -669,10 +690,27 @@ function carregarExtrusao(){
       atualizarBarraTurno();
     });
     // Recupera OP ativa salva e carrega total de todos os turnos
-    DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t).once("value").then(function(s){
+    DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt).once("value").then(function(s){
       if(s.exists()){
-        EST[linha].opAtiva=s.val();
-        carregarTotalOp(linha, EST[linha].opAtiva);
+        var val=s.val();
+        EST[linha].opAtiva=val["t"+t]||null;
+        EST[linha].opAtivaTs=val["t"+t+"_ts"]||null;
+
+        // Se turno atual não tem OP — herda do turno anterior
+        if(!EST[linha].opAtiva){
+          var tAnt=t===1?3:t-1;
+          var opAnt=val["t"+tAnt]||null;
+          if(opAnt){
+            // Verifica se a OP anterior ainda está ativa (não concluída)
+            var opAntObj=OPS.find(function(o){return o.fbKey===opAnt;});
+            if(opAntObj && opAntObj.status!=="Concluida"){
+              EST[linha].opAtiva=opAnt;
+              EST[linha].opAtivaTs=val["t"+tAnt+"_ts"]||null;
+            }
+          }
+        }
+
+        if(EST[linha].opAtiva) carregarTotalOp(linha, EST[linha].opAtiva);
       }
       renderLinhaCard(linha);
     });
