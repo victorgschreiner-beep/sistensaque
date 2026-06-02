@@ -284,6 +284,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <div class="p-scroll" id="para-lista"></div>
     <input type="hidden" id="para-cod">
     <input type="hidden" id="para-desc">
+    <div class="fg"><label class="fl">Observação (opcional)</label><input class="fi" type="text" id="para-obs" placeholder="Descreva detalhes da parada..."></div>
     <div class="mr">
       <button class="btn-cancel" onclick="fM('m-para')">Cancelar</button>
       <button class="btn-danger" onclick="salvarParada()">🔴 Registrar Parada</button>
@@ -884,7 +885,7 @@ function renderLinhaCard(linha){
         var opAtivaSt=opAtiva?opAtiva.status:'';
         h+='<div class="hist-item hist-para" style="justify-content:space-between">';
         h+='<span class="hist-hora">'+p.horaIni+' → '+(p.horaFim||'...')+'</span>';
-        h+='<span class="hist-info" style="flex:1">'+p.descricao+'</span>';
+        h+='<span class="hist-info" style="flex:1">'+p.descricao+(p.obs?' — '+p.obs:'')+'</span>';
         if(opAtivaSt!=='Concluida'){
           h+='<button data-fk="'+p.fbKey+'" onclick="editarParadaOp(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0">✏️</button>';
         }
@@ -1141,6 +1142,7 @@ function abrirParada(linha){
   G("para-hf").value="";
   G("para-busca").value="";
   G("para-cod").value=""; G("para-desc").value="";
+  if(G("para-obs")) G("para-obs").value="";
   G("para-sel-lbl").textContent="Nenhum motivo selecionado";
   renderParadas("");
   aM("m-para");
@@ -1186,7 +1188,7 @@ function salvarParada(){
   if(!DB){toast("Firebase não conectado","err");return;}
   var turnoPara=turnoDeHora(hi);
   var dataPara=DT_FILA||hoje();
-  DB.ref("extrusao_paradas").push({id:uid(),linha:linhaAtiva,turno:turnoPara,data:dataPara,horaIni:hi,horaFim:hf,codMotivo:cod,descricao:desc,minutos:min,operador:SES.login,ts:agora()})
+  DB.ref("extrusao_paradas").push({id:uid(),linha:linhaAtiva,turno:turnoPara,data:dataPara,horaIni:hi,horaFim:hf,codMotivo:cod,descricao:desc,obs:G("para-obs")?G("para-obs").value||"":"",minutos:min,operador:SES.login,ts:agora()})
     .then(function(){fM("m-para");toast("Parada registrada!","ok");})
     .catch(function(e){toast("Erro: "+e.message,"err");});
 }
