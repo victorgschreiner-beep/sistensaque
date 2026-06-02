@@ -495,6 +495,10 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <div class="mh">✏️ Editar Apontamento</div>
     <div id="edit-apt-info" style="background:#f5f9f2;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#4a664a"></div>
     <div class="fg">
+    <div style="display:flex;gap:10px">
+      <div class="fg" style="flex:1"><label class="fl">Hora Inicial</label><input class="fi" type="time" id="edit-apt-hi"></div>
+      <div class="fg" style="flex:1"><label class="fl">Hora Final</label><input class="fi" type="time" id="edit-apt-hf"></div>
+    </div>
       <label class="fl">Quantidade Produzida (kg)</label>
       <input class="fi fi-big" type="number" id="edit-apt-real" min="0">
       <div class="hint" id="edit-apt-efic"></div>
@@ -966,6 +970,8 @@ function editarAptOperador(fbKey){
       '<br>Meta: '+fN(a.metaH||0)+' kg/h · Eficiência atual: '+ef+'%';
     G("edit-apt-real").value=a.real||0;
     G("edit-apt-obs").value=a.obs||"";
+    G("edit-apt-hi").value=a.horaIni||"";
+    G("edit-apt-hf").value=a.horaFim||"";
     G("edit-apt-fbkey").value=fbKey;
     // Atualiza hint de eficiência
     G("edit-apt-efic").textContent="";
@@ -985,9 +991,14 @@ function salvarEditApt(){
   var fbKey=G("edit-apt-fbkey").value;
   var real=parseInt(G("edit-apt-real").value)||0;
   var obs=G("edit-apt-obs").value||"";
+  var hi=G("edit-apt-hi").value||"";
+  var hf=G("edit-apt-hf").value||"";
   if(!fbKey){toast("Erro: fbKey não encontrado","err");return;}
   if(!DB){toast("Firebase não conectado","err");return;}
-  DB.ref("extrusao_apts/"+fbKey).update({real:real,obs:obs}).then(function(){
+  var updates={real:real,obs:obs};
+  if(hi) updates.horaIni=hi;
+  if(hf) updates.horaFim=hf;
+  DB.ref("extrusao_apts/"+fbKey).update(updates).then(function(){
     fM("m-edit-apt");
     toast("Apontamento atualizado!","ok");
     // Recarrega totalOp das linhas ativas
