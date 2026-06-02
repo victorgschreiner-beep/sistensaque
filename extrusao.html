@@ -1478,6 +1478,7 @@ function admExcluirAptOp(btn){
 function admReopenOp(fbKey,id){
   if(!confirm("Reabrir OP "+id+" para Em andamento?")) return;
   if(!DB){toast("Firebase não conectado","err");return;}
+  // Admin pode alterar status das OPs do ensaque (usuário admin tem permissão)
   DB.ref("ops/"+fbKey).update({status:"Em andamento"}).then(function(){
     toast("OP "+id+" reaberta!","ok");
     admBuscarOps();
@@ -1487,6 +1488,7 @@ function admReopenOp(fbKey,id){
 function admCloseOp(fbKey,id){
   if(!confirm("Concluir OP "+id+"?")) return;
   if(!DB){toast("Firebase não conectado","err");return;}
+  // Admin pode alterar status das OPs do ensaque
   DB.ref("ops/"+fbKey).update({status:"Concluida"}).then(function(){
     toast("OP "+id+" concluída!","ok");
     admBuscarOps();
