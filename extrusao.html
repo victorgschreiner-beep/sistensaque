@@ -318,8 +318,9 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <div id="resumo-corpo"></div>
     <div id="repr-campos" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px"></div>
     </div>
-    <div class="mr">
+    <div class="mr" style="margin-top:12px">
       <button class="btn-cancel" onclick="fM('m-resumo')">Fechar</button>
+      <button onclick="gerarPDFResumoTurno()" style="background:#739630;color:#fff;border:none;padding:11px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">↓ PDF Resumo</button>
       <button class="btn-ok" onclick="finalizarTurno()">✔ Finalizar Turno</button>
     </div>
   </div>
@@ -633,12 +634,24 @@ function iniciarApp(){
 // ── FIREBASE DATA ─────────────────────────────────────────
 function carregarTotalOp(linha, opFbKey){
   if(!DB||!opFbKey) return;
-  // Busca TODOS os apontamentos da OP em todos os turnos (igual ensaque)
+  var op=OPS.find(function(o){return o.fbKey===opFbKey;});
+  // Busca TODOS os apontamentos da OP por opFbKey (todos os turnos)
   DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(opFbKey).once("value",function(s){
     var totalGeral=0;
     if(s.exists()) s.forEach(function(c){totalGeral+=(Number(c.val().real)||0);});
-    EST[linha].totalOp[opFbKey]=totalGeral;
-    renderLinhaCard(linha);
+
+    // Se total=0 e existe OP com número, tenta buscar por opNum (compatibilidade)
+    if(totalGeral===0 && op){
+      DB.ref("extrusao_apts").orderByChild("opNum").equalTo(op.id).once("value",function(s2){
+        var totalPorNum=0;
+        if(s2.exists()) s2.forEach(function(c){totalPorNum+=(Number(c.val().real)||0);});
+        EST[linha].totalOp[opFbKey]=totalPorNum;
+        renderLinhaCard(linha);
+      });
+    } else {
+      EST[linha].totalOp[opFbKey]=totalGeral;
+      renderLinhaCard(linha);
+    }
   });
 }
 
@@ -653,9 +666,15 @@ function trocarDataFila(dt){
   if(!dt) return;
   DT_FILA=dt;
   atualizarDataFila();
-  carregarOPs();
-  // Reseta estado completo ao trocar data
+  // Cancela todos os listeners Firebase antes de recarregar
+  if(DB){
+    DB.ref("ops").off();
+    DB.ref("extrusao_apts").off();
+    DB.ref("extrusao_paradas").off();
+  }
+  // Reseta estado completo
   LINHAS_USER.forEach(function(l){EST[l]={opAtiva:null,opAtivaTs:null,apts:[],paradas:[],totalOp:{}};});
+  carregarOPs();
   carregarExtrusao();
   renderLinhas();
   toast("Fila do dia "+dt.split("-").reverse().join("/"),"ok");
@@ -713,14 +732,16 @@ function carregarExtrusao(){
   LINHAS_USER.forEach(function(linha){
     DB.ref("extrusao_apts").orderByChild("data").equalTo(dt).on("value",function(s){
       EST[linha].apts=[];
-      if(s.exists()) s.forEach(function(c){var a=c.val();a.fbKey=c.key;if(a.linha===linha&&a.turno===t) EST[linha].apts.push(a);});
+      if(s.exists()) s.forEach(function(c){var a=c.val();a.fbKey=c.key;if(a.linha===linha&&a.turno===t&&a.data===dt) EST[linha].apts.push(a);});
       EST[linha].apts.sort(function(a,b){return a.horaIni>b.horaIni?1:-1;});
+      // Atualiza totalOp ao receber novos apontamentos
+      if(EST[linha].opAtiva) carregarTotalOp(linha, EST[linha].opAtiva);
       renderLinhaCard(linha);
       atualizarBarraTurno();
     });
     DB.ref("extrusao_paradas").orderByChild("data").equalTo(dt).on("value",function(s){
       EST[linha].paradas=[];
-      if(s.exists()) s.forEach(function(c){var p=c.val();p.fbKey=c.key;if(p.linha===linha&&p.turno===t) EST[linha].paradas.push(p);});
+      if(s.exists()) s.forEach(function(c){var p=c.val();p.fbKey=c.key;if(p.linha===linha&&p.turno===t&&p.data===dt) EST[linha].paradas.push(p);});
       renderLinhaCard(linha);
       atualizarBarraTurno();
     });
@@ -935,7 +956,7 @@ function selecionarOpAtiva(linha,fbKey){
     EST[linha].opAtiva=fbKey;
     carregarTotalOp(linha, fbKey);
     if(DB){
-      var dt=hoje(),t=SES.turno;
+      var dt=DT_FILA||hoje(),t=SES.turno;
       DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t).set(fbKey);
     }
     renderLinhaCard(linha);
@@ -950,9 +971,7 @@ function selecionarOpAtiva(linha,fbKey){
   if(opAntObj && opAnterior!==fbKey && opAntObj.status!=='Concluida'){
     if(confirm('Finalizar a OP '+opAntObj.id+' ('+( opAntObj.desc||opAntObj.cod)+')?')){
       if(DB){
-        DB.ref('ops/'+opAnterior).update({status:'Concluida'}).then(function(){
-          toast('OP '+opAntObj.id+' finalizada','ok');
-        });
+        // REMOVIDO: extrusão não finaliza OPs do ensaque
       }
     }
   }
@@ -1060,9 +1079,7 @@ function abrirApt(linha){
     var opAnt=OPS.find(function(o){return o.fbKey===ultApt.opFbKey;});
     if(opAnt && opAnt.status!=='Concluida'){
       if(confirm('A OP anterior '+opAnt.id+' ('+( opAnt.desc||opAnt.cod)+') ainda não foi finalizada.\n\nDeseja finalizá-la agora?')){
-        if(DB) DB.ref('ops/'+opAnt.fbKey).update({status:'Concluida'}).then(function(){
-          toast('OP '+opAnt.id+' finalizada','ok');
-        });
+        // REMOVIDO: extrusão não finaliza OPs do ensaque
       }
     }
   }
@@ -1210,7 +1227,7 @@ function salvarSetup(){
   if(!opKey){toast("Selecione a OP","err");return;}
   var op=OPS.find(function(o){return o.fbKey===opKey;});
   if(!DB){toast("Firebase não conectado","err");return;}
-  DB.ref("extrusao_setup").push({id:uid(),linha:linhaAtiva,opKey:opKey,opNum:op?op.id:"",turno:SES.turno,data:hoje(),hora:horaAtual(),densidade:parseFloat(G("s-dens").value)||null,diametro:parseFloat(G("s-diam").value)||null,corte:parseFloat(G("s-corte").value)||null,umidade:parseFloat(G("s-umid").value)||null,obs:G("s-obs").value||"",operador:SES.login,ts:agora()})
+  DB.ref("extrusao_setup").push({id:uid(),linha:linhaAtiva,opKey:opKey,opNum:op?op.id:"",turno:SES.turno,data:DT_FILA||hoje(),hora:horaAtual(),densidade:parseFloat(G("s-dens").value)||null,diametro:parseFloat(G("s-diam").value)||null,corte:parseFloat(G("s-corte").value)||null,umidade:parseFloat(G("s-umid").value)||null,obs:G("s-obs").value||"",operador:SES.login,ts:agora()})
     .then(function(){fM("m-setup");toast("Setup registrado!","ok");})
     .catch(function(e){toast("Erro: "+e.message,"err");});
 }
@@ -1244,13 +1261,148 @@ function abrirResumo(){
   aM("m-resumo");
 }
 
+function gerarPDFResumoTurno(){
+  if(typeof jspdf==="undefined"){toast("jsPDF não disponível","err");return;}
+  var jsPDF=jspdf.jsPDF;
+  var doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  var W=277, ML=10, y=0;
+
+  // ── CABEÇALHO ────────────────────────────────────────────
+  doc.setFillColor(2,79,43); doc.rect(0,0,297,20,"F");
+  doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(255,255,255);
+  doc.text("RAGUIFE — RESUMO DO TURNO "+SES.turno,ML,13);
+  doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(180,220,180);
+  doc.text("Data: "+(DT_FILA||hoje())+" · Operador: "+SES.nome+" · Gerado: "+new Date().toLocaleString("pt-BR"),ML,18);
+  y=26;
+
+  var totalGeralReal=0, totalGeralMin=0;
+
+  LINHAS_USER.forEach(function(linha){
+    var e=EST[linha]||{apts:[],paradas:[]};
+    var nomeL=linha.replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");
+    var totalReal=e.apts.reduce(function(a,x){return a+(Number(x.real)||0);},0);
+    var minPara=0;
+    e.paradas.forEach(function(p){if(p.horaIni&&p.horaFim){var a=p.horaIni.split(":"),b=p.horaFim.split(":");minPara+=(parseInt(b[0])*60+parseInt(b[1]))-(parseInt(a[0])*60+parseInt(a[1]));}});
+    totalGeralReal+=totalReal; totalGeralMin+=minPara;
+    var opAtiva=e.opAtiva?OPS.find(function(o){return o.fbKey===e.opAtiva;})||null:null;
+    var metaH=opAtiva?getMetaHora(opAtiva.cod,linha):0;
+    var metaTurno=metaH*e.apts.length;
+    var adh=metaTurno?Math.min(Math.round(totalReal/metaTurno*100),999):0;
+    var corAdh=adh>=85?[2,79,43]:adh>=70?[210,153,34]:[192,57,43];
+
+    if(y>180){doc.addPage();y=15;}
+
+    // Header linha
+    doc.setFillColor(2,79,43); doc.rect(ML,y,W,7,"F");
+    doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(255,255,255);
+    doc.text(nomeL+(opAtiva?" — OP: "+opAtiva.id+" ("+( opAtiva.desc||opAtiva.cod).slice(0,30)+")":"— Sem OP ativa"),ML+3,y+5);
+    y+=8;
+
+    // Cards linha
+    var cw=(W-3)/4;
+    var cards2=[
+      {l:"PRODUZIDO",v:fN(totalReal)+" kg",c:corAdh},
+      {l:"META ACUM.",v:fN(metaTurno)+" kg",c:[50,80,50]},
+      {l:"ADERÊNCIA",v:adh+"%",c:corAdh},
+      {l:"PARADAS",v:minH(minPara),c:[192,57,43]}
+    ];
+    cards2.forEach(function(card,i){
+      var cx=ML+i*(cw+1);
+      doc.setFillColor(245,250,245); doc.rect(cx,y,cw,12,"F");
+      doc.setDrawColor(200,220,200); doc.rect(cx,y,cw,12,"S");
+      doc.setFont("helvetica","bold"); doc.setFontSize(6); doc.setTextColor(100,130,100);
+      doc.text(card.l,cx+cw/2,y+4.5,{align:"center"});
+      doc.setFontSize(9); doc.setTextColor(card.c[0],card.c[1],card.c[2]);
+      doc.text(card.v,cx+cw/2,y+10,{align:"center"});
+    });
+    y+=14;
+
+    // Tabela apontamentos
+    if(e.apts.length){
+      doc.setFillColor(220,235,220); doc.rect(ML,y,W,6,"F");
+      doc.setFont("helvetica","bold"); doc.setFontSize(7); doc.setTextColor(2,79,43);
+      var hc=[ML+2,ML+28,ML+54,ML+95,ML+135,ML+175,ML+215,ML+245];
+      ["H.INI","H.FIM","PRODUTO","REAL (kg)","META (kg/h)","%","OP","OBS"].forEach(function(h,i){
+        doc.text(h,hc[i],y+4.5);
+      });
+      y+=7;
+      e.apts.forEach(function(a,ai){
+        if(y>185){doc.addPage();y=15;}
+        if(ai%2===0){doc.setFillColor(248,253,248);doc.rect(ML,y-1,W,7,"F");}
+        var ef2=a.metaH?Math.min(Math.round((Number(a.real)||0)/a.metaH*100),999):0;
+        var corEf2=ef2>=85?[2,79,43]:ef2>=70?[210,153,34]:[192,57,43];
+        doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(30,30,30);
+        doc.text(a.horaIni||"",hc[0],y+4);
+        doc.text(a.horaFim||"",hc[1],y+4);
+        doc.text((a.desc||a.cod||"").slice(0,22),hc[2],y+4);
+        doc.setFont("helvetica","bold"); doc.setTextColor(corEf2[0],corEf2[1],corEf2[2]);
+        doc.text(fN(a.real),hc[3],y+4);
+        doc.setFont("helvetica","normal"); doc.setTextColor(80,80,80);
+        doc.text(fN(a.metaH||0),hc[4],y+4);
+        doc.setTextColor(corEf2[0],corEf2[1],corEf2[2]); doc.setFont("helvetica","bold");
+        doc.text(ef2+"%",hc[5],y+4);
+        doc.setFont("helvetica","normal"); doc.setTextColor(2,79,43);
+        doc.text(a.opNum||"",hc[6],y+4);
+        doc.setTextColor(100,100,100);
+        doc.text((a.obs||"").slice(0,15),hc[7],y+4);
+        y+=7;
+      });
+    }
+
+    // Tabela paradas
+    if(e.paradas.length){
+      doc.setFillColor(255,235,235); doc.rect(ML,y,W,6,"F");
+      doc.setFont("helvetica","bold"); doc.setFontSize(7); doc.setTextColor(192,57,43);
+      doc.text("PARADAS",ML+3,y+4.5);
+      y+=7;
+      e.paradas.forEach(function(p,pi){
+        if(y>185){doc.addPage();y=15;}
+        if(pi%2===0){doc.setFillColor(255,248,248);doc.rect(ML,y-1,W,7,"F");}
+        doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(192,57,43);
+        doc.text((p.horaIni||"")+" → "+(p.horaFim||"..."),ML+2,y+4);
+        doc.setTextColor(80,30,30);
+        doc.text(p.descricao||"",ML+35,y+4);
+        doc.setTextColor(100,100,100);
+        doc.text((p.obs||"").slice(0,40),ML+130,y+4);
+        doc.setTextColor(192,57,43);
+        doc.text(minH(p.minutos||0),ML+245,y+4);
+        y+=7;
+      });
+    }
+
+    // Reprocesso
+    var reprEl=G("repr-"+encId(linha));
+    var repr=reprEl?parseInt(reprEl.value)||0:0;
+    if(repr>0){
+      doc.setFillColor(255,250,235); doc.rect(ML,y,W,7,"F");
+      doc.setFont("helvetica","bold"); doc.setFontSize(7); doc.setTextColor(210,153,34);
+      doc.text("REPROCESSO: "+fN(repr)+" kg",ML+3,y+5);
+      y+=8;
+    }
+    y+=6;
+  });
+
+  // ── TOTAIS GERAIS ─────────────────────────────────────────
+  if(y>185){doc.addPage();y=15;}
+  doc.setFillColor(2,79,43); doc.rect(ML,y,W,10,"F");
+  doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(255,255,255);
+  doc.text("TOTAL GERAL DO TURNO "+SES.turno+": "+fN(totalGeralReal)+" kg  |  Paradas: "+minH(totalGeralMin),ML+W/2,y+7,{align:"center"});
+  y+=14;
+
+  doc.setFontSize(7); doc.setTextColor(160,160,160);
+  doc.text("Raguife Extrusão · Turno "+(SES.turno)+" · "+(DT_FILA||hoje())+" · Gerado por: "+(SES.nome||SES.login),148,202,{align:"center"});
+
+  doc.save("Resumo_Turno"+SES.turno+"_"+(DT_FILA||hoje())+".pdf");
+  toast("PDF gerado!","ok");
+}
+
 function finalizarTurno(){
   var reprocesso={};
   LINHAS_USER.forEach(function(l){
     reprocesso[encId(l)]=parseInt(G("repr-"+encId(l))&&G("repr-"+encId(l)).value)||0;
   });
   if(!DB){toast("Firebase não conectado","err");return;}
-  DB.ref("extrusao_turno").push({turno:SES.turno,data:hoje(),linhas:LINHAS_USER,operador:SES.login,reprocesso:reprocesso,ts:agora()})
+  DB.ref("extrusao_turno").push({turno:SES.turno,data:DT_FILA||hoje(),linhas:LINHAS_USER,operador:SES.login,reprocesso:reprocesso,ts:agora()})
     .then(function(){fM("m-resumo");toast("Turno finalizado!","ok");});
 }
 
@@ -2061,7 +2213,10 @@ function admSalvar(fbKey){
     var opSel=OPS.find(function(o){return o.fbKey===G("adm-op-sel").value;});
     if(opSel){updates.opFbKey=opSel.fbKey;updates.opNum=opSel.id;updates.cod=opSel.cod;}
     DB.ref("extrusao_apts/"+fbKey).update(updates).then(function(){
-      fM("m-admin-corr");toast("Apontamento corrigido!","ok");if(ADM_DADOS.apts.length===1&&G("m-op-apts").classList.contains("on")){var a=ADM_DADOS.apts[0];admVerApts(a.opFbKey,a.opNum,a.desc);}else{admBuscar();}
+      fM("m-admin-corr");toast("Apontamento corrigido!","ok");
+    // Atualiza totalOp de todas as linhas ativas
+    LINHAS_USER.forEach(function(l){if(EST[l]&&EST[l].opAtiva) carregarTotalOp(l,EST[l].opAtiva);});
+    if(ADM_DADOS.apts.length===1&&G("m-op-apts").classList.contains("on")){var a=ADM_DADOS.apts[0];admVerApts(a.opFbKey,a.opNum,a.desc);}else{admBuscar();}
     }).catch(function(e){toast("Erro: "+e.message,"err");});
   } else {
     updates.horaIni=G("adm-hi").value;
