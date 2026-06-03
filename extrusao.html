@@ -650,6 +650,8 @@ function iniciarApp(){
   atualizarDataFila();
   carregarOPs();
   carregarExtrusao();
+  // Verifica e fecha paradas abertas do turno anterior
+  setTimeout(function(){verificarParadasAbertas();}, 2000);
   iniciarRelogio();
   iniciarAlerta();
 }
@@ -802,6 +804,64 @@ function verificarHerancaOp(linha){
         DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t+"_ts").set(agora());
           renderLinhaCard(linha);
       }
+    });
+  });
+}
+
+// Verifica paradas abertas do turno anterior e fecha/herda automaticamente
+function verificarParadasAbertas(){
+  if(!DB) return;
+  var dt=DT_FILA||hoje(), t=SES.turno;
+  var tAnt=t===1?3:t-1;
+  var dtAnt=dt;
+  if(t===1){
+    var d=new Date(dt+'T12:00:00');
+    d.setDate(d.getDate()-1);
+    dtAnt=d.toISOString().slice(0,10);
+  }
+  // Hora de fim do turno anterior
+  var fimTurnos={1:"05:00",2:"13:00",3:"21:00"};
+  var inicioTurnos={1:"21:00",2:"05:00",3:"13:00"};
+  var horaFimAnt=fimTurnos[tAnt];
+  var horaIniAtual=inicioTurnos[t];
+
+  LINHAS_USER.forEach(function(linha){
+    // Busca paradas abertas do turno anterior
+    DB.ref("extrusao_paradas").orderByChild("data").equalTo(dtAnt).once("value",function(s){
+      if(!s.exists()) return;
+      s.forEach(function(c){
+        var p=c.val();
+        // Parada aberta do turno anterior nesta linha
+        if(p.linha===linha && p.turno===tAnt && !p.horaFim){
+          // 1. Fecha a parada do turno anterior com hora fim do turno
+          var ini=p.horaIni.split(":"),fim=horaFimAnt.split(":");
+          var min=(parseInt(fim[0])*60+parseInt(fim[1]))-(parseInt(ini[0])*60+parseInt(ini[1]));
+          if(min<0) min+=24*60; // virada de meia noite
+          DB.ref("extrusao_paradas/"+c.key).update({
+            horaFim:horaFimAnt,
+            minutos:Math.max(min,0),
+            fechadoAutomaticamente:true
+          });
+
+          // 2. Abre nova parada no turno atual com mesmo motivo
+          DB.ref("extrusao_paradas").push({
+            id:uid(),
+            linha:linha,
+            turno:t,
+            data:dt,
+            horaIni:horaIniAtual,
+            horaFim:"",
+            codMotivo:p.codMotivo||"",
+            descricao:p.descricao||"",
+            obs:(p.obs||"")+(p.obs?" | ":"")+"Continuação do Turno "+tAnt,
+            minutos:0,
+            operador:p.operador||SES.login,
+            continuacaoTurno:tAnt,
+            ts:agora()
+          });
+          toast("Parada do T"+tAnt+" herdada para T"+t+" — "+p.descricao,"ok");
+        }
+      });
     });
   });
 }
