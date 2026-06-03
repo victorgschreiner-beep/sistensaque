@@ -632,6 +632,18 @@ function iniciarApp(){
 }
 
 // ── FIREBASE DATA ─────────────────────────────────────────
+// Recalcula realExtrusao somando TODOS os apts da OP (todos turnos/datas)
+// e salva direto na OP — igual lógica do ensaque
+function recalcularRealExtrusao(opFbKey){
+  if(!DB||!opFbKey) return;
+  DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(opFbKey).once("value",function(s){
+    var total=0;
+    if(s.exists()) s.forEach(function(c){total+=(Number(c.val().real)||0);});
+    DB.ref("ops/"+opFbKey+"/realExtrusao").set(total);
+  });
+}
+
+// Mantido para compatibilidade — agora usa realExtrusao da OP
 function carregarTotalOp(linha, opFbKey){
   if(!DB||!opFbKey) return;
   if(!EST[linha]) return;
@@ -765,8 +777,7 @@ function verificarHerancaOp(linha){
         EST[linha].opAtiva=opAntFk;
         DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t).set(opAntFk);
         DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t+"_ts").set(agora());
-        carregarTotalOp(linha, opAntFk);
-        renderLinhaCard(linha);
+          renderLinhaCard(linha);
       }
     });
   });
@@ -812,7 +823,6 @@ function carregarExtrusao(){
           }
         }
 
-        if(EST[linha].opAtiva) carregarTotalOp(linha, EST[linha].opAtiva);
       }
       renderLinhaCard(linha);
     });
@@ -854,15 +864,8 @@ function renderLinhaCard(linha){
   var opAtiva=e.opAtiva?OPS.find(function(o){return o.fbKey===e.opAtiva;})||null:null;
   var metaH=opAtiva?getMetaHora(opAtiva.cod,linha):0;
   var totalTurno=e.apts.reduce(function(a,x){return a+(Number(x.real)||0);},0);
-  // Total da OP = todos os turnos (usa cache totalOp se disponível)
-  var totalOpExt=0;
-  if(opAtiva){
-    if(e.totalOp&&e.totalOp[opAtiva.fbKey]!==undefined){
-      totalOpExt=e.totalOp[opAtiva.fbKey];
-    } else {
-      totalOpExt=e.apts.filter(function(a){return a.opFbKey===opAtiva.fbKey;}).reduce(function(a,x){return a+(Number(x.real)||0);},0);
-    }
-  }
+  // Total da OP = realExtrusao salvo diretamente na OP (igual ensaque usa real)
+  var totalOpExt=opAtiva?(Number(opAtiva.realExtrusao)||0):0;
   var paradaAberta=e.paradas.some(function(p){return !p.horaFim;});
   var statusTxt=paradaAberta?"EM PARADA":opAtiva?"PRODUZINDO":"SEM OP ATIVA";
   var statusCls=paradaAberta?"st-para":opAtiva?"st-prod":"st-idle";
@@ -914,7 +917,7 @@ function renderLinhaCard(linha){
     opsLinha.forEach(function(o){
       var isAtiva=opAtiva&&o.fbKey===opAtiva.fbKey;
       var badgeCls=o.status==="Concluida"?"badge-con":o.status==="Em andamento"?"badge-and":o.status==="Reprogramada"?"badge-rep":"badge-lib";
-      var extTotal=(e.totalOp&&e.totalOp[o.fbKey]!==undefined)?e.totalOp[o.fbKey]:e.apts.filter(function(a){return a.opFbKey===o.fbKey;}).reduce(function(a,x){return a+(Number(x.real)||0);},0);
+      var extTotal=Number(o.realExtrusao)||0;
       var pct=o.prog?Math.min(Math.round(extTotal/(Number(o.prog)||1)*100),100):0;
       var corPct=pct>=90?"#024f2b":pct>=60?"#d29922":"#4a664a";
       h+='<div class="fila-op'+(isAtiva?" ativa":"")+(o.status==="Concluida"?" concluida":"")+'" data-fk="'+o.fbKey+'" data-l="'+linha+'" onclick="selecionarOpAtiva(this.dataset.l,this.dataset.fk)">';
@@ -977,7 +980,7 @@ function abrirSelOp(linha){
   if(!ops.length){h="<div style=\"text-align:center;padding:20px;color:#4a664a\">Nenhuma OP para hoje nesta linha</div>";}
   ops.forEach(function(o){
     var isAt=o.fbKey===atualFk;
-    var extTotal=(EST[linha].apts||[]).filter(function(a){return a.opFbKey===o.fbKey;}).reduce(function(a,x){return a+(Number(x.real)||0);},0);
+    var extTotal=Number(o.realExtrusao)||0;
     var pct=o.prog?Math.min(Math.round(extTotal/(Number(o.prog)||1)*100),100):0;
     var metaH=getMetaHora(o.cod,linha);
     var dotCor=o.status==="Concluida"?"#024f2b":o.status==="Em andamento"?"#d29922":"#aaa";
@@ -1000,8 +1003,7 @@ function selecionarOpAtiva(linha,fbKey){
 
   function fazerTroca(){
     EST[linha].opAtiva=fbKey;
-    carregarTotalOp(linha, fbKey);
-    if(DB){
+      if(DB){
       var dt=DT_FILA||hoje(),t=SES.turno;
       DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t).set(fbKey);
     }
@@ -1067,9 +1069,12 @@ function salvarEditApt(){
   DB.ref("extrusao_apts/"+fbKey).update(updates).then(function(){
     fM("m-edit-apt");
     toast("Apontamento atualizado!","ok");
-    // Recarrega totalOp das linhas ativas
-    LINHAS_USER.forEach(function(l){
-      if(EST[l].opAtiva) carregarTotalOp(l, EST[l].opAtiva);
+    // Recalcula realExtrusao na OP após edição
+    DB.ref("extrusao_apts/"+fbKey).once("value").then(function(s){
+      var a=s.val();
+      if(a && a.opFbKey){
+        recalcularRealExtrusao(a.opFbKey);
+      }
     });
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
@@ -1191,8 +1196,12 @@ function salvarApt(){
   DB.ref("extrusao_apts").push(apt).then(function(){
     fM("m-apt");
     toast("Apontamento salvo!","ok");
-    // Atualiza total da OP em todos os turnos
-    if(op) carregarTotalOp(linhaAtiva, op.fbKey);
+    // Igual ensaque: acumula realExtrusao diretamente na OP
+    if(op && op.fbKey){
+      DB.ref("ops/"+op.fbKey+"/realExtrusao").transaction(function(atual){
+        return (Number(atual)||0) + real;
+      });
+    }
     setTimeout(function(){gerarPrint(linhaAtiva);},600);
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
@@ -1801,6 +1810,7 @@ function admExcluirAptOp(btn){
   if(!confirm("Excluir este apontamento?")) return;
   DB.ref("extrusao_apts/"+fbKey).remove().then(function(){
     toast("Excluído!","ok");
+    recalcularRealExtrusao(opFbKey);
     admVerApts(opFbKey, opId, opDesc);
   });
 }
@@ -2260,8 +2270,9 @@ function admSalvar(fbKey){
     if(opSel){updates.opFbKey=opSel.fbKey;updates.opNum=opSel.id;updates.cod=opSel.cod;}
     DB.ref("extrusao_apts/"+fbKey).update(updates).then(function(){
       fM("m-admin-corr");toast("Apontamento corrigido!","ok");
-    // Atualiza totalOp de todas as linhas ativas
-    LINHAS_USER.forEach(function(l){if(EST[l]&&EST[l].opAtiva) carregarTotalOp(l,EST[l].opAtiva);});
+    // Recalcula realExtrusao da OP editada
+    var aptEditado=ADM_DADOS.apts.find(function(a){return a.fbKey===fbKey;});
+    if(aptEditado && aptEditado.opFbKey) recalcularRealExtrusao(aptEditado.opFbKey);
     if(ADM_DADOS.apts.length===1&&G("m-op-apts").classList.contains("on")){var a=ADM_DADOS.apts[0];admVerApts(a.opFbKey,a.opNum,a.desc);}else{admBuscar();}
     }).catch(function(e){toast("Erro: "+e.message,"err");});
   } else {
