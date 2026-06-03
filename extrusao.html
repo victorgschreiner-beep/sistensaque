@@ -415,6 +415,9 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       <div><label style="display:block;font-size:11px;font-weight:700;color:#4a664a;margin-bottom:3px">PRODUTO (SKU)</label>
         <input type="text" id="dash-sku-f" class="fi" placeholder="Código ou descrição..." style="width:200px">
       </div>
+      <div><label style="display:block;font-size:11px;font-weight:700;color:#4a664a;margin-bottom:3px">Nº ORDEM</label>
+        <input type="text" id="dash-op-f" class="fi" placeholder="Ex: 06318901001" style="width:160px">
+      </div>
       <button onclick="gerarDashboard()" style="background:#024f2b;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">🔍 Gerar</button>
     </div>
 
@@ -454,6 +457,26 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px">
         <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">Paradas por SKU (minutos)</div>
         <canvas id="dash-g6" height="200"></canvas>
+      </div>
+    </div>
+
+    <!-- Produtividade por Linha -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px">
+        <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">Produtividade por Linha (kg/h)</div>
+        <canvas id="dash-g7" height="180"></canvas>
+      </div>
+      <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px">
+        <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">Produtividade por SKU — Top 10 (kg/h)</div>
+        <canvas id="dash-g8" height="180"></canvas>
+      </div>
+    </div>
+
+    <!-- Filtro por Ordem -->
+    <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px;margin-bottom:14px" id="dash-op-section">
+      <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:12px">📋 Detalhamento por Ordem de Produção</div>
+      <div id="dash-op-corpo">
+        <div style="text-align:center;padding:20px;color:#4a664a;font-size:13px">Informe um nº de ordem no filtro e clique em Gerar para ver o detalhamento</div>
       </div>
     </div>
 
@@ -2010,7 +2033,126 @@ function dashRender(apts, paradas, di, df){
     [{label:"minutos parado",data:skuParadas.map(function(s){return s[1];}),backgroundColor:"rgba(210,153,34,.75)"}],
     {indexAxis:"y",scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:8}}}}});
 
-  // ── TABELA RASTREABILIDADE ───────────────────────────────
+  // ── PRODUTIVIDADE POR LINHA ──────────────────────────────
+  // Efetiva = kg / horas produzindo (sem paradas)
+  // Real = kg / horas totais (com paradas)
+  var prodLinha={};
+  apts.forEach(function(a){
+    var l=a.linha||"";
+    if(!prodLinha[l]) prodLinha[l]={real:0,minProd:0,minPara:0};
+    prodLinha[l].real+=(Number(a.real)||0);
+    // Calcula minutos produzindo
+    if(a.horaIni&&a.horaIni!==a.horaFim){
+      var hi=a.horaIni.split(":"), hf=(a.horaFim||"00:00").split(":");
+      var min=(parseInt(hf[0])*60+parseInt(hf[1]))-(parseInt(hi[0])*60+parseInt(hi[1]));
+      if(min>0) prodLinha[l].minProd+=min;
+    } else {
+      prodLinha[l].minProd+=60; // assume 1h por apontamento
+    }
+  });
+  paradas.forEach(function(p){
+    var l=p.linha||"";
+    if(!prodLinha[l]) prodLinha[l]={real:0,minProd:0,minPara:0};
+    prodLinha[l].minPara+=(Number(p.minutos)||0);
+  });
+
+  // Produtividade por SKU
+  var prodSKU={};
+  apts.forEach(function(a){
+    var k=(a.desc||a.cod||"");
+    if(!prodSKU[k]) prodSKU[k]={real:0,minProd:0};
+    prodSKU[k].real+=(Number(a.real)||0);
+    if(a.horaIni&&a.horaFim&&a.horaIni!==a.horaFim){
+      var hi=a.horaIni.split(":"),hf=a.horaFim.split(":");
+      var min2=(parseInt(hf[0])*60+parseInt(hf[1]))-(parseInt(hi[0])*60+parseInt(hi[1]));
+      if(min2>0) prodSKU[k].minProd+=min2;
+    } else {
+      prodSKU[k].minProd+=60;
+    }
+  });
+
+  // ── G7 — Produtividade por Linha ─────────────────────────
+  var linhasP=Object.keys(prodLinha);
+  var nomesLP=linhasP.map(function(l){return l.replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");});
+  var prodEfetiva=linhasP.map(function(l){
+    var d=prodLinha[l];
+    return d.minProd>0?Math.round(d.real/(d.minProd/60)):0;
+  });
+  var prodReal=linhasP.map(function(l){
+    var d=prodLinha[l];
+    var totMin=d.minProd+d.minPara;
+    return totMin>0?Math.round(d.real/(totMin/60)):0;
+  });
+  mkChart("dash-g7","bar",nomesLP,[
+    {label:"Produt. Efetiva (kg/h)",data:prodEfetiva,backgroundColor:"rgba(2,79,43,.8)"},
+    {label:"Produt. Real (kg/h)",data:prodReal,backgroundColor:"rgba(115,150,48,.6)"}
+  ]);
+
+  // ── G8 — Produtividade por SKU Top 10 ────────────────────
+  var skusProd=Object.entries(prodSKU)
+    .map(function(e){return {desc:e[0],ef:e[1].minProd>0?Math.round(e[1].real/(e[1].minProd/60)):0};})
+    .sort(function(a,b){return b.ef-a.ef;}).slice(0,10);
+  mkChart("dash-g8","bar",
+    skusProd.map(function(s){return s.desc.slice(0,20);}),
+    [{label:"Produt. Efetiva (kg/h)",data:skusProd.map(function(s){return s.ef;}),backgroundColor:"rgba(115,150,48,.8)"}],
+    {indexAxis:"y",scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:9}}}}});
+
+  // ── DETALHAMENTO POR ORDEM ────────────────────────────────
+  var opFiltro=(G("dash-op-f")&&G("dash-op-f").value||"").trim();
+  var corpOp=G("dash-op-corpo");
+  if(opFiltro && corpOp){
+    var aptsOP=apts.filter(function(a){return (a.opNum||"").includes(opFiltro);});
+    if(!aptsOP.length){
+      corpOp.innerHTML='<div style="text-align:center;padding:16px;color:#c0392b">Nenhum apontamento encontrado para a ordem '+opFiltro+'</div>';
+    } else {
+      // Agrupa por turno
+      var porTurnoOP={1:[],2:[],3:[]};
+      aptsOP.forEach(function(a){porTurnoOP[a.turno||1].push(a);});
+      var totalOP=aptsOP.reduce(function(a,x){return a+(Number(x.real)||0);},0);
+      var op=OPS.find(function(o){return o.id===opFiltro||o.id.includes(opFiltro);});
+
+      var h='<div style="background:#f5f9f2;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;gap:20px;align-items:center">';
+      h+='<div><div style="font-size:11px;color:#739630;font-weight:700">ORDEM</div><div style="font-size:16px;font-weight:800;color:#024f2b">'+opFiltro+'</div></div>';
+      if(op){h+='<div><div style="font-size:11px;color:#739630;font-weight:700">PRODUTO</div><div style="font-size:13px;font-weight:600">'+(op.desc||op.cod)+'</div></div>';}
+      h+='<div><div style="font-size:11px;color:#739630;font-weight:700">TOTAL EXTRUSADO</div><div style="font-size:18px;font-weight:800;color:#024f2b">'+fN(totalOP)+' kg</div></div>';
+      if(op&&op.prog){
+        var pctOP=Math.round(totalOP/Number(op.prog)*100);
+        var corOP=pctOP>=85?"#024f2b":pctOP>=70?"#d29922":"#c0392b";
+        h+='<div><div style="font-size:11px;color:#739630;font-weight:700">PROG / ADERÊNCIA</div><div style="font-size:16px;font-weight:800;color:'+corOP+'">'+fN(op.prog)+' kg · '+pctOP+'%</div></div>';
+      }
+      h+='</div>';
+
+      // Por turno
+      [1,2,3].forEach(function(t){
+        var aptsT=porTurnoOP[t];
+        if(!aptsT.length) return;
+        var totT=aptsT.reduce(function(a,x){return a+(Number(x.real)||0);},0);
+        h+='<div style="margin-bottom:10px">';
+        h+='<div style="background:#024f2b;color:#fff;padding:6px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;display:flex;justify-content:space-between">';
+        h+='<span>TURNO '+t+'</span><span>Total: '+fN(totT)+' kg</span></div>';
+        h+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+        h+='<tr style="background:#f5f9f2"><th style="padding:6px 8px;text-align:left;color:#024f2b">Data</th><th style="padding:6px 8px;text-align:left;color:#024f2b">Linha</th><th style="padding:6px 8px;text-align:left;color:#024f2b">Hora</th><th style="padding:6px 8px;text-align:right;color:#024f2b">Real (kg)</th><th style="padding:6px 8px;text-align:right;color:#024f2b">Meta (kg/h)</th><th style="padding:6px 8px;text-align:right;color:#024f2b">%</th><th style="padding:6px 8px;text-align:left;color:#024f2b">Operador</th></tr>';
+        aptsT.sort(function(a,b){return (a.data+a.horaIni)>(b.data+b.horaIni)?1:-1;}).forEach(function(a,i){
+          var ef=a.metaH?Math.min(Math.round((Number(a.real)||0)/a.metaH*100),999):0;
+          var corEf=ef>=85?"#024f2b":ef>=70?"#d29922":"#c0392b";
+          var nL=(a.linha||"").replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");
+          h+='<tr style="background:'+(i%2===0?"#fff":"#f9fbf9")+'">';
+          h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0">'+a.data+'</td>';
+          h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0">'+nL+'</td>';
+          h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0">'+a.horaIni+' → '+a.horaFim+'</td>';
+          h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700">'+fN(a.real)+'</td>';
+          h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;text-align:right">'+fN(a.metaH||0)+'</td>';
+          h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:'+corEf+'">'+ef+'%</td>';
+          h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;color:#666">'+a.operador+'</td>';
+          h+='</tr>';
+        });
+        h+='</table></div>';
+      });
+      corpOp.innerHTML=h;
+    }
+  } else if(corpOp && !opFiltro){
+    corpOp.innerHTML='<div style="text-align:center;padding:20px;color:#4a664a;font-size:13px">Informe um nº de ordem no filtro e clique em Gerar para ver o detalhamento</div>';
+  }
   var aptsSorted=apts.slice().sort(function(a,b){
     return (a.data+a.horaIni)>(b.data+b.horaIni)?1:-1;
   });
