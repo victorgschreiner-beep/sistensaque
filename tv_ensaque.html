@@ -152,7 +152,19 @@ function iniciar(){
   });
   DB.ref("apontamentos").orderByChild("data").equalTo(dt).on("value",function(s){
     APTS=[];
-    if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;APTS.push(v);});
+    if(s.exists()) s.forEach(function(c){
+      var v=c.val(); v.fbKey=c.key;
+      // Ignora apontamentos com turno 0 (versões antigas/substituídas)
+      // e ignora duplicatas — mantém só substituido:true quando existe
+      if(v.turno && v.turno>0) APTS.push(v);
+    });
+    // Remove duplicatas por opId+real — mantém o mais recente
+    var seen={}, aptsUniq=[];
+    APTS.forEach(function(a){
+      var key=a.opId+'_'+a.real;
+      if(!seen[key]){seen[key]=true;aptsUniq.push(a);}
+    });
+    APTS=aptsUniq;
     renderTudo();
   });
   DB.ref("perdas_diarias").orderByChild("data").equalTo(dt).on("value",function(s){
@@ -219,16 +231,9 @@ function renderTudo(){
     porTurno[2].real+=Number(a.t2)||0;
     porTurno[3].real+=Number(a.t3)||0;
   });
-  // Programado por turno: soma prog das OPs cujo turno predominante é cada turno
-  // Como não temos prog por turno, usa proporção do realizado
-  var totalRealTurnos=porTurno[1].real+porTurno[2].real+porTurno[3].real||1;
-  [1,2,3].forEach(function(ti){
-    porTurno[ti].prog=Math.round(totalProg*(porTurno[ti].real/totalRealTurnos));
-  });
-  // Fallback se não tem nada ainda
-  if(totalRealTurnos===1){
-    [1,2,3].forEach(function(ti){porTurno[ti].prog=Math.round(totalProg/3);});
-  }
+  // Programado dividido igualmente entre os 3 turnos
+  var progPorTurno=Math.round(totalProg/3);
+  [1,2,3].forEach(function(ti){porTurno[ti].prog=progPorTurno;});
 
   var nomes={1:"Turno 1  (21h — 05h)",2:"Turno 2  (05h — 13h)",3:"Turno 3  (13h — 21h)"};
   var h="";
