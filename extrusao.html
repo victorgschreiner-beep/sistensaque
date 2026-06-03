@@ -617,7 +617,7 @@ function iniciarApp(){
   var base=SES.login.replace(/\.t[123]$/,"");
   LINHAS_USER=LINHAS_PERFIL[base]||(SES.perfil==="admin"?["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"]:[]);
   if(!LINHAS_USER.length) LINHAS_USER=["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
-  LINHAS_USER.forEach(function(l){EST[l]={opAtiva:null,apts:[],paradas:[]};});
+  LINHAS_USER.forEach(function(l){EST[l]={opAtiva:null,opAtivaTs:null,apts:[],paradas:[],totalOp:{}};});
   G("top-user").textContent=SES.nome;
   var btnAdm=G("btn-admin");
   if(btnAdm) btnAdm.style.display=SES.perfil==="admin"?"":"none";
@@ -634,22 +634,62 @@ function iniciarApp(){
 // ── FIREBASE DATA ─────────────────────────────────────────
 function carregarTotalOp(linha, opFbKey){
   if(!DB||!opFbKey) return;
+  if(!EST[linha]) return;
+  if(!EST[linha].totalOp) EST[linha].totalOp={};
   var op=OPS.find(function(o){return o.fbKey===opFbKey;});
-  // Busca TODOS os apontamentos da OP por opFbKey (todos os turnos)
+
+  // Busca por opFbKey exato
   DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(opFbKey).once("value",function(s){
     var totalGeral=0;
     if(s.exists()) s.forEach(function(c){totalGeral+=(Number(c.val().real)||0);});
 
-    // Se total=0 e existe OP com número, tenta buscar por opNum (compatibilidade)
-    if(totalGeral===0 && op){
+    if(totalGeral>0){
+      EST[linha].totalOp[opFbKey]=totalGeral;
+      renderLinhaCard(linha);
+      return;
+    }
+
+    // Fallback 1: busca por opNum
+    if(op && op.id){
       DB.ref("extrusao_apts").orderByChild("opNum").equalTo(op.id).once("value",function(s2){
-        var totalPorNum=0;
-        if(s2.exists()) s2.forEach(function(c){totalPorNum+=(Number(c.val().real)||0);});
-        EST[linha].totalOp[opFbKey]=totalPorNum;
-        renderLinhaCard(linha);
+        var totalNum=0;
+        if(s2.exists()) s2.forEach(function(c){
+          var a=c.val();
+          // Só conta se for da mesma linha
+          if(a.linha===linha) totalNum+=(Number(a.real)||0);
+        });
+
+        if(totalNum>0){
+          EST[linha].totalOp[opFbKey]=totalNum;
+          renderLinhaCard(linha);
+          return;
+        }
+
+        // Fallback 2: soma todos os apts da linha com o opFbKey dos apts atuais
+        // Cobre caso onde opAtiva diverge do opFbKey salvo nos apts
+        var aptsLinha=EST[linha].apts||[];
+        if(aptsLinha.length>0){
+          var opFkDoApt=aptsLinha[0].opFbKey;
+          if(opFkDoApt && opFkDoApt!==opFbKey){
+            DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(opFkDoApt).once("value",function(s3){
+              var totalAlt=0;
+              if(s3.exists()) s3.forEach(function(c){
+                if(c.val().linha===linha) totalAlt+=(Number(c.val().real)||0);
+              });
+              EST[linha].totalOp[opFbKey]=totalAlt;
+              renderLinhaCard(linha);
+            });
+          } else {
+            EST[linha].totalOp[opFbKey]=0;
+            renderLinhaCard(linha);
+          }
+        } else {
+          EST[linha].totalOp[opFbKey]=0;
+          renderLinhaCard(linha);
+        }
       });
     } else {
-      EST[linha].totalOp[opFbKey]=totalGeral;
+      EST[linha].totalOp[opFbKey]=0;
       renderLinhaCard(linha);
     }
   });
