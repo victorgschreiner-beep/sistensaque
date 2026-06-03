@@ -167,12 +167,12 @@ function iniciar(){
     APTS=[];
     if(s.exists()) s.forEach(function(c){
       var v=c.val(); v.fbKey=c.key;
-      // Ignora apontamentos com turno 0 (versões antigas/substituídas)
-      // e ignora duplicatas — mantém só substituido:true quando existe
+      // Ignora apontamentos com turno 0 (versões antigas)
       if(v.turno && v.turno>0) APTS.push(v);
     });
-    // Remove duplicatas por opId+real — mantém o mais recente
+    // Remove duplicatas por opId+real — mantém o MAIS RECENTE (maior ts)
     var seen={}, aptsUniq=[];
+    APTS.sort(function(a,b){return (a.ts||"")>(b.ts||"")?-1:1;}); // mais recente primeiro
     APTS.forEach(function(a){
       var key=a.opId+'_'+a.real;
       if(!seen[key]){seen[key]=true;aptsUniq.push(a);}
@@ -237,12 +237,11 @@ function renderTudo(){
   }],{plugins:{legend:{position:"bottom",labels:{font:{size:11},boxWidth:14}}}});
 
   // ── TURNOS ────────────────────────────────────────────────
-  // Usa campos t1/t2/t3 dos apontamentos — estrutura correta do ensaque
+  // Usa campo 'turno' do apontamento para separar — mais confiável que t1/t2/t3
   var porTurno={1:{real:0,prog:0},2:{real:0,prog:0},3:{real:0,prog:0}};
   APTS.forEach(function(a){
-    porTurno[1].real+=Number(a.t1)||0;
-    porTurno[2].real+=Number(a.t2)||0;
-    porTurno[3].real+=Number(a.t3)||0;
+    var ti=Number(a.turno)||0;
+    if(ti>=1 && ti<=3) porTurno[ti].real+=Number(a.real)||0;
   });
   // Programado dividido igualmente entre os 3 turnos
   var progPorTurno=Math.round(totalProg/3);
