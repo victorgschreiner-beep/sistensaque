@@ -644,6 +644,7 @@ function carregarTotalOp(linha, opFbKey){
     if(s.exists()) s.forEach(function(c){totalGeral+=(Number(c.val().real)||0);});
 
     if(totalGeral>0){
+      if(EST[linha] && !EST[linha].totalOp) EST[linha].totalOp={};
       EST[linha].totalOp[opFbKey]=totalGeral;
       renderLinhaCard(linha);
       return;
@@ -660,6 +661,7 @@ function carregarTotalOp(linha, opFbKey){
         });
 
         if(totalNum>0){
+          if(EST[linha] && !EST[linha].totalOp) EST[linha].totalOp={};
           EST[linha].totalOp[opFbKey]=totalNum;
           renderLinhaCard(linha);
           return;
@@ -676,19 +678,23 @@ function carregarTotalOp(linha, opFbKey){
               if(s3.exists()) s3.forEach(function(c){
                 if(c.val().linha===linha) totalAlt+=(Number(c.val().real)||0);
               });
+              if(EST[linha] && !EST[linha].totalOp) EST[linha].totalOp={};
               EST[linha].totalOp[opFbKey]=totalAlt;
               renderLinhaCard(linha);
             });
           } else {
+            if(EST[linha] && !EST[linha].totalOp) EST[linha].totalOp={};
             EST[linha].totalOp[opFbKey]=0;
             renderLinhaCard(linha);
           }
         } else {
+          if(EST[linha] && !EST[linha].totalOp) EST[linha].totalOp={};
           EST[linha].totalOp[opFbKey]=0;
           renderLinhaCard(linha);
         }
       });
     } else {
+      if(EST[linha] && !EST[linha].totalOp) EST[linha].totalOp={};
       EST[linha].totalOp[opFbKey]=0;
       renderLinhaCard(linha);
     }
