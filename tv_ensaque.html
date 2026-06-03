@@ -212,18 +212,22 @@ function renderTudo(){
   }],{plugins:{legend:{position:"bottom",labels:{font:{size:11},boxWidth:14}}}});
 
   // ── TURNOS ────────────────────────────────────────────────
-  var porTurno={1:{real:0,prog:totalProg/3},2:{real:0,prog:totalProg/3},3:{real:0,prog:totalProg/3}};
-  // Usa apontamentos para separar por turno
+  // Usa campos t1/t2/t3 dos apontamentos — estrutura correta do ensaque
+  var porTurno={1:{real:0,prog:0},2:{real:0,prog:0},3:{real:0,prog:0}};
   APTS.forEach(function(a){
-    var ti=a.turno||turnoDeHora(parseInt((a.horaInicio||"00:00").split(":")[0]));
-    var r=Number(a.qtdRealKg||a.realKg||a.real||0);
-    if(porTurno[ti]) porTurno[ti].real+=r;
+    porTurno[1].real+=Number(a.t1)||0;
+    porTurno[2].real+=Number(a.t2)||0;
+    porTurno[3].real+=Number(a.t3)||0;
   });
-  // Fallback: se não tem apts por turno, distribui o real das OPs
-  var temApts=APTS.length>0;
-  if(!temApts){
-    // Distribui proporcionalmente — sem dados de turno usa total/3
-    [1,2,3].forEach(function(ti){porTurno[ti].real=totalBom/3;});
+  // Programado por turno: soma prog das OPs cujo turno predominante é cada turno
+  // Como não temos prog por turno, usa proporção do realizado
+  var totalRealTurnos=porTurno[1].real+porTurno[2].real+porTurno[3].real||1;
+  [1,2,3].forEach(function(ti){
+    porTurno[ti].prog=Math.round(totalProg*(porTurno[ti].real/totalRealTurnos));
+  });
+  // Fallback se não tem nada ainda
+  if(totalRealTurnos===1){
+    [1,2,3].forEach(function(ti){porTurno[ti].prog=Math.round(totalProg/3);});
   }
 
   var nomes={1:"Turno 1  (21h — 05h)",2:"Turno 2  (05h — 13h)",3:"Turno 3  (13h — 21h)"};
