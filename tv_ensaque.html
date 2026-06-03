@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Raguife — TV Ensaque</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;height:100vh;overflow:hidden;display:flex;flex-direction:column}
+
+/* TOPBAR */
+.topbar{background:#024f2b;padding:0 20px;height:50px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.top-left{display:flex;align-items:center;gap:12px}
+.top-sub{color:rgba(255,255,255,.7);font-size:12px;font-weight:600;letter-spacing:1px}
+.top-right{display:flex;align-items:center;gap:16px}
+.top-hora{font-size:22px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums}
+.top-badge{background:rgba(255,255,255,.15);color:#fff;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700}
+.top-data{color:rgba(255,255,255,.7);font-size:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:#2ea043;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+
+/* CONTEÚDO */
+.content{flex:1;padding:10px 14px 6px;display:flex;flex-direction:column;gap:8px;min-height:0;overflow:hidden}
+
+/* CARDS RESUMO */
+.cards-row{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;flex-shrink:0}
+.card{background:#fff;border-radius:10px;border:1px solid #d4e8d4;padding:10px 14px}
+.card-lbl{font-size:10px;font-weight:700;color:#739630;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
+.card-val{font-size:22px;font-weight:800;line-height:1}
+.card-sub{font-size:10px;color:#666;margin-top:2px}
+.val-gr{color:#024f2b}
+.val-rd{color:#c0392b}
+.val-or{color:#d29922}
+
+/* GRÁFICOS */
+.graficos-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1;min-height:0}
+.graf-card{background:#fff;border-radius:10px;border:1px solid #d4e8d4;padding:12px 14px;display:flex;flex-direction:column;min-height:0}
+.graf-titulo{font-size:11px;font-weight:800;color:#024f2b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;flex-shrink:0}
+.graf-wrap{flex:1;min-height:0;position:relative}
+
+/* TURNOS */
+.turnos-section{flex-shrink:0}
+.turnos-titulo{background:#024f2b;color:#fff;font-size:11px;font-weight:800;padding:6px 14px;border-radius:8px 8px 0 0;letter-spacing:.5px;text-transform:uppercase}
+.turnos-row{display:grid;grid-template-columns:1fr 1fr 1fr;border:1px solid #d4e8d4;border-top:none;border-radius:0 0 8px 8px;overflow:hidden;background:#fff}
+.turno-card{padding:10px 14px;border-right:1px solid #d4e8d4}
+.turno-card:last-child{border-right:none}
+.turno-card.atual{background:#f0f7ec}
+.turno-nome{font-size:11px;font-weight:700;color:#739630;margin-bottom:4px}
+.turno-kg{font-size:20px;font-weight:800;color:#024f2b}
+.turno-sub{font-size:10px;color:#666;margin-top:1px}
+.prog-bar{background:#e8f0e8;border-radius:4px;height:6px;margin-top:6px;overflow:hidden}
+.prog-fill{height:100%;border-radius:4px;transition:width .5s}
+.fill-ok{background:#024f2b}
+.fill-warn{background:#d29922}
+.fill-bad{background:#c0392b}
+.turno-pct{font-size:11px;font-weight:700;text-align:right;margin-top:2px}
+
+/* RODAPÉ */
+.rodape{background:#011a0a;border-top:2px solid #024f2b;height:36px;display:flex;align-items:center;overflow:hidden;flex-shrink:0}
+.rod-titulo{background:#024f2b;color:#fff;font-size:10px;font-weight:700;padding:0 14px;height:100%;display:flex;align-items:center;white-space:nowrap;flex-shrink:0}
+.rod-scroll-wrap{flex:1;overflow:hidden}
+.rod-scroll{display:flex;align-items:center;white-space:nowrap;animation:scroll-left 50s linear infinite}
+.rod-item{display:inline-flex;align-items:center;gap:8px;padding:0 20px;border-right:1px solid #1a3a1a;font-size:11px;color:#e8f0e8}
+.rod-op{color:#739630;font-weight:700}
+.rod-pct-ok{color:#2ea043;font-weight:700}
+.rod-pct-warn{color:#f39c12;font-weight:700}
+.rod-pct-bad{color:#e74c3c;font-weight:700}
+@keyframes scroll-left{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="top-left">
+    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMjAgOTAiIHdpZHRoPSIzMjAiIGhlaWdodD0iOTAiPgogIDwhLS0gQmxvY28gdmVyZGUgZXNjdXJvIGNvbSAicmFndWlmZSIgLS0+CiAgPHJlY3QgeD0iMCIgeT0iMCIgd2lkdGg9IjIxMCIgaGVpZ2h0PSI3OCIgcng9IjMiIGZpbGw9IiMwMjRmMmIiLz4KICA8dGV4dCB4PSIxMDUiIHk9IjU0IiAKICAgICAgICBmb250LWZhbWlseT0iQXJpYWwgUm91bmRlZCBNVCBCb2xkLEFyaWFsLHNhbnMtc2VyaWYiIAogICAgICAgIGZvbnQtc2l6ZT0iNDQiIAogICAgICAgIGZvbnQtd2VpZ2h0PSI5MDAiIAogICAgICAgIGZpbGw9IiNmZmZmZmYiIAogICAgICAgIHRleHQtYW5jaG9yPSJtaWRkbGUiCiAgICAgICAgbGV0dGVyLXNwYWNpbmc9Ii0xIj5yYWd1aWZlPC90ZXh0PgogIAogIDwhLS0gUXVhZHJhZG8gY29tIGJvcmRhIHZlcmRlIGNsYXJvIC0tPgogIDxyZWN0IHg9IjIyMCIgeT0iMCIgd2lkdGg9Ijc4IiBoZWlnaHQ9Ijc4IiByeD0iMyIgZmlsbD0iI2ZmZmZmZiIgc3Ryb2tlPSIjNzM5NjMwIiBzdHJva2Utd2lkdGg9IjUiLz4KICAKICA8IS0tIDMgYm9saW5oYXMgLS0+CiAgPGNpcmNsZSBjeD0iMjQ0IiBjeT0iMjYiIHI9IjgiIGZpbGw9IiM3Mzk2MzAiLz4KICA8Y2lyY2xlIGN4PSIyNTkiIGN5PSIyNiIgcj0iOCIgZmlsbD0iIzczOTYzMCIvPgogIDxjaXJjbGUgY3g9IjI3NCIgY3k9IjI2IiByPSI4IiBmaWxsPSIjNzM5NjMwIi8+CiAgCiAgPCEtLSBDdXJ2YXMgZG8gVyDigJQgYnJhw6dvIGVzcXVlcmRvIGRlc2NlLCBzb2JlIGFvIGNlbnRybywgZGVzY2UgZSBzb2JlIGRpcmVpdGEgLS0+CiAgPHBhdGggZD0iTTIzNiA0MCBRMjQ0IDYyIDI1MiA0OCBRMjU5IDYyIDI2NiA0OCBRMjc0IDYyIDI4MiA0MCIgCiAgICAgICAgZmlsbD0ibm9uZSIgCiAgICAgICAgc3Ryb2tlPSIjNzM5NjMwIiAKICAgICAgICBzdHJva2Utd2lkdGg9IjUuNSIgCiAgICAgICAgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiAKICAgICAgICBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPg==" style="height:32px" alt="Raguife">
+    <span class="top-sub">ENSAQUE AO VIVO</span>
+    <div class="dot"></div>
+  </div>
+  <div class="top-right">
+    <span class="top-data" id="top-data"></span>
+    <span class="top-badge" id="top-turno">TURNO 1</span>
+    <span class="top-hora" id="top-hora">--:--:--</span>
+  </div>
+</div>
+
+<div class="content">
+  <!-- Cards resumo -->
+  <div class="cards-row" id="cards-row">
+    <div class="card"><div class="card-lbl">Programado</div><div class="card-val val-or" id="c-prog">0</div><div class="card-sub">OPs do dia</div></div>
+    <div class="card"><div class="card-lbl">Prod. BOM</div><div class="card-val val-rd" id="c-bom">0</div><div class="card-sub" id="c-bom-pct">% do prog.</div></div>
+    <div class="card"><div class="card-lbl">Perda no Dia</div><div class="card-val val-rd" id="c-perda">0</div><div class="card-sub">kg perdidos</div></div>
+    <div class="card"><div class="card-lbl">Total Processado</div><div class="card-val val-gr" id="c-total">0</div><div class="card-sub">bom + perda</div></div>
+    <div class="card"><div class="card-lbl">OPs Programadas</div><div class="card-val val-gr" id="c-ops">0</div><div class="card-sub" id="c-ops-sub">em andamento</div></div>
+    <div class="card"><div class="card-lbl">Concluídas</div><div class="card-val val-gr" id="c-conc">0</div><div class="card-sub" id="c-conc-sub">de 0 OPs</div></div>
+  </div>
+
+  <!-- Gráficos -->
+  <div class="graficos-row">
+    <div class="graf-card">
+      <div class="graf-titulo">Produção por Linha</div>
+      <div class="graf-wrap"><canvas id="g-linha"></canvas></div>
+    </div>
+    <div class="graf-card">
+      <div class="graf-titulo">Status das OPs</div>
+      <div class="graf-wrap"><canvas id="g-status"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Aderência por turno -->
+  <div class="turnos-section">
+    <div class="turnos-titulo">CONSOLIDADO POR TURNO — <span id="adh-geral-txt">0% de aderência geral do dia</span></div>
+    <div class="turnos-row" id="turnos-row"></div>
+  </div>
+</div>
+
+<div class="rodape">
+  <div class="rod-titulo">📦 OPs DO DIA</div>
+  <div class="rod-scroll-wrap"><div class="rod-scroll" id="rod-scroll"></div></div>
+</div>
+
+<script>
+var firebaseConfig={apiKey:"AIzaSyB52cXfvtmY2xXu9vMkMPhCWU-rp6NXhxc",authDomain:"sistema-ensaque.firebaseapp.com",databaseURL:"https://sistema-ensaque-default-rtdb.firebaseio.com",projectId:"sistema-ensaque"};
+var DB=null;
+try{firebase.initializeApp(firebaseConfig);DB=firebase.database();}catch(e){console.warn(e);}
+
+var OPS=[], APTS=[], PERDAS=[];
+var CHARTS={};
+function G(id){return document.getElementById(id);}
+function hoje(){return new Date().toISOString().slice(0,10);}
+function pad(n){return String(n).padStart(2,"0");}
+function fN(n){return (Number(n)||0).toLocaleString("pt-BR");}
+function turnoAtual(){var h=new Date().getHours();return h>=21||h<5?1:h<13?2:3;}
+function turnoDeHora(h){return h>=21||h<5?1:h<13?2:3;}
+
+function realDia(op){
+  var dt=hoje();
+  if(op.realPorData&&op.realPorData[dt]) return Number(op.realPorData[dt]);
+  return Number(op.real)||0;
+}
+
+function iniciar(){
+  iniciarRelogio();
+  if(!DB) return;
+  var dt=hoje();
+  DB.ref("ops").orderByChild("data").equalTo(dt).on("value",function(s){
+    OPS=[];
+    if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;OPS.push(v);});
+    renderTudo();
+  });
+  DB.ref("apontamentos").orderByChild("data").equalTo(dt).on("value",function(s){
+    APTS=[];
+    if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;APTS.push(v);});
+    renderTudo();
+  });
+  DB.ref("perdas_diarias").orderByChild("data").equalTo(dt).on("value",function(s){
+    PERDAS=[];
+    if(s.exists()) s.forEach(function(c){var v=c.val();PERDAS.push(v);});
+    renderTudo();
+  });
+}
+
+function renderTudo(){
+  var dt=hoje(), t=turnoAtual();
+
+  // ── TOTAIS ────────────────────────────────────────────────
+  var totalProg=OPS.reduce(function(a,o){return a+(Number(o.prog)||0);},0);
+  var totalBom=OPS.reduce(function(a,o){return a+realDia(o);},0);
+  var totalPerda=PERDAS.reduce(function(a,p){return a+(Number(p.quantidade)||0);},0);
+  var totalProc=totalBom+totalPerda;
+  var nAndamento=OPS.filter(function(o){return o.status==="Em andamento";}).length;
+  var nConc=OPS.filter(function(o){return o.status==="Concluida";}).length;
+  var adhGeral=totalProg?Math.min(Math.round(totalBom/totalProg*100),999):0;
+  var corAdh=adhGeral>=85?"val-gr":adhGeral>=70?"val-or":"val-rd";
+
+  G("c-prog").textContent=fN(totalProg);
+  G("c-bom").textContent=fN(totalBom);
+  G("c-bom-pct").textContent=adhGeral+"% do prog.";
+  G("c-bom").className="card-val "+(adhGeral>=85?"val-gr":adhGeral>=70?"val-or":"val-rd");
+  G("c-perda").textContent=fN(totalPerda);
+  G("c-total").textContent=fN(totalProc);
+  G("c-ops").textContent=OPS.length;
+  G("c-ops-sub").textContent=nAndamento+" em andamento";
+  G("c-conc").textContent=nConc;
+  G("c-conc-sub").textContent="de "+OPS.length+" OPs";
+  G("adh-geral-txt").textContent=adhGeral+"% de aderência geral do dia";
+
+  // ── GRÁFICO LINHAS ────────────────────────────────────────
+  var linhas=["Linha 1","Linha 2","Linha 4","Linha 5"];
+  var mapL={"Linha 1 (E-240)":"Linha 1","Linha 2 (E-200)":"Linha 2","Linha 4 (Andritz I)":"Linha 4","Linha 5 (Andritz II)":"Linha 5"};
+  var progL={}, bomL={};
+  linhas.forEach(function(l){progL[l]=0;bomL[l]=0;});
+  OPS.forEach(function(o){
+    var l=mapL[o.linha]||o.linha;
+    if(progL[l]!==undefined){progL[l]+=(Number(o.prog)||0);bomL[l]+=realDia(o);}
+  });
+  mkChart("g-linha","bar",linhas,[
+    {label:"Programado",data:linhas.map(function(l){return progL[l];}),backgroundColor:"rgba(115,150,48,.3)",borderColor:"#739630",borderWidth:1},
+    {label:"Realizado",data:linhas.map(function(l){return bomL[l];}),backgroundColor:"rgba(2,79,43,.75)"}
+  ]);
+
+  // ── GRÁFICO STATUS ────────────────────────────────────────
+  var stCounts={"Concluida":0,"Em andamento":0,"Liberada":0,"Reprogramada":0};
+  OPS.forEach(function(o){if(stCounts[o.status]!==undefined) stCounts[o.status]++;});
+  var stLabels=Object.keys(stCounts).map(function(k){return k+" ("+stCounts[k]+")";});
+  mkChart("g-status","doughnut",stLabels,[{
+    data:Object.values(stCounts),
+    backgroundColor:["#024f2b","#d29922","#739630","rgba(115,150,48,.4)"],
+    borderWidth:2,borderColor:"#fff"
+  }],{plugins:{legend:{position:"bottom",labels:{font:{size:11},boxWidth:14}}}});
+
+  // ── TURNOS ────────────────────────────────────────────────
+  var porTurno={1:{real:0,prog:totalProg/3},2:{real:0,prog:totalProg/3},3:{real:0,prog:totalProg/3}};
+  // Usa apontamentos para separar por turno
+  APTS.forEach(function(a){
+    var ti=a.turno||turnoDeHora(parseInt((a.horaInicio||"00:00").split(":")[0]));
+    var r=Number(a.qtdRealKg||a.realKg||a.real||0);
+    if(porTurno[ti]) porTurno[ti].real+=r;
+  });
+  // Fallback: se não tem apts por turno, distribui o real das OPs
+  var temApts=APTS.length>0;
+  if(!temApts){
+    // Distribui proporcionalmente — sem dados de turno usa total/3
+    [1,2,3].forEach(function(ti){porTurno[ti].real=totalBom/3;});
+  }
+
+  var nomes={1:"Turno 1  (21h — 05h)",2:"Turno 2  (05h — 13h)",3:"Turno 3  (13h — 21h)"};
+  var h="";
+  [1,2,3].forEach(function(ti){
+    var adh=porTurno[ti].prog?Math.min(Math.round(porTurno[ti].real/porTurno[ti].prog*100),999):0;
+    var cor=adh>=85?"#024f2b":adh>=70?"#d29922":"#c0392b";
+    var fillCls=adh>=85?"fill-ok":adh>=70?"fill-warn":"fill-bad";
+    var atual=ti===t;
+    var pctRealiz=totalBom?Math.round(porTurno[ti].real/totalBom*100):0;
+    h+='<div class="turno-card'+(atual?" atual":"")+'">';
+    h+='<div class="turno-nome">'+nomes[ti]+(atual?' <span style="background:#024f2b;color:#fff;padding:1px 6px;border-radius:10px;font-size:9px">ATUAL</span>':'')+' </div>';
+    h+='<div class="turno-kg" style="color:'+cor+'">'+fN(porTurno[ti].real)+' <span style="font-size:12px;color:#4a664a">kg</span></div>';
+    h+='<div class="turno-sub">'+adh+'% do prog. | '+pctRealiz+'% do realizado</div>';
+    h+='<div class="prog-bar"><div class="prog-fill '+fillCls+'" style="width:'+Math.min(adh,100)+'%"></div></div>';
+    h+='<div class="turno-pct" style="color:'+cor+'">'+adh+'%</div>';
+    h+='</div>';
+  });
+  G("turnos-row").innerHTML=h;
+
+  // ── RODAPÉ ────────────────────────────────────────────────
+  var opsSorted=OPS.slice().sort(function(a,b){
+    var ord={"Em andamento":0,"Liberada":1,"Reprogramada":2,"Concluida":3};
+    return (ord[a.status]||9)-(ord[b.status]||9);
+  });
+  var rodH="";
+  [0,1].forEach(function(){
+    opsSorted.forEach(function(op){
+      var r=realDia(op);
+      var prog=Number(op.prog)||0;
+      var pct=prog?Math.min(Math.round(r/prog*100),999):0;
+      var corPct=pct>=85?"rod-pct-ok":pct>=70?"rod-pct-warn":"rod-pct-bad";
+      rodH+='<span class="rod-item">';
+      rodH+='<span class="rod-op">'+op.id+'</span>';
+      rodH+='<span style="color:#aaa">'+(op.desc||op.cod||"").slice(0,22)+'</span>';
+      rodH+='<span style="color:#e8f0e8;font-weight:600">'+fN(r)+' kg</span>';
+      rodH+='<span style="color:#4a664a">/ '+fN(prog)+' kg</span>';
+      rodH+='<span class="'+corPct+'">'+pct+'%</span>';
+      rodH+='<span style="color:#666;font-size:10px">'+op.status+'</span>';
+      rodH+='</span>';
+    });
+  });
+  G("rod-scroll").innerHTML=rodH||'<span class="rod-item">Nenhuma OP para hoje</span>';
+  G("rod-scroll").style.animationDuration=Math.max(opsSorted.length*5,20)+"s";
+}
+
+function mkChart(id,type,labels,datasets,extraOpts){
+  if(CHARTS[id]){CHARTS[id].destroy();}
+  var ctx=G(id); if(!ctx) return;
+  CHARTS[id]=new Chart(ctx,{
+    type:type,
+    data:{labels:labels,datasets:datasets},
+    options:Object.assign({
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{legend:{position:"bottom",labels:{font:{size:10},boxWidth:12,padding:8}}},
+      scales:type==="bar"?{x:{ticks:{font:{size:10}}},y:{ticks:{font:{size:10}}}}:{}
+    },extraOpts||{})
+  });
+}
+
+function iniciarRelogio(){
+  var meses=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  setInterval(function(){
+    var d=new Date();
+    G("top-hora").textContent=pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds());
+    G("top-data").textContent=pad(d.getDate())+" "+meses[d.getMonth()]+" "+d.getFullYear();
+    G("top-turno").textContent="TURNO "+turnoAtual();
+    // Atualiza destaque do turno atual
+    if(G("turnos-row").innerHTML) renderTudo();
+  },60000); // Atualiza a cada 1 min
+  // Relógio a cada segundo
+  setInterval(function(){
+    var d=new Date();
+    G("top-hora").textContent=pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds());
+  },1000);
+}
+
+iniciar();
+</script>
+</body>
+</html>
