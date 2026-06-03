@@ -290,6 +290,25 @@ function renderTudo(){
   });
   G("rod-scroll").innerHTML=rodH||'<span class="rod-item">Nenhuma OP para hoje</span>';
   G("rod-scroll").style.animationDuration=Math.max(opsSorted.length*5,20)+"s";
+
+  // ── BARRA DETALHE TURNOS ─────────────────────────────────
+  var nomesTurno={1:"TURNO 1 · 21h-05h",2:"TURNO 2 · 05h-13h",3:"TURNO 3 · 13h-21h"};
+  var tdH="";
+  [1,2,3].forEach(function(ti){
+    var realT=porTurno[ti].real;
+    var progT=porTurno[ti].prog;
+    var adhT=progT?Math.min(Math.round(realT/progT*100),999):0;
+    var cor=adhT>=85?"#2ea043":adhT>=70?"#f39c12":"#e74c3c";
+    var perdaT=APTS.filter(function(a){return a.turno===ti;}).reduce(function(s,a){return s+(Number(a.perda)||0);},0);
+    tdH+='<span class="td-item">';
+    tdH+='<span class="td-turno">'+nomesTurno[ti]+(ti===t?" ◀":"")+' </span>';
+    tdH+='<span style="color:#e8f0e8;font-weight:600">'+fN(realT)+' kg</span>';
+    tdH+='<span style="color:'+cor+';font-weight:700">'+adhT+'%</span>';
+    if(perdaT>0) tdH+='<span style="color:#e74c3c">Perda: '+fN(perdaT)+' kg</span>';
+    tdH+='</span>';
+  });
+  var tdEl=G("td-scroll");
+  if(tdEl){tdEl.innerHTML=tdH+tdH; tdEl.style.animationDuration="25s";}
 }
 
 function mkChart(id,type,labels,datasets,extraOpts){
