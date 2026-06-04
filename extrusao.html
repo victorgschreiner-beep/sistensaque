@@ -374,6 +374,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       <button onclick="admAba('apts')" id="adm-tab-apts" style="flex:1;padding:8px;border:2px solid #024f2b;background:#024f2b;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">⚡ Apontamentos</button>
       <button onclick="admAba('paradas')" id="adm-tab-paradas" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🔴 Paradas</button>
       <button onclick="admAba('ops')" id="adm-tab-ops" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📋 Ordens</button>
+      <button onclick="admAba('ativas')" id="adm-tab-ativas" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">⚡ OPs Ativas</button>
     </div>
     <div id="adm-lista-corpo" style="max-height:400px;overflow-y:auto"></div>
     <div class="mr" style="margin-top:12px">
@@ -886,6 +887,20 @@ function carregarExtrusao(){
       atualizarBarraTurno();
     });
     // Recupera OP ativa salva e carrega total de todos os turnos
+    // Carrega flags de OPs concluídas na extrusão
+    DB.ref("extrusao_op_concluida").once("value").then(function(sc){
+      LINHAS_USER.forEach(function(l){
+        if(!EST[l].opConcluidaExt) EST[l].opConcluidaExt={};
+      });
+      if(sc.exists()) sc.forEach(function(c){
+        // Associa ao EST correto (busca pela linha)
+        var val=c.val();
+        if(val&&val.linha&&EST[val.linha]){
+          EST[val.linha].opConcluidaExt=EST[val.linha].opConcluidaExt||{};
+          EST[val.linha].opConcluidaExt[c.key]=val;
+        }
+      });
+    });
     DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt).once("value").then(function(s){
       if(s.exists()){
         var val=s.val();
@@ -1098,11 +1113,18 @@ function selecionarOpAtiva(linha,fbKey){
     }
   }
 
-  // Se havia OP anterior diferente e não está concluída — pergunta se finaliza
+  // Se havia OP anterior diferente — pergunta se quer finalizar na extrusão
+  // (não altera o ensaque — só registra que terminou na extrusora)
   if(opAntObj && opAnterior!==fbKey && opAntObj.status!=='Concluida'){
-    if(confirm('Finalizar a OP '+opAntObj.id+' ('+( opAntObj.desc||opAntObj.cod)+')?')){
+    if(confirm('Finalizar a OP '+opAntObj.id+' ('+( opAntObj.desc||opAntObj.cod)+') na extrusora?')){
+      // Salva flag de conclusão na extrusão (nó separado — não toca no ensaque)
       if(DB){
-        // REMOVIDO: extrusão não finaliza OPs do ensaque
+        var dtF=DT_FILA||hoje();
+        DB.ref("extrusao_op_concluida/"+opAnterior).set({
+          linha:linha, turno:SES.turno, data:dtF,
+          operador:SES.login, ts:agora()
+        });
+        toast('OP '+opAntObj.id+' marcada como concluída na extrusão','ok');
       }
     }
   }
@@ -1805,6 +1827,87 @@ function admRenderOps(ops){
   G("adm-lista-corpo").innerHTML=h;
 }
 
+function admRenderAtivas(){
+  var corpo=G("adm-lista-corpo");
+  if(!corpo) return;
+
+  // Mostra OPs ativas por linha — usa EST e OPS
+  var h='<div style="background:#fff3cd;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#856404">'+
+    '⚠️ Finalizar aqui registra apenas na <strong>extrusão</strong> — a OP continua ativa no ensaque.</div>';
+
+  var temAtiva=false;
+  LINHAS_USER.forEach(function(linha){
+    var e=EST[linha]||{};
+    var opFk=e.opAtiva;
+    if(!opFk) return;
+    var op=OPS.find(function(o){return o.fbKey===opFk;});
+    if(!op) return;
+    temAtiva=true;
+
+    var nomeL=linha.replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");
+    var totalExt=Number(op.realExtrusao)||0;
+    var pct=op.prog?Math.min(Math.round(totalExt/Number(op.prog)*100),999):0;
+    var cor=pct>=85?"#024f2b":pct>=70?"#d29922":"#c0392b";
+
+    // Verifica se já foi finalizada na extrusão
+    var jaFinalizada=e.opConcluidaExt&&e.opConcluidaExt[opFk];
+
+    h+='<div style="background:#f5f9f2;border-radius:10px;border:2px solid #d4e8d4;padding:14px;margin-bottom:10px">';
+    h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    h+='<div>';
+    h+='<div style="font-size:11px;font-weight:700;color:#739630">'+nomeL+'</div>';
+    h+='<div style="font-size:15px;font-weight:800;color:#024f2b">OP: '+op.id+'</div>';
+    h+='<div style="font-size:12px;color:#333;margin-top:2px">'+(op.desc||op.cod)+'</div>';
+    h+='</div>';
+    h+='<div style="text-align:right">';
+    h+='<div style="font-size:22px;font-weight:800;color:'+cor+'">'+pct+'%</div>';
+    h+='<div style="font-size:11px;color:#4a664a">'+fN(totalExt)+' / '+fN(op.prog)+' kg</div>';
+    h+='</div></div>';
+
+    if(jaFinalizada){
+      h+='<div style="background:#d4f0e4;border-radius:8px;padding:8px 12px;font-size:12px;color:#024f2b;font-weight:700">'+
+        '✔ OP finalizada na extrusão por '+jaFinalizada.operador+' às '+jaFinalizada.ts.slice(11,16)+'</div>';
+    } else {
+      h+='<div style="display:flex;gap:8px">';
+      h+='<button data-fk="'+opFk+'" data-id="'+op.id+'" data-linha="'+linha+'" onclick="admFinalizarOpExt(this)" '+
+        'style="flex:1;background:#024f2b;color:#fff;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">'+
+        '✔ Finalizar na Extrusão</button>';
+      h+='</div>';
+    }
+    h+='</div>';
+  });
+
+  if(!temAtiva){
+    h+='<div style="text-align:center;padding:30px;color:#4a664a;font-size:13px">Nenhuma OP ativa no momento</div>';
+  }
+
+  corpo.innerHTML=h;
+}
+
+function admFinalizarOpExt(btn){
+  var opFbKey=btn.dataset.fk;
+  var opId=btn.dataset.id;
+  var linha=btn.dataset.linha;
+  if(!confirm("Finalizar OP "+opId+" na extrusao? A OP continuara ativa no ensaque.")) return;
+
+  if(!DB){toast("Firebase não conectado","err");return;}
+
+  var dt=DT_FILA||hoje();
+  var registro={
+    linha:linha, turno:SES.turno, data:dt,
+    operador:SES.login, ts:agora()
+  };
+
+  DB.ref("extrusao_op_concluida/"+opFbKey).set(registro).then(function(){
+    toast("OP "+opId+" finalizada na extrusão!","ok");
+    // Atualiza estado local
+    if(EST[linha]) EST[linha].opConcluidaExt=EST[linha].opConcluidaExt||{};
+    if(EST[linha]) EST[linha].opConcluidaExt[opFbKey]=registro;
+    admRenderAtivas();
+    renderLinhaCard(linha);
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
 function admBuscarOps(){
   if(!DB) return;
   var ln=G("adm-ln").value;
@@ -1905,6 +2008,8 @@ function admReopenOp(fbKey,id){
   DB.ref("ops/"+fbKey).update({status:"Em andamento"}).then(function(){
     toast("OP "+id+" reaberta!","ok");
     admBuscarOps();
+    // Força reload das OPs na fila
+    if(DB){DB.ref("ops").off();carregarOPs();}
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
@@ -1915,6 +2020,8 @@ function admCloseOp(fbKey,id){
   DB.ref("ops/"+fbKey).update({status:"Concluida"}).then(function(){
     toast("OP "+id+" concluída!","ok");
     admBuscarOps();
+    // Força reload das OPs na fila
+    if(DB){DB.ref("ops").off();carregarOPs();}
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
@@ -2318,13 +2425,14 @@ function abrirAdmin(){
 
 function admAba(aba){
   ADM_ABA=aba;
-  ["apts","paradas","ops"].forEach(function(a){
+  ["apts","paradas","ops","ativas"].forEach(function(a){
     var btn=G("adm-tab-"+a); if(!btn) return;
     btn.style.background=aba===a?"#024f2b":"#fff";
     btn.style.color=aba===a?"#fff":"#024f2b";
     btn.style.borderColor=aba===a?"#024f2b":"#d4e8d4";
   });
   if(aba==="ops") admBuscarOps();
+  else if(aba==="ativas") admRenderAtivas();
   else admRenderLista();
 }
 
