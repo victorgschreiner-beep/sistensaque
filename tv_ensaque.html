@@ -176,15 +176,17 @@ function iniciar(){
       if(sHoje.exists()) sHoje.forEach(function(c){
         var v=c.val(); v.fbKey=c.key;
         if(!v.turno || v.turno===0) return;
-        // T3 com ts de madrugada BR (00h-11h) pertence ao dia anterior
-        // Converte ts UTC para hora local Brasil (UTC-3)
+        // T3 com ts antes das 13h = pertence ao turno anterior
+        // Usa getHours() que já é hora local do browser
         if(v.turno===3 && v.ts){
-          var tsHoraUTC=new Date(v.ts).getHours();
-          var tsHoraBR=(tsHoraUTC-3+24)%24; // converte para UTC-3
-          var horaAtualBR=(new Date().getHours()-3+24)%24; // hora atual BR
-          if(tsHoraBR>=21 || tsHoraBR<11){ // apontado entre 21h e 11h BR = T3 de ontem
-            if(horaAtualBR>=11 && horaAtualBR<13) return; // entre 11h e 13h zera T3
-          }
+          var tsLocal=new Date(v.ts);
+          var tsHoraLocal=tsLocal.getHours();
+          var horaAtualLocal=new Date().getHours();
+          // Se apontamento T3 foi feito entre 21h e 13h (madrugada/manhã)
+          // e agora está entre 11h e 13h → é do T3 anterior, zera
+          var eraNoturno=(tsHoraLocal>=21||tsHoraLocal<13);
+          var agoreEmTransicao=(horaAtualLocal>=11&&horaAtualLocal<13);
+          if(eraNoturno && agoreEmTransicao) return;
         }
         todosApts.push(v);
       });
