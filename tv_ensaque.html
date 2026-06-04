@@ -175,7 +175,14 @@ function iniciar(){
       var todosApts=[];
       if(sHoje.exists()) sHoje.forEach(function(c){
         var v=c.val(); v.fbKey=c.key;
-        if(v.turno && v.turno>0) todosApts.push(v);
+        if(!v.turno || v.turno===0) return;
+        // T3 com ts de madrugada (00h-11h) pertence ao dia anterior
+        // Se já são 11h ou mais, ignora esses apontamentos
+        if(v.turno===3 && v.ts){
+          var tsHora=new Date(v.ts).getHours();
+          if(tsHora>=0 && tsHora<11 && new Date().getHours()>=11) return;
+        }
+        todosApts.push(v);
       });
 
       function processar(aptsExtras){
