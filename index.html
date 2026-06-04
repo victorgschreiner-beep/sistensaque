@@ -134,17 +134,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
 <div id="pg-login">
 <div class="lbox">
   <div class="logo">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 60" height="48" style="display:block;margin:0 auto">
-      <rect x="0" y="4" width="140" height="52" rx="3" fill="#024f2b"/>
-      <text x="70" y="38" font-family="Arial,sans-serif" font-size="28" font-weight="700" fill="#ffffff" text-anchor="middle">raguife</text>
-      <rect x="148" y="4" width="52" height="52" rx="3" fill="none" stroke="#739630" stroke-width="3"/>
-      <circle cx="163" cy="24" r="5" fill="#739630"/>
-      <circle cx="174" cy="24" r="5" fill="#739630"/>
-      <circle cx="185" cy="24" r="5" fill="#739630"/>
-      <path d="M158 36 Q163 44 168 36" stroke="#739630" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-      <path d="M169 36 Q174 44 179 36" stroke="#739630" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-      <path d="M180 36 Q185 44 190 36" stroke="#739630" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-    </svg>
+    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMjAgOTAiIHdpZHRoPSIzMjAiIGhlaWdodD0iOTAiPgogIDwhLS0gQmxvY28gdmVyZGUgZXNjdXJvIGNvbSAicmFndWlmZSIgLS0+CiAgPHJlY3QgeD0iMCIgeT0iMCIgd2lkdGg9IjIxMCIgaGVpZ2h0PSI3OCIgcng9IjMiIGZpbGw9IiMwMjRmMmIiLz4KICA8dGV4dCB4PSIxMDUiIHk9IjU0IiAKICAgICAgICBmb250LWZhbWlseT0iQXJpYWwgUm91bmRlZCBNVCBCb2xkLEFyaWFsLHNhbnMtc2VyaWYiIAogICAgICAgIGZvbnQtc2l6ZT0iNDQiIAogICAgICAgIGZvbnQtd2VpZ2h0PSI5MDAiIAogICAgICAgIGZpbGw9IiNmZmZmZmYiIAogICAgICAgIHRleHQtYW5jaG9yPSJtaWRkbGUiCiAgICAgICAgbGV0dGVyLXNwYWNpbmc9Ii0xIj5yYWd1aWZlPC90ZXh0PgogIAogIDwhLS0gUXVhZHJhZG8gY29tIGJvcmRhIHZlcmRlIGNsYXJvIC0tPgogIDxyZWN0IHg9IjIyMCIgeT0iMCIgd2lkdGg9Ijc4IiBoZWlnaHQ9Ijc4IiByeD0iMyIgZmlsbD0iI2ZmZmZmZiIgc3Ryb2tlPSIjNzM5NjMwIiBzdHJva2Utd2lkdGg9IjUiLz4KICAKICA8IS0tIDMgYm9saW5oYXMgLS0+CiAgPGNpcmNsZSBjeD0iMjQ0IiBjeT0iMjYiIHI9IjgiIGZpbGw9IiM3Mzk2MzAiLz4KICA8Y2lyY2xlIGN4PSIyNTkiIGN5PSIyNiIgcj0iOCIgZmlsbD0iIzczOTYzMCIvPgogIDxjaXJjbGUgY3g9IjI3NCIgY3k9IjI2IiByPSI4IiBmaWxsPSIjNzM5NjMwIi8+CiAgCiAgPCEtLSBDdXJ2YXMgZG8gVyDigJQgYnJhw6dvIGVzcXVlcmRvIGRlc2NlLCBzb2JlIGFvIGNlbnRybywgZGVzY2UgZSBzb2JlIGRpcmVpdGEgLS0+CiAgPHBhdGggZD0iTTIzNiA0MCBRMjQ0IDYyIDI1MiA0OCBRMjU5IDYyIDI2NiA0OCBRMjc0IDYyIDI4MiA0MCIgCiAgICAgICAgZmlsbD0ibm9uZSIgCiAgICAgICAgc3Ryb2tlPSIjNzM5NjMwIiAKICAgICAgICBzdHJva2Utd2lkdGg9IjUuNSIgCiAgICAgICAgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiAKICAgICAgICBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPg==" style="height:36px;display:block" alt="Raguife">
     <div class="logo-t">Sistema de Ensaque</div>
     <div class="logo-s">Confianca que Inspira</div>
   </div>
@@ -1439,7 +1429,25 @@ function renderOpCards(){
     var totProc=(Number(o.real)||0)+(Number(o.perda)||0);
     if(totProc>0) h+='<div style="font-size:12px"><span style="color:#024f2b">Total Proc.</span> <strong style="color:#024f2b">'+fN(totProc)+' kg</strong></div>';
     h+='</div>';
-    h+='<div style="margin-top:8px;background:#eef2ee;border-radius:3px;height:6px;overflow:hidden"><div style="height:100%;width:'+Math.min(p2,100)+'%;background:'+(p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b')+';border-radius:3px"></div></div>';
+    // Barra da extrusão — só se tiver realExtrusao
+    var realExt=Number(o.realExtrusao)||0;
+    if(realExt>0){
+      var pExt=o.prog?Math.min(Math.round(realExt/Number(o.prog)*100),999):0;
+      var corExt=pExt>=85?'#1a7a4a':pExt>=70?'#b8860b':'#a93226';
+      h+='<div style="display:flex;justify-content:space-between;font-size:10px;color:#1a7a4a;font-weight:600;margin-top:8px;margin-bottom:2px">';
+      h+='<span>🏭 Extrusão</span>';
+      h+='<span>'+fN(realExt)+' kg · '+pExt+'%</span>';
+      h+='</div>';
+      h+='<div style="background:#d4ede0;border-radius:3px;height:6px;overflow:hidden;margin-bottom:6px">';
+      h+='<div style="height:100%;width:'+Math.min(pExt,100)+'%;background:'+corExt+';border-radius:3px"></div>';
+      h+='</div>';
+    }
+    // Label ensaque
+    h+='<div style="display:flex;justify-content:space-between;font-size:10px;color:#024f2b;font-weight:600;margin-bottom:2px">';
+    h+='<span>📦 Ensaque</span>';
+    h+='<span>'+p2+'%</span>';
+    h+='</div>';
+    h+='<div style="margin-top:0px;background:#eef2ee;border-radius:3px;height:6px;overflow:hidden"><div style="height:100%;width:'+Math.min(p2,100)+'%;background:'+(p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b')+';border-radius:3px"></div></div>';
     h+='<div style="font-size:11px;color:#4a664a;margin-top:3px;text-align:right">'+p2+'% realizado</div>';
     if(o.obs) h+='<div style="font-size:12px;color:#d29922;margin-top:6px">'+o.obs+'</div>';
     if(o.silos) h+='<div style="font-size:12px;color:#4a664a;margin-top:4px">Silos: '+o.silos+'</div>';
@@ -3282,6 +3290,9 @@ function renderFila(){
         h+='</div>';
         h+='<div style="font-size:12px;color:#4a664a;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(op.desc||op.cod)+'</div>';
         h+='<div style="display:flex;gap:10px;font-size:11px;margin-bottom:4px"><span><strong>'+op.tipo+'</strong></span><span style="color:#739630">Prog: '+fN(op.prog)+'</span><span style="color:#024f2b">Real: '+fN(op.real)+'</span></div>';
+        var rExt1=Number(op.realExtrusao)||0;
+        if(rExt1>0){var pExt1=op.prog?Math.min(Math.round(rExt1/Number(op.prog)*100),999):0;var cExt1=pExt1>=85?'#1a7a4a':pExt1>=70?'#b8860b':'#a93226';h+='<div style="font-size:9px;color:#1a7a4a;font-weight:600;margin-bottom:1px">🏭 Ext: '+fN(rExt1)+' kg ('+pExt1+'%)</div><div style="background:#d4ede0;border-radius:3px;height:4px;overflow:hidden;margin-bottom:3px"><div style="height:100%;width:'+Math.min(pExt1,100)+'%;background:'+cExt1+';border-radius:3px"></div></div>';}
+        h+='<div style="font-size:9px;color:#024f2b;font-weight:600;margin-bottom:1px">📦 Ens: '+p2+'%</div>';
         h+='<div style="background:#eef2ee;border-radius:3px;height:5px;overflow:hidden"><div style="height:100%;width:'+Math.min(p2,100)+'%;background:'+(p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b')+';border-radius:3px"></div></div>';
         h+='</div>';
       });
@@ -3345,6 +3356,8 @@ function renderFilaOp(){
         h+='<div style="display:flex;align-items:center;margin-bottom:6px"><span class="fila-pos">'+(idx+1)+'</span>';
         h+='<div style="flex:1"><div style="font-weight:700;font-size:13px">'+op.id+'</div><div style="font-size:11px">'+sbadge(op.status)+'</div></div></div>';
         h+='<div style="font-size:12px;color:#4a664a;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(op.desc||op.cod)+'</div>';
+        var rExt2=Number(op.realExtrusao)||0;
+        if(rExt2>0){var pExt2=op.prog?Math.min(Math.round(rExt2/Number(op.prog)*100),999):0;var cExt2=pExt2>=85?'#1a7a4a':pExt2>=70?'#b8860b':'#a93226';h+='<div style="font-size:9px;color:#1a7a4a;font-weight:600;margin-bottom:1px">🏭 Ext: '+fN(rExt2)+' kg ('+pExt2+'%)</div><div style="background:#d4ede0;border-radius:3px;height:4px;overflow:hidden;margin-bottom:3px"><div style="height:100%;width:'+Math.min(pExt2,100)+'%;background:'+cExt2+';border-radius:3px"></div></div><div style="font-size:9px;color:#024f2b;font-weight:600;margin-bottom:1px">📦 Ens:</div>';}
         h+='<div style="background:#eef2ee;border-radius:3px;height:5px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:'+Math.min(p2,100)+'%;background:'+(p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b')+';border-radius:3px"></div></div>';
         h+='<div style="display:flex;align-items:center;gap:6px">';
         h+='<div style="flex:1;font-size:11px;color:#4a664a">'+fN(op.real)+' / '+fN(op.prog)+' kg &bull; '+p2+'%</div>';
