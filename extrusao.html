@@ -755,6 +755,7 @@ function trocarDataFila(dt){
     DB.ref("ops").off();
     DB.ref("extrusao_apts").off();
     DB.ref("extrusao_paradas").off();
+    DB.ref("extrusao_op_concluida").off();
   }
   // Reseta estado completo
   LINHAS_USER.forEach(function(l){EST[l]={opAtiva:null,opAtivaTs:null,apts:[],paradas:[],totalOp:{}};});
@@ -887,19 +888,19 @@ function carregarExtrusao(){
       atualizarBarraTurno();
     });
     // Recupera OP ativa salva e carrega total de todos os turnos
-    // Carrega flags de OPs concluídas na extrusão
-    DB.ref("extrusao_op_concluida").once("value").then(function(sc){
+    // Listener em tempo real para OPs concluídas na extrusão
+    DB.ref("extrusao_op_concluida").on("value",function(sc){
       LINHAS_USER.forEach(function(l){
-        if(!EST[l].opConcluidaExt) EST[l].opConcluidaExt={};
+        EST[l].opConcluidaExt={};
       });
       if(sc.exists()) sc.forEach(function(c){
-        // Associa ao EST correto (busca pela linha)
         var val=c.val();
         if(val&&val.linha&&EST[val.linha]){
-          EST[val.linha].opConcluidaExt=EST[val.linha].opConcluidaExt||{};
           EST[val.linha].opConcluidaExt[c.key]=val;
         }
       });
+      // Atualiza os cards quando mudar
+      LINHAS_USER.forEach(function(l){renderLinhaCard(l);});
     });
     DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt).once("value").then(function(s){
       if(s.exists()){
@@ -941,13 +942,22 @@ function renderLinhas(){
   LINHAS_USER.forEach(function(l){renderLinhaCard(l);});
 }
 
+function opConcluidaNaExt(opFbKey){
+  // Verifica se a OP foi concluída na extrusão (nó separado)
+  for(var l in EST){
+    if(EST[l].opConcluidaExt && EST[l].opConcluidaExt[opFbKey]) return true;
+  }
+  return false;
+}
+
 function getOpsLinha(linha){
   var dt=DT_FILA||hoje();
   return OPS.filter(function(o){
-    // Só mostra OPs do dia filtrado, exceto Reprogramadas que são para hoje
     if(o.linha!==linha) return false;
+    // Filtra OPs concluídas NO ENSAQUE
     if(o.status==='Concluida') return false;
-    // Reprogramada só aparece se a data dela é o dia atual
+    // Filtra OPs concluídas NA EXTRUSÃO (não toca no ensaque)
+    if(opConcluidaNaExt(o.fbKey)) return false;
     return o.data===dt;
   }).sort(function(a,b){return (a.criadoEm||'')>(b.criadoEm||'')?1:-1;});
 }
@@ -1003,6 +1013,14 @@ function renderLinhaCard(linha){
   h+='<button class="btn btn-para" data-l="'+linha+'" onclick="abrirParada(this.dataset.l)">🔴 Parada</button>';
   h+='<button class="btn btn-setup" data-l="'+linha+'" onclick="abrirSetup(this.dataset.l)">⚙️ Setup</button>';
   h+='</div>';
+  // Botão concluir OP — aparece quando tem apontamentos e OP não concluída
+  if(opAtiva && opAtiva.status!=='Concluida' && e.apts.length>0){
+    h+='<div style="margin-bottom:10px">';
+    h+='<button class="btn" data-fk="'+opAtiva.fbKey+'" data-id="'+opAtiva.id+'" data-l="'+linha+'" onclick="concluirOpOperador(this)" '+
+      'style="width:100%;background:#f5f9f2;border:2px solid #024f2b;color:#024f2b;padding:8px;font-size:12px;font-weight:700;cursor:pointer;border-radius:8px">'+
+      '✔ Concluir Ordem '+opAtiva.id+' na Extrusão</button>';
+    h+='</div>';
+  }
 
   h+='<div class="fila-titulo">';
   h+='<span>FILA DO DIA ('+opsLinha.length+' OPs)</span>';
@@ -1046,6 +1064,7 @@ function renderLinhaCard(linha){
         if(a.opNum) h+='<span style="font-size:10px;color:#739630;font-weight:600;margin-left:4px">'+a.opNum+'</span>';
         if(opAtiva && opAtiva.status!=='Concluida'){
           h+='<button data-fk="'+a.fbKey+'" onclick="editarAptOperador(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;margin-left:4px">✏️</button>';
+          h+='<button data-fk="'+a.fbKey+'" onclick="excluirAptOperador(this.dataset.fk)" style="background:#c0392b;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;margin-left:2px">🗑</button>';
         }
         h+='</div>';
       } else {
@@ -1056,6 +1075,7 @@ function renderLinhaCard(linha){
         h+='<span class="hist-info" style="flex:1">'+p.descricao+(p.obs?' — '+p.obs:'')+'</span>';
         if(opAtivaSt!=='Concluida'){
           h+='<button data-fk="'+p.fbKey+'" onclick="editarParadaOp(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0">✏️</button>';
+          h+='<button data-fk="'+p.fbKey+'" onclick="excluirParadaOperador(this.dataset.fk)" style="background:#c0392b;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;margin-left:2px">🗑</button>';
         }
         h+='</div>';
       }
@@ -1181,6 +1201,46 @@ function salvarEditApt(){
         recalcularRealExtrusao(a.opFbKey);
       }
     });
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+function excluirAptOperador(fbKey){
+  if(!confirm("Excluir este apontamento?")) return;
+  if(!DB){toast("Firebase nao conectado","err");return;}
+  DB.ref("extrusao_apts/"+fbKey).once("value").then(function(s){
+    if(!s.exists()) return;
+    var a=s.val();
+    DB.ref("extrusao_apts/"+fbKey).remove().then(function(){
+      toast("Apontamento excluido!","ok");
+      // Recalcula realExtrusao da OP
+      if(a.opFbKey) recalcularRealExtrusao(a.opFbKey);
+    });
+  });
+}
+
+function excluirParadaOperador(fbKey){
+  if(!confirm("Excluir esta parada?")) return;
+  if(!DB){toast("Firebase nao conectado","err");return;}
+  DB.ref("extrusao_paradas/"+fbKey).remove().then(function(){
+    toast("Parada excluida!","ok");
+  });
+}
+
+function concluirOpOperador(btn){
+  var opFbKey=btn.dataset.fk;
+  var opId=btn.dataset.id;
+  var linha=btn.dataset.l;
+  if(!confirm("Concluir OP "+opId+" na extrusao? A OP continuara ativa no ensaque.")) return;
+  if(!DB){toast("Firebase nao conectado","err");return;}
+  var dt=DT_FILA||hoje();
+  var registro={linha:linha,turno:SES.turno,data:dt,operador:SES.login,ts:agora()};
+  DB.ref("extrusao_op_concluida/"+opFbKey).set(registro).then(function(){
+    toast("OP "+opId+" concluida na extrusao!","ok");
+    if(EST[linha]){
+      EST[linha].opConcluidaExt=EST[linha].opConcluidaExt||{};
+      EST[linha].opConcluidaExt[opFbKey]=registro;
+    }
+    renderLinhaCard(linha);
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
