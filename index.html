@@ -1444,8 +1444,9 @@ function renderOpCards(){
     }
     // Label ensaque
     h+='<div style="display:flex;justify-content:space-between;font-size:10px;color:#024f2b;font-weight:600;margin-bottom:2px">';
+    var realEnsCard=Number(o.real)||0;
     h+='<span>📦 Ensaque</span>';
-    h+='<span>'+p2+'%</span>';
+    h+='<span>'+fN(realEnsCard)+' kg · '+p2+'%</span>';
     h+='</div>';
     h+='<div style="margin-top:0px;background:#eef2ee;border-radius:3px;height:6px;overflow:hidden"><div style="height:100%;width:'+Math.min(p2,100)+'%;background:'+(p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b')+';border-radius:3px"></div></div>';
     h+='<div style="font-size:11px;color:#4a664a;margin-top:3px;text-align:right">'+p2+'% realizado</div>';
@@ -3292,7 +3293,7 @@ function renderFila(){
         h+='<div style="display:flex;gap:10px;font-size:11px;margin-bottom:4px"><span><strong>'+op.tipo+'</strong></span><span style="color:#739630">Prog: '+fN(op.prog)+'</span><span style="color:#024f2b">Real: '+fN(op.real)+'</span></div>';
         var rExt1=Number(op.realExtrusao)||0;
         if(rExt1>0){var pExt1=op.prog?Math.min(Math.round(rExt1/Number(op.prog)*100),999):0;var cExt1=pExt1>=85?'#1a7a4a':pExt1>=70?'#b8860b':'#a93226';h+='<div style="font-size:9px;color:#1a7a4a;font-weight:600;margin-bottom:1px">🏭 Ext: '+fN(rExt1)+' kg ('+pExt1+'%)</div><div style="background:#d4ede0;border-radius:3px;height:4px;overflow:hidden;margin-bottom:3px"><div style="height:100%;width:'+Math.min(pExt1,100)+'%;background:'+cExt1+';border-radius:3px"></div></div>';}
-        h+='<div style="font-size:9px;color:#024f2b;font-weight:600;margin-bottom:1px">📦 Ens: '+p2+'%</div>';
+        h+='<div style="font-size:9px;color:#024f2b;font-weight:600;margin-bottom:1px">📦 Ens: '+fN(Number(op.real)||0)+' kg · '+p2+'%</div>';
         h+='<div style="background:#eef2ee;border-radius:3px;height:5px;overflow:hidden"><div style="height:100%;width:'+Math.min(p2,100)+'%;background:'+(p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b')+';border-radius:3px"></div></div>';
         h+='</div>';
       });
