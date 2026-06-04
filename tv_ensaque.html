@@ -163,23 +163,50 @@ function iniciar(){
     if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;OPS.push(v);});
     renderTudo();
   });
-  DB.ref("apontamentos").orderByChild("data").equalTo(dt).on("value",function(s){
-    APTS=[];
-    if(s.exists()) s.forEach(function(c){
-      var v=c.val(); v.fbKey=c.key;
-      // Ignora apontamentos com turno 0 (versões antigas)
-      if(v.turno && v.turno>0) APTS.push(v);
+  // Busca apontamentos do dia atual + ontem (T3 até 11h)
+  function carregarApts(){
+    var dtHoje=hoje();
+    var dtOntem=new Date(); dtOntem.setDate(dtOntem.getDate()-1);
+    var dtOntemStr=dtOntem.toISOString().slice(0,10);
+    var horaAtual=new Date().getHours();
+    var incluirT3Ontem=(horaAtual<11);
+
+    DB.ref("apontamentos").orderByChild("data").equalTo(dtHoje).on("value",function(sHoje){
+      var todosApts=[];
+      if(sHoje.exists()) sHoje.forEach(function(c){
+        var v=c.val(); v.fbKey=c.key;
+        if(v.turno && v.turno>0) todosApts.push(v);
+      });
+
+      function processar(aptsExtras){
+        if(aptsExtras) aptsExtras.forEach(function(v){
+          if(incluirT3Ontem && v.turno===3) todosApts.push(v);
+        });
+        var seen={}, aptsUniq=[];
+        todosApts.sort(function(a,b){return (a.ts||"")>(b.ts||"")?-1:1;});
+        todosApts.forEach(function(a){
+          var key=a.opId+'_'+a.real;
+          if(!seen[key]){seen[key]=true;aptsUniq.push(a);}
+        });
+        APTS=aptsUniq;
+        renderTudo();
+      }
+
+      if(incluirT3Ontem){
+        DB.ref("apontamentos").orderByChild("data").equalTo(dtOntemStr).once("value",function(sOntem){
+          var extrasOntem=[];
+          if(sOntem.exists()) sOntem.forEach(function(c){
+            var v=c.val(); v.fbKey=c.key;
+            if(v.turno===3) extrasOntem.push(v);
+          });
+          processar(extrasOntem);
+        });
+      } else {
+        processar(null);
+      }
     });
-    // Remove duplicatas por opId+real — mantém o MAIS RECENTE (maior ts)
-    var seen={}, aptsUniq=[];
-    APTS.sort(function(a,b){return (a.ts||"")>(b.ts||"")?-1:1;}); // mais recente primeiro
-    APTS.forEach(function(a){
-      var key=a.opId+'_'+a.real;
-      if(!seen[key]){seen[key]=true;aptsUniq.push(a);}
-    });
-    APTS=aptsUniq;
-    renderTudo();
-  });
+  }
+  carregarApts();
   DB.ref("perdas_diarias").orderByChild("data").equalTo(dt).on("value",function(s){
     PERDAS=[];
     if(s.exists()) s.forEach(function(c){var v=c.val();PERDAS.push(v);});
