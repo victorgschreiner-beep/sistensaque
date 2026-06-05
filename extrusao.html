@@ -397,6 +397,48 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
 </div>
 
 
+<!-- MODAL ADD APONTAMENTO PELA CONFERENCIA -->
+<div class="ov" id="m-conf-add-apt" style="z-index:400">
+  <div class="modal" style="max-width:420px">
+    <div class="mh">+ Apontamento — <span id="caapt-linha-nome"></span></div>
+    <div id="caapt-op-info" style="background:#f5f9f2;border-radius:8px;padding:9px 12px;margin-bottom:14px;font-size:12px;color:#4a664a"></div>
+    <div style="display:flex;gap:10px">
+      <div class="fg" style="flex:1"><label class="fl">Hora Inicial</label><input class="fi" type="time" id="caapt-hi"></div>
+      <div class="fg" style="flex:1"><label class="fl">Hora Final</label><input class="fi" type="time" id="caapt-hf"></div>
+    </div>
+    <div class="fg"><label class="fl">Quantidade (kg)</label><input class="fi fi-big" type="number" id="caapt-real" placeholder="0"></div>
+    <div class="fg"><label class="fl">Observação</label><input class="fi" type="text" id="caapt-obs" placeholder="Opcional"></div>
+    <div class="mr">
+      <button class="btn-cancel" onclick="fM('m-conf-add-apt')">Cancelar</button>
+      <button class="btn-ok" onclick="confSalvarApt()">✔ Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ADD PARADA PELA CONFERENCIA -->
+<div class="ov" id="m-conf-add-para" style="z-index:400">
+  <div class="modal" style="max-width:420px">
+    <div class="mh">+ Parada — <span id="capara-linha-nome"></span></div>
+    <div id="capara-op-info" style="background:#fff0f0;border-radius:8px;padding:9px 12px;margin-bottom:14px;font-size:12px;color:#c0392b"></div>
+    <div style="display:flex;gap:10px">
+      <div class="fg" style="flex:1"><label class="fl">Hora Início</label><input class="fi" type="time" id="capara-hi"></div>
+      <div class="fg" style="flex:1"><label class="fl">Hora Retorno</label><input class="fi" type="time" id="capara-hf"></div>
+    </div>
+    <div class="fg"><label class="fl">Motivo</label>
+      <input class="fi" type="text" id="capara-busca" placeholder="Buscar motivo..." oninput="confFiltrarParadas(this.value)">
+      <div style="font-size:12px;color:#024f2b;font-weight:600;margin:4px 0 6px" id="capara-sel-lbl">Nenhum motivo selecionado</div>
+      <div class="p-scroll" id="capara-lista" style="max-height:160px"></div>
+      <input type="hidden" id="capara-cod">
+      <input type="hidden" id="capara-desc">
+    </div>
+    <div class="fg"><label class="fl">Observação</label><input class="fi" type="text" id="capara-obs" placeholder="Opcional"></div>
+    <div class="mr">
+      <button class="btn-cancel" onclick="fM('m-conf-add-para')">Cancelar</button>
+      <button class="btn-ok" onclick="confSalvarParada()">✔ Salvar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL CONCLUIR OP — SELECIONAR PRÓXIMA -->
 <div class="ov" id="m-concluir-sel">
   <div class="modal">
@@ -2581,7 +2623,7 @@ function dashExportarPDF(){
   toast("PDF gerado!","ok");
 }
 
-document.addEventListener("keydown",function(e){if(e.key==="Escape")["m-apt","m-para","m-setup","m-resumo","m-sel-op","m-concluir-sel","m-confirma-setup","m-admin-corr","m-admin-lista","m-op-apts"].forEach(fM);});
+document.addEventListener("keydown",function(e){if(e.key==="Escape")["m-apt","m-para","m-setup","m-resumo","m-sel-op","m-concluir-sel","m-confirma-setup","m-admin-corr","m-admin-lista","m-op-apts","m-conf-add-apt","m-conf-add-para"].forEach(fM);});
 
 // abrirProxOp removido — fluxo substituído por concluirOpOperador → abrirSelecaoProximaOp
 
@@ -2970,14 +3012,25 @@ function confRenderizar(dt, ops, apts, paradas, soP){
       h+='</div>'; // conf-turno-bloco
     });
 
-    // Botao revisao
-    h+='<div style="display:flex;justify-content:flex-end;padding-top:6px;border-top:1px solid #f0f4f0;margin-top:8px">';
+    // Botao revisao + adicionar
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid #f0f4f0;margin-top:8px">';
+    // Botoes de adicionar (lado esquerdo)
+    var opLinha=op?op.linha:"";
+    var opDt=G("conf-dt").value;
+    var opIdEnc=encId(opFk);
+    h+='<div style="display:flex;gap:6px">';
+    h+='<button data-opfk="'+opFk+'" data-linha="'+opLinha+'" data-dt="'+opDt+'" onclick="confAbrirAddApt(this.dataset.opfk,this.dataset.linha,this.dataset.dt)" style="background:#024f2b;color:#fff;border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">+ Apontamento</button>';
+    h+='<button data-opfk="'+opFk+'" data-linha="'+opLinha+'" data-dt="'+opDt+'" onclick="confAbrirAddParada(this.dataset.opfk,this.dataset.linha,this.dataset.dt)" style="background:#c0392b;color:#fff;border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">+ Parada</button>';
+    h+='</div>';
+    // Revisao (lado direito)
+    h+='<div style="display:flex;align-items:center;gap:8px">';
     if(revisada){
-      h+='<span style="font-size:11px;color:#4a664a;margin-right:10px;align-self:center">Revisado em '+new Date(revisada.ts).toLocaleString("pt-BR")+'</span>';
+      h+='<span style="font-size:11px;color:#4a664a">Revisado em '+new Date(revisada.ts).toLocaleString("pt-BR")+'</span>';
       h+='<button class="btn-conf-rev rev" data-fk="'+opFk+'" onclick="confMarcarRevisao(this.dataset.fk,false)">✔ Revisado — Desfazer</button>';
     } else {
       h+='<button class="btn-conf-rev" data-fk="'+opFk+'" onclick="confMarcarRevisao(this.dataset.fk,true)">✔ Marcar como Revisado</button>';
     }
+    h+='</div>';
     h+='</div>';
 
     h+='</div>'; // conf-op-body
@@ -3033,6 +3086,141 @@ function confEditarParada(fbKey){
     ADM_DADOS.paradas=[p];
     admEditar(fbKey);
   });
+}
+
+// Contexto atual do add pela conferencia
+var CONF_ADD={opFk:null, linha:null, dt:null};
+
+function confAbrirAddApt(opFk, linha, dt){
+  CONF_ADD={opFk:opFk, linha:linha, dt:dt};
+  var op=CONF_DADOS.ops.find(function(o){return o.fbKey===opFk;});
+  var nomeL=(linha||"").replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");
+  G("caapt-linha-nome").textContent=nomeL;
+  G("caapt-op-info").innerHTML=op
+    ?'<strong>OP: '+op.id+'</strong> — '+(op.desc||op.cod)+' · Prog: '+fN(op.prog)+' kg'
+    :'OP: '+opFk.slice(0,8);
+  G("caapt-hi").value="";
+  G("caapt-hf").value="";
+  G("caapt-real").value="";
+  G("caapt-obs").value="";
+  aM("m-conf-add-apt");
+}
+
+function confSalvarApt(){
+  var hi=G("caapt-hi").value;
+  var hf=G("caapt-hf").value;
+  var real=parseInt(G("caapt-real").value)||0;
+  if(!hi||!hf){toast("Informe hora inicial e final","err");return;}
+  if(!real){toast("Informe a quantidade","err");return;}
+  if(!DB){toast("Firebase nao conectado","err");return;}
+  var opFk=CONF_ADD.opFk;
+  var linha=CONF_ADD.linha;
+  var dt=CONF_ADD.dt;
+  var op=CONF_DADOS.ops.find(function(o){return o.fbKey===opFk;});
+  var turnoApt=turnoDeHora(hi);
+  var metaH=op?getMetaHora(op.cod,linha):0;
+  var apt={
+    id:uid(), linha:linha, opFbKey:opFk,
+    opNum:op?op.id:"", cod:op?op.cod:"",
+    desc:op?(op.desc||op.cod):"",
+    turno:turnoApt, data:dt,
+    horaIni:hi, horaFim:hf,
+    real:real, metaH:metaH,
+    obs:G("caapt-obs").value||"",
+    operador:SES.login, ts:agora(),
+    corrigidoPor:SES.login, origemConferencia:true
+  };
+  DB.ref("extrusao_apts").push(apt).then(function(){
+    // Atualiza realExtrusao na OP
+    if(opFk){
+      DB.ref("ops/"+opFk+"/realExtrusao").transaction(function(atual){
+        return (Number(atual)||0)+real;
+      });
+    }
+    fM("m-conf-add-apt");
+    toast("Apontamento adicionado!","ok");
+    // Recarrega a conferencia para refletir
+    setTimeout(function(){confGerar();},800);
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+function confAbrirAddParada(opFk, linha, dt){
+  CONF_ADD={opFk:opFk, linha:linha, dt:dt};
+  var op=CONF_DADOS.ops.find(function(o){return o.fbKey===opFk;});
+  var nomeL=(linha||"").replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");
+  G("capara-linha-nome").textContent=nomeL;
+  G("capara-op-info").innerHTML=op
+    ?'<strong>OP: '+op.id+'</strong> — '+(op.desc||op.cod)
+    :'OP: '+opFk.slice(0,8);
+  G("capara-hi").value="";
+  G("capara-hf").value="";
+  G("capara-cod").value="";
+  G("capara-desc").value="";
+  G("capara-obs").value="";
+  G("capara-busca").value="";
+  G("capara-sel-lbl").textContent="Nenhum motivo selecionado";
+  confFiltrarParadas("");
+  aM("m-conf-add-para");
+}
+
+function confFiltrarParadas(v){
+  var f=v.toLowerCase();
+  var grupos={};
+  PARADAS.forEach(function(p){
+    if(!f||p.desc.toLowerCase().includes(f)||p.grupo.toLowerCase().includes(f)){
+      if(!grupos[p.grupo]) grupos[p.grupo]=[];
+      grupos[p.grupo].push(p);
+    }
+  });
+  var h="";
+  Object.keys(grupos).sort().forEach(function(g){
+    h+='<div class="grupo-lbl">'+g+'</div>';
+    grupos[g].forEach(function(p){
+      h+='<div class="p-opt" id="cpo-'+p.cod+'" data-cod="'+p.cod+'" data-desc="'+p.desc+'" onclick="confSelParada(this)">'+p.desc+'</div>';
+    });
+  });
+  G("capara-lista").innerHTML=h||'<div style="padding:16px;text-align:center;color:#999">Sem resultados</div>';
+}
+
+function confSelParada(el){
+  var cod=el.dataset.cod, desc=el.dataset.desc||el.textContent.trim();
+  G("capara-cod").value=cod;
+  G("capara-desc").value=desc;
+  G("capara-sel-lbl").textContent="✔ "+desc;
+  document.querySelectorAll("#capara-lista .p-opt").forEach(function(e){e.classList.remove("sel");});
+  el.classList.add("sel");
+}
+
+function confSalvarParada(){
+  var hi=G("capara-hi").value;
+  var hf=G("capara-hf").value;
+  var cod=G("capara-cod").value;
+  var desc=G("capara-desc").value;
+  if(!hi){toast("Informe hora de inicio","err");return;}
+  if(!desc){toast("Selecione o motivo","err");return;}
+  if(!DB){toast("Firebase nao conectado","err");return;}
+  var min=0;
+  if(hf){
+    var a=hi.split(":"), b=hf.split(":");
+    min=(parseInt(b[0])*60+parseInt(b[1]))-(parseInt(a[0])*60+parseInt(a[1]));
+    if(min<0) min+=1440;
+  }
+  var linha=CONF_ADD.linha;
+  var dt=CONF_ADD.dt;
+  var turnoPara=turnoDeHora(hi);
+  DB.ref("extrusao_paradas").push({
+    id:uid(), linha:linha, turno:turnoPara, data:dt,
+    horaIni:hi, horaFim:hf,
+    codMotivo:cod, descricao:desc,
+    obs:G("capara-obs").value||"",
+    minutos:min,
+    operador:SES.login, ts:agora(),
+    corrigidoPor:SES.login, origemConferencia:true
+  }).then(function(){
+    fM("m-conf-add-para");
+    toast("Parada adicionada!","ok");
+    setTimeout(function(){confGerar();},800);
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
 function confExportarPDF(){
