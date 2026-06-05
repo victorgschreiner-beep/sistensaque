@@ -152,6 +152,39 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
 .resumo-row{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid #e8f0e8}
 .resumo-row:last-child{border:none;font-weight:700}
 
+/* ── CONFERÊNCIA ADMIN ── */
+#secao-conferencia{display:none}
+.conf-header{background:#024f2b;border-radius:12px 12px 0 0;padding:14px 18px;display:flex;align-items:center;justify-content:space-between}
+.conf-header h2{color:#fff;font-size:15px;font-weight:800;margin:0}
+.conf-filtros{background:#fff;border:1px solid #d4e8d4;border-top:none;padding:12px 16px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.conf-body{background:#fff;border:1px solid #d4e8d4;border-top:none;border-radius:0 0 12px 12px;overflow:hidden}
+.conf-op-bloco{border-bottom:2px solid #f0f4f0}
+.conf-op-bloco:last-child{border-bottom:none}
+.conf-op-header{display:flex;align-items:center;gap:10px;padding:11px 14px;background:#f5f9f2;cursor:pointer;transition:.12s}
+.conf-op-header:hover{background:#ecf5e8}
+.conf-op-title{flex:1;font-size:13px;font-weight:700;color:#1a1a1a}
+.conf-op-meta{font-size:11px;color:#4a664a}
+.conf-op-badges{display:flex;gap:6px;align-items:center}
+.conf-revisado{font-size:10px;font-weight:700;padding:3px 10px;border-radius:12px;background:#d4f0e4;color:#024f2b}
+.conf-pendente{font-size:10px;font-weight:700;padding:3px 10px;border-radius:12px;background:#fff3cd;color:#856404}
+.conf-op-body{padding:10px 14px 14px;display:none}
+.conf-op-body.aberto{display:block}
+.conf-turno-bloco{margin-bottom:10px}
+.conf-turno-lbl{font-size:10px;font-weight:700;color:#4a664a;text-transform:uppercase;letter-spacing:.5px;padding:4px 8px;background:#f0f4f0;border-radius:6px;margin-bottom:6px;display:inline-block}
+.conf-linha-item{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;margin-bottom:3px;font-size:12px}
+.conf-apt-item{background:#f5f9f2;border-left:3px solid #739630}
+.conf-para-item{background:#fff0f0;border-left:3px solid #c0392b}
+.conf-item-hora{font-weight:700;color:#024f2b;min-width:100px;font-size:11px}
+.conf-item-val{font-weight:700;min-width:70px}
+.conf-item-desc{flex:1;color:#4a664a;font-size:11px}
+.conf-item-ef{font-size:11px;font-weight:700;min-width:55px;text-align:right}
+.btn-conf-rev{background:#024f2b;color:#fff;border:none;padding:7px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;margin-top:10px}
+.btn-conf-rev.rev{background:#739630}
+.conf-resumo-turno{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;padding:10px;background:#f9fbf9;border-radius:8px}
+.conf-res-item{text-align:center}
+.conf-res-val{font-size:16px;font-weight:700;color:#024f2b}
+.conf-res-lbl{font-size:10px;color:#4a664a;font-weight:600;text-transform:uppercase}
+
 /* ── MODAL FILA ── */
 .op-sel-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:2px solid #e8f0e8;margin-bottom:8px;cursor:pointer;transition:.15s}
 .op-sel-item:hover{border-color:#739630;background:#f5f9f2}
@@ -226,6 +259,43 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       <button onclick="trocarDataFila(hoje())" style="background:#d29922;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Hoje</button>
     </div>
     <div class="linhas-grid" id="linhas-grid"></div>
+
+    <!-- SEÇÃO CONFERÊNCIA — visível só para admin -->
+    <div id="secao-conferencia" style="margin-top:20px">
+      <div class="conf-header">
+        <h2>🔍 Conferência de Apontamentos</h2>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="font-size:11px;color:rgba(255,255,255,.7)" id="conf-status-geral"></span>
+          <button onclick="confGerar()" style="background:#739630;color:#fff;border:none;padding:7px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🔍 Gerar</button>
+          <button onclick="confExportarPDF()" style="background:rgba(255,255,255,.15);color:#fff;border:none;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">↓ PDF</button>
+        </div>
+      </div>
+      <div class="conf-filtros">
+        <div><label style="display:block;font-size:11px;font-weight:700;color:#4a664a;margin-bottom:3px;text-transform:uppercase">Data</label>
+          <input type="date" id="conf-dt" class="fi" style="width:155px">
+        </div>
+        <div><label style="display:block;font-size:11px;font-weight:700;color:#4a664a;margin-bottom:3px;text-transform:uppercase">Linha</label>
+          <select id="conf-linha" class="fi" style="width:180px">
+            <option value="">Todas</option>
+            <option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option>
+            <option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option>
+          </select>
+        </div>
+        <div><label style="display:block;font-size:11px;font-weight:700;color:#4a664a;margin-bottom:3px;text-transform:uppercase">Turno</label>
+          <select id="conf-turno" class="fi" style="width:120px">
+            <option value="">Todos</option><option value="1">Turno 1</option><option value="2">Turno 2</option><option value="3">Turno 3</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:flex-end">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#4a664a;cursor:pointer;padding-bottom:12px">
+            <input type="checkbox" id="conf-so-pendentes" style="width:14px;height:14px"> Só pendentes
+          </label>
+        </div>
+      </div>
+      <div class="conf-body" id="conf-corpo">
+        <div style="text-align:center;padding:30px;color:#4a664a;font-size:13px">Selecione a data e clique em Gerar para conferir os apontamentos.</div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -327,16 +397,28 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
 </div>
 
 
-<!-- MODAL PRÓXIMA OP (setup) -->
-<div class="ov" id="m-prox-op">
+<!-- MODAL CONCLUIR OP — SELECIONAR PRÓXIMA -->
+<div class="ov" id="m-concluir-sel">
   <div class="modal">
-    <div class="mh">🔄 Próxima OP após Setup — <span id="prox-op-linha"></span></div>
-    <div style="background:#fff3cd;border-radius:8px;padding:10px;margin-bottom:14px;font-size:12px;color:#856404">
-      <strong>Parada de Setup registrada.</strong> Selecione qual será a próxima OP na extrusora:
-    </div>
-    <div id="prox-op-lista"></div>
+    <div class="mh">✅ OP Concluída — <span id="csel-linha-nome"></span></div>
+    <div id="csel-op-concluida" style="background:#f0f7ec;border-radius:8px;padding:10px 12px;margin-bottom:14px;border-left:3px solid #024f2b;font-size:12px;color:#4a664a"></div>
+    <div style="font-size:11px;font-weight:700;color:#4a664a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Selecione a próxima OP:</div>
+    <div id="csel-op-lista"></div>
     <div class="mr">
-      <button class="btn-cancel" onclick="fM('m-prox-op')">Pular</button>
+      <button class="btn-cancel" onclick="fM('m-concluir-sel')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONFIRMAR SETUP APÓS TROCA DE OP -->
+<div class="ov" id="m-confirma-setup">
+  <div class="modal" style="max-width:380px">
+    <div class="mh">⚙️ Setup — <span id="csetup-linha-nome"></span></div>
+    <div id="csetup-op-info" style="background:#f5f9f2;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#1a1a1a"></div>
+    <div style="font-size:15px;font-weight:700;color:#1a1a1a;text-align:center;margin-bottom:20px">Houve <strong>Setup</strong> (parada de máquina)?</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <button onclick="responderSetup(true)" style="background:#c0392b;color:#fff;border:none;padding:16px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer">🔴 Sim, houve</button>
+      <button onclick="responderSetup(false)" style="background:#024f2b;color:#fff;border:none;padding:16px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer">✅ Não, iniciar</button>
     </div>
   </div>
 </div>
@@ -655,6 +737,8 @@ function iniciarApp(){
   setTimeout(function(){verificarParadasAbertas();}, 2000);
   iniciarRelogio();
   iniciarAlerta();
+  // Inicializa seção de conferência para admin
+  setTimeout(function(){confInit();},500);
 }
 
 // ── FIREBASE DATA ─────────────────────────────────────────
@@ -871,10 +955,15 @@ function verificarParadasAbertas(){
 function carregarExtrusao(){
   if(!DB) return;
   var dt=DT_FILA||hoje(), t=SES.turno;
+  var isAdmin=SES&&SES.perfil==="admin";
   LINHAS_USER.forEach(function(linha){
     DB.ref("extrusao_apts").orderByChild("data").equalTo(dt).on("value",function(s){
       EST[linha].apts=[];
-      if(s.exists()) s.forEach(function(c){var a=c.val();a.fbKey=c.key;if(a.linha===linha&&a.turno===t&&a.data===dt) EST[linha].apts.push(a);});
+      if(s.exists()) s.forEach(function(c){
+        var a=c.val();a.fbKey=c.key;
+        // Admin vê todos os turnos do dia; operador só vê o seu turno
+        if(a.linha===linha&&a.data===dt&&(isAdmin||a.turno===t)) EST[linha].apts.push(a);
+      });
       EST[linha].apts.sort(function(a,b){return a.horaIni>b.horaIni?1:-1;});
       // Atualiza totalOp ao receber novos apontamentos
       if(EST[linha].opAtiva) carregarTotalOp(linha, EST[linha].opAtiva);
@@ -883,7 +972,10 @@ function carregarExtrusao(){
     });
     DB.ref("extrusao_paradas").orderByChild("data").equalTo(dt).on("value",function(s){
       EST[linha].paradas=[];
-      if(s.exists()) s.forEach(function(c){var p=c.val();p.fbKey=c.key;if(p.linha===linha&&p.turno===t&&p.data===dt) EST[linha].paradas.push(p);});
+      if(s.exists()) s.forEach(function(c){
+        var p=c.val();p.fbKey=c.key;
+        if(p.linha===linha&&p.data===dt&&(isAdmin||p.turno===t)) EST[linha].paradas.push(p);
+      });
       renderLinhaCard(linha);
       atualizarBarraTurno();
     });
@@ -1047,36 +1139,40 @@ function renderLinhaCard(linha){
   h+='</div>';
 
   var hist=[];
+  var isAdminRender=SES&&SES.perfil==="admin";
   e.apts.forEach(function(a){hist.push({tipo:"apt",hora:a.horaIni,d:a});});
   e.paradas.forEach(function(p){hist.push({tipo:"para",hora:p.horaIni,d:p});});
   hist.sort(function(a,b){return a.hora>b.hora?1:-1;});
+  // Admin vê todos os registros do dia; operador vê os últimos 6
+  var histVis=isAdminRender?hist:hist.slice(-6);
   if(hist.length){
     h+='<div style="margin-top:10px">';
-    hist.slice(-6).forEach(function(item){
+    if(isAdminRender&&hist.length>0){
+      h+='<div style="font-size:10px;font-weight:700;color:#4a664a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Todos os turnos do dia ('+hist.length+' registros)</div>';
+    }
+    histVis.forEach(function(item){
       if(item.tipo==="apt"){
         var a=item.d;
         var ef=metaH?Math.round((Number(a.real)||0)/metaH*100):0;
         var corEf=ef>=90?"#024f2b":ef>=70?"#d29922":"#c0392b";
         h+='<div class="hist-item hist-apt" style="justify-content:space-between">';
+        // Badge de turno visível para admin
+        if(isAdminRender) h+='<span style="font-size:9px;font-weight:700;background:#e8f0e8;color:#024f2b;padding:1px 5px;border-radius:4px;margin-right:3px;flex-shrink:0">T'+a.turno+'</span>';
         h+='<span class="hist-hora">'+a.horaIni+' → '+a.horaFim+'</span>';
         h+='<span class="hist-val">'+fN(a.real)+' kg</span>';
         h+='<span class="hist-info" style="color:'+corEf+'">'+ef+'% meta</span>';
         if(a.opNum) h+='<span style="font-size:10px;color:#739630;font-weight:600;margin-left:4px">'+a.opNum+'</span>';
-        if(opAtiva && opAtiva.status!=='Concluida'){
-          h+='<button data-fk="'+a.fbKey+'" onclick="editarAptOperador(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;margin-left:4px">✏️</button>';
-          h+='<button data-fk="'+a.fbKey+'" onclick="excluirAptOperador(this.dataset.fk)" style="background:#c0392b;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;margin-left:2px">🗑</button>';
-        }
+        h+='<button data-fk="'+a.fbKey+'" onclick="editarAptOperador(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;margin-left:4px">✏️</button>';
+        h+='<button data-fk="'+a.fbKey+'" onclick="excluirAptOperador(this.dataset.fk)" style="background:#c0392b;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;margin-left:2px">🗑</button>';
         h+='</div>';
       } else {
         var p=item.d;
-        var opAtivaSt=opAtiva?opAtiva.status:'';
         h+='<div class="hist-item hist-para" style="justify-content:space-between">';
+        if(isAdminRender) h+='<span style="font-size:9px;font-weight:700;background:#fde8d0;color:#c0392b;padding:1px 5px;border-radius:4px;margin-right:3px;flex-shrink:0">T'+p.turno+'</span>';
         h+='<span class="hist-hora">'+p.horaIni+' → '+(p.horaFim||'...')+'</span>';
         h+='<span class="hist-info" style="flex:1">'+p.descricao+(p.obs?' — '+p.obs:'')+'</span>';
-        if(opAtivaSt!=='Concluida'){
-          h+='<button data-fk="'+p.fbKey+'" onclick="editarParadaOp(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0">✏️</button>';
-          h+='<button data-fk="'+p.fbKey+'" onclick="excluirParadaOperador(this.dataset.fk)" style="background:#c0392b;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;margin-left:2px">🗑</button>';
-        }
+        h+='<button data-fk="'+p.fbKey+'" onclick="editarParadaOp(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0">✏️</button>';
+        h+='<button data-fk="'+p.fbKey+'" onclick="excluirParadaOperador(this.dataset.fk)" style="background:#c0392b;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;margin-left:2px">🗑</button>';
         h+='</div>';
       }
     });
@@ -1116,39 +1212,13 @@ function abrirSelOp(linha){
 
 function selecionarOpAtiva(linha,fbKey){
   if(!EST[linha]) return;
-  var opAnterior=EST[linha].opAtiva;
-  var opAntObj=opAnterior?OPS.find(function(o){return o.fbKey===opAnterior;}):null;
-
-  function fazerTroca(){
-    EST[linha].opAtiva=fbKey;
-      if(DB){
-      var dt=DT_FILA||hoje(),t=SES.turno;
-      DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t).set(fbKey);
-    }
-    renderLinhaCard(linha);
-    if(opAnterior && opAnterior!==fbKey){
-      setTimeout(function(){abrirParadaSetup(linha);},400);
-    } else {
-      toast("OP selecionada","ok");
-    }
+  EST[linha].opAtiva=fbKey;
+  if(DB){
+    var dt=DT_FILA||hoje(),t=SES.turno;
+    DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t).set(fbKey);
   }
-
-  // Se havia OP anterior diferente — pergunta se quer finalizar na extrusão
-  // (não altera o ensaque — só registra que terminou na extrusora)
-  if(opAntObj && opAnterior!==fbKey && opAntObj.status!=='Concluida'){
-    if(confirm('Finalizar a OP '+opAntObj.id+' ('+( opAntObj.desc||opAntObj.cod)+') na extrusora?')){
-      // Salva flag de conclusão na extrusão (nó separado — não toca no ensaque)
-      if(DB){
-        var dtF=DT_FILA||hoje();
-        DB.ref("extrusao_op_concluida/"+opAnterior).set({
-          linha:linha, turno:SES.turno, data:dtF,
-          operador:SES.login, ts:agora()
-        });
-        toast('OP '+opAntObj.id+' marcada como concluída na extrusão','ok');
-      }
-    }
-  }
-  fazerTroca();
+  renderLinhaCard(linha);
+  toast("OP selecionada","ok");
 }
 
 function editarAptOperador(fbKey){
@@ -1226,6 +1296,9 @@ function excluirParadaOperador(fbKey){
   });
 }
 
+// Variável para controlar o fluxo de concluir → selecionar → setup
+var CSEL={linha:null,opConcluidaFk:null,proximaOpFk:null};
+
 function concluirOpOperador(btn){
   var opFbKey=btn.dataset.fk;
   var opId=btn.dataset.id;
@@ -1235,13 +1308,77 @@ function concluirOpOperador(btn){
   var dt=DT_FILA||hoje();
   var registro={linha:linha,turno:SES.turno,data:dt,operador:SES.login,ts:agora()};
   DB.ref("extrusao_op_concluida/"+opFbKey).set(registro).then(function(){
-    toast("OP "+opId+" concluida na extrusao!","ok");
     if(EST[linha]){
       EST[linha].opConcluidaExt=EST[linha].opConcluidaExt||{};
       EST[linha].opConcluidaExt[opFbKey]=registro;
+      // Limpa OP ativa da linha para aguardar seleção
+      EST[linha].opAtiva=null;
+      if(DB){
+        var t=SES.turno;
+        DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t).remove();
+      }
     }
     renderLinhaCard(linha);
+    abrirSelecaoProximaOp(linha, opFbKey, opId);
   }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+function abrirSelecaoProximaOp(linha, opConcluidaFk, opConcluidaId){
+  CSEL.linha=linha;
+  CSEL.opConcluidaFk=opConcluidaFk;
+  CSEL.proximaOpFk=null;
+  var nomeL=linha.replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");
+  G("csel-linha-nome").textContent=nomeL;
+  // Info da OP concluída
+  var opConc=OPS.find(function(o){return o.fbKey===opConcluidaFk;});
+  G("csel-op-concluida").innerHTML="<strong>OP Concluída:</strong> "+(opConc?opConc.id+" — "+(opConc.desc||opConc.cod):opConcluidaId||opConcluidaFk);
+  // Lista de próximas OPs (todas exceto a concluída, status != Concluida)
+  var opsDisp=getOpsLinha(linha).filter(function(o){return o.fbKey!==opConcluidaFk && o.status!=="Concluida";});
+  var h="";
+  if(!opsDisp.length){
+    h='<div style="text-align:center;padding:20px;color:#4a664a;font-size:13px;background:#f9fbf9;border-radius:8px;border:2px dashed #d4e8d4">Nenhuma OP disponível na fila para este dia</div>';
+  } else {
+    opsDisp.forEach(function(o){
+      var ext=Number(o.realExtrusao)||0;
+      var pct=o.prog?Math.min(Math.round(ext/(Number(o.prog)||1)*100),100):0;
+      var metaH=getMetaHora(o.cod,linha);
+      h+='<div class="op-sel-item" data-fk="'+o.fbKey+'" onclick="confirmarProximaOp(this.dataset.fk)" style="cursor:pointer">';
+      h+='<div class="op-sel-dot" style="background:'+(o.status==="Em andamento"?"#d29922":"#aaa")+'"></div>';
+      h+='<div class="op-sel-info">';
+      h+='<div class="op-sel-num">'+o.id+'</div>';
+      h+='<div class="op-sel-desc">'+(o.desc||o.cod)+'</div>';
+      h+='<div class="op-sel-sub">Prog: '+fN(o.prog)+' kg · Meta: '+fN(metaH)+' kg/h · Ext: '+fN(ext)+' kg ('+pct+'%)</div>';
+      h+='</div></div>';
+    });
+  }
+  G("csel-op-lista").innerHTML=h;
+  aM("m-concluir-sel");
+}
+
+function confirmarProximaOp(fbKey){
+  fM("m-concluir-sel");
+  CSEL.proximaOpFk=fbKey;
+  var linha=CSEL.linha;
+  var op=OPS.find(function(o){return o.fbKey===fbKey;});
+  var nomeL=linha.replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");
+  G("csetup-linha-nome").textContent=nomeL;
+  G("csetup-op-info").innerHTML=op
+    ?'<strong>'+op.id+'</strong> — '+(op.desc||op.cod)
+    :'Próxima OP selecionada';
+  setTimeout(function(){aM("m-confirma-setup");},200);
+}
+
+function responderSetup(houve){
+  fM("m-confirma-setup");
+  var linha=CSEL.linha;
+  var fbKey=CSEL.proximaOpFk;
+  if(!linha||!fbKey) return;
+  // Sobe a OP selecionada
+  selecionarOpAtiva(linha, fbKey);
+  if(houve){
+    // Abre modal de parada com setup pré-selecionado
+    setTimeout(function(){abrirParadaSetup(linha);},400);
+  }
 }
 
 function editarParadaOp(fbKey){
@@ -2444,29 +2581,9 @@ function dashExportarPDF(){
   toast("PDF gerado!","ok");
 }
 
-document.addEventListener("keydown",function(e){if(e.key==="Escape")["m-apt","m-para","m-setup","m-resumo","m-sel-op","m-prox-op","m-admin-corr","m-admin-lista","m-op-apts"].forEach(fM);});
+document.addEventListener("keydown",function(e){if(e.key==="Escape")["m-apt","m-para","m-setup","m-resumo","m-sel-op","m-concluir-sel","m-confirma-setup","m-admin-corr","m-admin-lista","m-op-apts"].forEach(fM);});
 
-// ── PRÓXIMA OP (setup) ────────────────────────────────────
-function abrirProxOp(linha){
-  linhaAtiva=linha;
-  G("prox-op-linha").textContent=linha.replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");
-  var ops=getOpsLinha(linha).filter(function(o){return o.status!=="Concluida";});
-  var atualFk=EST[linha]&&EST[linha].opAtiva;
-  var h="";
-  if(!ops.length){h='<div style="text-align:center;padding:20px;color:#4a664a;font-size:13px">Nenhuma OP pendente na fila</div>';}
-  ops.forEach(function(o){
-    var isAt=o.fbKey===atualFk;
-    h+='<div class="op-sel-item'+(isAt?' ativa':'')+'" data-fk="'+o.fbKey+'" data-l="'+linha+'" onclick="selecionarOpAtiva(this.dataset.l,this.dataset.fk);G(this.dataset.close).classList.remove(\"on\")" data-close="m-prox-op">';
-    h+='<div class="op-sel-dot" style="background:'+(o.status==="Em andamento"?"#d29922":"#aaa")+'"></div>';
-    h+='<div class="op-sel-info">';
-    h+='<div class="op-sel-num">'+o.id+(isAt?" ← ATUAL":"")+'</div>';
-    h+='<div class="op-sel-desc">'+(o.desc||o.cod)+'</div>';
-    h+='<div class="op-sel-sub">Prog: '+fN(o.prog)+' kg · Meta: '+fN(getMetaHora(o.cod,linha))+' kg/h</div>';
-    h+='</div></div>';
-  });
-  G("prox-op-lista").innerHTML=h;
-  aM("m-prox-op");
-}
+// abrirProxOp removido — fluxo substituído por concluirOpOperador → abrirSelecaoProximaOp
 
 // ── ADMIN ─────────────────────────────────────────────────
 var ADM_ABA="apts";
@@ -2667,6 +2784,319 @@ function admExcluir(fbKey){
   DB.ref(ref+fbKey).remove().then(function(){
     toast("Registro excluído!","ok");admBuscar();
   }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+// ── CONFERÊNCIA ADMIN ─────────────────────────────────────
+var CONF_DADOS={apts:[],paradas:[],ops:[],revisoes:{}};
+
+function confInit(){
+  // Inicializa a seção de conferência se for admin
+  if(!SES||SES.perfil!=="admin") return;
+  var sec=G("secao-conferencia");
+  if(sec) sec.style.display="block";
+  // Data padrão: ontem
+  var dtOntem=new Date(); dtOntem.setDate(dtOntem.getDate()-1);
+  var dtStr=dtOntem.toISOString().slice(0,10);
+  if(G("conf-dt")) G("conf-dt").value=dtStr;
+}
+
+function confGerar(){
+  if(!DB){toast("Firebase não conectado","err");return;}
+  var dt=G("conf-dt").value;
+  var linha=G("conf-linha").value;
+  var turno=G("conf-turno").value;
+  if(!dt){toast("Selecione a data","err");return;}
+
+  G("conf-corpo").innerHTML='<div style="text-align:center;padding:30px;color:#4a664a;font-size:13px">⏳ Carregando...</div>';
+
+  // Carrega apontamentos, paradas, OPs e revisões em paralelo
+  var promApts=DB.ref("extrusao_apts").orderByChild("data").equalTo(dt).once("value");
+  var promParas=DB.ref("extrusao_paradas").orderByChild("data").equalTo(dt).once("value");
+  var promOps=DB.ref("ops").orderByChild("data").equalTo(dt).once("value");
+  var promRev=DB.ref("conf_revisoes/"+dt).once("value");
+
+  Promise.all([promApts,promParas,promOps,promRev]).then(function(results){
+    CONF_DADOS.apts=[];
+    CONF_DADOS.paradas=[];
+    CONF_DADOS.ops=[];
+    CONF_DADOS.revisoes={};
+
+    results[0].forEach(function(c){var a=c.val();a.fbKey=c.key;CONF_DADOS.apts.push(a);});
+    results[1].forEach(function(c){var p=c.val();p.fbKey=c.key;CONF_DADOS.paradas.push(p);});
+    results[2].forEach(function(c){var o=c.val();o.fbKey=c.key;CONF_DADOS.ops.push(o);});
+    if(results[3].exists()) CONF_DADOS.revisoes=results[3].val()||{};
+
+    // Aplica filtros
+    var aptsFilt=CONF_DADOS.apts.filter(function(a){
+      if(linha&&a.linha!==linha) return false;
+      if(turno&&String(a.turno)!==turno) return false;
+      return true;
+    });
+    var parasFilt=CONF_DADOS.paradas.filter(function(p){
+      if(linha&&p.linha!==linha) return false;
+      if(turno&&String(p.turno)!==turno) return false;
+      return true;
+    });
+    var opsFilt=CONF_DADOS.ops.filter(function(o){
+      if(linha&&o.linha!==linha) return false;
+      return true;
+    });
+    var soP=G("conf-so-pendentes").checked;
+    confRenderizar(dt, opsFilt, aptsFilt, parasFilt, soP);
+  }).catch(function(e){
+    G("conf-corpo").innerHTML='<div style="padding:20px;color:#c0392b">Erro ao carregar: '+e.message+'</div>';
+  });
+}
+
+function confRenderizar(dt, ops, apts, paradas, soP){
+  var h="";
+  var totalRev=0, totalPend=0;
+
+  // Agrupa apts e paradas por OP
+  var opsComDados=[];
+
+  // OPs que têm apontamento
+  var opsFbKeys={};
+  apts.forEach(function(a){if(a.opFbKey) opsFbKeys[a.opFbKey]=true;});
+  paradas.forEach(function(p){if(p.linha){
+    // Paradas ficam sob a OP ativa daquele turno/linha — associamos ao opFbKey do 1º apt da mesma linha/turno
+    var aptRef=apts.find(function(a){return a.linha===p.linha&&a.turno===p.turno;});
+    if(aptRef&&aptRef.opFbKey) opsFbKeys[aptRef.opFbKey]=true;
+  }});
+
+  // Garante que todas as OPs filtradas apareçam
+  ops.forEach(function(o){opsFbKeys[o.fbKey]=true;});
+
+  Object.keys(opsFbKeys).forEach(function(opFk){
+    var op=ops.find(function(o){return o.fbKey===opFk;})||CONF_DADOS.ops.find(function(o){return o.fbKey===opFk;});
+    var opApts=apts.filter(function(a){return a.opFbKey===opFk;});
+    var opParas=paradas.filter(function(p){
+      var ref=apts.find(function(a){return a.linha===p.linha&&a.turno===p.turno&&a.opFbKey===opFk;});
+      return !!ref;
+    });
+    // Paradas sem apt correspondente — associa pela linha da OP
+    if(op){
+      var parasExtra=paradas.filter(function(p){
+        return p.linha===op.linha&&!opParas.find(function(x){return x.fbKey===p.fbKey;});
+      });
+      parasExtra.forEach(function(p){opParas.push(p);});
+    }
+    if(opApts.length===0&&opParas.length===0) return;
+    opsComDados.push({op:op,opFk:opFk,apts:opApts,paras:opParas});
+  });
+
+  if(!opsComDados.length){
+    G("conf-corpo").innerHTML='<div style="text-align:center;padding:30px;color:#4a664a;font-size:13px">Nenhum apontamento encontrado para os filtros selecionados.</div>';
+    return;
+  }
+
+  opsComDados.forEach(function(item){
+    var op=item.op;
+    var opFk=item.opFk;
+    var opId=op?op.id:"OP "+opFk.slice(0,6);
+    var opDesc=op?(op.desc||op.cod):"";
+    var opProg=op?Number(op.prog)||0:0;
+    var totalReal=item.apts.reduce(function(s,a){return s+(Number(a.real)||0);},0);
+    var minParas=item.paras.reduce(function(s,p){
+      if(!p.horaIni||!p.horaFim) return s;
+      var a=p.horaIni.split(":"),b=p.horaFim.split(":");
+      var m=(parseInt(b[0])*60+parseInt(b[1]))-(parseInt(a[0])*60+parseInt(a[1]));
+      return s+(m<0?m+1440:m);
+    },0);
+    var revKey="op_"+opFk;
+    var revisada=CONF_DADOS.revisoes[revKey];
+    if(soP&&revisada) return; // filtra se "só pendentes"
+    if(revisada) totalRev++; else totalPend++;
+
+    var adh=opProg?Math.min(Math.round(totalReal/opProg*100),100):0;
+    var corAdh=adh>=85?"#024f2b":adh>=70?"#d29922":"#c0392b";
+    var linhaLabel=op?(op.linha||"").replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)",""):"";
+
+    h+='<div class="conf-op-bloco" id="conf-op-'+encId(opFk)+'">';
+    // Header da OP
+    h+='<div class="conf-op-header" onclick="confToggleOp(''+encId(opFk)+'')">';
+    h+='<div style="display:flex;flex-direction:column;flex:1">';
+    h+='<div class="conf-op-title">'+opId+(opDesc?' — '+opDesc:'')+(linhaLabel?' <span style="font-size:11px;color:#739630">'+linhaLabel+'</span>':'')+'</div>';
+    h+='<div class="conf-op-meta">Prog: '+fN(opProg)+' kg · Realizado: <strong style="color:'+corAdh+'">'+fN(totalReal)+' kg ('+adh+'%)</strong> · Paradas: '+minH(minParas)+' · '+item.apts.length+' apontamentos</div>';
+    h+='</div>';
+    h+='<div class="conf-op-badges">';
+    h+=(revisada
+      ?'<span class="conf-revisado">✔ Revisado</span>'
+      :'<span class="conf-pendente">⏳ Pendente</span>');
+    h+='</div>';
+    h+='<span style="color:#4a664a;font-size:12px;margin-left:8px">▾</span>';
+    h+='</div>';
+
+    // Body da OP — apontamentos e paradas por turno
+    h+='<div class="conf-op-body" id="conf-body-'+encId(opFk)+'">';
+
+    // Resumo rápido
+    h+='<div class="conf-resumo-turno">';
+    h+='<div class="conf-res-item"><div class="conf-res-val" style="color:'+corAdh+'">'+fN(totalReal)+' kg</div><div class="conf-res-lbl">Realizado</div></div>';
+    h+='<div class="conf-res-item"><div class="conf-res-val">'+fN(opProg)+' kg</div><div class="conf-res-lbl">Programado</div></div>';
+    h+='<div class="conf-res-item"><div class="conf-res-val" style="color:'+corAdh+'">'+adh+'%</div><div class="conf-res-lbl">Aderência</div></div>';
+    h+='<div class="conf-res-item"><div class="conf-res-val" style="color:#c0392b">'+minH(minParas)+'</div><div class="conf-res-lbl">Paradas</div></div>';
+    h+='</div>';
+
+    // Apontamentos por turno
+    [1,2,3].forEach(function(t){
+      var aptsT=item.apts.filter(function(a){return a.turno===t;});
+      var parasT=item.paras.filter(function(p){return p.turno===t;});
+      if(!aptsT.length&&!parasT.length) return;
+      h+='<div class="conf-turno-bloco">';
+      h+='<span class="conf-turno-lbl">Turno '+t+' &nbsp;|&nbsp; '+aptsT.length+' apto(s) · '+parasT.length+' parada(s)</span>';
+
+      aptsT.forEach(function(a){
+        var metaH=a.metaH||0;
+        var ef=metaH?Math.round((Number(a.real)||0)/metaH*100):0;
+        var corEf=ef>=90?"#024f2b":ef>=70?"#d29922":"#c0392b";
+        h+='<div class="conf-linha-item conf-apt-item">';
+        h+='<span class="conf-item-hora">'+a.horaIni+' → '+a.horaFim+'</span>';
+        h+='<span class="conf-item-val">'+fN(a.real)+' kg</span>';
+        h+='<span class="conf-item-desc">'+(a.desc||a.cod||'')+(a.obs?' — '+a.obs:'')+'</span>';
+        h+='<span class="conf-item-ef" style="color:'+corEf+'">'+ef+'% meta</span>';
+        h+='<button data-fk="'+a.fbKey+'" onclick="confEditarApt(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:3px 10px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0">✏️ Corrigir</button>';
+        h+='</div>';
+      });
+      parasT.forEach(function(p){
+        h+='<div class="conf-linha-item conf-para-item">';
+        h+='<span class="conf-item-hora">'+p.horaIni+' → '+(p.horaFim||'...')+'</span>';
+        h+='<span class="conf-item-val" style="color:#c0392b">'+minH(p.minutos||0)+'</span>';
+        h+='<span class="conf-item-desc">'+p.descricao+(p.obs?' — '+p.obs:'')+'</span>';
+        h+='<span class="conf-item-ef" style="color:#4a664a;font-size:10px">C'+p.codMotivo+'</span>';
+        h+='<button data-fk="'+p.fbKey+'" onclick="confEditarParada(''+p.fbKey+'')" style="background:#739630;color:#fff;border:none;padding:3px 10px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0">✏️ Corrigir</button>';
+        h+='</div>';
+      });
+      h+='</div>'; // conf-turno-bloco
+    });
+
+    // Botão revisão
+    h+='<div style="display:flex;justify-content:flex-end;padding-top:6px;border-top:1px solid #f0f4f0;margin-top:8px">';
+    if(revisada){
+      h+='<span style="font-size:11px;color:#4a664a;margin-right:10px;align-self:center">Revisado em '+new Date(revisada.ts).toLocaleString("pt-BR")+'</span>';
+      h+='<button class="btn-conf-rev rev" data-fk="'+opFk+'" onclick="confMarcarRevisao(this.dataset.fk,false)">✔ Revisado — Desfazer</button>';
+    } else {
+      h+='<button class="btn-conf-rev" data-fk="'+opFk+'" onclick="confMarcarRevisao(this.dataset.fk,true)">✔ Marcar como Revisado</button>';
+    }
+    h+='</div>';
+
+    h+='</div>'; // conf-op-body
+    h+='</div>'; // conf-op-bloco
+  });
+
+  if(!h){
+    G("conf-corpo").innerHTML='<div style="text-align:center;padding:30px;color:#4a664a;font-size:13px">Nenhum resultado com os filtros aplicados.</div>';
+    return;
+  }
+
+  // Status geral
+  var total=totalRev+totalPend;
+  G("conf-status-geral").textContent=totalRev+"/"+total+" revisadas";
+  G("conf-corpo").innerHTML=h;
+}
+
+function confToggleOp(idEnc){
+  var body=G("conf-body-"+idEnc);
+  if(!body) return;
+  body.classList.toggle("aberto");
+}
+
+function confMarcarRevisao(opFk, marcar){
+  if(!DB) return;
+  var dt=G("conf-dt").value;
+  if(!dt) return;
+  var revKey="op_"+opFk;
+  if(marcar){
+    DB.ref("conf_revisoes/"+dt+"/"+revKey).set({
+      revisadoPor:SES.login,
+      ts:agora()
+    }).then(function(){toast("OP marcada como revisada","ok");confGerar();});
+  } else {
+    DB.ref("conf_revisoes/"+dt+"/"+revKey).remove()
+      .then(function(){toast("Revisão removida","ok");confGerar();});
+  }
+}
+
+function confEditarApt(fbKey){
+  var apt=CONF_DADOS.apts.find(function(a){return a.fbKey===fbKey;});
+  if(!apt){toast("Apontamento não encontrado","err");return;}
+  ADM_ABA="apts";
+  ADM_DADOS.apts=[Object.assign({},apt)];
+  admEditar(fbKey);
+}
+
+function confEditarParada(fbKey){
+  DB.ref("extrusao_paradas/"+fbKey).once("value").then(function(s){
+    if(!s.exists()){toast("Parada não encontrada","err");return;}
+    var p=s.val(); p.fbKey=fbKey;
+    ADM_ABA="paradas";
+    ADM_DADOS.paradas=[p];
+    admEditar(fbKey);
+  });
+}
+
+function confExportarPDF(){
+  if(typeof jspdf==="undefined"){toast("jsPDF não disponível","err");return;}
+  var dt=G("conf-dt").value;
+  if(!dt){toast("Selecione a data","err");return;}
+  var jsPDF=jspdf.jsPDF;
+  var doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  var W=277, ML=10, y=0;
+
+  doc.setFillColor(2,79,43); doc.rect(0,0,297,20,"F");
+  doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(255,255,255);
+  doc.text("RAGUIFE — CONFERÊNCIA DE APONTAMENTOS",ML,13);
+  doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(180,220,180);
+  var linhaF=G("conf-linha").value||"Todas as linhas";
+  var turnoF=G("conf-turno").value?"Turno "+G("conf-turno").value:"Todos os turnos";
+  doc.text("Data: "+dt.split("-").reverse().join("/")+" · "+linhaF+" · "+turnoF+" · Gerado: "+new Date().toLocaleString("pt-BR"),ML,18);
+  y=26;
+
+  var blocos=G("conf-corpo").querySelectorAll(".conf-op-bloco");
+  if(!blocos.length){toast("Gere a conferência antes de exportar","err");return;}
+
+  blocos.forEach(function(bloco){
+    var header=bloco.querySelector(".conf-op-title");
+    var meta=bloco.querySelector(".conf-op-meta");
+    var badge=bloco.querySelector(".conf-revisado,.conf-pendente");
+    if(!header) return;
+    if(y>185){doc.addPage();y=15;}
+
+    // Header OP
+    doc.setFillColor(2,79,43); doc.rect(ML,y,W,7,"F");
+    doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(255,255,255);
+    doc.text((header.textContent||"").slice(0,80),ML+3,y+5);
+    if(badge) doc.text(badge.textContent.trim(),W-20,y+5,{align:"right"});
+    y+=8;
+
+    if(meta){
+      doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(80,100,80);
+      doc.setFillColor(245,250,245); doc.rect(ML,y,W,5,"F");
+      doc.text((meta.textContent||"").slice(0,100),ML+2,y+3.5);
+      y+=6;
+    }
+
+    // Apontamentos e paradas
+    var items=bloco.querySelectorAll(".conf-apt-item,.conf-para-item");
+    items.forEach(function(item,i){
+      if(y>185){doc.addPage();y=15;}
+      var isApt=item.classList.contains("conf-apt-item");
+      if(isApt) doc.setFillColor(245,250,245); else doc.setFillColor(255,245,245);
+      doc.rect(ML,y,W,5.5,"F");
+      var spans=item.querySelectorAll("span");
+      doc.setFont("helvetica","normal"); doc.setFontSize(7.5);
+      doc.setTextColor(isApt?2:192,isApt?79:57,isApt?43:43);
+      var cols=[ML+2,ML+35,ML+90,ML+220,ML+255];
+      if(spans[0]) doc.text((spans[0].textContent||"").slice(0,20),cols[0],y+4);
+      if(spans[1]) doc.text((spans[1].textContent||"").slice(0,20),cols[1],y+4);
+      if(spans[2]) doc.text((spans[2].textContent||"").slice(0,60),cols[2],y+4);
+      if(spans[3]) doc.text((spans[3].textContent||"").slice(0,12),cols[3],y+4);
+      y+=5.5;
+    });
+    y+=4;
+  });
+
+  doc.save("conferencia_"+dt+".pdf");
 }
 </script>
 </body>
