@@ -2786,15 +2786,15 @@ function admExcluir(fbKey){
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
-// ── CONFERÊNCIA ADMIN ─────────────────────────────────────
+// == CONFERENCIA ADMIN =====================================
 var CONF_DADOS={apts:[],paradas:[],ops:[],revisoes:{}};
 
 function confInit(){
-  // Inicializa a seção de conferência se for admin
+  // Inicializa a secao de conferencia se for admin
   if(!SES||SES.perfil!=="admin") return;
   var sec=G("secao-conferencia");
   if(sec) sec.style.display="block";
-  // Data padrão: ontem
+  // Data padrao: ontem
   var dtOntem=new Date(); dtOntem.setDate(dtOntem.getDate()-1);
   var dtStr=dtOntem.toISOString().slice(0,10);
   if(G("conf-dt")) G("conf-dt").value=dtStr;
@@ -2809,7 +2809,7 @@ function confGerar(){
 
   G("conf-corpo").innerHTML='<div style="text-align:center;padding:30px;color:#4a664a;font-size:13px">⏳ Carregando...</div>';
 
-  // Carrega apontamentos, paradas, OPs e revisões em paralelo
+  // Carrega apontamentos, paradas, OPs e revisoes em paralelo
   var promApts=DB.ref("extrusao_apts").orderByChild("data").equalTo(dt).once("value");
   var promParas=DB.ref("extrusao_paradas").orderByChild("data").equalTo(dt).once("value");
   var promOps=DB.ref("ops").orderByChild("data").equalTo(dt).once("value");
@@ -2855,16 +2855,16 @@ function confRenderizar(dt, ops, apts, paradas, soP){
   // Agrupa apts e paradas por OP
   var opsComDados=[];
 
-  // OPs que têm apontamento
+  // OPs que tem apontamento
   var opsFbKeys={};
   apts.forEach(function(a){if(a.opFbKey) opsFbKeys[a.opFbKey]=true;});
   paradas.forEach(function(p){if(p.linha){
-    // Paradas ficam sob a OP ativa daquele turno/linha — associamos ao opFbKey do 1º apt da mesma linha/turno
+    // Paradas ficam sob a OP ativa daquele turno/linha - associamos ao opFbKey do 1º apt da mesma linha/turno
     var aptRef=apts.find(function(a){return a.linha===p.linha&&a.turno===p.turno;});
     if(aptRef&&aptRef.opFbKey) opsFbKeys[aptRef.opFbKey]=true;
   }});
 
-  // Garante que todas as OPs filtradas apareçam
+  // Garante que todas as OPs filtradas aparecam
   ops.forEach(function(o){opsFbKeys[o.fbKey]=true;});
 
   Object.keys(opsFbKeys).forEach(function(opFk){
@@ -2874,7 +2874,7 @@ function confRenderizar(dt, ops, apts, paradas, soP){
       var ref=apts.find(function(a){return a.linha===p.linha&&a.turno===p.turno&&a.opFbKey===opFk;});
       return !!ref;
     });
-    // Paradas sem apt correspondente — associa pela linha da OP
+    // Paradas sem apt correspondente - associa pela linha da OP
     if(op){
       var parasExtra=paradas.filter(function(p){
         return p.linha===op.linha&&!opParas.find(function(x){return x.fbKey===p.fbKey;});
@@ -2914,7 +2914,7 @@ function confRenderizar(dt, ops, apts, paradas, soP){
 
     h+='<div class="conf-op-bloco" id="conf-op-'+encId(opFk)+'">';
     // Header da OP
-    h+='<div class="conf-op-header" onclick="confToggleOp(''+encId(opFk)+'')">';
+    h+='<div class="conf-op-header" data-eid="'+encId(opFk)+'" onclick="confToggleOp(this.dataset.eid)">';
     h+='<div style="display:flex;flex-direction:column;flex:1">';
     h+='<div class="conf-op-title">'+opId+(opDesc?' — '+opDesc:'')+(linhaLabel?' <span style="font-size:11px;color:#739630">'+linhaLabel+'</span>':'')+'</div>';
     h+='<div class="conf-op-meta">Prog: '+fN(opProg)+' kg · Realizado: <strong style="color:'+corAdh+'">'+fN(totalReal)+' kg ('+adh+'%)</strong> · Paradas: '+minH(minParas)+' · '+item.apts.length+' apontamentos</div>';
@@ -2927,10 +2927,10 @@ function confRenderizar(dt, ops, apts, paradas, soP){
     h+='<span style="color:#4a664a;font-size:12px;margin-left:8px">▾</span>';
     h+='</div>';
 
-    // Body da OP — apontamentos e paradas por turno
+    // Body da OP - apontamentos e paradas por turno
     h+='<div class="conf-op-body" id="conf-body-'+encId(opFk)+'">';
 
-    // Resumo rápido
+    // Resumo rapido
     h+='<div class="conf-resumo-turno">';
     h+='<div class="conf-res-item"><div class="conf-res-val" style="color:'+corAdh+'">'+fN(totalReal)+' kg</div><div class="conf-res-lbl">Realizado</div></div>';
     h+='<div class="conf-res-item"><div class="conf-res-val">'+fN(opProg)+' kg</div><div class="conf-res-lbl">Programado</div></div>';
@@ -2964,13 +2964,13 @@ function confRenderizar(dt, ops, apts, paradas, soP){
         h+='<span class="conf-item-val" style="color:#c0392b">'+minH(p.minutos||0)+'</span>';
         h+='<span class="conf-item-desc">'+p.descricao+(p.obs?' — '+p.obs:'')+'</span>';
         h+='<span class="conf-item-ef" style="color:#4a664a;font-size:10px">C'+p.codMotivo+'</span>';
-        h+='<button data-fk="'+p.fbKey+'" onclick="confEditarParada(''+p.fbKey+'')" style="background:#739630;color:#fff;border:none;padding:3px 10px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0">✏️ Corrigir</button>';
+        h+='<button data-fk="'+p.fbKey+'" onclick="confEditarParada(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:3px 10px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0">✏️ Corrigir</button>';
         h+='</div>';
       });
       h+='</div>'; // conf-turno-bloco
     });
 
-    // Botão revisão
+    // Botao revisao
     h+='<div style="display:flex;justify-content:flex-end;padding-top:6px;border-top:1px solid #f0f4f0;margin-top:8px">';
     if(revisada){
       h+='<span style="font-size:11px;color:#4a664a;margin-right:10px;align-self:center">Revisado em '+new Date(revisada.ts).toLocaleString("pt-BR")+'</span>';
