@@ -370,7 +370,13 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
 <div class="ov" id="m-setup">
   <div class="modal">
     <div class="mh">⚙️ Setup — <span id="setup-linha-nome"></span></div>
-    <div class="fg"><label class="fl">OP</label><select class="fi" id="setup-op"></select></div>
+    <div id="setup-op-info" style="background:#f5f9f2;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;display:none">
+      <div style="font-size:10px;font-weight:700;color:#739630;margin-bottom:2px">OP EM SETUP</div>
+      <div style="font-size:14px;font-weight:800;color:#024f2b" id="setup-op-num"></div>
+      <div style="font-size:12px;color:#333;margin-top:2px" id="setup-op-desc"></div>
+      <div style="font-size:11px;color:#4a664a;margin-top:2px" id="setup-op-meta"></div>
+    </div>
+    <div class="fg"><label class="fl">OP</label><select class="fi" id="setup-op" onchange="atualizarInfoSetup()"></select></div>
     <div class="setup-grid">
       <div class="fg"><label class="fl">Densidade (g/L)</label><input class="fi" type="number" id="s-dens" placeholder="ex: 480"></div>
       <div class="fg"><label class="fl">Diâmetro (mm)</label><input class="fi" type="number" id="s-diam" placeholder="ex: 6.0" step="0.1"></div>
@@ -1244,6 +1250,24 @@ function selecionarOpAtiva(linha,fbKey){
   toast("OP selecionada","ok");
 }
 
+// Vincula paradas de setup pendentes ao primeiro apontamento da nova OP
+function vincularParadasSetup(linha, opFbKey, data, turno){
+  if(!DB) return;
+  DB.ref("extrusao_paradas").orderByChild("data").equalTo(data).once("value",function(s){
+    if(!s.exists()) return;
+    s.forEach(function(c){
+      var p=c.val();
+      // Parada de setup pendente desta linha e turno sem opFbKey
+      if(p.linha===linha && p.turno===turno && p.pendenteLinkOp && !p.opFbKey){
+        DB.ref("extrusao_paradas/"+c.key).update({
+          opFbKey:opFbKey,
+          pendenteLinkOp:false
+        });
+      }
+    });
+  });
+}
+
 function editarAptOperador(fbKey){
   if(!DB){toast("Firebase não conectado","err");return;}
   DB.ref("extrusao_apts/"+fbKey).once("value").then(function(s){
@@ -1532,6 +1556,8 @@ function salvarApt(){
       DB.ref("ops/"+op.fbKey+"/realExtrusao").transaction(function(atual){
         return (Number(atual)||0) + real;
       });
+      // Vincula paradas de setup pendentes desta linha a esta OP
+      vincularParadasSetup(linhaAtiva, op.fbKey, dataApt, turnoApt);
     }
     setTimeout(function(){gerarPrint(linhaAtiva);},600);
   }).catch(function(e){toast("Erro: "+e.message,"err");});
@@ -1591,7 +1617,15 @@ function salvarParada(){
   if(!DB){toast("Firebase não conectado","err");return;}
   var turnoPara=turnoDeHora(hi);
   var dataPara=DT_FILA||hoje();
-  DB.ref("extrusao_paradas").push({id:uid(),linha:linhaAtiva,turno:turnoPara,data:dataPara,horaIni:hi,horaFim:hf,codMotivo:cod,descricao:desc,obs:G("para-obs")?G("para-obs").value||"":"",minutos:min,operador:SES.login,ts:agora()})
+  var eSetup=(cod==="1"||cod==="2"||cod===1||cod===2);
+  var opAtualFk=(EST[linhaAtiva]&&EST[linhaAtiva].opAtiva)||"";
+  var paradaObj={id:uid(),linha:linhaAtiva,turno:turnoPara,data:dataPara,horaIni:hi,horaFim:hf,
+    codMotivo:cod,descricao:desc,obs:G("para-obs")?G("para-obs").value||"":"",
+    minutos:min,operador:SES.login,ts:agora()};
+  // Parada de setup: salva sem opFbKey — será vinculada ao 1o apontamento da próxima OP
+  if(!eSetup && opAtualFk) paradaObj.opFbKey=opAtualFk;
+  if(eSetup) paradaObj.pendenteLinkOp=true; // flag para vincular depois
+  DB.ref("extrusao_paradas").push(paradaObj)
     .then(function(){fM("m-para");toast("Parada registrada!","ok");})
     .catch(function(e){toast("Erro: "+e.message,"err");});
 }
@@ -1605,7 +1639,21 @@ function abrirSetup(linha){
   // Pré-seleciona a OP ativa
   if(EST[linha]&&EST[linha].opAtiva) G("setup-op").value=EST[linha].opAtiva;
   G("s-dens").value=""; G("s-diam").value=""; G("s-corte").value=""; G("s-umid").value=""; G("s-obs").value="";
+  atualizarInfoSetup();
   aM("m-setup");
+}
+
+function atualizarInfoSetup(){
+  var opKey=G("setup-op").value;
+  var infoBox=G("setup-op-info");
+  if(!opKey||!infoBox){infoBox&&(infoBox.style.display="none");return;}
+  var op=OPS.find(function(o){return o.fbKey===opKey;});
+  if(!op){infoBox.style.display="none";return;}
+  var metaH=getMetaHora(op.cod,linhaAtiva);
+  G("setup-op-num").textContent="OP: "+op.id;
+  G("setup-op-desc").textContent=op.desc||op.cod;
+  G("setup-op-meta").textContent="Meta: "+fN(metaH)+" kg/h · Prog: "+fN(op.prog)+" kg";
+  infoBox.style.display="block";
 }
 
 function salvarSetup(){
