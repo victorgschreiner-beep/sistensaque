@@ -235,7 +235,10 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     </div>
     <div class="topbar-right">
       <span class="top-user" id="top-user"></span>
-      <button id="btn-admin" onclick="abrirAdmin()" style="display:none;background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;margin-right:4px">🔧 Admin</button><button class="btn-sair" onclick="sair()">Sair</button>
+      <button id="btn-usuarios" onclick="abrirModalUsuarios()" style="display:none;background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600">👥 Usuários</button>
+      <button id="btn-logs" onclick="abrirModalLogs()" style="display:none;background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600">📋 Logs</button>
+      <button id="btn-admin" onclick="abrirAdmin()" style="display:none;background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;margin-right:4px">🔧 Admin</button>
+      <button class="btn-sair" onclick="sair()">Sair</button>
     </div>
   </div>
 
@@ -631,6 +634,77 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     </div>
   </div>
 </div>
+<!-- MODAL USUÁRIOS -->
+<div class="ov" id="m-usuarios" style="z-index:400">
+  <div class="modal" style="width:700px;max-width:95vw">
+    <div class="mh" style="display:flex;justify-content:space-between;align-items:center">
+      <span>👥 Gestão de Usuários</span>
+      <button onclick="abrirFormUsuario()" style="background:#739630;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">+ Novo</button>
+    </div>
+    <div id="m-usr-lista" style="max-height:45vh;overflow-y:auto;margin-bottom:12px"></div>
+    <div id="m-usr-form" style="display:none;background:#f5f9f2;border-radius:10px;padding:14px;margin-bottom:12px">
+      <div style="font-size:13px;font-weight:700;color:#024f2b;margin-bottom:12px" id="m-usr-form-titulo">Novo Usuário</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div><label class="fl">Login</label><input class="fi" type="text" id="muu-login" placeholder="ex: op.turno1"></div>
+        <div><label class="fl">Nome</label><input class="fi" type="text" id="muu-nome"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div><label class="fl">Senha</label><input class="fi" type="password" id="muu-senha" placeholder="Min. 4 caracteres"></div>
+        <div><label class="fl">Perfil</label>
+          <select class="fi" id="muu-perfil" onchange="muuOnPerfil()">
+            <option value="operador">Operador (Ensaque)</option>
+            <option value="extrusao">Extrusao</option>
+            <option value="pcp">PCP</option>
+            <option value="supervisor">Supervisor</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+      </div>
+      <div id="muu-fg-linhas" style="display:none;margin-bottom:10px">
+        <label class="fl">Linhas de Extrusao</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;background:#fff;padding:4px 10px;border-radius:6px;border:1px solid #d4e8d4;cursor:pointer"><input type="checkbox" value="Linha 1 (E-240)"> Linha 1</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;background:#fff;padding:4px 10px;border-radius:6px;border:1px solid #d4e8d4;cursor:pointer"><input type="checkbox" value="Linha 2 (E-200)"> Linha 2</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;background:#fff;padding:4px 10px;border-radius:6px;border:1px solid #d4e8d4;cursor:pointer"><input type="checkbox" value="Linha 4 (Andritz I)"> Linha 4</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;background:#fff;padding:4px 10px;border-radius:6px;border:1px solid #d4e8d4;cursor:pointer"><input type="checkbox" value="Linha 5 (Andritz II)"> Linha 5</label>
+        </div>
+      </div>
+      <input type="hidden" id="muu-fbkey">
+      <div class="mr">
+        <button class="btn-cancel" onclick="G('m-usr-form').style.display='none'">Cancelar</button>
+        <button class="btn-ok" onclick="muuSalvar()">✔ Salvar</button>
+      </div>
+    </div>
+    <div class="mr"><button class="btn-cancel" onclick="fM('m-usuarios')">Fechar</button></div>
+  </div>
+</div>
+
+<!-- MODAL LOGS -->
+<div class="ov" id="m-logs" style="z-index:400">
+  <div class="modal" style="width:780px;max-width:95vw">
+    <div class="mh">📋 Log de Alterações</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:flex-end">
+      <div><label class="fl">Data início</label><input class="fi" type="date" id="mlog-dt1" style="width:140px"></div>
+      <div><label class="fl">Data fim</label><input class="fi" type="date" id="mlog-dt2" style="width:140px"></div>
+      <div><label class="fl">Operador</label><input class="fi" type="text" id="mlog-op" placeholder="Login..." style="width:130px"></div>
+      <div><label class="fl">Tipo</label>
+        <select class="fi" id="mlog-tipo" style="width:130px">
+          <option value="">Todos</option>
+          <option value="apontamento">Apontamento</option>
+          <option value="parada">Parada</option>
+          <option value="op_status">Status OP</option>
+          <option value="usuario">Usuario</option>
+        </select>
+      </div>
+      <button class="btn-ok" onclick="mlogBuscar()">🔍 Buscar</button>
+    </div>
+    <div id="mlog-corpo" style="max-height:50vh;overflow-y:auto">
+      <div style="text-align:center;padding:20px;color:#4a664a;font-size:12px">Use os filtros acima para buscar</div>
+    </div>
+    <div class="mr" style="margin-top:12px"><button class="btn-cancel" onclick="fM('m-logs')">Fechar</button></div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -738,6 +812,10 @@ function iniciarApp(){
   G("top-user").textContent=SES.nome;
   var btnAdm=G("btn-admin");
   if(btnAdm) btnAdm.style.display=SES.perfil==="admin"?"":"none";
+  var btnUsr=G("btn-usuarios");
+  if(btnUsr) btnUsr.style.display=SES.perfil==="admin"?"":"none";
+  var btnLog=G("btn-logs");
+  if(btnLog) btnLog.style.display=SES.perfil==="admin"?"":"none";
   G("top-turno").textContent="Turno "+SES.turno;
   G("linhas-grid").style.gridTemplateColumns=LINHAS_USER.length===1?"1fr":"1fr 1fr";
   DT_FILA=hoje();
@@ -2921,6 +2999,172 @@ function admBuscarLogs(){
     });
     h+='</table>';
     G("adm-logs-corpo").innerHTML=h;
+  });
+}
+
+// ── MODAL USUÁRIOS ────────────────────────────────────────
+var MUU_LISTA=[];
+
+function abrirModalUsuarios(){
+  aM("m-usuarios");
+  G("m-usr-form").style.display="none";
+  carregarListaUsuarios();
+}
+
+function carregarListaUsuarios(){
+  if(!DB){G("m-usr-lista").innerHTML='<div style="text-align:center;padding:20px;color:#c0392b">Sem conexao</div>';return;}
+  G("m-usr-lista").innerHTML='<div style="text-align:center;padding:16px;color:#4a664a;font-size:12px">Carregando...</div>';
+  DB.ref("usuarios").once("value",function(s){
+    MUU_LISTA=[];
+    if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;MUU_LISTA.push(v);});
+    MUU_LISTA.sort(function(a,b){return (a.login||"")>(b.login||"")?1:-1;});
+    if(!MUU_LISTA.length){G("m-usr-lista").innerHTML='<div style="text-align:center;padding:20px;color:#4a664a">Nenhum usuario cadastrado</div>';return;}
+    var h='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    h+='<tr style="background:#f5f9f2"><th style="padding:8px;text-align:left;color:#024f2b">Login</th><th style="padding:8px;text-align:left;color:#024f2b">Nome</th><th style="padding:8px;text-align:left;color:#024f2b">Perfil</th><th style="padding:8px;text-align:left;color:#024f2b">Status</th><th style="padding:8px;width:140px"></th></tr>';
+    MUU_LISTA.forEach(function(u){
+      var ativo=!u.inativo;
+      h+='<tr style="border-bottom:1px solid #f0f0f0">';
+      h+='<td style="padding:8px;font-weight:700;color:#024f2b">'+u.login+'</td>';
+      h+='<td style="padding:8px">'+(u.nome||"—")+'</td>';
+      h+='<td style="padding:8px"><span style="background:#d4e8d4;color:#024f2b;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">'+u.perfil+'</span></td>';
+      h+='<td style="padding:8px"><span style="background:'+(ativo?"#d4f0e4":"#f0f0f0")+';color:'+(ativo?"#024f2b":"#888")+';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">'+(ativo?"Ativo":"Inativo")+'</span></td>';
+      h+='<td style="padding:8px;display:flex;gap:4px">';
+      h+='<button data-fk="'+u.fbKey+'" onclick="muuEditar(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">✏️</button>';
+      h+='<button data-fk="'+u.fbKey+'" data-ativo="'+(ativo?1:0)+'" onclick="muuToggle(this.dataset.fk,this.dataset.ativo)" style="background:'+(ativo?"#888":"#024f2b")+';color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">'+(ativo?"Desativar":"Ativar")+'</button>';
+      h+='</td></tr>';
+    });
+    h+='</table>';
+    G("m-usr-lista").innerHTML=h;
+  });
+}
+
+function abrirFormUsuario(){
+  G("m-usr-form-titulo").textContent="Novo Usuario";
+  G("muu-login").value=""; G("muu-nome").value="";
+  G("muu-senha").value=""; G("muu-perfil").value="operador";
+  G("muu-fbkey").value="";
+  G("muu-fg-linhas").style.display="none";
+  G("muu-fg-linhas").querySelectorAll("input").forEach(function(cb){cb.checked=false;});
+  G("m-usr-form").style.display="block";
+  setTimeout(function(){G("muu-login").focus();},200);
+}
+
+function muuEditar(fbKey){
+  var u=MUU_LISTA.find(function(x){return x.fbKey===fbKey;});
+  if(!u) return;
+  G("m-usr-form-titulo").textContent="Editar — "+u.login;
+  G("muu-login").value=u.login||"";
+  G("muu-nome").value=u.nome||"";
+  G("muu-senha").value=u.senha||"";
+  G("muu-perfil").value=u.perfil||"operador";
+  G("muu-fbkey").value=fbKey;
+  muuOnPerfil();
+  G("muu-fg-linhas").querySelectorAll("input").forEach(function(cb){
+    cb.checked=(u.linhas||[]).indexOf(cb.value)>=0;
+  });
+  G("m-usr-form").style.display="block";
+  G("m-usr-form").scrollIntoView({behavior:"smooth"});
+}
+
+function muuOnPerfil(){
+  G("muu-fg-linhas").style.display=G("muu-perfil").value==="extrusao"?"block":"none";
+}
+
+function muuSalvar(){
+  var login=G("muu-login").value.trim();
+  var nome=G("muu-nome").value.trim();
+  var senha=G("muu-senha").value.trim();
+  var perfil=G("muu-perfil").value;
+  var fbKey=G("muu-fbkey").value;
+  if(!login){toast("Informe o login","err");return;}
+  if(!nome){toast("Informe o nome","err");return;}
+  if(!senha||senha.length<4){toast("Senha minimo 4 caracteres","err");return;}
+  if(!DB){toast("Firebase nao conectado","err");return;}
+  var linhas=[];
+  if(perfil==="extrusao"){
+    G("muu-fg-linhas").querySelectorAll("input:checked").forEach(function(cb){linhas.push(cb.value);});
+  }
+  var dados={login:login,nome:nome,senha:senha,perfil:perfil};
+  if(linhas.length) dados.linhas=linhas;
+  if(fbKey){
+    DB.ref("usuarios/"+fbKey).update(dados).then(function(){
+      toast("Usuario atualizado!","ok");
+      registrarLog("usuario","Editou usuario: "+login+" (perfil: "+perfil+")","-");
+      G("m-usr-form").style.display="none";
+      carregarListaUsuarios();
+    }).catch(function(e){toast("Erro: "+e.message,"err");});
+  } else {
+    DB.ref("usuarios").orderByChild("login").equalTo(login).once("value").then(function(s){
+      if(s.exists()){toast("Login ja existe","err");return;}
+      DB.ref("usuarios").push(dados).then(function(){
+        toast("Usuario criado!","ok");
+        registrarLog("usuario","Criou usuario: "+login+" (perfil: "+perfil+")","-");
+        G("m-usr-form").style.display="none";
+        carregarListaUsuarios();
+      }).catch(function(e){toast("Erro: "+e.message,"err");});
+    });
+  }
+}
+
+function muuToggle(fbKey,ativoStr){
+  var ativo=ativoStr==="1";
+  var u=MUU_LISTA.find(function(x){return x.fbKey===fbKey;});
+  if(!u||!DB) return;
+  if(!confirm((ativo?"Desativar":"Ativar")+" usuario "+u.login+"?")) return;
+  DB.ref("usuarios/"+fbKey).update({inativo:ativo}).then(function(){
+    toast("Usuario "+(ativo?"desativado":"ativado")+"!","ok");
+    registrarLog("usuario",(ativo?"Desativou":"Ativou")+" usuario: "+u.login,"-");
+    carregarListaUsuarios();
+  });
+}
+
+// ── MODAL LOGS ────────────────────────────────────────────
+function abrirModalLogs(){
+  aM("m-logs");
+  G("mlog-dt1").value=DT_FILA||hoje();
+  G("mlog-dt2").value=DT_FILA||hoje();
+  G("mlog-op").value="";
+  G("mlog-tipo").value="";
+  G("mlog-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#4a664a;font-size:12px">Use os filtros acima para buscar</div>';
+}
+
+function mlogBuscar(){
+  if(!DB) return;
+  var dt1=G("mlog-dt1").value||hoje();
+  var dt2=G("mlog-dt2").value||hoje();
+  var opFiltro=(G("mlog-op").value||"").trim().toLowerCase();
+  var tipoFiltro=G("mlog-tipo").value;
+  G("mlog-corpo").innerHTML='<div style="text-align:center;padding:16px;color:#4a664a;font-size:12px">Buscando...</div>';
+  DB.ref("admin_logs").orderByChild("data").startAt(dt1).endAt(dt2).once("value",function(s){
+    var logs=[];
+    if(s.exists()) s.forEach(function(c){
+      var v=c.val(); v.fbKey=c.key;
+      if(opFiltro && !(v.operador||"").toLowerCase().includes(opFiltro)) return;
+      if(tipoFiltro && v.tipo!==tipoFiltro) return;
+      logs.push(v);
+    });
+    logs.sort(function(a,b){return (a.ts||"")>(b.ts||"")?-1:1;});
+    if(!logs.length){
+      G("mlog-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#4a664a;font-size:12px">Nenhum log encontrado</div>';
+      return;
+    }
+    var corB={apontamento:"#d4e8d4",parada:"#ffd4d4",op_status:"#fff3cd",usuario:"#d4e8ff"};
+    var corT={apontamento:"#024f2b",parada:"#a00",op_status:"#856404",usuario:"#1a4a8a"};
+    var h='<table style="width:100%;border-collapse:collapse;font-size:11px">';
+    h+='<tr style="background:#f5f9f2"><th style="padding:7px;color:#024f2b;text-align:left">Data/Hora</th><th style="padding:7px;color:#024f2b;text-align:left">Tipo</th><th style="padding:7px;color:#024f2b;text-align:left">Operador</th><th style="padding:7px;color:#024f2b;text-align:left">Descricao</th><th style="padding:7px;color:#024f2b;text-align:left">Anterior</th></tr>';
+    logs.forEach(function(log,i){
+      var d=new Date(log.ts||"");
+      var dtStr=isNaN(d)?log.ts:(pad(d.getDate())+"/"+pad(d.getMonth()+1)+" "+pad(d.getHours())+":"+pad(d.getMinutes()));
+      h+='<tr style="background:'+(i%2===0?"#fff":"#fafcfa")+';border-bottom:1px solid #f0f0f0">';
+      h+='<td style="padding:7px;color:#666">'+dtStr+'</td>';
+      h+='<td style="padding:7px"><span style="background:'+(corB[log.tipo]||"#eee")+';color:'+(corT[log.tipo]||"#333")+';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">'+(log.tipo||"")+'</span></td>';
+      h+='<td style="padding:7px;font-weight:600;color:#024f2b">'+(log.nomeOp||log.operador||"")+'</td>';
+      h+='<td style="padding:7px;color:#333">'+(log.descricao||"")+'</td>';
+      h+='<td style="padding:7px;color:#888;font-size:10px">'+(log.valorAnterior&&log.valorAnterior!=="-"?log.valorAnterior:"—")+'</td>';
+      h+='</tr>';
+    });
+    h+='</table>';
+    G("mlog-corpo").innerHTML=h;
   });
 }
 
