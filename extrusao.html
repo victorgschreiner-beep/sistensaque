@@ -1155,7 +1155,7 @@ function renderLinhaCard(linha){
   e.paradas.forEach(function(p){hist.push({tipo:"para",hora:p.horaIni,d:p});});
   hist.sort(function(a,b){return a.hora>b.hora?1:-1;});
   // Admin vê todos os registros do dia; operador vê os últimos 6
-  var histVis=isAdminRender?hist:hist.slice(-6);
+  var histVis=isAdminRender?hist:hist.slice(-12);
   if(hist.length){
     h+='<div style="margin-top:10px">';
     if(isAdminRender&&hist.length>0){
@@ -1506,10 +1506,21 @@ function salvarApt(){
   var e=EST[linhaAtiva]||{};
   var op=e.opAtiva?OPS.find(function(o){return o.fbKey===e.opAtiva;}):null;
   if(!op){toast("Nenhuma OP ativa — selecione a OP antes de salvar","err");return;}
-  var metaH=op?getMetaHora(op.cod,linhaAtiva):0;
+
+  // Valida duplicata — não permite mesmo horaIni na mesma linha/turno/data
   var turnoApt=turnoDeHora(hi);
   var dataOverride=G("apt-data-override");
   var dataApt=(SES&&SES.perfil==="admin"&&dataOverride&&dataOverride.value)?dataOverride.value:(DT_FILA||hoje());
+  var duplicata=(e.apts||[]).find(function(a){
+    return a.horaIni===hi && a.data===dataApt && a.turno===turnoApt;
+  });
+  if(duplicata && SES.perfil!=="admin"){
+    toast("Já existe apontamento das "+hi+" nesta linha!","err");
+    G("apt-efic").textContent="Horário já apontado — edite o existente ou use outro horário";
+    G("apt-efic").className="hint err2";
+    return;
+  }
+  var metaH=op?getMetaHora(op.cod,linhaAtiva):0;
   var apt={id:uid(),linha:linhaAtiva,opFbKey:op?op.fbKey:"",opNum:op?op.id:"",cod:op?op.cod:"",desc:op?(op.desc||op.cod):"",turno:turnoApt,data:dataApt,horaIni:hi,horaFim:hf,real:real,metaH:metaH,obs:G("apt-obs").value||"",operador:SES.login,ts:agora()};
   if(!DB){toast("Firebase não conectado","err");return;}
   DB.ref("extrusao_apts").push(apt).then(function(){
