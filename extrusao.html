@@ -662,6 +662,12 @@ function fM(id){G(id).classList.remove("on");}
 function aM(id){G(id).classList.add("on");}
 function turnoAtual(){var h=new Date().getHours();return h>=21||h<5?1:h<13?2:3;}
 
+// Extrai turno do nome do login (ext.andritz.t1 → 1)
+function turnoDoLogin(login){
+  var m=(login||"").match(/\.t([123])$/);
+  return m?parseInt(m[1]):null;
+}
+
 // Calcula turno baseado na hora do apontamento (não no horário atual)
 function turnoDeHora(horaStr){
   if(!horaStr) return turnoAtual();
@@ -703,7 +709,8 @@ function fazerLogin(){
   G("login-err").textContent="";
   if(!login||!senha){G("login-err").textContent="Preencha login e senha";return;}
   if(TESTE_LOGINS[login]&&senha==="1234"){
-    SES=Object.assign({turno:turnoAtual()},TESTE_LOGINS[login]);
+    var turnoLogin=turnoDoLogin(login);
+    SES=Object.assign({turno:turnoLogin||turnoAtual()},TESTE_LOGINS[login]);
     iniciarApp(); return;
   }
   if(!DB){G("login-err").textContent="Sem conexão com servidor";return;}
@@ -712,7 +719,8 @@ function fazerLogin(){
     var u=null; s.forEach(function(c){u=c.val();});
     if(!u||u.senha!==senha){G("login-err").textContent="Senha incorreta";return;}
     if(u.perfil!=="extrusao"&&u.perfil!=="admin"){G("login-err").textContent="Sem acesso à extrusão";return;}
-    SES={login:u.login,nome:u.nome||u.login,perfil:u.perfil,turno:turnoAtual()};
+    var turnoLoginFb=turnoDoLogin(u.login);
+    SES={login:u.login,nome:u.nome||u.login,perfil:u.perfil,turno:turnoLoginFb||turnoAtual()};
     iniciarApp();
   }).catch(function(e){G("login-err").textContent="Erro: "+e.message;});
 }
