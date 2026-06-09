@@ -457,6 +457,8 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       <button onclick="admAba('paradas')" id="adm-tab-paradas" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🔴 Paradas</button>
       <button onclick="admAba('ops')" id="adm-tab-ops" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📋 Ordens</button>
       <button onclick="admAba('ativas')" id="adm-tab-ativas" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">⚡ OPs Ativas</button>
+      <button onclick="admAba('usuarios')" id="adm-tab-usuarios" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">👥 Usuários</button>
+      <button onclick="admAba('logs')" id="adm-tab-logs" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📋 Logs</button>
     </div>
     <div id="adm-lista-corpo" style="max-height:400px;overflow-y:auto"></div>
     <div class="mr" style="margin-top:12px">
@@ -662,12 +664,6 @@ function fM(id){G(id).classList.remove("on");}
 function aM(id){G(id).classList.add("on");}
 function turnoAtual(){var h=new Date().getHours();return h>=21||h<5?1:h<13?2:3;}
 
-// Extrai turno do nome do login (ext.andritz.t1 → 1)
-function turnoDoLogin(login){
-  var m=(login||"").match(/\.t([123])$/);
-  return m?parseInt(m[1]):null;
-}
-
 // Calcula turno baseado na hora do apontamento (não no horário atual)
 function turnoDeHora(horaStr){
   if(!horaStr) return turnoAtual();
@@ -709,8 +705,7 @@ function fazerLogin(){
   G("login-err").textContent="";
   if(!login||!senha){G("login-err").textContent="Preencha login e senha";return;}
   if(TESTE_LOGINS[login]&&senha==="1234"){
-    var turnoLogin=turnoDoLogin(login);
-    SES=Object.assign({turno:turnoLogin||turnoAtual()},TESTE_LOGINS[login]);
+    SES=Object.assign({turno:turnoAtual()},TESTE_LOGINS[login]);
     iniciarApp(); return;
   }
   if(!DB){G("login-err").textContent="Sem conexão com servidor";return;}
@@ -719,8 +714,7 @@ function fazerLogin(){
     var u=null; s.forEach(function(c){u=c.val();});
     if(!u||u.senha!==senha){G("login-err").textContent="Senha incorreta";return;}
     if(u.perfil!=="extrusao"&&u.perfil!=="admin"){G("login-err").textContent="Sem acesso à extrusão";return;}
-    var turnoLoginFb=turnoDoLogin(u.login);
-    SES={login:u.login,nome:u.nome||u.login,perfil:u.perfil,turno:turnoLoginFb||turnoAtual()};
+    SES={login:u.login,nome:u.nome||u.login,perfil:u.perfil,turno:turnoAtual()};
     iniciarApp();
   }).catch(function(e){G("login-err").textContent="Erro: "+e.message;});
 }
@@ -916,31 +910,28 @@ function verificarParadasAbertas(){
     d.setDate(d.getDate()-1);
     dtAnt=d.toISOString().slice(0,10);
   }
-  // Hora de fim do turno anterior
-  var fimTurnos={1:"05:00",2:"13:00",3:"21:00"};
+  // Último minuto do turno anterior e primeiro do atual
+  var ultimoMinTurno={1:"04:59",2:"12:59",3:"20:59"};
   var inicioTurnos={1:"21:00",2:"05:00",3:"13:00"};
-  var horaFimAnt=fimTurnos[tAnt];
-  var horaIniAtual=inicioTurnos[t];
+  var horaFimAnt=ultimoMinTurno[tAnt];  // ex: T3 fecha às 20:59
+  var horaIniAtual=inicioTurnos[t];     // ex: T1 começa às 21:00
 
   LINHAS_USER.forEach(function(linha){
-    // Busca paradas abertas do turno anterior
     DB.ref("extrusao_paradas").orderByChild("data").equalTo(dtAnt).once("value",function(s){
       if(!s.exists()) return;
       s.forEach(function(c){
         var p=c.val();
-        // Parada aberta do turno anterior nesta linha
         if(p.linha===linha && p.turno===tAnt && !p.horaFim){
-          // 1. Fecha a parada do turno anterior com hora fim do turno
+          // 1. Fecha a parada do turno anterior no último minuto do turno
           var ini=p.horaIni.split(":"),fim=horaFimAnt.split(":");
           var min=(parseInt(fim[0])*60+parseInt(fim[1]))-(parseInt(ini[0])*60+parseInt(ini[1]));
-          if(min<0) min+=24*60; // virada de meia noite
+          if(min<0) min+=24*60;
           DB.ref("extrusao_paradas/"+c.key).update({
             horaFim:horaFimAnt,
             minutos:Math.max(min,0),
             fechadoAutomaticamente:true
           });
-
-          // 2. Abre nova parada no turno atual com mesmo motivo
+          // 2. Abre nova parada no turno atual a partir do primeiro minuto
           DB.ref("extrusao_paradas").push({
             id:uid(),
             linha:linha,
@@ -950,7 +941,7 @@ function verificarParadasAbertas(){
             horaFim:"",
             codMotivo:p.codMotivo||"",
             descricao:p.descricao||"",
-            obs:(p.obs||"")+(p.obs?" | ":"")+"Continuação do Turno "+tAnt,
+            obs:(p.obs?p.obs+" | ":"")+"Continuacao do Turno "+tAnt,
             minutos:0,
             operador:p.operador||SES.login,
             continuacaoTurno:tAnt,
@@ -982,10 +973,16 @@ function carregarExtrusao(){
       atualizarBarraTurno();
     });
     DB.ref("extrusao_paradas").orderByChild("data").equalTo(dt).on("value",function(s){
+      if(!EST[linha]) EST[linha]={opAtiva:null,opAtivaTs:null,apts:[],paradas:[],totalOp:{}};
       EST[linha].paradas=[];
       if(s.exists()) s.forEach(function(c){
         var p=c.val();p.fbKey=c.key;
-        if(p.linha===linha&&p.data===dt&&(isAdmin||p.turno===t)) EST[linha].paradas.push(p);
+        if(p.linha!==linha||p.data!==dt) return;
+        if(!isAdmin&&p.turno!==t) return;
+        // Ignora paradas abertas herdadas de turnos já encerrados
+        // Ex: parada herdada do T3 que ficou aberta mas o turno já passou
+        if(!p.horaFim && p.continuacaoTurno && p.turno!==t) return;
+        EST[linha].paradas.push(p);
       });
       renderLinhaCard(linha);
       atualizarBarraTurno();
@@ -1155,7 +1152,7 @@ function renderLinhaCard(linha){
   e.paradas.forEach(function(p){hist.push({tipo:"para",hora:p.horaIni,d:p});});
   hist.sort(function(a,b){return a.hora>b.hora?1:-1;});
   // Admin vê todos os registros do dia; operador vê os últimos 6
-  var histVis=isAdminRender?hist:hist.slice(-12);
+  var histVis=isAdminRender?hist:hist.slice(-6);
   if(hist.length){
     h+='<div style="margin-top:10px">';
     if(isAdminRender&&hist.length>0){
@@ -1506,21 +1503,10 @@ function salvarApt(){
   var e=EST[linhaAtiva]||{};
   var op=e.opAtiva?OPS.find(function(o){return o.fbKey===e.opAtiva;}):null;
   if(!op){toast("Nenhuma OP ativa — selecione a OP antes de salvar","err");return;}
-
-  // Valida duplicata — não permite mesmo horaIni na mesma linha/turno/data
+  var metaH=op?getMetaHora(op.cod,linhaAtiva):0;
   var turnoApt=turnoDeHora(hi);
   var dataOverride=G("apt-data-override");
   var dataApt=(SES&&SES.perfil==="admin"&&dataOverride&&dataOverride.value)?dataOverride.value:(DT_FILA||hoje());
-  var duplicata=(e.apts||[]).find(function(a){
-    return a.horaIni===hi && a.data===dataApt && a.turno===turnoApt;
-  });
-  if(duplicata && SES.perfil!=="admin"){
-    toast("Já existe apontamento das "+hi+" nesta linha!","err");
-    G("apt-efic").textContent="Horário já apontado — edite o existente ou use outro horário";
-    G("apt-efic").className="hint err2";
-    return;
-  }
-  var metaH=op?getMetaHora(op.cod,linhaAtiva):0;
   var apt={id:uid(),linha:linhaAtiva,opFbKey:op?op.fbKey:"",opNum:op?op.id:"",cod:op?op.cod:"",desc:op?(op.desc||op.cod):"",turno:turnoApt,data:dataApt,horaIni:hi,horaFim:hf,real:real,metaH:metaH,obs:G("apt-obs").value||"",operador:SES.login,ts:agora()};
   if(!DB){toast("Firebase não conectado","err");return;}
   DB.ref("extrusao_apts").push(apt).then(function(){
@@ -2133,6 +2119,20 @@ function admFinalizarOpExt(btn){
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
+// Registra log de alteração admin no Firebase
+function registrarLog(tipo,descricao,valorAnterior){
+  if(!DB||!SES||SES.perfil!=="admin") return;
+  DB.ref("admin_logs").push({
+    tipo:tipo,
+    descricao:descricao,
+    valorAnterior:valorAnterior||"-",
+    operador:SES.login,
+    nomeOp:SES.nome||SES.login,
+    ts:agora(),
+    data:DT_FILA||hoje()
+  });
+}
+
 function admBuscarOps(){
   if(!DB) return;
   var ln=G("adm-ln").value;
@@ -2232,8 +2232,8 @@ function admReopenOp(fbKey,id){
   // Admin pode alterar status das OPs do ensaque (usuário admin tem permissão)
   DB.ref("ops/"+fbKey).update({status:"Em andamento"}).then(function(){
     toast("OP "+id+" reaberta!","ok");
+    registrarLog("op_status","Reabriu OP "+id,"Concluida → Em andamento");
     admBuscarOps();
-    // Força reload das OPs na fila
     if(DB){DB.ref("ops").off();carregarOPs();}
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
@@ -2716,7 +2716,7 @@ function abrirAdmin(){
 
 function admAba(aba){
   ADM_ABA=aba;
-  ["apts","paradas","ops","ativas"].forEach(function(a){
+  ["apts","paradas","ops","ativas","usuarios","logs"].forEach(function(a){
     var btn=G("adm-tab-"+a); if(!btn) return;
     btn.style.background=aba===a?"#024f2b":"#fff";
     btn.style.color=aba===a?"#fff":"#024f2b";
@@ -2724,6 +2724,8 @@ function admAba(aba){
   });
   if(aba==="ops") admBuscarOps();
   else if(aba==="ativas") admRenderAtivas();
+  else if(aba==="usuarios") admRenderUsuarios();
+  else if(aba==="logs") admRenderLogs();
   else admRenderLista();
 }
 
@@ -2751,7 +2753,175 @@ function admBuscar(){
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
+// ── GESTÃO DE USUÁRIOS ────────────────────────────────────
+var ADM_USUARIOS=[];
+
+function admRenderUsuarios(){
+  G("adm-lista-corpo").style.display="none";
+  G("adm-usuarios-wrap").style.display="block";
+  G("adm-logs-wrap").style.display="none";
+  if(!DB) return;
+  DB.ref("usuarios").once("value",function(s){
+    ADM_USUARIOS=[];
+    if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;ADM_USUARIOS.push(v);});
+    ADM_USUARIOS.sort(function(a,b){return (a.login||"")>(b.login||"")?1:-1;});
+    var h='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    h+='<tr style="background:#f5f9f2"><th style="padding:8px;text-align:left;color:#024f2b;font-size:11px">Login</th><th style="padding:8px;text-align:left;color:#024f2b;font-size:11px">Nome</th><th style="padding:8px;text-align:left;color:#024f2b;font-size:11px">Perfil</th><th style="padding:8px;text-align:left;color:#024f2b;font-size:11px">Status</th><th style="padding:8px;width:150px"></th></tr>';
+    ADM_USUARIOS.forEach(function(u){
+      var ativo=!u.inativo;
+      h+='<tr style="border-bottom:1px solid #f0f0f0">';
+      h+='<td style="padding:8px;font-weight:700;color:#024f2b">'+u.login+'</td>';
+      h+='<td style="padding:8px">'+(u.nome||"—")+'</td>';
+      h+='<td style="padding:8px"><span style="background:#d4e8d4;color:#024f2b;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">'+u.perfil+'</span></td>';
+      h+='<td style="padding:8px"><span style="background:'+(ativo?"#d4f0e4":"#f0f0f0")+';color:'+(ativo?"#024f2b":"#888")+';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">'+(ativo?"Ativo":"Inativo")+'</span></td>';
+      h+='<td style="padding:8px;display:flex;gap:4px">';
+      h+='<button data-fk="'+u.fbKey+'" onclick="admEditarUsuario(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">✏️ Editar</button>';
+      h+='<button data-fk="'+u.fbKey+'" data-ativo="'+(ativo?1:0)+'" onclick="admToggleUsuario(this.dataset.fk,this.dataset.ativo)" style="background:'+(ativo?"#888":"#024f2b")+';color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">'+(ativo?"Desativar":"Ativar")+'</button>';
+      h+='</td></tr>';
+    });
+    h+='</table>';
+    G("adm-usuarios-corpo").innerHTML=h;
+  });
+}
+
+function admAbrirNovoUsuario(){
+  G("adm-form-usr-titulo").textContent="Novo Usuário";
+  G("au-login").value=""; G("au-nome").value="";
+  G("au-senha").value=""; G("au-perfil").value="operador";
+  G("au-fbkey").value="";
+  G("au-fg-linhas").style.display="none";
+  G("au-fg-linhas").querySelectorAll("input").forEach(function(cb){cb.checked=false;});
+  G("adm-form-usuario").style.display="block";
+}
+
+function admEditarUsuario(fbKey){
+  var u=ADM_USUARIOS.find(function(x){return x.fbKey===fbKey;});
+  if(!u) return;
+  G("adm-form-usr-titulo").textContent="Editar — "+u.login;
+  G("au-login").value=u.login||"";
+  G("au-nome").value=u.nome||"";
+  G("au-senha").value=u.senha||"";
+  G("au-perfil").value=u.perfil||"operador";
+  G("au-fbkey").value=fbKey;
+  admOnPerfilChange();
+  G("au-fg-linhas").querySelectorAll("input").forEach(function(cb){
+    cb.checked=(u.linhas||[]).indexOf(cb.value)>=0;
+  });
+  G("adm-form-usuario").style.display="block";
+}
+
+function admOnPerfilChange(){
+  G("au-fg-linhas").style.display=G("au-perfil").value==="extrusao"?"block":"none";
+}
+
+function admFecharFormUsuario(){
+  G("adm-form-usuario").style.display="none";
+}
+
+function admSalvarUsuario(){
+  var login=G("au-login").value.trim();
+  var nome=G("au-nome").value.trim();
+  var senha=G("au-senha").value.trim();
+  var perfil=G("au-perfil").value;
+  var fbKey=G("au-fbkey").value;
+  if(!login){toast("Informe o login","err");return;}
+  if(!nome){toast("Informe o nome","err");return;}
+  if(!senha||senha.length<4){toast("Senha minimo 4 caracteres","err");return;}
+  if(!DB){toast("Firebase nao conectado","err");return;}
+  var linhas=[];
+  if(perfil==="extrusao"){
+    G("au-fg-linhas").querySelectorAll("input:checked").forEach(function(cb){linhas.push(cb.value);});
+  }
+  var dados={login:login,nome:nome,senha:senha,perfil:perfil};
+  if(linhas.length) dados.linhas=linhas;
+  if(fbKey){
+    DB.ref("usuarios/"+fbKey).update(dados).then(function(){
+      toast("Usuario atualizado!","ok");
+      registrarLog("usuario","Editou usuario: "+login+" (perfil: "+perfil+")","-");
+      admFecharFormUsuario();
+      admRenderUsuarios();
+    }).catch(function(e){toast("Erro: "+e.message,"err");});
+  } else {
+    DB.ref("usuarios").orderByChild("login").equalTo(login).once("value").then(function(s){
+      if(s.exists()){toast("Login ja existe","err");return;}
+      DB.ref("usuarios").push(dados).then(function(){
+        toast("Usuario criado!","ok");
+        registrarLog("usuario","Criou usuario: "+login+" (perfil: "+perfil+")","-");
+        admFecharFormUsuario();
+        admRenderUsuarios();
+      }).catch(function(e){toast("Erro: "+e.message,"err");});
+    });
+  }
+}
+
+function admToggleUsuario(fbKey,ativoStr){
+  var ativo=ativoStr==="1";
+  var u=ADM_USUARIOS.find(function(x){return x.fbKey===fbKey;});
+  if(!u||!DB) return;
+  if(!confirm((ativo?"Desativar":"Ativar")+" o usuario "+u.login+"?")) return;
+  DB.ref("usuarios/"+fbKey).update({inativo:ativo}).then(function(){
+    toast("Usuario "+(ativo?"desativado":"ativado")+"!","ok");
+    registrarLog("usuario",(ativo?"Desativou":"Ativou")+" usuario: "+u.login,"-");
+    admRenderUsuarios();
+  });
+}
+
+// ── LOGS ──────────────────────────────────────────────────
+function admRenderLogs(){
+  G("adm-lista-corpo").style.display="none";
+  G("adm-usuarios-wrap").style.display="none";
+  G("adm-logs-wrap").style.display="block";
+  G("log-dt1").value=DT_FILA||hoje();
+  G("log-dt2").value=DT_FILA||hoje();
+}
+
+function admBuscarLogs(){
+  if(!DB) return;
+  var dt1=G("log-dt1").value||hoje();
+  var dt2=G("log-dt2").value||hoje();
+  var opFiltro=(G("log-oper").value||"").trim().toLowerCase();
+  var tipoFiltro=G("log-tipo").value;
+  G("adm-logs-corpo").innerHTML='<div style="text-align:center;padding:16px;color:#4a664a;font-size:12px">Buscando...</div>';
+  DB.ref("admin_logs").orderByChild("data").startAt(dt1).endAt(dt2).once("value",function(s){
+    var logs=[];
+    if(s.exists()) s.forEach(function(c){
+      var v=c.val(); v.fbKey=c.key;
+      if(opFiltro && !(v.operador||"").toLowerCase().includes(opFiltro)) return;
+      if(tipoFiltro && v.tipo!==tipoFiltro) return;
+      logs.push(v);
+    });
+    logs.sort(function(a,b){return (a.ts||"")>(b.ts||"")?-1:1;});
+    if(!logs.length){
+      G("adm-logs-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#4a664a;font-size:12px">Nenhum log encontrado</div>';
+      return;
+    }
+    var corTipo={apontamento:"#d4e8d4",parada:"#ffd4d4",op_status:"#fff3cd",usuario:"#d4e8ff"};
+    var corTxt={apontamento:"#024f2b",parada:"#a00",op_status:"#856404",usuario:"#1a4a8a"};
+    var h='<table style="width:100%;border-collapse:collapse;font-size:11px">';
+    h+='<tr style="background:#f5f9f2"><th style="padding:7px;text-align:left;color:#024f2b">Data/Hora</th><th style="padding:7px;text-align:left;color:#024f2b">Tipo</th><th style="padding:7px;text-align:left;color:#024f2b">Operador</th><th style="padding:7px;text-align:left;color:#024f2b">Descrição</th><th style="padding:7px;text-align:left;color:#024f2b">Anterior</th></tr>';
+    logs.forEach(function(log,i){
+      var d=new Date(log.ts||"");
+      var dtStr=isNaN(d)?log.ts:( pad(d.getDate())+"/"+pad(d.getMonth()+1)+" "+pad(d.getHours())+":"+pad(d.getMinutes()));
+      var bg=i%2===0?"#fff":"#fafcfa";
+      var corB=corTipo[log.tipo]||"#eee";
+      var corT=corTxt[log.tipo]||"#333";
+      h+='<tr style="background:'+bg+';border-bottom:1px solid #f0f0f0">';
+      h+='<td style="padding:7px;color:#666">'+dtStr+'</td>';
+      h+='<td style="padding:7px"><span style="background:'+corB+';color:'+corT+';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">'+log.tipo+'</span></td>';
+      h+='<td style="padding:7px;font-weight:600;color:#024f2b">'+(log.nomeOp||log.operador||"")+'</td>';
+      h+='<td style="padding:7px;color:#333">'+(log.descricao||"")+'</td>';
+      h+='<td style="padding:7px;color:#888;font-size:10px">'+(log.valorAnterior&&log.valorAnterior!=="-"?log.valorAnterior:"—")+'</td>';
+      h+='</tr>';
+    });
+    h+='</table>';
+    G("adm-logs-corpo").innerHTML=h;
+  });
+}
+
 function admRenderLista(){
+  G("adm-lista-corpo").style.display="block";
+  if(G("adm-usuarios-wrap")) G("adm-usuarios-wrap").style.display="none";
+  if(G("adm-logs-wrap")) G("adm-logs-wrap").style.display="none";
   var corpo=G("adm-lista-corpo");
   var lista=ADM_ABA==="apts"?ADM_DADOS.apts:ADM_DADOS.paradas;
   if(!lista.length){corpo.innerHTML='<div style="text-align:center;padding:20px;color:#4a664a;font-size:13px">Nenhum registro encontrado</div>';return;}
@@ -2871,9 +3041,10 @@ function admSalvar(fbKey){
     if(opSel){updates.opFbKey=opSel.fbKey;updates.opNum=opSel.id;updates.cod=opSel.cod;}
     DB.ref("extrusao_apts/"+fbKey).update(updates).then(function(){
       fM("m-admin-corr");toast("Apontamento corrigido!","ok");
-    // Recalcula realExtrusao da OP editada
     var aptEditado=ADM_DADOS.apts.find(function(a){return a.fbKey===fbKey;});
     if(aptEditado && aptEditado.opFbKey) recalcularRealExtrusao(aptEditado.opFbKey);
+    registrarLog("apontamento","Editou apontamento "+fbKey+" — OP: "+(aptEditado?aptEditado.opNum:"")+" Linha: "+(aptEditado?aptEditado.linha:""),
+      aptEditado?"real:"+aptEditado.real+" horaIni:"+aptEditado.horaIni:"");
     if(ADM_DADOS.apts.length===1&&G("m-op-apts").classList.contains("on")){var a=ADM_DADOS.apts[0];admVerApts(a.opFbKey,a.opNum,a.desc);}else{admBuscar();}
     }).catch(function(e){toast("Erro: "+e.message,"err");});
   } else {
