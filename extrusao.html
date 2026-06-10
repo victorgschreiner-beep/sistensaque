@@ -104,7 +104,6 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
 .fila-op-num{font-size:10px;font-weight:700;color:#739630;min-width:80px}
 .fila-op-desc{font-size:11px;color:#1a1a1a;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fila-op-prog{font-size:10px;font-weight:600;min-width:44px;text-align:right}
-@keyframes piscar{0%,100%{opacity:1}50%{opacity:.3}}
 .badge-st{font-size:9px;padding:2px 7px;border-radius:10px;font-weight:700;white-space:nowrap}
 .badge-lib{background:#f0f0f0;color:#666}
 .badge-and{background:rgba(210,153,34,.15);color:#d29922}
@@ -236,8 +235,6 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     </div>
     <div class="topbar-right">
       <span class="top-user" id="top-user"></span>
-      <button id="btn-usuarios" onclick="abrirModalUsuarios()" style="display:none;background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600">👥 Usuários</button>
-      <button id="btn-logs" onclick="abrirModalLogs()" style="display:none;background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600">📋 Logs</button>
       <button id="btn-admin" onclick="abrirAdmin()" style="display:none;background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;margin-right:4px">🔧 Admin</button><button class="btn-sair" onclick="sair()">Sair</button>
     </div>
   </div>
@@ -634,23 +631,6 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     </div>
   </div>
 </div>
-<!-- MODAL PARÂMETROS QUALIDADE -->
-<div class="ov" id="m-params" style="z-index:300">
-  <div class="modal" style="width:420px">
-    <div class="mh">📋 Parâmetros de Qualidade</div>
-    <div id="params-prod-info" style="background:#f5f9f2;border-radius:8px;padding:10px 12px;margin-bottom:14px">
-      <div style="font-size:10px;font-weight:700;color:#739630">PRODUTO</div>
-      <div style="font-size:13px;font-weight:800;color:#024f2b" id="params-prod-cod"></div>
-      <div style="font-size:12px;color:#333;margin-top:2px" id="params-prod-desc"></div>
-    </div>
-    <div id="params-corpo" style="margin-bottom:14px"></div>
-    <div style="background:#fff3cd;border-radius:8px;padding:8px 12px;font-size:11px;color:#856404;margin-bottom:14px" id="params-aviso" style="display:none">
-      ⚠️ Parâmetros não encontrados para este produto.
-    </div>
-    <div class="mr"><button class="btn-cancel" onclick="fM('m-params')">Fechar</button></div>
-  </div>
-</div>
-
 <div id="toast"></div>
 
 <script>
@@ -758,10 +738,6 @@ function iniciarApp(){
   G("top-user").textContent=SES.nome;
   var btnAdm=G("btn-admin");
   if(btnAdm) btnAdm.style.display=SES.perfil==="admin"?"":"none";
-  var btnUsr=G("btn-usuarios");
-  if(btnUsr) btnUsr.style.display=SES.perfil==="admin"?"":"none";
-  var btnLog=G("btn-logs");
-  if(btnLog) btnLog.style.display=SES.perfil==="admin"?"":"none";
   G("top-turno").textContent="Turno "+SES.turno;
   G("linhas-grid").style.gridTemplateColumns=LINHAS_USER.length===1?"1fr":"1fr 1fr";
   DT_FILA=hoje();
@@ -1117,27 +1093,16 @@ function renderLinhaCard(linha){
   h+='<div class="linha-body">';
 
   if(opAtiva){
-    var progExtRaw=opAtiva.prog?Math.round(totalOpExt/(Number(opAtiva.prog)||1)*100):0;
-    var progExt=Math.min(progExtRaw,100);
-    var corProg=progExtRaw>=95?"prog-or":progExtRaw>=90?"prog-gr":"prog-gr2";
-    var alertaOP="";
-    if(progExtRaw>=105){
-      alertaOP='<div style="background:#ffd4d4;border:2px solid #c0392b;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;font-weight:700;color:#c0392b;animation:piscar 1s infinite">'+
-        '🔴 OP EXCEDIDA: '+progExtRaw+'% do programado — Encerre esta OP!</div>';
-    } else if(progExtRaw>=95){
-      alertaOP='<div style="background:#fff3cd;border:2px solid #d29922;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;font-weight:700;color:#856404;animation:piscar 1.5s infinite">'+
-        '⚠️ Atenção: OP atingiu '+progExtRaw+'% do programado — Verifique com o PCP!</div>';
-    }
+    var progExt=opAtiva.prog?Math.min(Math.round(totalOpExt/(Number(opAtiva.prog)||1)*100),100):0;
+    var corProg=progExt>=90?"prog-gr":progExt>=60?"prog-gr2":"prog-or";
     h+='<div class="op-ativa-box" onclick="abrirSelOp(this.dataset.l)" data-l="'+linha+'">';
     h+='<div class="op-num">▶ EM EXTRUSÃO — OP: '+opAtiva.id+'</div>';
     h+='<div class="op-desc">'+(opAtiva.desc||opAtiva.cod)+'</div>';
     h+='<div class="op-meta">Meta: '+fN(metaH)+' kg/h · Prog: '+fN(opAtiva.prog)+' kg</div>';
     h+='</div>';
-    if(alertaOP) h+=alertaOP;
-    h+='<button data-cod="'+opAtiva.cod+'" data-id="'+opAtiva.id+'" data-desc="'+(opAtiva.desc||opAtiva.cod)+'" onclick="abrirParams(this)" style="width:100%;background:#f5f9f2;border:1px solid #d4e8d4;color:#024f2b;padding:6px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;margin-bottom:8px">📋 Ver Parâmetros de Qualidade</button>';
     h+='<div class="prog-wrap">';
-    h+='<div class="prog-label"><span>Extrusão na OP</span><span style="color:'+(progExtRaw>=95?"#c0392b":progExtRaw>=90?"#d29922":"inherit")+'">'+fN(totalOpExt)+' / '+fN(opAtiva.prog)+' kg ('+progExtRaw+'%)</span></div>';
-    h+='<div class="prog-bar"><div class="prog-fill '+corProg+'" style="width:'+progExt+'%;'+(progExtRaw>=95?"animation:piscar 1s infinite":"")+'"></div></div>';
+    h+='<div class="prog-label"><span>Extrusão na OP</span><span>'+fN(totalOpExt)+' / '+fN(opAtiva.prog)+' kg ('+progExt+'%)</span></div>';
+    h+='<div class="prog-bar"><div class="prog-fill '+corProg+'" style="width:'+progExt+'%"></div></div>';
     h+='</div>';
     var metaTurno=metaH*8;
     var progTurno=metaTurno?Math.min(Math.round(totalTurno/metaTurno*100),100):0;
@@ -1155,7 +1120,7 @@ function renderLinhaCard(linha){
   h+='<button class="btn btn-setup" data-l="'+linha+'" onclick="abrirSetup(this.dataset.l)">⚙️ Setup</button>';
   h+='</div>';
   // Botão concluir OP — aparece quando tem apontamentos e OP não concluída
-  if(opAtiva && opAtiva.status!=='Concluida' && e.apts.length>0){
+  if(opAtiva && opAtiva.status!=='Concluida' && (e.apts.length>0 || (Number(opAtiva.realExtrusao)||0)>0)){
     h+='<div style="margin-bottom:10px">';
     h+='<button class="btn" data-fk="'+opAtiva.fbKey+'" data-id="'+opAtiva.id+'" data-l="'+linha+'" onclick="concluirOpOperador(this)" '+
       'style="width:100%;background:#f5f9f2;border:2px solid #024f2b;color:#024f2b;padding:8px;font-size:12px;font-weight:700;cursor:pointer;border-radius:8px">'+
@@ -1268,71 +1233,6 @@ function selecionarOpAtiva(linha,fbKey){
   }
   renderLinhaCard(linha);
   toast("OP selecionada","ok");
-}
-
-// Cache de parâmetros carregados do Firebase
-var PARAMS_CACHE={};
-
-function abrirParams(btn){
-  var cod=btn.dataset.cod;
-  var opId=btn.dataset.id;
-  var desc=btn.dataset.desc;
-  G("params-prod-cod").textContent="OP: "+opId+" · COD: "+cod;
-  G("params-prod-desc").textContent=desc;
-  G("params-corpo").innerHTML='<div style="text-align:center;padding:16px;color:#4a664a;font-size:12px">Buscando parâmetros...</div>';
-  G("params-aviso").style.display="none";
-  aM("m-params");
-
-  // Usa cache ou busca no Firebase
-  if(PARAMS_CACHE[cod]!==undefined){
-    renderParams(cod, PARAMS_CACHE[cod]);
-    return;
-  }
-  if(!DB){renderParams(cod,null);return;}
-  DB.ref("params_qualidade/"+cod).once("value").then(function(s){
-    if(s.exists()){
-      PARAMS_CACHE[cod]=s.val();
-      renderParams(cod, PARAMS_CACHE[cod]);
-    } else {
-      // Fallback — busca por prefixo removendo sufixo de embalagem (BG/KG/SC)
-      var prefixo=cod.replace(/(BG|KG|SC)$/,'');
-      DB.ref("params_qualidade").orderByKey().startAt(prefixo).endAt(prefixo+"\uf8ff").once("value").then(function(s2){
-        var found=null;
-        if(s2.exists()) s2.forEach(function(c){if(!found) found=c.val();});
-        PARAMS_CACHE[cod]=found;
-        renderParams(cod, found);
-      });
-    }
-  });
-}
-
-function renderParams(cod, p){
-  if(!p){
-    G("params-corpo").innerHTML='';
-    G("params-aviso").style.display="block";
-    return;
-  }
-  var rows=[
-    {lbl:"Densidade Final",val:p.dens_max?"Máx. "+p.dens_max+" g/L":"—",icon:"⚖️"},
-    {lbl:"Corte / Comprimento",val:(p.corte_min&&p.corte_max)?p.corte_min+" — "+p.corte_max+" mm":(p.corte_min||p.corte_max||"—"),icon:"✂️"},
-    {lbl:"Diâmetro",val:(p.diam_min&&p.diam_max)?p.diam_min+" — "+p.diam_max+" mm":(p.diam_min||p.diam_max||"—"),icon:"📏"},
-    {lbl:"Umidade",val:p.umid||"—",icon:"💧"},
-    {lbl:"AW (Atividade de Água)",val:p.aw||"—",icon:"🧪"},
-  ];
-  var h='<div style="display:flex;flex-direction:column;gap:8px">';
-  rows.forEach(function(r,i){
-    var bg=i%2===0?"#fff":"#f9fbf9";
-    h+='<div style="background:'+bg+';border:1px solid #e8f0e8;border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between">';
-    h+='<div style="display:flex;align-items:center;gap:8px">';
-    h+='<span style="font-size:16px">'+r.icon+'</span>';
-    h+='<span style="font-size:12px;font-weight:600;color:#4a664a">'+r.lbl+'</span>';
-    h+='</div>';
-    h+='<span style="font-size:14px;font-weight:800;color:#024f2b">'+r.val+'</span>';
-    h+='</div>';
-  });
-  h+='</div>';
-  G("params-corpo").innerHTML=h;
-  G("params-aviso").style.display="none";
 }
 
 function editarAptOperador(fbKey){
@@ -3024,149 +2924,6 @@ function admBuscarLogs(){
   });
 }
 
-// ── MODAL USUÁRIOS ────────────────────────────────────────
-var MUU_LISTA=[];
-function abrirModalUsuarios(){
-  aM("m-usuarios");
-  G("m-usr-form").style.display="none";
-  carregarListaUsuarios();
-}
-function carregarListaUsuarios(){
-  if(!DB){G("m-usr-lista").innerHTML='<div style="text-align:center;padding:20px;color:#c0392b">Sem conexao</div>';return;}
-  G("m-usr-lista").innerHTML='<div style="text-align:center;padding:16px;color:#4a664a;font-size:12px">Carregando...</div>';
-  DB.ref("usuarios").once("value",function(s){
-    MUU_LISTA=[];
-    if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;
-      if(["extrusao","admin"].indexOf(v.perfil)>=0) MUU_LISTA.push(v);
-    });
-    MUU_LISTA.sort(function(a,b){return (a.login||"")>(b.login||"")?1:-1;});
-    if(!MUU_LISTA.length){G("m-usr-lista").innerHTML='<div style="text-align:center;padding:20px;color:#4a664a">Nenhum usuario cadastrado</div>';return;}
-    var h='<table style="width:100%;border-collapse:collapse;font-size:12px">';
-    h+='<tr style="background:#f5f9f2"><th style="padding:8px;text-align:left;color:#024f2b">Login</th><th style="padding:8px;text-align:left;color:#024f2b">Nome</th><th style="padding:8px;text-align:left;color:#024f2b">Perfil</th><th style="padding:8px;text-align:left;color:#024f2b">Status</th><th style="padding:8px;width:140px"></th></tr>';
-    MUU_LISTA.forEach(function(u){
-      var ativo=!u.inativo;
-      h+='<tr style="border-bottom:1px solid #f0f0f0">';
-      h+='<td style="padding:8px;font-weight:700;color:#024f2b">'+u.login+'</td>';
-      h+='<td style="padding:8px">'+(u.nome||"—")+'</td>';
-      h+='<td style="padding:8px"><span style="background:#d4e8d4;color:#024f2b;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">'+u.perfil+'</span></td>';
-      h+='<td style="padding:8px"><span style="background:'+(ativo?"#d4f0e4":"#f0f0f0")+';color:'+(ativo?"#024f2b":"#888")+';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">'+(ativo?"Ativo":"Inativo")+'</span></td>';
-      h+='<td style="padding:8px;display:flex;gap:4px">';
-      h+='<button data-fk="'+u.fbKey+'" onclick="muuEditar(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">✏️</button>';
-      h+='<button data-fk="'+u.fbKey+'" data-ativo="'+(ativo?1:0)+'" onclick="muuToggle(this.dataset.fk,this.dataset.ativo)" style="background:'+(ativo?"#888":"#024f2b")+';color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">'+(ativo?"Desativar":"Ativar")+'</button>';
-      h+='</td></tr>';
-    });
-    h+='</table>';
-    G("m-usr-lista").innerHTML=h;
-  });
-}
-function abrirFormUsuario(){
-  G("m-usr-form-titulo").textContent="Novo Usuario";
-  G("muu-login").value=""; G("muu-nome").value="";
-  G("muu-senha").value=""; G("muu-perfil").value="operador";
-  G("muu-fbkey").value="";
-  G("muu-fg-linhas").style.display="none";
-  G("muu-fg-linhas").querySelectorAll("input").forEach(function(cb){cb.checked=false;});
-  G("m-usr-form").style.display="block";
-  setTimeout(function(){G("muu-login").focus();},200);
-}
-function muuEditar(fbKey){
-  var u=MUU_LISTA.find(function(x){return x.fbKey===fbKey;});
-  if(!u) return;
-  G("m-usr-form-titulo").textContent="Editar — "+u.login;
-  G("muu-login").value=u.login||""; G("muu-nome").value=u.nome||"";
-  G("muu-senha").value=u.senha||""; G("muu-perfil").value=u.perfil||"operador";
-  G("muu-fbkey").value=fbKey;
-  muuOnPerfil();
-  G("muu-fg-linhas").querySelectorAll("input").forEach(function(cb){cb.checked=(u.linhas||[]).indexOf(cb.value)>=0;});
-  G("m-usr-form").style.display="block";
-  G("m-usr-form").scrollIntoView({behavior:"smooth"});
-}
-function muuOnPerfil(){G("muu-fg-linhas").style.display=G("muu-perfil").value==="extrusao"?"block":"none";}
-function muuSalvar(){
-  var login=G("muu-login").value.trim(), nome=G("muu-nome").value.trim();
-  var senha=G("muu-senha").value.trim(), perfil=G("muu-perfil").value;
-  var fbKey=G("muu-fbkey").value;
-  if(!login){toast("Informe o login","err");return;}
-  if(!nome){toast("Informe o nome","err");return;}
-  if(!senha||senha.length<4){toast("Senha minimo 4 caracteres","err");return;}
-  if(!DB){toast("Firebase nao conectado","err");return;}
-  var linhas=[];
-  if(perfil==="extrusao") G("muu-fg-linhas").querySelectorAll("input:checked").forEach(function(cb){linhas.push(cb.value);});
-  var dados={login:login,nome:nome,senha:senha,perfil:perfil};
-  if(linhas.length) dados.linhas=linhas;
-  if(fbKey){
-    DB.ref("usuarios/"+fbKey).update(dados).then(function(){
-      toast("Usuario atualizado!","ok");
-      registrarLog("usuario","Editou usuario: "+login+" (perfil: "+perfil+")","-");
-      G("m-usr-form").style.display="none"; carregarListaUsuarios();
-    }).catch(function(e){toast("Erro: "+e.message,"err");});
-  } else {
-    DB.ref("usuarios").orderByChild("login").equalTo(login).once("value").then(function(s){
-      if(s.exists()){toast("Login ja existe","err");return;}
-      DB.ref("usuarios").push(dados).then(function(){
-        toast("Usuario criado!","ok");
-        registrarLog("usuario","Criou usuario: "+login+" (perfil: "+perfil+")","-");
-        G("m-usr-form").style.display="none"; carregarListaUsuarios();
-      }).catch(function(e){toast("Erro: "+e.message,"err");});
-    });
-  }
-}
-function muuToggle(fbKey,ativoStr){
-  var ativo=ativoStr==="1";
-  var u=MUU_LISTA.find(function(x){return x.fbKey===fbKey;});
-  if(!u||!DB) return;
-  if(!confirm((ativo?"Desativar":"Ativar")+" usuario "+u.login+"?")) return;
-  DB.ref("usuarios/"+fbKey).update({inativo:ativo}).then(function(){
-    toast("Usuario "+(ativo?"desativado":"ativado")+"!","ok");
-    registrarLog("usuario",(ativo?"Desativou":"Ativou")+" usuario: "+u.login,"-");
-    carregarListaUsuarios();
-  });
-}
-
-// ── MODAL LOGS ────────────────────────────────────────────
-function abrirModalLogs(){
-  aM("m-logs");
-  G("mlog-dt1").value=DT_FILA||hoje();
-  G("mlog-dt2").value=DT_FILA||hoje();
-  G("mlog-op").value=""; G("mlog-tipo").value="";
-  G("mlog-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#4a664a;font-size:12px">Use os filtros acima para buscar</div>';
-}
-function mlogBuscar(){
-  if(!DB) return;
-  var dt1=G("mlog-dt1").value||hoje(), dt2=G("mlog-dt2").value||hoje();
-  var opFiltro=(G("mlog-op").value||"").trim().toLowerCase();
-  var tipoFiltro=G("mlog-tipo").value;
-  G("mlog-corpo").innerHTML='<div style="text-align:center;padding:16px;color:#4a664a;font-size:12px">Buscando...</div>';
-  DB.ref("admin_logs").orderByChild("data").startAt(dt1).endAt(dt2).once("value",function(s){
-    var logs=[];
-    if(s.exists()) s.forEach(function(c){
-      var v=c.val(); v.fbKey=c.key;
-      if(opFiltro && !(v.operador||"").toLowerCase().includes(opFiltro)) return;
-      if(tipoFiltro && v.tipo!==tipoFiltro) return;
-      logs.push(v);
-    });
-    logs.sort(function(a,b){return (a.ts||"")>(b.ts||"")?-1:1;});
-    if(!logs.length){G("mlog-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#4a664a;font-size:12px">Nenhum log encontrado</div>';return;}
-    var corB={apontamento:"#d4e8d4",parada:"#ffd4d4",op_status:"#fff3cd",usuario:"#d4e8ff"};
-    var corT={apontamento:"#024f2b",parada:"#a00",op_status:"#856404",usuario:"#1a4a8a"};
-    var h='<table style="width:100%;border-collapse:collapse;font-size:11px">';
-    h+='<tr style="background:#f5f9f2"><th style="padding:7px;color:#024f2b;text-align:left">Data/Hora</th><th style="padding:7px;color:#024f2b;text-align:left">Tipo</th><th style="padding:7px;color:#024f2b;text-align:left">Operador</th><th style="padding:7px;color:#024f2b;text-align:left">Descricao</th><th style="padding:7px;color:#024f2b;text-align:left">Anterior</th></tr>';
-    logs.forEach(function(log,i){
-      var d=new Date(log.ts||"");
-      var dtStr=isNaN(d)?log.ts:(pad(d.getDate())+"/"+pad(d.getMonth()+1)+" "+pad(d.getHours())+":"+pad(d.getMinutes()));
-      h+='<tr style="background:'+(i%2===0?"#fff":"#fafcfa")+';border-bottom:1px solid #f0f0f0">';
-      h+='<td style="padding:7px;color:#666">'+dtStr+'</td>';
-      h+='<td style="padding:7px"><span style="background:'+(corB[log.tipo]||"#eee")+';color:'+(corT[log.tipo]||"#333")+';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">'+(log.tipo||"")+'</span></td>';
-      h+='<td style="padding:7px;font-weight:600;color:#024f2b">'+(log.nomeOp||log.operador||"")+'</td>';
-      h+='<td style="padding:7px;color:#333">'+(log.descricao||"")+'</td>';
-      h+='<td style="padding:7px;color:#888;font-size:10px">'+(log.valorAnterior&&log.valorAnterior!=="-"?log.valorAnterior:"—")+'</td>';
-      h+='</tr>';
-    });
-    h+='</table>';
-    G("mlog-corpo").innerHTML=h;
-  });
-}
-
 function admRenderLista(){
   G("adm-lista-corpo").style.display="block";
   if(G("adm-usuarios-wrap")) G("adm-usuarios-wrap").style.display="none";
@@ -3217,23 +2974,16 @@ function admEditar(fbKey){
     h+='<div class="fg" style="flex:1"><label class="fl">Hora Final</label><input class="fi" type="time" id="adm-hf" value="'+(item.horaFim||"")+'"></div>';
     h+='</div>';
     h+='<div class="fg"><label class="fl">Quantidade (kg)</label><input class="fi fi-big" type="number" id="adm-real" value="'+item.real+'"></div>';
-    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
-    h+='<div class="fg"><label class="fl">Data</label><input class="fi" type="date" id="ac-data" value="'+(item.data||'')+'"></div>';
     h+='<div class="fg"><label class="fl">Linha</label><select class="fi" id="adm-linha-sel">';
     ["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"].forEach(function(l){
       h+='<option value="'+l+'"'+(l===item.linha?" selected":"")+'>'+l+'</option>';
     });
-    h+='</select></div></div>';
-    h+='<div class="fg"><label class="fl">OP atual</label><select class="fi" id="adm-op-sel">';
+    h+='</select></div>';
+    h+='<div class="fg"><label class="fl">OP</label><select class="fi" id="adm-op-sel">';
     OPS.forEach(function(o){
       h+='<option value="'+o.fbKey+'"'+(o.fbKey===item.opFbKey?" selected":"")+'>'+o.id+' — '+(o.desc||o.cod)+'</option>';
     });
     h+='</select></div>';
-    h+='<div class="fg"><label class="fl">Trocar para outra OP (opcional)</label>';
-    h+='<input class="fi" type="text" id="ac-op-num" placeholder="Digite o Nº da nova OP ex: 06344301001" oninput="admBuscarOpCorr(this.value)">';
-    h+='<div id="ac-op-info" style="font-size:11px;margin-top:4px"></div>';
-    h+='<input type="hidden" id="ac-op-fbkey-novo">';
-    h+='</div>';
   } else {
     h+='<div style="display:flex;gap:10px">';
     h+='<div class="fg" style="flex:1"><label class="fl">Hora Início</label><input class="fi" type="time" id="adm-hi" value="'+item.horaIni+'"></div>';
@@ -3285,31 +3035,6 @@ function admSelParada(el){
   el.classList.add("sel");
 }
 
-// Busca OP para correção pelo número
-function admBuscarOpCorr(num){
-  var info=G("ac-op-info");
-  var fbKeyField=G("ac-op-fbkey-novo");
-  if(!num||num.length<6){if(info)info.textContent="";if(fbKeyField)fbKeyField.value="";return;}
-  var op=OPS.find(function(o){return o.id===num||o.id.includes(num);});
-  if(op){
-    if(info){info.textContent="✅ "+op.id+" — "+(op.desc||op.cod)+" | "+op.linha;info.style.color="#024f2b";}
-    if(fbKeyField) fbKeyField.value=op.fbKey;
-  } else if(DB){
-    DB.ref("ops").orderByChild("id").equalTo(num).once("value").then(function(s){
-      if(s.exists()){
-        s.forEach(function(c){
-          var v=c.val();
-          if(info){info.textContent="✅ "+v.id+" — "+(v.desc||v.cod)+" | "+v.linha;info.style.color="#024f2b";}
-          if(fbKeyField) fbKeyField.value=c.key;
-        });
-      } else {
-        if(info){info.textContent="❌ OP não encontrada";info.style.color="#c0392b";}
-        if(fbKeyField) fbKeyField.value="";
-      }
-    });
-  }
-}
-
 function admSalvar(fbKey){
   if(!DB){toast("Firebase não conectado","err");return;}
   var updates={};
@@ -3318,32 +3043,15 @@ function admSalvar(fbKey){
     updates.horaFim=G("adm-hf").value;
     updates.real=parseInt(G("adm-real").value)||0;
     updates.linha=G("adm-linha-sel").value;
-    // Data pode ser alterada
-    var novaData=G("ac-data")?G("ac-data").value:"";
-    if(novaData) updates.data=novaData;
-    // Troca de OP
-    var novoOpFbKey=G("ac-op-fbkey-novo")?G("ac-op-fbkey-novo").value:"";
-    var opAntiga=ADM_DADOS.apts.find(function(a){return a.fbKey===fbKey;});
-    var opSel=novoOpFbKey?OPS.find(function(o){return o.fbKey===novoOpFbKey;}):null;
-    if(!opSel){
-      var opSel2=OPS.find(function(o){return o.fbKey===G("adm-op-sel").value;});
-      if(opSel2){updates.opFbKey=opSel2.fbKey;updates.opNum=opSel2.id;updates.cod=opSel2.cod;updates.desc=opSel2.desc||opSel2.cod;}
-    } else {
-      updates.opFbKey=opSel.fbKey;updates.opNum=opSel.id;updates.cod=opSel.cod;updates.desc=opSel.desc||opSel.cod;
-    }
-    // Recalcula turno pela nova hora
-    if(updates.horaIni) updates.turno=turnoDeHora(updates.horaIni);
-
+    var opSel=OPS.find(function(o){return o.fbKey===G("adm-op-sel").value;});
+    if(opSel){updates.opFbKey=opSel.fbKey;updates.opNum=opSel.id;updates.cod=opSel.cod;}
     DB.ref("extrusao_apts/"+fbKey).update(updates).then(function(){
       fM("m-admin-corr");toast("Apontamento corrigido!","ok");
-      // Recalcula OP antiga e nova
-      if(opAntiga&&opAntiga.opFbKey) recalcularRealExtrusao(opAntiga.opFbKey);
-      if(novoOpFbKey&&novoOpFbKey!==opAntiga.opFbKey) recalcularRealExtrusao(novoOpFbKey);
-      var opNumLog=opAntiga?opAntiga.opNum:"";
-      var novaOpLog=opSel?(" → "+opSel.id):"";
-      registrarLog("apontamento","Editou apontamento "+fbKey+" — OP: "+opNumLog+novaOpLog+" Linha: "+(opAntiga?opAntiga.linha:""),
-        opAntiga?"real:"+opAntiga.real+" horaIni:"+opAntiga.horaIni+""+( novaData?" data:"+novaData:""):"");
-      if(ADM_DADOS.apts.length===1&&G("m-op-apts").classList.contains("on")){var a=ADM_DADOS.apts[0];admVerApts(a.opFbKey,a.opNum,a.desc);}else{admBuscar();}
+    var aptEditado=ADM_DADOS.apts.find(function(a){return a.fbKey===fbKey;});
+    if(aptEditado && aptEditado.opFbKey) recalcularRealExtrusao(aptEditado.opFbKey);
+    registrarLog("apontamento","Editou apontamento "+fbKey+" — OP: "+(aptEditado?aptEditado.opNum:"")+" Linha: "+(aptEditado?aptEditado.linha:""),
+      aptEditado?"real:"+aptEditado.real+" horaIni:"+aptEditado.horaIni:"");
+    if(ADM_DADOS.apts.length===1&&G("m-op-apts").classList.contains("on")){var a=ADM_DADOS.apts[0];admVerApts(a.opFbKey,a.opNum,a.desc);}else{admBuscar();}
     }).catch(function(e){toast("Erro: "+e.message,"err");});
   } else {
     updates.horaIni=G("adm-hi").value;
