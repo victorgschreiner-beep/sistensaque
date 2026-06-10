@@ -1273,8 +1273,19 @@ function abrirParams(btn){
   }
   if(!DB){renderParams(cod,null);return;}
   DB.ref("params_qualidade/"+cod).once("value").then(function(s){
-    PARAMS_CACHE[cod]=s.exists()?s.val():null;
-    renderParams(cod, PARAMS_CACHE[cod]);
+    if(s.exists()){
+      PARAMS_CACHE[cod]=s.val();
+      renderParams(cod, PARAMS_CACHE[cod]);
+    } else {
+      // Fallback — busca por prefixo removendo sufixo de embalagem (BG/KG/SC)
+      var prefixo=cod.replace(/(BG|KG|SC)$/,'');
+      DB.ref("params_qualidade").orderByKey().startAt(prefixo).endAt(prefixo+"\uf8ff").once("value").then(function(s2){
+        var found=null;
+        if(s2.exists()) s2.forEach(function(c){if(!found) found=c.val();});
+        PARAMS_CACHE[cod]=found;
+        renderParams(cod, found);
+      });
+    }
   });
 }
 
