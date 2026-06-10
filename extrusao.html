@@ -775,15 +775,41 @@ function fazerLogin(){
   }).catch(function(e){G("login-err").textContent="Erro: "+e.message;});
 }
 
-function sair(){SES=null;OPS=[];EST={};G("app").style.display="none";G("login-screen").style.display="flex";G("lg-senha").value="";}
+function sair(){
+  // Cancela todos os listeners Firebase
+  if(DB){
+    DB.ref("ops").off();
+    DB.ref("extrusao_apts").off();
+    DB.ref("extrusao_paradas").off();
+    DB.ref("extrusao_op_concluida").off();
+  }
+  SES=null; OPS=[]; EST={}; LINHAS_USER=[];
+  window._opConcluidasExt={};
+  G("app").style.display="none";
+  G("login-screen").style.display="flex";
+  G("lg-login").value="";
+  G("lg-senha").value="";
+  G("login-err").textContent="";
+  G("linhas-grid").innerHTML="";
+}
 
 // ── INIT APP ──────────────────────────────────────────────
 function iniciarApp(){
   G("login-screen").style.display="none";
   G("app").style.display="block";
   var base=SES.login.replace(/\.t[123]$/,"");
-  LINHAS_USER=LINHAS_PERFIL[base]||(SES.perfil==="admin"?["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"]:[]);
-  if(!LINHAS_USER.length) LINHAS_USER=["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
+  // Prioridade: 1) linhas do Firebase (SES.linhas), 2) LINHAS_PERFIL, 3) admin = todas, 4) todas
+  if(SES.linhas&&SES.linhas.length){
+    LINHAS_USER=SES.linhas;
+  } else {
+    LINHAS_USER=LINHAS_PERFIL[base]||(SES.perfil==="admin"?["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"]:[]);
+    if(!LINHAS_USER.length&&SES.perfil==="admin") LINHAS_USER=["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
+    // Operador sem linhas definidas — mostra erro
+    if(!LINHAS_USER.length){
+      alert("Usuário sem linhas configuradas. Contate o administrador.");
+      sair(); return;
+    }
+  }
   LINHAS_USER.forEach(function(l){EST[l]={opAtiva:null,opAtivaTs:null,apts:[],paradas:[],totalOp:{}};});
   G("top-user").textContent=SES.nome;
   var btnAdm=G("btn-admin");
@@ -2834,9 +2860,11 @@ function admRenderUsuarios(){
     ADM_USUARIOS.forEach(function(u){
       var ativo=!u.inativo;
       h+='<tr style="border-bottom:1px solid #f0f0f0">';
+      var nomeLinhas=(u.linhas||[]).map(function(l){return l.replace(" (E-240)","").replace(" (E-200)","").replace(" (Andritz I)","").replace(" (Andritz II)","");}).join(", ")||"—";
       h+='<td style="padding:8px;font-weight:700;color:#024f2b">'+u.login+'</td>';
       h+='<td style="padding:8px">'+(u.nome||"—")+'</td>';
       h+='<td style="padding:8px"><span style="background:#d4e8d4;color:#024f2b;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">'+u.perfil+'</span></td>';
+      h+='<td style="padding:8px;font-size:11px;color:#4a664a">'+nomeLinhas+'</td>';
       h+='<td style="padding:8px"><span style="background:'+(ativo?"#d4f0e4":"#f0f0f0")+';color:'+(ativo?"#024f2b":"#888")+';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">'+(ativo?"Ativo":"Inativo")+'</span></td>';
       h+='<td style="padding:8px;display:flex;gap:4px">';
       h+='<button data-fk="'+u.fbKey+'" onclick="admEditarUsuario(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">✏️ Editar</button>';
