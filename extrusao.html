@@ -750,8 +750,8 @@ function fazerLogin(){
   if(TESTE_LOGINS[login] && senhasLocais[login] && senha===senhasLocais[login]){
     var turnoLoginL=turnoDoLogin(login);
     SES=Object.assign({turno:turnoLoginL||turnoAtual()},TESTE_LOGINS[login]);
-    G("login-wrap").style.display="none";
-    G("app-wrap").style.display="flex";
+    G("login-screen").style.display="none";
+    G("app").style.display="flex";
     G("top-user").textContent=SES.nome;
     G("top-turno").textContent="Turno "+SES.turno;
     iniciarApp();
@@ -767,8 +767,8 @@ function fazerLogin(){
     if(u.perfil!=="extrusao"&&u.perfil!=="admin"){G("login-err").textContent="Sem acesso à extrusão";return;}
     var turnoLoginF=turnoDoLogin(u.login);
     SES={login:u.login,nome:u.nome||u.login,perfil:u.perfil,turno:turnoLoginF||turnoAtual(),linhas:u.linhas||[]};
-    G("login-wrap").style.display="none";
-    G("app-wrap").style.display="flex";
+    G("login-screen").style.display="none";
+    G("app").style.display="flex";
     G("top-user").textContent=SES.nome;
     G("top-turno").textContent="Turno "+SES.turno;
     iniciarApp();
