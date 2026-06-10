@@ -104,6 +104,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
 .fila-op-num{font-size:10px;font-weight:700;color:#739630;min-width:80px}
 .fila-op-desc{font-size:11px;color:#1a1a1a;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fila-op-prog{font-size:10px;font-weight:600;min-width:44px;text-align:right}
+@keyframes piscar{0%,100%{opacity:1}50%{opacity:.3}}
 .badge-st{font-size:9px;padding:2px 7px;border-radius:10px;font-weight:700;white-space:nowrap}
 .badge-lib{background:#f0f0f0;color:#666}
 .badge-and{background:rgba(210,153,34,.15);color:#d29922}
@@ -1116,17 +1117,27 @@ function renderLinhaCard(linha){
   h+='<div class="linha-body">';
 
   if(opAtiva){
-    var progExt=opAtiva.prog?Math.min(Math.round(totalOpExt/(Number(opAtiva.prog)||1)*100),100):0;
-    var corProg=progExt>=90?"prog-gr":progExt>=60?"prog-gr2":"prog-or";
+    var progExtRaw=opAtiva.prog?Math.round(totalOpExt/(Number(opAtiva.prog)||1)*100):0;
+    var progExt=Math.min(progExtRaw,100);
+    var corProg=progExtRaw>=95?"prog-or":progExtRaw>=90?"prog-gr":"prog-gr2";
+    var alertaOP="";
+    if(progExtRaw>=105){
+      alertaOP='<div style="background:#ffd4d4;border:2px solid #c0392b;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;font-weight:700;color:#c0392b;animation:piscar 1s infinite">'+
+        '🔴 OP EXCEDIDA: '+progExtRaw+'% do programado — Encerre esta OP!</div>';
+    } else if(progExtRaw>=95){
+      alertaOP='<div style="background:#fff3cd;border:2px solid #d29922;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;font-weight:700;color:#856404;animation:piscar 1.5s infinite">'+
+        '⚠️ Atenção: OP atingiu '+progExtRaw+'% do programado — Verifique com o PCP!</div>';
+    }
     h+='<div class="op-ativa-box" onclick="abrirSelOp(this.dataset.l)" data-l="'+linha+'">';
     h+='<div class="op-num">▶ EM EXTRUSÃO — OP: '+opAtiva.id+'</div>';
     h+='<div class="op-desc">'+(opAtiva.desc||opAtiva.cod)+'</div>';
     h+='<div class="op-meta">Meta: '+fN(metaH)+' kg/h · Prog: '+fN(opAtiva.prog)+' kg</div>';
     h+='</div>';
+    if(alertaOP) h+=alertaOP;
     h+='<button data-cod="'+opAtiva.cod+'" data-id="'+opAtiva.id+'" data-desc="'+(opAtiva.desc||opAtiva.cod)+'" onclick="abrirParams(this)" style="width:100%;background:#f5f9f2;border:1px solid #d4e8d4;color:#024f2b;padding:6px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;margin-bottom:8px">📋 Ver Parâmetros de Qualidade</button>';
     h+='<div class="prog-wrap">';
-    h+='<div class="prog-label"><span>Extrusão na OP</span><span>'+fN(totalOpExt)+' / '+fN(opAtiva.prog)+' kg ('+progExt+'%)</span></div>';
-    h+='<div class="prog-bar"><div class="prog-fill '+corProg+'" style="width:'+progExt+'%"></div></div>';
+    h+='<div class="prog-label"><span>Extrusão na OP</span><span style="color:'+(progExtRaw>=95?"#c0392b":progExtRaw>=90?"#d29922":"inherit")+'">'+fN(totalOpExt)+' / '+fN(opAtiva.prog)+' kg ('+progExtRaw+'%)</span></div>';
+    h+='<div class="prog-bar"><div class="prog-fill '+corProg+'" style="width:'+progExt+'%;'+(progExtRaw>=95?"animation:piscar 1s infinite":"")+'"></div></div>';
     h+='</div>';
     var metaTurno=metaH*8;
     var progTurno=metaTurno?Math.min(Math.round(totalTurno/metaTurno*100),100):0;
@@ -3206,16 +3217,23 @@ function admEditar(fbKey){
     h+='<div class="fg" style="flex:1"><label class="fl">Hora Final</label><input class="fi" type="time" id="adm-hf" value="'+(item.horaFim||"")+'"></div>';
     h+='</div>';
     h+='<div class="fg"><label class="fl">Quantidade (kg)</label><input class="fi fi-big" type="number" id="adm-real" value="'+item.real+'"></div>';
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+    h+='<div class="fg"><label class="fl">Data</label><input class="fi" type="date" id="ac-data" value="'+(item.data||'')+'"></div>';
     h+='<div class="fg"><label class="fl">Linha</label><select class="fi" id="adm-linha-sel">';
     ["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"].forEach(function(l){
       h+='<option value="'+l+'"'+(l===item.linha?" selected":"")+'>'+l+'</option>';
     });
-    h+='</select></div>';
-    h+='<div class="fg"><label class="fl">OP</label><select class="fi" id="adm-op-sel">';
+    h+='</select></div></div>';
+    h+='<div class="fg"><label class="fl">OP atual</label><select class="fi" id="adm-op-sel">';
     OPS.forEach(function(o){
       h+='<option value="'+o.fbKey+'"'+(o.fbKey===item.opFbKey?" selected":"")+'>'+o.id+' — '+(o.desc||o.cod)+'</option>';
     });
     h+='</select></div>';
+    h+='<div class="fg"><label class="fl">Trocar para outra OP (opcional)</label>';
+    h+='<input class="fi" type="text" id="ac-op-num" placeholder="Digite o Nº da nova OP ex: 06344301001" oninput="admBuscarOpCorr(this.value)">';
+    h+='<div id="ac-op-info" style="font-size:11px;margin-top:4px"></div>';
+    h+='<input type="hidden" id="ac-op-fbkey-novo">';
+    h+='</div>';
   } else {
     h+='<div style="display:flex;gap:10px">';
     h+='<div class="fg" style="flex:1"><label class="fl">Hora Início</label><input class="fi" type="time" id="adm-hi" value="'+item.horaIni+'"></div>';
@@ -3267,6 +3285,31 @@ function admSelParada(el){
   el.classList.add("sel");
 }
 
+// Busca OP para correção pelo número
+function admBuscarOpCorr(num){
+  var info=G("ac-op-info");
+  var fbKeyField=G("ac-op-fbkey-novo");
+  if(!num||num.length<6){if(info)info.textContent="";if(fbKeyField)fbKeyField.value="";return;}
+  var op=OPS.find(function(o){return o.id===num||o.id.includes(num);});
+  if(op){
+    if(info){info.textContent="✅ "+op.id+" — "+(op.desc||op.cod)+" | "+op.linha;info.style.color="#024f2b";}
+    if(fbKeyField) fbKeyField.value=op.fbKey;
+  } else if(DB){
+    DB.ref("ops").orderByChild("id").equalTo(num).once("value").then(function(s){
+      if(s.exists()){
+        s.forEach(function(c){
+          var v=c.val();
+          if(info){info.textContent="✅ "+v.id+" — "+(v.desc||v.cod)+" | "+v.linha;info.style.color="#024f2b";}
+          if(fbKeyField) fbKeyField.value=c.key;
+        });
+      } else {
+        if(info){info.textContent="❌ OP não encontrada";info.style.color="#c0392b";}
+        if(fbKeyField) fbKeyField.value="";
+      }
+    });
+  }
+}
+
 function admSalvar(fbKey){
   if(!DB){toast("Firebase não conectado","err");return;}
   var updates={};
@@ -3275,15 +3318,32 @@ function admSalvar(fbKey){
     updates.horaFim=G("adm-hf").value;
     updates.real=parseInt(G("adm-real").value)||0;
     updates.linha=G("adm-linha-sel").value;
-    var opSel=OPS.find(function(o){return o.fbKey===G("adm-op-sel").value;});
-    if(opSel){updates.opFbKey=opSel.fbKey;updates.opNum=opSel.id;updates.cod=opSel.cod;}
+    // Data pode ser alterada
+    var novaData=G("ac-data")?G("ac-data").value:"";
+    if(novaData) updates.data=novaData;
+    // Troca de OP
+    var novoOpFbKey=G("ac-op-fbkey-novo")?G("ac-op-fbkey-novo").value:"";
+    var opAntiga=ADM_DADOS.apts.find(function(a){return a.fbKey===fbKey;});
+    var opSel=novoOpFbKey?OPS.find(function(o){return o.fbKey===novoOpFbKey;}):null;
+    if(!opSel){
+      var opSel2=OPS.find(function(o){return o.fbKey===G("adm-op-sel").value;});
+      if(opSel2){updates.opFbKey=opSel2.fbKey;updates.opNum=opSel2.id;updates.cod=opSel2.cod;updates.desc=opSel2.desc||opSel2.cod;}
+    } else {
+      updates.opFbKey=opSel.fbKey;updates.opNum=opSel.id;updates.cod=opSel.cod;updates.desc=opSel.desc||opSel.cod;
+    }
+    // Recalcula turno pela nova hora
+    if(updates.horaIni) updates.turno=turnoDeHora(updates.horaIni);
+
     DB.ref("extrusao_apts/"+fbKey).update(updates).then(function(){
       fM("m-admin-corr");toast("Apontamento corrigido!","ok");
-    var aptEditado=ADM_DADOS.apts.find(function(a){return a.fbKey===fbKey;});
-    if(aptEditado && aptEditado.opFbKey) recalcularRealExtrusao(aptEditado.opFbKey);
-    registrarLog("apontamento","Editou apontamento "+fbKey+" — OP: "+(aptEditado?aptEditado.opNum:"")+" Linha: "+(aptEditado?aptEditado.linha:""),
-      aptEditado?"real:"+aptEditado.real+" horaIni:"+aptEditado.horaIni:"");
-    if(ADM_DADOS.apts.length===1&&G("m-op-apts").classList.contains("on")){var a=ADM_DADOS.apts[0];admVerApts(a.opFbKey,a.opNum,a.desc);}else{admBuscar();}
+      // Recalcula OP antiga e nova
+      if(opAntiga&&opAntiga.opFbKey) recalcularRealExtrusao(opAntiga.opFbKey);
+      if(novoOpFbKey&&novoOpFbKey!==opAntiga.opFbKey) recalcularRealExtrusao(novoOpFbKey);
+      var opNumLog=opAntiga?opAntiga.opNum:"";
+      var novaOpLog=opSel?(" → "+opSel.id):"";
+      registrarLog("apontamento","Editou apontamento "+fbKey+" — OP: "+opNumLog+novaOpLog+" Linha: "+(opAntiga?opAntiga.linha:""),
+        opAntiga?"real:"+opAntiga.real+" horaIni:"+opAntiga.horaIni+""+( novaData?" data:"+novaData:""):"");
+      if(ADM_DADOS.apts.length===1&&G("m-op-apts").classList.contains("on")){var a=ADM_DADOS.apts[0];admVerApts(a.opFbKey,a.opNum,a.desc);}else{admBuscar();}
     }).catch(function(e){toast("Erro: "+e.message,"err");});
   } else {
     updates.horaIni=G("adm-hi").value;
