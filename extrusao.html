@@ -729,6 +729,12 @@ function getMetaHora(cod,linha){
 // ── LOGIN ─────────────────────────────────────────────────
 
 
+// Extrai turno do login (ext.andritz.t1 → 1)
+function turnoDoLogin(login){
+  var m=(login||"").match(/\.t([123])$/);
+  return m?parseInt(m[1]):null;
+}
+
 function fazerLogin(){
   var login=G("lg-login").value.trim().toLowerCase();
   var senha=G("lg-senha").value;
