@@ -275,6 +275,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <button class="tab" onclick="tabExp(1,this)">PDF Diário</button>
     <button class="tab" onclick="tabExp(2,this)">PDF OP</button>
     <button class="tab" onclick="tabExp(3,this)">📊 Relatório de Período</button>
+    <button class="tab" onclick="tabExp(4,this)">⚖️ Extrusão vs Ensaque</button>
   </div>
   <div id="et0">
     <div class="card">
@@ -320,6 +321,60 @@ tr:hover td{background:rgba(2,79,43,.03)}
         <button class="btn bp" onclick="gerarRelPeriodo()" style="margin-bottom:2px">📊 Gerar Relatório</button>
       </div>
       <div id="rel-periodo-conteudo"></div>
+    </div>
+  </div>
+
+  <!-- EXTRUSÃO vs ENSAQUE -->
+  <div id="et4" style="display:none">
+    <div class="card">
+      <div class="ch"><span class="ct">⚖️ Comparativo Extrusão vs Ensaque</span></div>
+      <div class="fr" style="margin-bottom:16px;align-items:flex-end;flex-wrap:wrap;gap:8px">
+        <div class="fg"><label class="fl">Data inicial</label><input type="date" id="div-di"></div>
+        <div class="fg"><label class="fl">Data final</label><input type="date" id="div-df"></div>
+        <div class="fg"><label class="fl">Linha</label>
+          <select id="div-ln" class="fi" style="width:180px">
+            <option value="">Todas as linhas</option>
+            <option>Linha 1 (E-240)</option>
+            <option>Linha 2 (E-200)</option>
+            <option>Linha 4 (Andritz I)</option>
+            <option>Linha 5 (Andritz II)</option>
+          </select>
+        </div>
+        <div class="fg"><label class="fl">Status</label>
+          <select id="div-st" class="fi" style="width:150px">
+            <option value="">Todos</option>
+            <option value="ok">✅ Dentro tolerância (≤5%)</option>
+            <option value="warn">⚠️ Atenção (5-10%)</option>
+            <option value="crit">🔴 Crítico (>10%)</option>
+          </select>
+        </div>
+        <button class="btn bp" onclick="gerarComparativo()" style="margin-bottom:2px">🔍 Analisar</button>
+        <button class="btn" onclick="exportarComparativoExcel()" id="btn-exp-comp" style="display:none;margin-bottom:2px;background:#217346;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">📥 Excel</button>
+      </div>
+
+      <!-- Cards resumo -->
+      <div id="div-resumo" style="display:none;margin-bottom:16px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">
+          <div style="background:#f5f9f2;border-radius:10px;border:1px solid #d4e8d4;padding:12px;text-align:center">
+            <div style="font-size:10px;font-weight:700;color:#739630;margin-bottom:4px">TOTAL OPs</div>
+            <div style="font-size:22px;font-weight:800;color:#024f2b" id="div-c-total">0</div>
+          </div>
+          <div style="background:#d4f0e4;border-radius:10px;border:1px solid #a8d8b8;padding:12px;text-align:center">
+            <div style="font-size:10px;font-weight:700;color:#024f2b;margin-bottom:4px">✅ DENTRO TOLERÂNCIA</div>
+            <div style="font-size:22px;font-weight:800;color:#024f2b" id="div-c-ok">0</div>
+          </div>
+          <div style="background:#fff3cd;border-radius:10px;border:1px solid #ffd966;padding:12px;text-align:center">
+            <div style="font-size:10px;font-weight:700;color:#856404;margin-bottom:4px">⚠️ ATENÇÃO</div>
+            <div style="font-size:22px;font-weight:800;color:#856404" id="div-c-warn">0</div>
+          </div>
+          <div style="background:#ffd4d4;border-radius:10px;border:1px solid #f5a0a0;padding:12px;text-align:center">
+            <div style="font-size:10px;font-weight:700;color:#a00;margin-bottom:4px">🔴 CRÍTICO</div>
+            <div style="font-size:22px;font-weight:800;color:#a00" id="div-c-crit">0</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="div-corpo"><div style="text-align:center;padding:30px;color:#4a664a;font-size:13px">Configure os filtros e clique em Analisar</div></div>
     </div>
   </div>
 </div>
@@ -2759,6 +2814,151 @@ function tabExp(i,btn){
   for(var j=0;j<4;j++){var e=G('et'+j);if(e)e.style.display=j===i?'':'none';}
   document.querySelectorAll('.tab').forEach(function(e){e.classList.remove('on');});
   if(btn)btn.classList.add('on');
+}
+
+function tabExp(i,btn){
+  for(var j=0;j<5;j++){var e=G('et'+j);if(e)e.style.display=j===i?'':'none';}
+  document.querySelectorAll('.tab').forEach(function(e){e.classList.remove('on');});
+  if(btn)btn.classList.add('on');
+  if(i===4){
+    var hoje=new Date().toISOString().slice(0,10);
+    var d30=new Date(); d30.setDate(d30.getDate()-30);
+    G('div-di').value=d30.toISOString().slice(0,10);
+    G('div-df').value=hoje;
+  }
+}
+
+// ── COMPARATIVO EXTRUSÃO vs ENSAQUE ──────────────────────
+var COMP_DADOS=[];
+
+function gerarComparativo(){
+  var di=G('div-di').value, df=G('div-df').value;
+  var ln=G('div-ln').value, st=G('div-st').value;
+  if(!di||!df){alert('Informe o período');return;}
+  if(!DB){alert('Sem conexão');return;}
+  G('div-corpo').innerHTML='<div style="text-align:center;padding:30px;color:#4a664a">Buscando dados...</div>';
+  G('div-resumo').style.display='none';
+  G('btn-exp-comp').style.display='none';
+
+  // Busca todas as OPs do período
+  DB.ref('ops').orderByChild('data').startAt(di).endAt(df).once('value',function(s){
+    var ops=[];
+    if(s.exists()) s.forEach(function(c){
+      var o=c.val(); o.fbKey=c.key;
+      if(ln && o.linha!==ln) return;
+      ops.push(o);
+    });
+
+    if(!ops.length){
+      G('div-corpo').innerHTML='<div style="text-align:center;padding:30px;color:#4a664a">Nenhuma OP encontrada no período</div>';
+      return;
+    }
+
+    // Monta comparativo
+    COMP_DADOS=ops.map(function(op){
+      var ensacado=Number(op.real)||0;
+      var extrusado=Number(op.realExtrusao)||0;
+      var diff=ensacado-extrusado;
+      var pct=extrusado>0?Math.round(diff/extrusado*100):null;
+      var status=pct===null?'sem-ext':Math.abs(pct)<=5?'ok':Math.abs(pct)<=10?'warn':'crit';
+      return {op:op,ensacado:ensacado,extrusado:extrusado,diff:diff,pct:pct,status:status};
+    });
+
+    // Filtra por status se necessário
+    var filtrados=st?COMP_DADOS.filter(function(r){return r.status===st;}):COMP_DADOS;
+
+    // Contadores
+    var nOk=COMP_DADOS.filter(function(r){return r.status==='ok';}).length;
+    var nWarn=COMP_DADOS.filter(function(r){return r.status==='warn';}).length;
+    var nCrit=COMP_DADOS.filter(function(r){return r.status==='crit';}).length;
+    G('div-c-total').textContent=COMP_DADOS.length;
+    G('div-c-ok').textContent=nOk;
+    G('div-c-warn').textContent=nWarn;
+    G('div-c-crit').textContent=nCrit;
+    G('div-resumo').style.display='block';
+    G('btn-exp-comp').style.display='inline-block';
+
+    if(!filtrados.length){
+      G('div-corpo').innerHTML='<div style="text-align:center;padding:20px;color:#4a664a">Nenhuma OP encontrada com este filtro</div>';
+      return;
+    }
+
+    // Ordena: críticos primeiro
+    filtrados.sort(function(a,b){
+      var ord={crit:0,warn:1,ok:2,'sem-ext':3};
+      return (ord[a.status]||9)-(ord[b.status]||9);
+    });
+
+    var h='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
+    h+='<thead><tr style="background:#f5f9f2">';
+    h+='<th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b;white-space:nowrap">Nº OP</th>';
+    h+='<th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">Produto</th>';
+    h+='<th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">Linha</th>';
+    h+='<th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">Data</th>';
+    h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">Programado</th>';
+    h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">🏭 Extrusado</th>';
+    h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">📦 Ensacado</th>';
+    h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">Diferença</th>';
+    h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">%</th>';
+    h+='<th style="padding:8px;text-align:center;border-bottom:2px solid #d4e8d4;color:#024f2b">Status</th>';
+    h+='</tr></thead><tbody>';
+
+    filtrados.forEach(function(r,i){
+      var op=r.op;
+      var bg=i%2===0?'#fff':'#f9fbf9';
+      var corDiff=r.diff>0?'#024f2b':r.diff<0?'#c0392b':'#666';
+      var nomeL=(op.linha||'').replace(' (E-240)','').replace(' (E-200)','').replace(' (Andritz I)','').replace(' (Andritz II)','');
+      var stBadge={
+        'ok':'<span style="background:#d4f0e4;color:#024f2b;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">✅ OK</span>',
+        'warn':'<span style="background:#fff3cd;color:#856404;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">⚠️ Atenção</span>',
+        'crit':'<span style="background:#ffd4d4;color:#a00;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">🔴 Crítico</span>',
+        'sem-ext':'<span style="background:#f0f0f0;color:#888;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">Sem ext.</span>'
+      };
+      h+='<tr style="background:'+bg+'">';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;font-weight:700;color:#024f2b">'+op.id+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0">'+(op.desc||op.cod||'').slice(0,28)+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;color:#4a664a">'+nomeL+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;color:#666">'+op.data+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right">'+fN(op.prog)+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#1a7a4a">'+fN(r.extrusado)+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#024f2b">'+fN(r.ensacado)+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:'+corDiff+'">'+(r.diff>0?'+':'')+fN(r.diff)+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:'+corDiff+'">'+(r.pct!==null?(r.pct>0?'+':'')+r.pct+'%':'—')+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:center">'+(stBadge[r.status]||'')+'</td>';
+      h+='</tr>';
+    });
+    h+='</tbody></table></div>';
+    G('div-corpo').innerHTML=h;
+  });
+}
+
+function exportarComparativoExcel(){
+  if(!COMP_DADOS.length){alert('Gere a análise primeiro');return;}
+  if(typeof XLSX==='undefined'){alert('Biblioteca Excel não disponível');return;}
+
+  var linhas=[['Nº OP','Produto','Linha','Data','Programado (kg)','Extrusado (kg)','Ensacado (kg)','Diferença (kg)','Diferença (%)','Status']];
+  COMP_DADOS.forEach(function(r){
+    var op=r.op;
+    var stTxt={ok:'OK (≤5%)','warn':'Atenção (5-10%)','crit':'Crítico (>10%)','sem-ext':'Sem extrusão'}[r.status]||'';
+    linhas.push([
+      op.id,
+      op.desc||op.cod||'',
+      (op.linha||'').replace(' (E-240)','').replace(' (E-200)','').replace(' (Andritz I)','').replace(' (Andritz II)',''),
+      op.data,
+      Number(op.prog)||0,
+      r.extrusado,
+      r.ensacado,
+      r.diff,
+      r.pct!==null?r.pct+'%':'—',
+      stTxt
+    ]);
+  });
+
+  var wb=XLSX.utils.book_new();
+  var ws=XLSX.utils.aoa_to_sheet(linhas);
+  ws['!cols']=[{wch:14},{wch:30},{wch:12},{wch:12},{wch:14},{wch:14},{wch:14},{wch:14},{wch:12},{wch:16}];
+  XLSX.utils.book_append_sheet(wb,ws,'Comparativo');
+  XLSX.writeFile(wb,'Comparativo_Ext_Ens_'+G('div-di').value+'_'+G('div-df').value+'.xlsx');
 }
 
 // ============================================================
