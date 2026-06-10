@@ -158,7 +158,7 @@ function iniciar(){
   iniciarRelogio();
   if(!DB) return;
   var dt=hoje();
-  DB.ref("ops").on("value",function(s){
+  DB.ref("ops").orderByChild("data").equalTo(dt).on("value",function(s){
     OPS=[];
     if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;OPS.push(v);});
     renderTudo();
