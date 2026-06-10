@@ -158,7 +158,7 @@ function iniciar(){
   iniciarRelogio();
   if(!DB) return;
   var dt=hoje();
-  DB.ref("ops").orderByChild("data").equalTo(dt).on("value",function(s){
+  DB.ref("ops").on("value",function(s){
     OPS=[];
     if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;OPS.push(v);});
     renderTudo();
@@ -310,6 +310,7 @@ function renderTudo(){
   // Programado dividido igualmente
   var progPorTurno=Math.round(totalProg/3);
   [1,2,3].forEach(function(ti){porTurno[ti].prog=progPorTurno;});
+  _porTurno=porTurno; // expõe globalmente
 
   var nomes={1:"Turno 1  (21h — 05h)",2:"Turno 2  (05h — 13h)",3:"Turno 3  (13h — 21h)"};
   var h="";
