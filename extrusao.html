@@ -931,6 +931,11 @@ function sair(){
     DB.ref("extrusao_apts").off();
     DB.ref("extrusao_paradas").off();
     DB.ref("extrusao_op_concluida").off();
+    // Cancela listeners de extrusao_op_ativa por linha
+    LINHAS_USER.forEach(function(l){
+      var dt=DT_FILA||hoje();
+      DB.ref("extrusao_op_ativa/"+encId(l)+"/"+dt).off();
+    });
   }
   SES=null; OPS=[]; EST={}; LINHAS_USER=[];
   window._opConcluidasExt={};
@@ -2653,14 +2658,24 @@ function admReopenOp(fbKey,id){
 }
 
 function admCloseOp(fbKey,id){
-  if(!confirm("Concluir OP "+id+"?")) return;
+  if(!confirm("Concluir OP "+id+" na extrusão? O ensaque NÃO será afetado.")) return;
   if(!DB){toast("Firebase não conectado","err");return;}
-  // Admin pode alterar status das OPs do ensaque
-  DB.ref("ops/"+fbKey).update({status:"Concluida"}).then(function(){
-    toast("OP "+id+" concluída!","ok");
+  // Grava apenas em extrusao_op_concluida — NÃO altera ops/ do ensaque
+  var dt=DT_FILA||hoje();
+  var registro={linha:"admin",turno:SES.turno,data:dt,operador:SES.login,ts:agora()};
+  DB.ref("extrusao_op_concluida/"+fbKey).set(registro).then(function(){
+    // Limpa EST local em todas as linhas
+    LINHAS_USER.forEach(function(l){
+      if(EST[l]){
+        EST[l].opConcluidaExt=EST[l].opConcluidaExt||{};
+        EST[l].opConcluidaExt[fbKey]=registro;
+        if(EST[l].opAtiva===fbKey){ EST[l].opAtiva=null; EST[l].opAtivaCache=null; }
+      }
+      renderLinhaCard(l);
+    });
+    toast("OP "+id+" concluída na extrusão!","ok");
+    registrarLog("op_extrusao","Admin concluiu OP "+id+" na extrusão","-");
     admBuscarOps();
-    // Força reload das OPs na fila
-    if(DB){DB.ref("ops").off();carregarOPs();}
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
