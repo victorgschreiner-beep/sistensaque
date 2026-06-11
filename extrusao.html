@@ -1113,7 +1113,31 @@ function carregarOPs(){
     OPS=[];
     if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;OPS.push(v);});
     renderLinhas();
-    LINHAS_USER.forEach(function(l){if(!EST[l].opAtiva) verificarHerancaOp(l);});
+    LINHAS_USER.forEach(function(l){
+      if(!EST[l].opAtiva){
+        verificarHerancaOp(l);
+      } else {
+        // Se a OP ativa não existe mais em OPS[] (foi excluída do ensaque),
+        // verifica no Firebase se ainda existe
+        var existe=OPS.some(function(o){return o.fbKey===EST[l].opAtiva;});
+        if(!existe && !EST[l].opAtivaCache){
+          DB.ref("ops/"+EST[l].opAtiva).once("value",function(sOp){
+            if(!sOp.exists()){
+              // OP excluída — limpa estado e permite nova seleção
+              EST[l].opAtiva=null;
+              EST[l].opAtivaCache=null;
+              renderLinhaCard(l);
+              toast("OP removida da fila — selecione uma nova OP para continuar","err");
+            } else {
+              // Existe mas não estava em OPS[] (data diferente) — atualiza cache
+              EST[l].opAtivaCache=sOp.val();
+              EST[l].opAtivaCache.fbKey=EST[l].opAtiva;
+              renderLinhaCard(l);
+            }
+          });
+        }
+      }
+    });
   });
 }
 
@@ -1429,7 +1453,7 @@ function renderLinhaCard(linha){
     h+='<div style="margin-bottom:10px">';
     h+='<button class="btn" data-fk="'+opAtiva.fbKey+'" data-id="'+opAtiva.id+'" data-l="'+linha+'" onclick="concluirOpOperador(this)" '+
       'style="width:100%;background:#f5f9f2;border:2px solid #024f2b;color:#024f2b;padding:8px;font-size:12px;font-weight:700;cursor:pointer;border-radius:8px">'+
-      '✔ Concluir Ordem '+opAtiva.id+' na Extrusão</button>';
+      '✔ Concluir Ordem '+(opAtiva.id&&opAtiva.id!==opAtiva.fbKey?opAtiva.id:'OP ativa')+' na Extrusão</button>';
     h+='</div>';
   }
 
