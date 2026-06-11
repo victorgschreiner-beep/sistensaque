@@ -2623,14 +2623,32 @@ function admExcluirAptOp(btn){
 }
 
 function admReopenOp(fbKey,id){
-  if(!confirm("Reabrir OP "+id+" para Em andamento?")) return;
+  if(!confirm("Reabrir OP "+id+" para apontamento na extrusão?")) return;
   if(!DB){toast("Firebase não conectado","err");return;}
-  // Admin pode alterar status das OPs do ensaque (usuário admin tem permissão)
-  DB.ref("ops/"+fbKey).update({status:"Em andamento"}).then(function(){
-    toast("OP "+id+" reaberta!","ok");
-    registrarLog("op_status","Reabriu OP "+id,"Concluida → Em andamento");
+  // Remove conclusão da extrusão + limpa flag _concluida nos nós de turno
+  DB.ref("extrusao_op_concluida/"+fbKey).remove().then(function(){
+    // Limpa flag _concluida em todos os nós de data/linha possíveis
+    // Busca os nós que podem ter o flag
+    var promises=[];
+    LINHAS_USER.forEach(function(l){
+      // Limpa EST local imediatamente
+      if(EST[l]&&EST[l].opConcluidaExt) delete EST[l].opConcluidaExt[fbKey];
+      // Limpa flag _concluida do dia atual e anterior
+      var dt=DT_FILA||hoje();
+      var dtAnt=(function(){var d=new Date(dt+"T12:00:00");d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
+      [dt,dtAnt].forEach(function(d){
+        [1,2,3].forEach(function(t){
+          promises.push(DB.ref("extrusao_op_ativa/"+encId(l)+"/"+d+"/t"+t+"_concluida").remove());
+        });
+      });
+    });
+    return Promise.all(promises);
+  }).then(function(){
+    toast("OP "+id+" reaberta para apontamento!","ok");
+    registrarLog("op_status","Reabriu OP "+id+" na extrusão","extrusao_op_concluida removido");
+    // Re-renderiza todos os cards para refletir a reabertura
+    LINHAS_USER.forEach(function(l){renderLinhaCard(l);});
     admBuscarOps();
-    if(DB){DB.ref("ops").off();carregarOPs();}
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
