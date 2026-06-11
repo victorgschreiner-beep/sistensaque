@@ -1693,37 +1693,39 @@ function concluirOpOperador(btn){
   var opFbKey=btn.dataset.fk;
   var opId=btn.dataset.id;
   var linha=btn.dataset.l;
-  if(!confirm("Concluir OP "+opId+" na extrusao? A OP continuara ativa no ensaque.")) return;
   if(!DB){toast("Firebase nao conectado","err");return;}
   var dt=DT_FILA||hoje();
-  // Se opId está vazio (OP do dia anterior não está em OPS[]), busca no Firebase
-  if(!opId || opId===opFbKey){
-    DB.ref("ops/"+opFbKey+"/id").once("value",function(s){
-      btn.dataset.id=s.exists()?s.val():opFbKey;
-      concluirOpOperador(btn);
-    });
-    return;
-  }
-  var registro={linha:linha,turno:SES.turno,data:dt,operador:SES.login,ts:agora()};
-  DB.ref("extrusao_op_concluida/"+opFbKey).set(registro).then(function(){
-    if(EST[linha]){
-      EST[linha].opConcluidaExt=EST[linha].opConcluidaExt||{};
-      EST[linha].opConcluidaExt[opFbKey]=registro;
-      // Limpa OP ativa da linha para aguardar seleção
-      EST[linha].opAtiva=null;
-      if(DB){
+
+  // Resolve opId ANTES do confirm — sem loop
+  function _executar(idExibir){
+    if(!confirm("Concluir OP "+idExibir+" na extrusao? A OP continuara ativa no ensaque.")) return;
+    var registro={linha:linha,turno:SES.turno,data:dt,operador:SES.login,ts:agora()};
+    DB.ref("extrusao_op_concluida/"+opFbKey).set(registro).then(function(){
+      if(EST[linha]){
+        EST[linha].opConcluidaExt=EST[linha].opConcluidaExt||{};
+        EST[linha].opConcluidaExt[opFbKey]=registro;
+        EST[linha].opAtiva=null;
+        EST[linha].opAtivaCache=null;
         var t=SES.turno;
-        // Grava flag de conclusão no nó do turno.
-        // O próximo turno detecta t_concluida:true e não herda esta OP.
         var upd={};
         upd["t"+t]=null;
         upd["t"+t+"_concluida"]=true;
         DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt).update(upd);
       }
-    }
-    renderLinhaCard(linha);
-    abrirSelecaoProximaOp(linha, opFbKey, opId);
-  }).catch(function(e){toast("Erro: "+e.message,"err");});
+      renderLinhaCard(linha);
+      abrirSelecaoProximaOp(linha, opFbKey, idExibir);
+    }).catch(function(e){toast("Erro: "+e.message,"err");});
+  }
+
+  // Se opId já está resolvido usa direto, senão busca uma vez no Firebase
+  if(opId && opId!==opFbKey){
+    _executar(opId);
+  } else {
+    DB.ref("ops/"+opFbKey+"/id").once("value",function(s){
+      // OP pode ter sido excluída do ensaque — usa o fbKey como identificador
+      _executar(s.exists()&&s.val()?s.val():opFbKey);
+    });
+  }
 }
 
 function abrirSelecaoProximaOp(linha, opConcluidaFk, opConcluidaId){
