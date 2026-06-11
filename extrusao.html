@@ -1134,6 +1134,7 @@ function verificarHerancaOp(linha){
       // Não bloqueia por status do ensaque — processos independentes
       if(opAntObj){
         EST[linha].opAtiva=opAntFk;
+        EST[linha].opAtivaCache=opAntObj; EST[linha].opAtivaCache.fbKey=opAntFk;
         DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t).set(opAntFk);
         DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t+"_ts").set(agora());
         renderLinhaCard(linha);
@@ -1266,6 +1267,10 @@ function carregarExtrusao(){
               if(!(EST[linha].opConcluidaExt && EST[linha].opConcluidaExt[opAnt])){
                 EST[linha].opAtiva=opAnt;
                 EST[linha].opAtivaTs=val["t"+tAnt+"_ts"]||null;
+                // Busca dados da OP do dia anterior no Firebase para exibir no card
+                if(DB) DB.ref("ops/"+opAnt).once("value",function(sOp){
+                  if(sOp.exists()){ EST[linha].opAtivaCache=sOp.val(); EST[linha].opAtivaCache.fbKey=opAnt; renderLinhaCard(linha); }
+                });
               }
             }
           }
@@ -1319,9 +1324,10 @@ function renderLinhaCard(linha){
   if(!card) return;
   var e=EST[linha]||{opAtiva:null,apts:[],paradas:[]};
   var opsLinha=getOpsLinha(linha);
-  // opAtiva só é válida se a OP existe E ainda não foi concluída na extrusão
+  // opAtiva: OPS[] (dia atual) → cache do Firebase (dia anterior) → fallback mínimo
+  var opAtivaObj=e.opAtiva?(OPS.find(function(o){return o.fbKey===e.opAtiva;})||e.opAtivaCache||null):null;
   var opAtiva=(e.opAtiva&&!opConcluidaNaExt(e.opAtiva))
-    ?OPS.find(function(o){return o.fbKey===e.opAtiva;})||null
+    ?(opAtivaObj||{fbKey:e.opAtiva,id:'',cod:'',desc:'Carregando...',prog:0,realExtrusao:0})
     :null;
   var metaH=opAtiva?getMetaHora(opAtiva.cod,linha):0;
   var totalTurno=e.apts.reduce(function(a,x){return a+(Number(x.real)||0);},0);
