@@ -797,7 +797,12 @@ var EST={};
 
 // ── UTILS ─────────────────────────────────────────────────
 function G(id){return document.getElementById(id);}
-function hoje(){return new Date().toISOString().slice(0,10);}
+function hoje(){
+  // Data operacional: a partir das 21h pertence ao próximo dia (início do T1)
+  var now=new Date();
+  if(now.getHours()>=21) now=new Date(now.getTime()+24*60*60*1000);
+  return now.toISOString().slice(0,10);
+}
 function agora(){return new Date().toISOString();}
 function horaAtual(){var d=new Date();return pad(d.getHours())+":"+pad(d.getMinutes());}
 function horaCheia(){return pad(new Date().getHours())+":00";}
@@ -1763,6 +1768,29 @@ function salvarApt(){
   var dataOverride=G("apt-data-override");
   var dataApt=(SES&&SES.perfil==="admin"&&dataOverride&&dataOverride.value)?dataOverride.value:(DT_FILA||hoje());
   var apt={id:uid(),linha:linhaAtiva,opFbKey:op?op.fbKey:"",opNum:op?op.id:"",cod:op?op.cod:"",desc:op?(op.desc||op.cod):"",turno:turnoApt,data:dataApt,horaIni:hi,horaFim:hf,real:real,metaH:metaH,obs:G("apt-obs").value||"",operador:SES.login,ts:agora()};
+  // Validação de sobreposição de horários na mesma linha e turno
+  var aptsExist=(EST[linhaAtiva]&&EST[linhaAtiva].apts)||[];
+  var hiMin=hi.replace(":",""); var hfMin=hf.replace(":","");
+  // Para T1 (noturno) normalizar horas < "05" somando 24h para comparação
+  function normH(h,t){
+    var n=parseInt(h.replace(":",""));
+    if(t===1 && n<500) n+=2400;
+    return n;
+  }
+  var nHi=normH(hi,turnoApt), nHf=normH(hf,turnoApt);
+  if(nHf<=nHi){toast("Hora final deve ser maior que hora inicial","err");return;}
+  var sobrepoe=aptsExist.filter(function(a){
+    if(a.turno!==turnoApt||a.data!==dataApt) return false;
+    var eHi=normH(a.horaIni,turnoApt), eHf=normH(a.horaFim,turnoApt);
+    // Sobreposição: um intervalo começa antes do outro terminar
+    return nHi<eHf && nHf>eHi;
+  });
+  if(sobrepoe.length){
+    var s=sobrepoe[0];
+    toast("Conflito de horário com apontamento das "+s.horaIni+" às "+s.horaFim+" nesta linha","err");
+    return;
+  }
+
   if(!DB){toast("Firebase não conectado","err");return;}
   DB.ref("extrusao_apts").push(apt).then(function(){
     fM("m-apt");
