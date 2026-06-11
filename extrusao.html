@@ -1237,45 +1237,60 @@ function carregarExtrusao(){
       renderLinhaCard(linha);
       atualizarBarraTurno();
     });
+    // Função interna que processa o nó de op_ativa e aplica herança
+    function _aplicarOpAtiva(val, dtRef){
+      if(!val) return;
+      EST[linha].opAtiva=val["t"+t]||null;
+      EST[linha].opAtivaTs=val["t"+t+"_ts"]||null;
+      if(EST[linha].opAtiva) return; // turno atual já tem OP — não precisa herdar
+
+      // Herda do turno anterior se não foi concluída
+      var tAnt=t===1?3:t-1;
+      var opAnt=val["t"+tAnt]||null;
+      var foiConcluida=val["t"+tAnt+"_concluida"]===true;
+      if(!opAnt || foiConcluida) return;
+      if(EST[linha].opConcluidaExt && EST[linha].opConcluidaExt[opAnt]) return;
+
+      // Herda a OP
+      EST[linha].opAtiva=opAnt;
+      EST[linha].opAtivaTs=val["t"+tAnt+"_ts"]||null;
+
+      // Grava a herança no nó do turno atual para que o próximo turno encontre
+      var updHerd={};
+      updHerd["t"+t]=opAnt;
+      updHerd["t"+t+"_ts"]=agora();
+      DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt).update(updHerd);
+
+      // Busca dados da OP no Firebase (pode ser do dia anterior)
+      var opObj=OPS.find(function(o){return o.fbKey===opAnt;});
+      if(opObj){
+        EST[linha].opAtivaCache=opObj;
+      } else {
+        DB.ref("ops/"+opAnt).once("value",function(sOp){
+          if(sOp.exists()){
+            EST[linha].opAtivaCache=sOp.val();
+            EST[linha].opAtivaCache.fbKey=opAnt;
+            renderLinhaCard(linha);
+          }
+        });
+      }
+    }
+
     DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt).once("value").then(function(s){
       if(s.exists()){
-        var val=s.val();
-        EST[linha].opAtiva=val["t"+t]||null;
-        EST[linha].opAtivaTs=val["t"+t+"_ts"]||null;
-
-        // Se turno atual não tem OP — herda do turno anterior
-        if(!EST[linha].opAtiva){
-          var tAnt=t===1?3:t-1;
-          var opAnt=val["t"+tAnt]||null;
-          // Só herda se o turno anterior NÃO marcou a OP como concluída na extrusão
-          // e se a OP não está concluída no ensaque
-          var foiConcluidaNoTurnoAnt=val["t"+tAnt+"_concluida"]===true;
-          if(opAnt && !foiConcluidaNoTurnoAnt){
-            var opAntObj=OPS.find(function(o){return o.fbKey===opAnt;});
-            // Não filtra por status do ensaque — a OP pode estar "Concluida" no ensaque
-            // mas ainda precisar de apontamento na extrusão (processos independentes)
-            if(opAntObj){
-              // Confirma no Firebase que não foi concluída na extrusão
-              if(EST[linha].opConcluidaExt && EST[linha].opConcluidaExt[opAnt]){
-                // já foi concluída na extrusão, não herda
-              } else {
-                EST[linha].opAtiva=opAnt;
-                EST[linha].opAtivaTs=val["t"+tAnt+"_ts"]||null;
-              }
-            } else {
-              // OP não está em OPS[] (pode ser de ontem — herda mesmo assim, pois o flag _concluida já garante)
-              if(!(EST[linha].opConcluidaExt && EST[linha].opConcluidaExt[opAnt])){
-                EST[linha].opAtiva=opAnt;
-                EST[linha].opAtivaTs=val["t"+tAnt+"_ts"]||null;
-                // Busca dados da OP do dia anterior no Firebase para exibir no card
-                if(DB) DB.ref("ops/"+opAnt).once("value",function(sOp){
-                  if(sOp.exists()){ EST[linha].opAtivaCache=sOp.val(); EST[linha].opAtivaCache.fbKey=opAnt; renderLinhaCard(linha); }
-                });
-              }
-            }
-          }
-        }
-
+        _aplicarOpAtiva(s.val(), dt);
+      } else if(t===1){
+        // T1: se não tem nada no dia atual, olha o dia anterior (T3 pode ter gravado lá)
+        var dtAnt=(function(){
+          var d=new Date(dt+"T12:00:00");
+          d.setDate(d.getDate()-1);
+          return d.toISOString().slice(0,10);
+        })();
+        DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dtAnt).once("value").then(function(sAnt){
+          if(sAnt.exists()) _aplicarOpAtiva(sAnt.val(), dtAnt);
+          renderLinhaCard(linha);
+        });
+        return;
       }
       renderLinhaCard(linha);
     });
@@ -1409,11 +1424,12 @@ function renderLinhaCard(linha){
 
   var hist=[];
   var isAdminRender=SES&&SES.perfil==="admin";
+  var opAtivaFk=opAtiva?opAtiva.fbKey:null;
   e.apts.forEach(function(a){hist.push({tipo:"apt",hora:a.horaIni,d:a});});
   e.paradas.forEach(function(p){hist.push({tipo:"para",hora:p.horaIni,d:p});});
   hist.sort(function(a,b){return a.hora>b.hora?1:-1;});
-  // Admin vê todos os registros do dia; operador vê os últimos 6
-  var histVis=isAdminRender?hist:hist.slice(-6);
+  // Exibe todos os registros do turno — identifica visualmente a qual OP pertence
+  var histVis=isAdminRender?hist:hist.slice(-8);
   if(hist.length){
     h+='<div style="margin-top:10px">';
     if(isAdminRender&&hist.length>0){
@@ -1424,13 +1440,14 @@ function renderLinhaCard(linha){
         var a=item.d;
         var ef=metaH?Math.round((Number(a.real)||0)/metaH*100):0;
         var corEf=ef>=90?"#024f2b":ef>=70?"#d29922":"#c0392b";
-        h+='<div class="hist-item hist-apt" style="justify-content:space-between">';
+        var isOutraOp=opAtivaFk && a.opFbKey && a.opFbKey!==opAtivaFk;
+        h+='<div class="hist-item hist-apt" style="justify-content:space-between'+(isOutraOp?';opacity:.7':'')+'">';
         // Badge de turno visível para admin
         if(isAdminRender) h+='<span style="font-size:9px;font-weight:700;background:#e8f0e8;color:#024f2b;padding:1px 5px;border-radius:4px;margin-right:3px;flex-shrink:0">T'+a.turno+'</span>';
         h+='<span class="hist-hora">'+a.horaIni+' → '+a.horaFim+'</span>';
         h+='<span class="hist-val">'+fN(a.real)+' kg</span>';
         h+='<span class="hist-info" style="color:'+corEf+'">'+ef+'% meta</span>';
-        if(a.opNum) h+='<span style="font-size:10px;color:#739630;font-weight:600;margin-left:4px">'+a.opNum+'</span>';
+        if(a.opNum) h+='<span style="font-size:10px;color:'+(isOutraOp?"#c0392b":"#739630")+';font-weight:600;margin-left:4px">'+a.opNum+'</span>';
         h+='<button data-fk="'+a.fbKey+'" onclick="editarAptOperador(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;margin-left:4px">✏️</button>';
         h+='<button data-fk="'+a.fbKey+'" onclick="excluirAptOperador(this.dataset.fk)" style="background:#c0392b;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;margin-left:2px">🗑</button>';
         h+='</div>';
