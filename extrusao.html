@@ -2561,21 +2561,6 @@ function gerarDashboard(){
 function dashRender(apts, paradas, di, df){
   // Cache para exportarOpPDF acessar fora do escopo
   window._DASH_CACHE={apts:apts,paradas:paradas,di:di,df:df};
-
-  // Popular select de SKUs disponíveis no período
-  var skusSel=Object.values(porSKU).sort(function(a,b){return b.real-a.real;});
-  var selEl=G("dash-sku-sel");
-  if(selEl){
-    selEl.innerHTML='<option value="">— Selecione um SKU do período —</option>';
-    skusSel.forEach(function(s){
-      selEl.innerHTML+='<option value="'+s.cod+'">'+s.cod+' — '+(s.desc||s.cod).slice(0,45)+' ('+fN(s.real)+' kg)</option>';
-    });
-  }
-  G("dash-sku-relatorio").innerHTML='<div style="text-align:center;padding:16px;font-size:12px;color:#4a664a">Selecione um SKU acima e clique em Ver</div>';
-  if(G("btn-sku-pdf")) G("btn-sku-pdf").style.display="none";
-
-  // Renderizar paradas por mês × linha
-  renderParadasMes(paradas);
   // ── CALCULOS ────────────────────────────────────────────
   var totReal=apts.reduce(function(a,x){return a+(Number(x.real)||0);},0);
   var totMeta=apts.reduce(function(a,x){return a+(Number(x.metaH)||0);},0);
@@ -2665,6 +2650,19 @@ function dashRender(apts, paradas, di, df){
       options:Object.assign({responsive:true,plugins:{legend:{position:"bottom",labels:{font:{size:10},boxWidth:12}}},scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:9}}}}},opts||{})
     });
   }
+
+  // Popular select de SKUs — aqui porSKU já está calculado
+  var skusSel=Object.values(porSKU).sort(function(a,b){return b.real-a.real;});
+  var selEl=G("dash-sku-sel");
+  if(selEl){
+    selEl.innerHTML='<option value="">— Selecione um SKU do período —</option>';
+    skusSel.forEach(function(s){
+      selEl.innerHTML+='<option value="'+s.cod+'">'+s.cod+' — '+(s.desc||s.cod).slice(0,45)+' ('+fN(s.real)+' kg)</option>';
+    });
+  }
+  if(G("dash-sku-relatorio")) G("dash-sku-relatorio").innerHTML='<div style="text-align:center;padding:16px;font-size:12px;color:#4a664a">Selecione um SKU acima e clique em Ver</div>';
+  if(G("btn-sku-pdf")) G("btn-sku-pdf").style.display="none";
+  renderParadasMes(paradas);
 
   // G1 — Real vs Meta por dia
   var datas=Object.keys(porData).sort();
