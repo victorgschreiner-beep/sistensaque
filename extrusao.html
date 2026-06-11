@@ -1116,28 +1116,49 @@ function verificarHerancaOp(linha){
   if(!DB||EST[linha].opAtiva) return;
   var dt=DT_FILA||hoje(), t=SES.turno;
   var tAnt=t===1?3:t-1;
-  // T1 (21h) herda T3 do dia ANTERIOR
   var dtAnt=dt;
   if(t===1){
-    var d=new Date(dt+'T12:00:00');
+    var d=new Date(dt+"T12:00:00");
     d.setDate(d.getDate()-1);
     dtAnt=d.toISOString().slice(0,10);
   }
+
+  function _ativarHeranca(opFk){
+    if(!opFk) return;
+    if(EST[linha].opConcluidaExt && EST[linha].opConcluidaExt[opFk]) return;
+    var opObj=OPS.find(function(o){return o.fbKey===opFk;});
+    function _aplicar(obj){
+      EST[linha].opAtiva=opFk;
+      if(obj){ EST[linha].opAtivaCache=obj; EST[linha].opAtivaCache.fbKey=opFk; }
+      DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t).set(opFk);
+      DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t+"_ts").set(agora());
+      renderLinhaCard(linha);
+    }
+    if(opObj){ _aplicar(opObj); return; }
+    DB.ref("ops/"+opFk).once("value").then(function(s){ if(s.exists()) _aplicar(s.val()); });
+  }
+
+  // Caminho 1: nó extrusao_op_ativa gravado pelo turno anterior
   DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dtAnt+"/t"+tAnt).once("value").then(function(s){
-    if(!s.exists()) return;
-    var opAntFk=s.val();
-    if(!opAntFk) return;
-    // Busca a OP no Firebase pois pode não estar em OPS (é do dia anterior)
-    DB.ref("ops/"+opAntFk).once("value").then(function(sOp){
-      if(!sOp.exists()) return;
-      var opAntObj=sOp.val();
-      // Não bloqueia por status do ensaque — processos independentes
-      if(opAntObj){
-        EST[linha].opAtiva=opAntFk;
-        EST[linha].opAtivaCache=opAntObj; EST[linha].opAtivaCache.fbKey=opAntFk;
-        DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t).set(opAntFk);
-        DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t+"_ts").set(agora());
-        renderLinhaCard(linha);
+    var opFk=s.exists()?s.val():null;
+    var concluida=false;
+    // Checar flag _concluida
+    DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dtAnt+"/t"+tAnt+"_concluida").once("value").then(function(sc){
+      concluida=sc.exists()&&sc.val()===true;
+      if(opFk && !concluida){
+        _ativarHeranca(opFk);
+      } else {
+        // Caminho 2: não tem nó gravado — busca último apontamento do turno anterior na linha
+        DB.ref("extrusao_apts").orderByChild("data").equalTo(dtAnt).once("value").then(function(sa){
+          if(!sa.exists()) return;
+          var ultApt=null;
+          sa.forEach(function(c){
+            var a=c.val();
+            if(a.linha!==linha || a.turno!==tAnt) return;
+            if(!ultApt || a.horaIni>ultApt.horaIni) ultApt=a;
+          });
+          if(ultApt && ultApt.opFbKey) _ativarHeranca(ultApt.opFbKey);
+        });
       }
     });
   });
@@ -1207,7 +1228,16 @@ function carregarExtrusao(){
     LINHAS_USER.forEach(function(l){ EST[l].opConcluidaExt={}; });
     if(sc.exists()) sc.forEach(function(c){
       var val=c.val();
-      if(val&&val.linha&&EST[val.linha]) EST[val.linha].opConcluidaExt[c.key]=val;
+      if(!val) return;
+      // Tenta pelo val.linha exato
+      if(val.linha && EST[val.linha]){
+        EST[val.linha].opConcluidaExt[c.key]=val;
+      } else {
+        // Fallback: associa a qualquer linha que tenha essa OP ativa
+        LINHAS_USER.forEach(function(l){
+          if(EST[l].opAtiva===c.key) EST[l].opConcluidaExt[c.key]=val;
+        });
+      }
     });
     LINHAS_USER.forEach(function(l){renderLinhaCard(l);});
   });
