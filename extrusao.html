@@ -1367,8 +1367,9 @@ function renderLinhaCard(linha){
   h+='<button class="btn btn-setup" data-l="'+linha+'" onclick="abrirSetup(this.dataset.l)">⚙️ Setup</button>';
   h+='</div>';
   // Botão concluir OP — aparece quando tem apontamentos e OP não concluída
-  // Botão aparece se a OP ainda não foi concluída NA EXTRUSÃO (status do ensaque é irrelevante aqui)
-  if(opAtiva && !opConcluidaNaExt(opAtiva.fbKey) && (e.apts.length>0 || (Number(opAtiva.realExtrusao)||0)>0)){
+  // Botão aparece sempre que há OP ativa não concluída na extrusão
+  // Não exige apontamentos — operador pode precisar concluir OP herdada sem apts no turno atual
+  if(opAtiva && !opConcluidaNaExt(opAtiva.fbKey)){
     h+='<div style="margin-bottom:10px">';
     h+='<button class="btn" data-fk="'+opAtiva.fbKey+'" data-id="'+opAtiva.id+'" data-l="'+linha+'" onclick="concluirOpOperador(this)" '+
       'style="width:100%;background:#f5f9f2;border:2px solid #024f2b;color:#024f2b;padding:8px;font-size:12px;font-weight:700;cursor:pointer;border-radius:8px">'+
@@ -1507,7 +1508,16 @@ function selecionarOpAtiva(linha,fbKey){
   if(opAtualFk && opAtualFk!==fbKey && !opConcluidaNaExt(opAtualFk)){
     var opAtual=OPS.find(function(o){return o.fbKey===opAtualFk;});
     var novaOp=OPS.find(function(o){return o.fbKey===fbKey;});
-    toast("Linha já tem OP "+(opAtual?opAtual.id:opAtualFk)+" em andamento. Conclua-a antes de iniciar "+(novaOp?novaOp.id:fbKey)+".", "err");
+    // OP pode ser do dia anterior — busca no Firebase para mostrar o número correto
+    if(!opAtual && DB){
+      DB.ref("ops/"+opAtualFk).once("value",function(s){
+        var idStr=s.exists()?(s.val().id||opAtualFk):opAtualFk;
+        var novaStr=novaOp?novaOp.id:fbKey;
+        toast("Linha já tem OP "+idStr+" em andamento. Conclua-a antes de iniciar "+novaStr+".","err");
+      });
+    } else {
+      toast("Linha já tem OP "+(opAtual?opAtual.id:opAtualFk)+" em andamento. Conclua-a antes de iniciar "+(novaOp?novaOp.id:fbKey)+".","err");
+    }
     return;
   }
   EST[linha].opAtiva=fbKey;
@@ -1604,6 +1614,14 @@ function concluirOpOperador(btn){
   if(!confirm("Concluir OP "+opId+" na extrusao? A OP continuara ativa no ensaque.")) return;
   if(!DB){toast("Firebase nao conectado","err");return;}
   var dt=DT_FILA||hoje();
+  // Se opId está vazio (OP do dia anterior não está em OPS[]), busca no Firebase
+  if(!opId || opId===opFbKey){
+    DB.ref("ops/"+opFbKey+"/id").once("value",function(s){
+      btn.dataset.id=s.exists()?s.val():opFbKey;
+      concluirOpOperador(btn);
+    });
+    return;
+  }
   var registro={linha:linha,turno:SES.turno,data:dt,operador:SES.login,ts:agora()};
   DB.ref("extrusao_op_concluida/"+opFbKey).set(registro).then(function(){
     if(EST[linha]){
