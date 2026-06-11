@@ -1473,6 +1473,14 @@ function abrirSelOp(linha){
 
 function selecionarOpAtiva(linha,fbKey){
   if(!EST[linha]) return;
+  var opAtualFk=EST[linha].opAtiva;
+  // Bloqueia se já existe outra OP ativa na linha (não concluída na extrusão)
+  if(opAtualFk && opAtualFk!==fbKey && !opConcluidaNaExt(opAtualFk)){
+    var opAtual=OPS.find(function(o){return o.fbKey===opAtualFk;});
+    var novaOp=OPS.find(function(o){return o.fbKey===fbKey;});
+    toast("Linha já tem OP "+(opAtual?opAtual.id:opAtualFk)+" em andamento. Conclua-a antes de iniciar "+(novaOp?novaOp.id:fbKey)+".", "err");
+    return;
+  }
   EST[linha].opAtiva=fbKey;
   if(DB){
     var dt=DT_FILA||hoje(),t=SES.turno;
