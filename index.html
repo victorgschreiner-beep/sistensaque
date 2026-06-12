@@ -2031,20 +2031,18 @@ function reprogramarOP(fbKey){
   if(!op) return;
   if(op.status==='Concluida'){toast('OP ja concluida','err');return;}
 
-  var dtAtual=op.data||hoje(); // data para a qual a OP foi programada (ex: 11/06)
+  var dtAtual=op.data||hoje();
   var dtProx=new Date(dtAtual+'T12:00:00');
   dtProx.setDate(dtProx.getDate()+1);
-  var dtNova=dtProx.toISOString().slice(0,10); // novo dia (ex: 12/06)
+  var dtNova=dtProx.toISOString().slice(0,10);
   var fator=op.tipo==='SC'?25:op.tipo==='BG'?750:1;
 
-  // O que foi produzido NO DIA DA OP (dtAtual) — fonte: realPorData[dtAtual]
-  // Tudo que foi apontado nessa OP pertence ao dia programado, independente da hora
+  // Real do dia atual — fonte confiavel: realPorData[dtAtual]
   var realDoDia=Number((op.realPorData||{})[dtAtual])||0;
-
-  // Saldo = prog do dia - o que foi produzido no dia
   var progOrig=Number(op.progOriginal)||Number(op.prog)||0;
-  var realAcumAnterior=Number(op.realAcumulado)||0; // dias anteriores ja reprogramados
-  var saldo=Math.max(progOrig-realAcumAnterior-realDoDia,0);
+  var realAcumAnterior=Number(op.realAcumulado)||0;
+  var novoRealAcum=realAcumAnterior+realDoDia;
+  var saldo=Math.max(progOrig-novoRealAcum,0);
   var saldoStr=op.tipo!=='KG'?fN(Math.round(saldo/fator))+' '+(op.tipo==='SC'?'sc':'bg')+' ('+fN(saldo)+' kg)':fN(saldo)+' kg';
 
   if(!confirm(
@@ -2053,31 +2051,74 @@ function reprogramarOP(fbKey){
     'Realizado '+dtAtual.split('-').reverse().join('/')+': '+fN(realDoDia)+' kg\n'+
     'Acumulado anterior: '+fN(realAcumAnterior)+' kg\n'+
     'Saldo (novo prog):  '+saldoStr+'\n\n'+
-    'O novo dia inicia com real zerado.\n'+
-    'Historico do dia '+dtAtual.split('-').reverse().join('/')+' preservado.'
+    'A OP atual sera CONCLUIDA no dia '+dtAtual.split('-').reverse().join('/')+'.\n'+
+    'Uma nova OP sera criada para '+dtNova+' como 1a da fila.'
   )) return;
 
   ld(true,'Reprogramando...');
 
-  var upd={
+  // PASSO 1: Conclui a OP atual no dia que estava programada
+  var updConcluir={
+    status:'Concluida',
+    concluidoEm:agora(),
+    concluidoPor:SES.login
+  };
+
+  // PASSO 2: Prepara a nova OP para o dia seguinte
+  // Determina o sufixo sequencial (#2, #3...)
+  var baseId=op.id.replace(/ #\d+$/,'');
+  var seq=1;
+  OPS.forEach(function(o){
+    if(!o.id) return;
+    // Conta quantas reprogramacoes dessa OP base ja existem
+    if(o.id.indexOf(baseId)===0 && o.id.length>baseId.length){
+      var sufixo=o.id.slice(baseId.length).trim();
+      var numMatch=sufixo.match(/^#(\d+)$/);
+      if(numMatch) seq=Math.max(seq,parseInt(numMatch[1]));
+    }
+  });
+  var novoId=baseId+' #'+(seq+1);
+
+  // Reordena OPs existentes da mesma linha no dtNova — empurra todas +1
+  var opsNovoDia=OPS.filter(function(o){
+    return o.linha===op.linha && o.data===dtNova && o.status!=='Concluida' && o.fbKey!==fbKey;
+  });
+  var reordPromises=[];
+  opsNovoDia.forEach(function(o){
+    var posAtual=Number(o.filaPosicao)||0;
+    reordPromises.push(DB.ref('ops/'+o.fbKey+'/filaPosicao').set(posAtual+1));
+  });
+
+  var novaOp={
+    id:novoId,
+    cod:op.cod, desc:op.desc||op.cod,
+    linha:op.linha, tipo:op.tipo,
+    lote:op.lote||'', obs:op.obs||'',
     data:dtNova,
+    prog:saldo,
+    real:0, t1:0, t2:0, t3:0, t1sc:0, t2sc:0, t3sc:0,
+    perda:0, perdaSC:0,
     status:'Reprogramada',
     reprogramadaDe:dtAtual,
     reprogramadaEm:agora(),
-    prog:saldo,
-    // Zera contadores — novo dia comeca do zero
-    real:0, t1:0, t2:0, t3:0, t1sc:0, t2sc:0, t3sc:0,
-    perda:0
+    reprogramadaDeId:op.id,
+    reprogramadaDeFbKey:fbKey,
+    progOriginal:progOrig,
+    realAcumulado:novoRealAcum,
+    filaPosicao:0,
+    criadoPor:SES.login,
+    criadoEm:agora()
   };
-  // Preserva progOriginal apenas na primeira reprogramacao
-  if(!op.progOriginal) upd.progOriginal=Number(op.prog)||0;
-  // Acumula: dias anteriores + o que foi feito hoje
-  upd.realAcumulado=realAcumAnterior+realDoDia;
 
-  DB.ref('ops/'+fbKey).update(upd).then(function(){
+  // Executa: conclui OP atual + reordena + cria nova OP
+  Promise.all(reordPromises).then(function(){
+    return DB.ref('ops/'+fbKey).update(updConcluir);
+  }).then(function(){
+    return DB.ref('ops').push(novaOp);
+  }).then(function(ref){
     ld(false);
-    toast('OP '+op.id+' reprogramada para '+dtNova+' — saldo: '+saldoStr,'ok');
-    addLog('REPROGRAMAR',op.id+' | '+dtAtual+' → '+dtNova+' | dia: '+fN(realDoDia)+' kg | saldo: '+fN(saldo)+' kg');
+    toast('OP '+op.id+' concluida — nova OP '+novoId+' criada para '+dtNova,'ok');
+    addLog('REPROGRAMAR',op.id+' → '+novoId+' | '+dtAtual+' → '+dtNova+' | saldo: '+fN(saldo)+' kg');
   }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
 }
 
