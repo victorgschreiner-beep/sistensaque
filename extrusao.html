@@ -4076,7 +4076,7 @@ function confRenderizar(dt, ops, apts, paradas, soP){
     } else {
       h+='<button class="btn-conf-rev" data-fk="'+opFk+'" onclick="confMarcarRevisao(this.dataset.fk,true)">✔ Marcar como Revisado</button>';
     }
-    h+='<button data-fk="'+opFk+'" data-linha="'+opObj.linha+'" data-turno="'+opObj.turno+'" data-data="'+opObj.data+'" '+
+    h+='<button data-fk="'+opFk+'" data-linha="'+(op?op.linha:'')+'" data-turno="'+(op?op.turno:'')+'" data-data="'+(op?op.data:(G('conf-dt')?G('conf-dt').value:''))+'" '+
        'onclick="confAcrescentarApt(this)" '+
        'style="background:#739630;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px">+ Apontamento</button>';
     h+='</div>';
