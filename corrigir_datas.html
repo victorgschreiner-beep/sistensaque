@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Corrigir Datas 12/06 → 11/06</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<style>
+body{font-family:system-ui,sans-serif;max-width:700px;margin:40px auto;padding:20px;background:#f4f6f4}
+h2{color:#024f2b}
+.aviso{background:#fff3cd;border:1px solid #ffe082;color:#856404;padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:18px}
+.card{background:#fff;border-radius:10px;padding:18px 20px;margin-bottom:14px;border:1px solid #c8d8c8}
+.op{font-weight:700;color:#024f2b;font-size:14px;margin-bottom:8px}
+.apt{font-size:12px;color:#4a664a;padding:4px 0;border-bottom:1px solid #f0f4f0}
+.apt:last-child{border:none}
+.btn{background:#024f2b;color:#fff;border:none;padding:13px 20px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;width:100%;margin-top:14px}
+.btn:hover{background:#036b3a}
+.btn:disabled{background:#aaa}
+.ok{margin-top:10px;padding:10px;border-radius:7px;font-size:13px;font-weight:600;background:#d4f0e4;color:#024f2b;display:none}
+.err{margin-top:10px;padding:10px;border-radius:7px;font-size:13px;font-weight:600;background:#fde8e8;color:#c0392b;display:none}
+#log{background:#1a2e1a;color:#b6d46a;padding:16px;border-radius:8px;font-family:monospace;font-size:12px;min-height:80px;margin-top:16px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h2>📅 Corrigir datas 12/06 → 11/06</h2>
+<div class="aviso">
+  ⚠️ Este arquivo move 5 apontamentos de 12/06 para 11/06 e atualiza o <code>realPorData</code> de cada OP. Clique no botão abaixo para aplicar tudo de uma vez.
+</div>
+
+<div class="card">
+  <div class="op">Apontamentos a corrigir:</div>
+  <div class="apt">OP 06352101001 — T3: 20.200 kg (12/06 → 11/06)</div>
+  <div class="apt">OP 06354901001 — T3: 19.000 kg (12/06 → 11/06)</div>
+  <div class="apt">OP 06352501001 — T3: 44.323 kg (12/06 → 11/06)</div>
+  <div class="apt">OP 06352201001 — T1: 12.667 kg turno 0 (12/06 → 11/06)</div>
+  <div class="apt">OP 06352201001 — T1: 12.667 kg turno 1 (12/06 → 11/06)</div>
+</div>
+
+<div class="card">
+  <div class="op">OPs que serão atualizadas:</div>
+  <div class="apt">06352101001 — realPorData[11/06] += 20.200 | realPorData[12/06] removido</div>
+  <div class="apt">06354901001 — realPorData[11/06] += 19.000 | realPorData[12/06] removido</div>
+  <div class="apt">06352501001 — realPorData[11/06] = 191.995 | realPorData[12/06] removido | t3=44.323 | real=191.995</div>
+  <div class="apt">06352201001 (-OumVOdvN3ByKCohRaQH) — real=62.524 | realPorData[11/06]=62.524</div>
+  <div class="apt">06352201001 (-OurFx9sJ7vWZ9Xa4GSr) — real=12.667 | realPorData[11/06]=12.667 | realPorData[12/06] removido</div>
+</div>
+
+<button class="btn" id="btnAplicar" onclick="aplicarTudo()">✔ Aplicar todas as correções</button>
+<div class="ok" id="ok"></div>
+<div class="err" id="err"></div>
+<div id="log">Aguardando...</div>
+
+<script>
+firebase.initializeApp({
+  apiKey:"AIzaSyB52cXfvtmY2xXu9vMkMPhCWU-rp6NXhxc",
+  authDomain:"sistema-ensaque.firebaseapp.com",
+  databaseURL:"https://sistema-ensaque-default-rtdb.firebaseio.com"
+});
+var DB=firebase.database();
+function log(m){var el=document.getElementById('log');el.textContent+='\n'+m;}
+
+function aplicarTudo(){
+  var btn=document.getElementById('btnAplicar');
+  btn.disabled=true; btn.textContent='Aplicando...';
+  log('Iniciando correcoes...');
+
+  var promises=[];
+
+  // 1. Corrige data dos 5 apontamentos: 2026-06-12 → 2026-06-11
+  var apts=[
+    '-OutCMxi2Rf1JzggimN2', // 06352101001 T3 20200
+    '-OutCzRLt-npqht88EK-', // 06354901001 T3 19000
+    '-OutD4LXwwWwi3CZtdJn', // 06352501001 T3 44323
+    '-OutV9rBoek8FX67SPlZ', // 06352201001 T1 12667 t0
+    '-OutV9rDZEFpTMrRctXl'  // 06352201001 T1 12667 t1
+  ];
+  apts.forEach(function(key){
+    promises.push(
+      DB.ref('apontamentos/'+key).update({data:'2026-06-11'}).then(function(){
+        log('Apontamento '+key+': data → 2026-06-11');
+      })
+    );
+  });
+
+  // 2. Atualiza realPorData e contadores das OPs
+
+  // 06352101001 (-Ous1m4wG66Wmd4Zn5WY)
+  // rpd[11]=20200, rpd[12]=null, t3=20200, real=20200
+  promises.push(
+    DB.ref('ops/-Ous1m4wG66Wmd4Zn5WY').update({
+      t1:0, t2:0, t3:20200,
+      t1sc:0, t2sc:0, t3sc:20200,
+      real:20200,
+      'realPorData/2026-06-11':20200,
+      'realPorData/2026-06-12':null
+    }).then(function(){log('06352101001: real=20200 rpd[11]=20200 rpd[12]=null');})
+  );
+
+  // 06354901001 (-Ouqi9xL8K_L_Hv1mU4b)
+  // rpd[11]=19000, rpd[12]=null, t3=19000, real=19000
+  promises.push(
+    DB.ref('ops/-Ouqi9xL8K_L_Hv1mU4b').update({
+      t1:0, t2:0, t3:19000,
+      t1sc:0, t2sc:0, t3sc:19000,
+      real:19000,
+      'realPorData/2026-06-11':19000,
+      'realPorData/2026-06-12':null
+    }).then(function(){log('06354901001: real=19000 rpd[11]=19000 rpd[12]=null');})
+  );
+
+  // 06352501001 (-OumWIQPdGP6Fn07nR5Z)
+  // T1=65495 T2=82177 T3=44323 tudo dia 11
+  // rpd[11]=191995, rpd[12]=null
+  promises.push(
+    DB.ref('ops/-OumWIQPdGP6Fn07nR5Z').update({
+      t1:65495, t2:82177, t3:44323,
+      t1sc:65495, t2sc:82177, t3sc:44323,
+      real:191995,
+      'realPorData/2026-06-11':191995,
+      'realPorData/2026-06-12':null
+    }).then(function(){log('06352501001: real=191995 rpd[11]=191995 rpd[12]=null');})
+  );
+
+  // 06352201001 (-OumVOdvN3ByKCohRaQH) — a grande
+  // T1=29754 T2=32770 real=62524 rpd[11]=62524
+  promises.push(
+    DB.ref('ops/-OumVOdvN3ByKCohRaQH').update({
+      t1:29754, t2:32770, t3:0,
+      t1sc:29754, t2sc:32770, t3sc:0,
+      real:62524,
+      'realPorData/2026-06-11':62524,
+      'realPorData/2026-06-12':null
+    }).then(function(){log('06352201001 (grande): real=62524 rpd[11]=62524');})
+  );
+
+  // 06352201001 (-OurFx9sJ7vWZ9Xa4GSr) — a pequena com 12667
+  // real=12667 rpd[11]=12667 rpd[12]=null
+  promises.push(
+    DB.ref('ops/-OurFx9sJ7vWZ9Xa4GSr').update({
+      t1:12667, t2:0, t3:0,
+      t1sc:506, t2sc:0, t3sc:0,
+      real:12667,
+      'realPorData/2026-06-11':12667,
+      'realPorData/2026-06-12':null
+    }).then(function(){log('06352201001 (pequena): real=12667 rpd[11]=12667 rpd[12]=null');})
+  );
+
+  Promise.all(promises).then(function(){
+    log('\n✔ TODAS AS CORRECOES APLICADAS!');
+    var ok=document.getElementById('ok');
+    ok.textContent='✔ Concluído! 5 apontamentos movidos para 11/06 e 5 OPs atualizadas.';
+    ok.style.display='block';
+    btn.textContent='✔ Concluído';
+    btn.style.background='#739630';
+  }).catch(function(e){
+    log('ERRO: '+e.message);
+    var err=document.getElementById('err');
+    err.textContent='Erro: '+e.message;
+    err.style.display='block';
+    btn.disabled=false;
+    btn.textContent='Tentar novamente';
+  });
+}
+</script>
+</body>
+</html>
