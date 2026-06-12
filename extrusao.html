@@ -415,6 +415,32 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
 </div>
 
 <!-- MODAL CONFIRMAR SETUP APÓS TROCA DE OP -->
+<!-- MODAL ACRESCENTAR APONTAMENTO NA CONFERÊNCIA -->
+<div class="ov" id="m-conf-apt" style="display:none" onclick="if(event.target===this)fM('m-conf-apt')">
+  <div class="modal" style="max-width:400px">
+    <div class="mh">+ Acrescentar Apontamento</div>
+    <div style="font-size:12px;color:#4a664a;margin-bottom:12px" id="conf-apt-info"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label style="font-size:11px;font-weight:700;color:#4a664a;display:block;margin-bottom:3px">HORA INÍCIO</label>
+        <input class="fi" type="time" id="conf-apt-hi"></div>
+      <div><label style="font-size:11px;font-weight:700;color:#4a664a;display:block;margin-bottom:3px">HORA FIM</label>
+        <input class="fi" type="time" id="conf-apt-hf"></div>
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;font-weight:700;color:#4a664a;display:block;margin-bottom:3px">KG PRODUZIDOS</label>
+      <input class="fi" type="number" id="conf-apt-kg" min="0" placeholder="0">
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;font-weight:700;color:#4a664a;display:block;margin-bottom:3px">OBSERVAÇÃO (opcional)</label>
+      <input class="fi" id="conf-apt-obs" placeholder="Opcional...">
+    </div>
+    <div class="mr">
+      <button class="btn-cancel" onclick="fM('m-conf-apt')">Cancelar</button>
+      <button class="btn-ok" onclick="confSalvarNovoApt()">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <div class="ov" id="m-confirma-setup">
   <div class="modal" style="max-width:380px">
     <div class="mh">⚙️ Setup — <span id="csetup-linha-nome"></span></div>
@@ -3198,7 +3224,7 @@ function dashExportarPDF(){
   toast("PDF gerado!","ok");
 }
 
-document.addEventListener("keydown",function(e){if(e.key==="Escape")["m-apt","m-para","m-setup","m-resumo","m-sel-op","m-concluir-sel","m-confirma-setup","m-admin-corr","m-admin-lista","m-op-apts","m-confirma-troca","m-usuarios","m-logs","m-params"].forEach(fM);});
+document.addEventListener("keydown",function(e){if(e.key==="Escape")["m-apt","m-para","m-setup","m-resumo","m-sel-op","m-concluir-sel","m-confirma-setup","m-admin-corr","m-admin-lista","m-op-apts","m-confirma-troca","m-usuarios","m-logs","m-params","m-conf-apt"].forEach(fM);});
 
 // abrirProxOp removido — fluxo substituído por concluirOpOperador → abrirSelecaoProximaOp
 
@@ -3986,6 +4012,7 @@ function confRenderizar(dt, ops, apts, paradas, soP){
         h+='<span class="conf-item-desc">'+(a.desc||a.cod||'')+(a.obs?' — '+a.obs:'')+'</span>';
         h+='<span class="conf-item-ef" style="color:'+corEf+'">'+ef+'% meta</span>';
         h+='<button data-fk="'+a.fbKey+'" onclick="confEditarApt(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:3px 10px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0">✏️ Corrigir</button>';
+        h+='<button data-fk="'+a.fbKey+'" data-kg="'+a.real+'" data-op="'+a.opFbKey+'" onclick="confExcluirApt(this)" style="background:#c0392b;color:#fff;border:none;padding:3px 10px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;margin-left:4px;flex-shrink:0">🗑</button>';
         h+='</div>';
       });
       parasT.forEach(function(p){
@@ -3995,6 +4022,7 @@ function confRenderizar(dt, ops, apts, paradas, soP){
         h+='<span class="conf-item-desc">'+p.descricao+(p.obs?' — '+p.obs:'')+'</span>';
         h+='<span class="conf-item-ef" style="color:#4a664a;font-size:10px">C'+p.codMotivo+'</span>';
         h+='<button data-fk="'+p.fbKey+'" onclick="confEditarParada(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:3px 10px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0">✏️ Corrigir</button>';
+        h+='<button data-fk="'+p.fbKey+'" data-min="'+p.minutos+'" onclick="confExcluirParada(this)" style="background:#c0392b;color:#fff;border:none;padding:3px 10px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;margin-left:4px;flex-shrink:0">🗑</button>';
         h+='</div>';
       });
       h+='</div>'; // conf-turno-bloco
@@ -4008,6 +4036,9 @@ function confRenderizar(dt, ops, apts, paradas, soP){
     } else {
       h+='<button class="btn-conf-rev" data-fk="'+opFk+'" onclick="confMarcarRevisao(this.dataset.fk,true)">✔ Marcar como Revisado</button>';
     }
+    h+='<button data-fk="'+opFk+'" data-linha="'+opObj.linha+'" data-turno="'+opObj.turno+'" data-data="'+opObj.data+'" '+
+       'onclick="confAcrescentarApt(this)" '+
+       'style="background:#739630;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px">+ Apontamento</button>';
     h+='</div>';
 
     h+='</div>'; // conf-op-body
@@ -4662,6 +4693,121 @@ function exportarParadasMesPDF(){
 
   doc.save("Paradas_Mes_Linhas_"+cache.di+"_"+cache.df+".pdf");
   toast("PDF gerado!","ok");
+}
+
+// ── CONFERÊNCIA: ACRESCENTAR APONTAMENTO ─────────────────
+var _confAptCtx={};
+
+function confAcrescentarApt(btn){
+  var opFk=btn.dataset.fk;
+  var linha=btn.dataset.linha;
+  var turno=parseInt(btn.dataset.turno)||SES.turno;
+  var data=btn.dataset.data||G("conf-dt").value;
+  var op=CONF_DADOS.ops.find(function(o){return o.fbKey===opFk;});
+  _confAptCtx={opFk:opFk,linha:linha,turno:turno,data:data,op:op};
+  G("conf-apt-info").innerHTML=
+    '<strong>'+(op?op.id:opFk)+'</strong> — '+(op?op.desc||op.cod:'')+'<br>'+
+    '<span style="color:#739630">Linha: '+nomeCurto(linha)+'  |  Turno: '+turno+'  |  Data: '+data+'</span>';
+  G("conf-apt-hi").value="";
+  G("conf-apt-hf").value="";
+  G("conf-apt-kg").value="";
+  G("conf-apt-obs").value="";
+  aM("m-conf-apt");
+}
+
+function confSalvarNovoApt(){
+  var hi=G("conf-apt-hi").value;
+  var hf=G("conf-apt-hf").value;
+  var kg=parseFloat(G("conf-apt-kg").value)||0;
+  var obs=G("conf-apt-obs").value.trim();
+  var ctx=_confAptCtx;
+
+  if(!hi||!hf){toast("Informe hora início e fim","err");return;}
+  if(hf<=hi){toast("Hora fim deve ser maior que hora início","err");return;}
+  if(kg<=0){toast("Informe os kg produzidos","err");return;}
+  if(!ctx.opFk||!ctx.linha){toast("Contexto inválido","err");return;}
+
+  // Validar sobreposição com apts existentes da linha/turno/data
+  var aptsExist=(CONF_DADOS.apts||[]).filter(function(a){
+    return a.linha===ctx.linha && a.turno===ctx.turno && a.data===ctx.data;
+  });
+  var sobrepoe=aptsExist.find(function(a){
+    return hi<a.horaFim && hf>a.horaIni;
+  });
+  if(sobrepoe){
+    toast("Conflito com apontamento das "+sobrepoe.horaIni+" às "+sobrepoe.horaFim,"err");
+    return;
+  }
+
+  var op=ctx.op||{};
+  var metaH=getMetaHora(op.cod||"",ctx.linha);
+  var mins=(function(){
+    var hi2=hi.split(":"),hf2=hf.split(":");
+    return (parseInt(hf2[0])*60+parseInt(hf2[1]))-(parseInt(hi2[0])*60+parseInt(hi2[1]));
+  })();
+  var metaApt=metaH?Math.round(metaH*mins/60):0;
+
+  var apt={
+    id:uid(), linha:ctx.linha, opFbKey:ctx.opFk,
+    opNum:op.id||"", cod:op.cod||"", desc:op.desc||"",
+    turno:ctx.turno, data:ctx.data,
+    horaIni:hi, horaFim:hf,
+    real:kg, metaH:metaApt,
+    obs:obs, acrescentado:true,
+    acrescentadoPor:SES.login, acrescentadoTs:agora()
+  };
+
+  if(!DB){toast("Firebase não conectado","err");return;}
+  DB.ref("extrusao_apts").push(apt).then(function(){
+    // Atualiza realExtrusao da OP
+    DB.ref("ops/"+ctx.opFk+"/realExtrusao").transaction(function(atual){
+      return (Number(atual)||0)+kg;
+    });
+    toast("Apontamento acrescentado!","ok");
+    registrarLog("conf_apt","Acrescentou apontamento "+hi+"-"+hf+" "+kg+"kg na OP "+(op.id||ctx.opFk),ctx.linha);
+    fM("m-conf-apt");
+    confGerar();
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+// ── CONFERÊNCIA: EXCLUIR APONTAMENTO ─────────────────────
+function confExcluirApt(btn){
+  var fbKey=btn.dataset.fk;
+  var kg=parseFloat(btn.dataset.kg)||0;
+  var opFk=btn.dataset.op;
+  var apt=CONF_DADOS.apts.find(function(a){return a.fbKey===fbKey;});
+  var info=apt?(apt.horaIni+" → "+apt.horaFim+" | "+kg+" kg"):"este apontamento";
+  if(!confirm("Excluir "+info+"?
+
+Esta ação não pode ser desfeita.")) return;
+  if(!DB){toast("Firebase não conectado","err");return;}
+  DB.ref("extrusao_apts/"+fbKey).remove().then(function(){
+    // Desconta do realExtrusao da OP
+    if(opFk && kg>0){
+      DB.ref("ops/"+opFk+"/realExtrusao").transaction(function(atual){
+        return Math.max(0,(Number(atual)||0)-kg);
+      });
+    }
+    toast("Apontamento excluído","ok");
+    registrarLog("conf_apt","Excluiu apontamento "+(apt?apt.horaIni+"-"+apt.horaFim+" "+kg+"kg":"fbKey:"+fbKey),apt?apt.linha:"");
+    confGerar();
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+// ── CONFERÊNCIA: EXCLUIR PARADA ───────────────────────────
+function confExcluirParada(btn){
+  var fbKey=btn.dataset.fk;
+  var parada=CONF_DADOS.paradas.find(function(p){return p.fbKey===fbKey;});
+  var info=parada?(parada.horaIni+" → "+(parada.horaFim||"aberta")+" | "+(parada.descricao||"sem motivo")):"esta parada";
+  if(!confirm("Excluir "+info+"?
+
+Esta ação não pode ser desfeita.")) return;
+  if(!DB){toast("Firebase não conectado","err");return;}
+  DB.ref("extrusao_paradas/"+fbKey).remove().then(function(){
+    toast("Parada excluída","ok");
+    registrarLog("conf_parada","Excluiu parada "+(parada?parada.horaIni+" "+parada.descricao:"fbKey:"+fbKey),parada?parada.linha:"");
+    confGerar();
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 </script>
 </body>
