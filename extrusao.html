@@ -254,6 +254,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       <div class="turno-item"><div class="turno-val" id="tur-ef">100%</div><div class="turno-lbl">Eficiência</div></div>
       <button class="btn-resumo" onclick="abrirDashboard()">📊 Dashboard</button>
       <button class="btn-resumo" onclick="abrirResumo()">📋 Resumo Turno</button>
+      <button class="btn-resumo" id="btn-conferencia" onclick="abrirConferencia()" style="display:none">🔍 Conferência</button>
     </div>
 
     <div style="background:#fff3cd;border:2px solid #d29922;border-radius:10px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
@@ -2734,6 +2735,26 @@ function admCloseOp(fbKey,id){
 // ── DASHBOARD ─────────────────────────────────────────────
 var DASH_CHARTS={};
 
+function abrirConferencia(){
+  var sec=G("secao-conferencia");
+  if(!sec) return;
+  var visivel=sec.style.display!=="none";
+  // Fecha dashboard e resumo se abertos
+  var dash=G("modal-dashboard");
+  if(dash) dash.style.display="none";
+  if(visivel){
+    sec.style.display="none";
+    G("btn-conferencia").style.background="";
+    G("btn-conferencia").style.color="";
+  } else {
+    sec.style.display="block";
+    G("btn-conferencia").style.background="#024f2b";
+    G("btn-conferencia").style.color="#fff";
+    sec.scrollIntoView({behavior:"smooth",block:"start"});
+    confGerar();
+  }
+}
+
 function abrirDashboard(){
   var dt=DT_FILA||hoje();
   G("dash-di").value=dt;
@@ -3849,7 +3870,10 @@ function confInit(){
   // Inicializa a secao de conferencia se for admin
   if(!SES||SES.perfil!=="admin") return;
   var sec=G("secao-conferencia");
-  if(sec) sec.style.display="block";
+  if(sec) sec.style.display="none"; // controlado por abrirConferencia()
+  // Mostrar botão de conferência no topo para admin
+  var btnConf=G("btn-conferencia");
+  if(btnConf) btnConf.style.display="inline-flex";
   // Data padrao: ontem
   var dtOntem=new Date(); dtOntem.setDate(dtOntem.getDate()-1);
   var dtStr=dtOntem.toISOString().slice(0,10);
@@ -3870,12 +3894,15 @@ function confGerar(){
   var promParas=DB.ref("extrusao_paradas").orderByChild("data").equalTo(dt).once("value");
   var promOps=DB.ref("ops").orderByChild("data").equalTo(dt).once("value");
   var promRev=DB.ref("conf_revisoes/"+dt).once("value");
+  var promConcl=DB.ref("extrusao_op_concluida").once("value");
 
-  Promise.all([promApts,promParas,promOps,promRev]).then(function(results){
+  Promise.all([promApts,promParas,promOps,promRev,promConcl]).then(function(results){
     CONF_DADOS.apts=[];
     CONF_DADOS.paradas=[];
     CONF_DADOS.ops=[];
     CONF_DADOS.revisoes={};
+    CONF_DADOS.opsConcluidas={};
+    if(results[4].exists()) results[4].forEach(function(c){ CONF_DADOS.opsConcluidas[c.key]=c.val(); });
 
     results[0].forEach(function(c){var a=c.val();a.fbKey=c.key;CONF_DADOS.apts.push(a);});
     results[1].forEach(function(c){var p=c.val();p.fbKey=c.key;CONF_DADOS.paradas.push(p);});
@@ -3975,10 +4002,23 @@ function confRenderizar(dt, ops, apts, paradas, soP){
     h+='<div class="conf-op-title">'+opId+(opDesc?' — '+opDesc:'')+(linhaLabel?' <span style="font-size:11px;color:#739630">'+linhaLabel+'</span>':'')+'</div>';
     h+='<div class="conf-op-meta">Prog: '+fN(opProg)+' kg · Realizado: <strong style="color:'+corAdh+'">'+fN(totalReal)+' kg ('+adh+'%)</strong> · Paradas: '+minH(minParas)+' · '+item.apts.length+' apontamentos</div>';
     h+='</div>';
+    // Status da OP na extrusão
+    var concExtrusao=CONF_DADOS.opsConcluidas&&CONF_DADOS.opsConcluidas[opFk];
+    var statusLabel=concExtrusao?'Concluída na Extrusão':'Em andamento';
+    var statusBg=concExtrusao?'#d4f0e4':'#e8f0fb';
+    var statusCor=concExtrusao?'#024f2b':'#185FA5';
     h+='<div class="conf-op-badges">';
     h+=(revisada
       ?'<span class="conf-revisado">✔ Revisado</span>'
       :'<span class="conf-pendente">⏳ Pendente</span>');
+    h+='<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:12px;background:'+statusBg+';color:'+statusCor+'">'+statusLabel+'</span>';
+    if(concExtrusao){
+      h+='<button data-fk="'+opFk+'" data-id="'+opId+'" onclick="event.stopPropagation();admReopenOp(this.dataset.fk,this.dataset.id)" '+
+         'style="background:#d29922;color:#fff;border:none;padding:3px 12px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">↩ Reabrir</button>';
+    } else {
+      h+='<button data-fk="'+opFk+'" data-id="'+opId+'" onclick="event.stopPropagation();confConcluirOp(this.dataset.fk,this.dataset.id)" '+
+         'style="background:#024f2b;color:#fff;border:none;padding:3px 12px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">✔ Concluir</button>';
+    }
     h+='</div>';
     h+='<span style="color:#4a664a;font-size:12px;margin-left:8px">▾</span>';
     h+='</div>';
@@ -4806,6 +4846,26 @@ Esta ação não pode ser desfeita.")) return;
   DB.ref("extrusao_paradas/"+fbKey).remove().then(function(){
     toast("Parada excluída","ok");
     registrarLog("conf_parada","Excluiu parada "+(parada?parada.horaIni+" "+parada.descricao:"fbKey:"+fbKey),parada?parada.linha:"");
+    confGerar();
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+function confConcluirOp(opFk, opId){
+  if(!confirm("Concluir OP "+opId+" na extrusão?")) return;
+  if(!DB){toast("Firebase não conectado","err");return;}
+  var dt=G("conf-dt").value||hoje();
+  var registro={linha:"admin",turno:SES.turno,data:dt,operador:SES.login,ts:agora()};
+  DB.ref("extrusao_op_concluida/"+opFk).set(registro).then(function(){
+    LINHAS_USER.forEach(function(l){
+      if(EST[l]){
+        EST[l].opConcluidaExt=EST[l].opConcluidaExt||{};
+        EST[l].opConcluidaExt[opFk]=registro;
+        if(EST[l].opAtiva===opFk){ EST[l].opAtiva=null; EST[l].opAtivaCache=null; }
+        renderLinhaCard(l);
+      }
+    });
+    toast("OP "+opId+" concluída na extrusão!","ok");
+    registrarLog("op_extrusao","Concluiu OP "+opId+" via conferência","-");
     confGerar();
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
