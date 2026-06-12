@@ -1466,7 +1466,7 @@ function renderOpCards(){
   var dt=G('op-fdt')?G('op-fdt').value:'';
   var lote=(G('op-flote')?G('op-flote').value:'').trim().toLowerCase();
   var ops=OPS.filter(function(o){
-    if(o.status!=='Liberada'&&o.status!=='Em andamento') return false;
+    if(o.status!=='Liberada'&&o.status!=='Em andamento'&&o.status!=='Reprogramada') return false;
     if(ln&&o.linha!==ln) return false;
     if(dt&&o.data!==dt) return false;
     if(lote&&(o.lote||'').toLowerCase().indexOf(lote)===-1) return false;
