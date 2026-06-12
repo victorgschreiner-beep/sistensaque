@@ -965,12 +965,13 @@ function renderDash(){
         opIdsComPerda[p.opId]=true;
       });
     }
-    // Fallback perda: só OPs sem perdas_diarias E sem realPorData (dados antigos)
-    // Evita somar perda acumulada de múltiplos dias
+    // Fallback perda: OPs sem perdas_diarias E sem realPorData (dados antigos)
+    // Exclui OPs reprogramadas sem producao no dia atual — perda pertence ao dia anterior
     ops.forEach(function(o){
-      if(!opIdsComPerda[o.fbKey] && !o.realPorData){
-        tperda+=Number(o.perda)||0;
-      }
+      if(opIdsComPerda[o.fbKey]) return; // ja contou via perdas_diarias
+      if(o.realPorData) return; // tem historico estruturado — nao usa fallback
+      if(o.reprogramadaDe && !(Number(o.real)||0)) return; // reprogramada sem real no novo dia
+      tperda+=Number(o.perda)||0;
     });
 
     var adh=tp?Math.min(Math.round(tr/tp*100),999):0;
