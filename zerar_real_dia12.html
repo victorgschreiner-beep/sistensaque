@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Zerar real OPs dia 12</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<style>
+body{font-family:system-ui,sans-serif;max-width:660px;margin:40px auto;padding:20px;background:#f4f6f4}
+h2{color:#024f2b}
+.aviso{background:#fff3cd;border:1px solid #ffe082;color:#856404;padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:18px}
+.card{background:#fff;border-radius:10px;padding:16px 20px;margin-bottom:14px;border:1px solid #c8d8c8}
+.apt{font-size:13px;color:#4a664a;padding:4px 0;border-bottom:1px solid #f0f4f0}
+.apt:last-child{border:none}
+.apt strong{color:#1a2e1a}
+.btn{background:#024f2b;color:#fff;border:none;padding:13px 20px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;width:100%;margin-top:14px}
+.btn:hover{background:#036b3a}
+.btn:disabled{background:#aaa}
+.ok{margin-top:10px;padding:10px;border-radius:7px;font-size:13px;font-weight:600;background:#d4f0e4;color:#024f2b;display:none}
+.err{margin-top:10px;padding:10px;border-radius:7px;font-size:13px;font-weight:600;background:#fde8e8;color:#c0392b;display:none}
+#log{background:#1a2e1a;color:#b6d46a;padding:16px;border-radius:8px;font-family:monospace;font-size:12px;min-height:80px;margin-top:16px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h2>🔧 Zerar real das OPs reprogramadas — Dia 12/06</h2>
+<div class="aviso">
+  Zera <strong>real, t1, t2, t3</strong> das OPs reprogramadas de 11→12/06.<br>
+  O histórico do dia 11 fica preservado em <strong>realPorData[11/06]</strong>.<br>
+  No dia 12 as OPs vão aparecer com <strong>real = 0</strong> prontas para novo apontamento.
+</div>
+
+<div class="card">
+  <div class="apt"><strong>06352201001</strong> — real atual: 62.524 kg → vai ficar 0</div>
+  <div class="apt"><strong>06352501001</strong> — real atual: 191.995 kg → vai ficar 0</div>
+  <div class="apt"><strong>06354901001</strong> — real atual: 19.000 kg → vai ficar 0</div>
+  <div class="apt"><strong>06352201001</strong> (2ª) — real atual: 12.667 kg → vai ficar 0</div>
+  <div class="apt"><strong>06352101001</strong> — real atual: 20.200 kg → vai ficar 0</div>
+</div>
+
+<button class="btn" id="btn" onclick="aplicar()">✔ Zerar real das 5 OPs</button>
+<div class="ok" id="ok"></div>
+<div class="err" id="err"></div>
+<div id="log">Aguardando...</div>
+
+<script>
+firebase.initializeApp({
+  apiKey:"AIzaSyB52cXfvtmY2xXu9vMkMPhCWU-rp6NXhxc",
+  authDomain:"sistema-ensaque.firebaseapp.com",
+  databaseURL:"https://sistema-ensaque-default-rtdb.firebaseio.com"
+});
+var DB=firebase.database();
+function log(m){document.getElementById('log').textContent+='\n'+m;}
+
+function aplicar(){
+  var btn=document.getElementById('btn');
+  btn.disabled=true; btn.textContent='Aplicando...';
+  log('Zerando real das OPs reprogramadas...');
+
+  var ops=[
+    {key:'-OumVOdvN3ByKCohRaQH', id:'06352201001 (grande)'},
+    {key:'-OumWIQPdGP6Fn07nR5Z', id:'06352501001'},
+    {key:'-Ouqi9xL8K_L_Hv1mU4b', id:'06354901001'},
+    {key:'-OurFx9sJ7vWZ9Xa4GSr', id:'06352201001 (pequena)'},
+    {key:'-Ous1m4wG66Wmd4Zn5WY', id:'06352101001'}
+  ];
+
+  var promises=ops.map(function(o){
+    return DB.ref('ops/'+o.key).update({
+      real:0, t1:0, t2:0, t3:0,
+      t1sc:0, t2sc:0, t3sc:0
+    }).then(function(){
+      log('OK: '+o.id+' → real=0');
+    });
+  });
+
+  Promise.all(promises).then(function(){
+    log('\n✔ CONCLUIDO! 5 OPs zeradas.');
+    var ok=document.getElementById('ok');
+    ok.textContent='✔ Concluído! As 5 OPs agora têm real=0 no dia 12. O histórico do dia 11 está preservado.';
+    ok.style.display='block';
+    btn.textContent='✔ Aplicado';
+    btn.style.background='#739630';
+  }).catch(function(e){
+    log('ERRO: '+e.message);
+    var err=document.getElementById('err');
+    err.textContent='Erro: '+e.message;
+    err.style.display='block';
+    btn.disabled=false;
+    btn.textContent='Tentar novamente';
+  });
+}
+</script>
+</body>
+</html>

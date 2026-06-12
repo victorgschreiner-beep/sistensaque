@@ -1188,7 +1188,10 @@ function renderOPs(){
   if(st) ops=ops.filter(function(o){return o.status===st;});
   if(ln) ops=ops.filter(function(o){return o.linha===ln;});
   if(tp) ops=ops.filter(function(o){return o.tipo===tp;});
-  if(dt) ops=ops.filter(function(o){return o.data===dt;});
+  if(dt) ops=ops.filter(function(o){
+    // Inclui OPs do dia E OPs reprogramadas a partir desse dia
+    return o.data===dt || o.reprogramadaDe===dt;
+  });
   if(lote) ops=ops.filter(function(o){return (o.lote||'').toLowerCase().indexOf(lote)!==-1;});
 
   if(!ops.length){
