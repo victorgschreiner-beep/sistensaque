@@ -1872,11 +1872,27 @@ function abrirApt(linha){
   }
 
   // BLOQUEIO: nao permite apontar sem OP ativa
-  if(!op){
+  if(!opFk){
     toast("Selecione uma OP antes de apontar!","err");
     setTimeout(function(){abrirSelOp(linha);},300);
     return;
   }
+
+  // OP pode ser do dia anterior — usa cache se não estiver em OPS[]
+  var opReal=op||e.opAtivaCache||null;
+  if(!opReal){
+    // Busca no Firebase e reabre o modal
+    DB.ref("ops/"+opFk).once("value",function(s){
+      if(s.exists()){
+        EST[linha].opAtivaCache=s.val();
+        EST[linha].opAtivaCache.fbKey=opFk;
+      }
+      abrirApt(linha);
+    });
+    return;
+  }
+  op=opReal;
+  metaH=getMetaHora(op.cod,linha);
 
   G("apt-linha-nome").textContent=linha;
   G("apt-op-info").innerHTML="<div class=\"ib-num\">OP: "+op.id+"</div><div class=\"ib-desc\">"+(op.desc||op.cod)+"</div><div class=\"ib-sub\">Meta: "+fN(metaH)+" kg/h</div>";
@@ -1927,7 +1943,7 @@ function salvarApt(){
   var real=parseInt(G("apt-real").value)||0;
   if(!hi||!hf){toast("Informe hora inicial e final","err");return;}
   var e=EST[linhaAtiva]||{};
-  var op=e.opAtiva?OPS.find(function(o){return o.fbKey===e.opAtiva;}):null;
+  var op=e.opAtiva?(OPS.find(function(o){return o.fbKey===e.opAtiva;})||e.opAtivaCache||null):null;
   if(!op){toast("Nenhuma OP ativa — selecione a OP antes de salvar","err");return;}
   var metaH=op?getMetaHora(op.cod,linhaAtiva):0;
   var turnoApt=turnoDeHora(hi);
