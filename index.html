@@ -901,38 +901,46 @@ function renderDash(){
   var ln=G('dash-fln')?G('dash-fln').value:'';
   var turnoFiltro=G('dash-turno')?parseInt(G('dash-turno').value)||0:0;
 
-  // OPs do dia — inclui OPs programadas para o dia E OPs reprogramadas
-  // que tenham producao registrada nesse dia em realPorData
+  // OPs do dia:
+  // - OPs com data===dt (programadas para esse dia, incluindo reprogramadas que vieram de outro dia)
+  // - OPs com data!=dt mas que tem reprogramadaDe===dt (foram reprogramadas A PARTIR desse dia)
+  //   → aparecem no dia original com prog original, e realizado via realPorData[dt]
   var vistosFbKey={};
   var ops=[];
   OPS.forEach(function(o){
     if(ln && o.linha!==ln) return;
     if(vistosFbKey[o.fbKey]) return;
-    var rpd=o.realPorData||{};
-    var eraDesteDia=o.data===dt;
-    var produziuNesteDia=rpd[dt]>0;
-    // Inclui se: era programada para o dia OU produziu nesse dia (mesmo reprogramada depois)
-    if(!eraDesteDia && !produziuNesteDia) return;
+    var eraDesteDia = o.data===dt;
+    var foiReprogramadaDesteDia = o.reprogramadaDe===dt;
+    if(!eraDesteDia && !foiReprogramadaDesteDia) return;
     vistosFbKey[o.fbKey]=true;
     ops.push(o);
   });
 
-  // PROGRAMADO — soma prog original do dia
-  // Para OPs reprogramadas que produziram nesse dia: usa progOriginal se disponivel
+  // PROGRAMADO:
+  // - OPs com data===dt: usa prog atual
+  // - OPs reprogramadas A PARTIR desse dia (reprogramadaDe===dt): usa progOriginal
+  //   para mostrar o que estava programado originalmente nesse dia
   var tp=0;
   ops.forEach(function(o){
-    var rpd=o.realPorData||{};
     if(o.data===dt){
-      // OP ainda nesse dia — usa prog atual
       tp+=Number(o.prog)||0;
-    } else if(rpd[dt]>0){
-      // OP reprogramada mas produziu nesse dia — usa progOriginal
-      tp+=Number(o.progOriginal)||Number(o.prog)||0;
+    } else if(o.reprogramadaDe===dt){
+      // Prog original = progOriginal + realAcumulado anterior + o que foi feito nesse dia
+      // = o que estava programado quando a OP era desse dia
+      var progOrig=Number(o.progOriginal)||0;
+      var realAcum=Number(o.realAcumulado)||0;
+      var rpd=o.realPorData||{};
+      var realDia=Number(rpd[dt])||0;
+      // Prog do dia = saldo que sobrou para esse dia = progOrig - acumulado anterior
+      tp+=Math.max(progOrig-realAcum+realDia,0);
     }
   });
 
-  // REALIZADO — para OPs do dia usa realPorData[dt] se disponivel, senao op.real
-  // Para OPs reprogramadas que produziram nesse dia, usa realPorData[dt]
+  // REALIZADO:
+  // - OPs com data===dt: usa realPorData[dt] se existe, senao op.real
+  // - OPs reprogramadas a partir desse dia: usa APENAS realPorData[dt]
+  //   (nunca op.real pois esse ja e do novo dia)
   var aptsPorOp={};
   var dadosPorTurno={
     1:{real:0,perda:0,sc:0,bg:0,kg:0},
@@ -942,35 +950,33 @@ function renderDash(){
 
   ops.forEach(function(o){
     var rpd=o.realPorData||{};
-    // Real desse dia: prefere realPorData[dt], fallback para op.real se op.data===dt
-    var realOp=rpd[dt]>0?Number(rpd[dt]):(o.data===dt?(Number(o.real)||0):0);
+    var realOp;
+    if(o.reprogramadaDe===dt){
+      // Reprogramada a partir desse dia — usa SO realPorData[dt], nunca op.real
+      realOp=Number(rpd[dt])||0;
+    } else if(o.data===dt){
+      // OP programada para esse dia — usa realPorData[dt] se existe, senao op.real
+      // Mas se tem reprogramadaDe preenchido (veio de outro dia), usa so realPorData[dt]
+      realOp=o.reprogramadaDe?Number(rpd[dt])||0:(Number(rpd[dt])||Number(o.real)||0);
+    } else {
+      realOp=0;
+    }
     if(realOp<=0) return;
     aptsPorOp[o.fbKey]=realOp;
-    // Para breakdown por turno: OPs reprogramadas nao tem t1/t2/t3 do dia anterior
-    // Usamos o realOp total sem breakdown de turno para essas
-    var foiReprogramada=o.data!==dt;
     if(turnoFiltro>0){
-      var vT=foiReprogramada?0:(Number(o['t'+turnoFiltro])||0);
-      if(foiReprogramada && turnoFiltro===0) vT=realOp;
+      var vT=Number(o['t'+turnoFiltro])||0;
       dadosPorTurno[turnoFiltro].real+=vT;
       if(o.tipo==='SC') dadosPorTurno[turnoFiltro].sc+=Math.round(vT/25);
       else if(o.tipo==='BG') dadosPorTurno[turnoFiltro].bg+=Math.round(vT/750);
       else dadosPorTurno[turnoFiltro].kg+=vT;
     } else {
-      if(foiReprogramada){
-        // Nao tem t1/t2/t3 do dia anterior — conta no total mas nao no breakdown
-        if(o.tipo==='SC') dadosPorTurno[1].sc+=Math.round(realOp/25);
-        else if(o.tipo==='BG') dadosPorTurno[1].bg+=Math.round(realOp/750);
-        else dadosPorTurno[1].kg+=realOp;
-      } else {
-        [1,2,3].forEach(function(t){
-          var v=Number(o['t'+t])||0;
-          dadosPorTurno[t].real+=v;
-          if(o.tipo==='SC') dadosPorTurno[t].sc+=Math.round(v/25);
-          else if(o.tipo==='BG') dadosPorTurno[t].bg+=Math.round(v/750);
-          else dadosPorTurno[t].kg+=v;
-        });
-      }
+      [1,2,3].forEach(function(t){
+        var v=Number(o['t'+t])||0;
+        dadosPorTurno[t].real+=v;
+        if(o.tipo==='SC') dadosPorTurno[t].sc+=Math.round(v/25);
+        else if(o.tipo==='BG') dadosPorTurno[t].bg+=Math.round(v/750);
+        else dadosPorTurno[t].kg+=v;
+      });
     }
   });
 
