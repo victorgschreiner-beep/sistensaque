@@ -396,6 +396,16 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="ch"><span class="ct">Produtos</span><div style="display:flex;gap:8px"><button class="btn bsm" style="background:#739630;border-color:#739630;color:#fff" onclick="importarProdutos()">&#8659; Importar (432)</button><button class="btn bp bsm" onclick="abrirNovoProd()">+ Novo</button></div></div>
     <div class="tw"><table><thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th></tr></thead><tbody id="prodbody"></tbody></table></div>
   </div>
+  <div class="card" style="border-left:4px solid #d29922">
+    <div class="ch">
+      <span class="ct" style="color:#d29922">🔧 Manutencao — Corrigir OPs Reprogramadas</span>
+      <button class="btn bsm" style="background:#d29922;border-color:#d29922;color:#fff" onclick="corrigirOpsReprogramadas()">Verificar e Corrigir</button>
+    </div>
+    <div style="font-size:12px;color:#4a664a;margin-bottom:10px">
+      Corrige OPs que foram reprogramadas antes da versao atual e ainda tem os contadores de turno (T1/T2/T3) com valores do dia anterior. O sistema recalcula esses contadores com base apenas nos apontamentos da data nova da OP.
+    </div>
+    <div id="corr-reprog-resultado" style="font-size:12px;color:#024f2b"></div>
+  </div>
 </div>
 
 </div>
@@ -779,7 +789,14 @@ function go(s,btn){
     else if(s==='ops') renderOPs();
     else if(s==='fila'){ renderFila(); }
     else if(s==='fila-op'){ renderFilaOp(); }
-    else if(s==='operador') renderOpCards();
+    else if(s==='operador'){
+      // Define data do filtro baseada no turno do operador — T1 após 21h vê amanhã
+      var opFdtEl=G('op-fdt');
+      if(opFdtEl && SES && SES.turno){
+        opFdtEl.value=dataTurno(SES.turno);
+      }
+      renderOpCards();
+    }
     else if(s==='exportar'){ popOPSel(); var m=hoje().slice(0,7); G('xdi').value=m+'-01'; G('xdf').value=hoje(); }
     else if(s==='admin'){ loadUsers(); loadLog(); loadProds(); }
   }
@@ -844,6 +861,8 @@ function iniciarApp(){
   });
 
   // Navega para tela inicial
+  // Define data do filtro antes de renderizar cards do operador
+  if(SES.turno && G('op-fdt')) G('op-fdt').value=dataTurno(SES.turno);
   if(SES.perfil==='operador') go('operador',G('nb-op'));
   else if(SES.perfil==='supervisor') go('dashboard',G('nb-dash'));
   else go('dashboard',G('nb-dash'));
@@ -1993,16 +2012,43 @@ function reprogramarOP(fbKey){
     'A OP será movida para '+dtNova+' mantendo o histórico de apontamentos.'
   )) return;
 
+  // Saldo restante = novo prog do dia
+  var saldo=Math.max((Number(op.prog)||0)-(Number(op.real)||0),0);
+  var fatorSc=fator;
+  var saldoStr=op.tipo!=='KG'?fN(Math.round(saldo/fatorSc))+' '+(op.tipo==='SC'?'sc':'bg')+' ('+fN(saldo)+' kg)':fN(saldo)+' kg';
+
+  if(!confirm(
+    'Reprogramar OP '+op.id+' para '+dtNova+'?\n\n'+
+    'Programado original: '+fN(op.prog)+' kg\n'+
+    'Ja realizado:        '+fN(op.real)+' kg\n'+
+    'Saldo (novo prog):   '+saldoStr+'\n\n'+
+    'O novo dia iniciara com prog = saldo restante e real zerado.\n'+
+    'Historico completo preservado em realPorData.'
+  )) return;
+
   ld(true,'Reprogramando...');
-  DB.ref('ops/'+fbKey).update({
+
+  // Preserva progOriginal apenas na primeira reprogramacao
+  var upd={
     data:dtNova,
     status:'Reprogramada',
     reprogramadaDe:dtAtual,
-    reprogramadaEm:agora()
-  }).then(function(){
+    reprogramadaEm:agora(),
+    // Novo prog = saldo restante
+    prog:saldo,
+    // Zera real e contadores — novo dia comeca do zero
+    real:0, t1:0, t2:0, t3:0, t1sc:0, t2sc:0, t3sc:0,
+    perda:0
+  };
+  // Preserva o prog original para rastreabilidade (so grava uma vez)
+  if(!op.progOriginal) upd.progOriginal=Number(op.prog)||0;
+  // Acumula historico de reprogramacoes
+  upd.realAcumulado=(Number(op.realAcumulado)||0)+(Number(op.real)||0);
+
+  DB.ref('ops/'+fbKey).update(upd).then(function(){
     ld(false);
-    toast('OP '+op.id+' reprogramada para '+dtNova,'ok');
-    addLog('REPROGRAMAR',op.id+' | '+dtAtual+' → '+dtNova);
+    toast('OP '+op.id+' reprogramada — novo prog: '+saldoStr,'ok');
+    addLog('REPROGRAMAR',op.id+' | '+dtAtual+' → '+dtNova+' | saldo: '+fN(saldo)+' kg | acum: '+fN(upd.realAcumulado)+' kg');
   }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
 }
 
@@ -3459,6 +3505,111 @@ function salvarProd(){
 // ============================================================
 // FILA POR MAQUINA — PCP (drag and drop)
 // ============================================================
+// == MANUTENCAO: corrigir OPs reprogramadas com t1/t2/t3 sujos ==
+function corrigirOpsReprogramadas(){
+  if(!DB){toast('Firebase nao conectado','err');return;}
+  var res=G('corr-reprog-resultado');
+  if(res) res.innerHTML='<span style="color:#d29922">Verificando...</span>';
+
+  // Pega todas OPs com status Reprogramada ou Em andamento que tenham reprogramadaDe
+  // (foram reprogramadas em algum momento)
+  var candidatas=OPS.filter(function(o){
+    return (o.status==='Reprogramada'||o.status==='Em andamento'||o.status==='Liberada')
+      && o.reprogramadaDe; // so as que passaram por reprogramacao
+  });
+
+  if(!candidatas.length){
+    if(res) res.innerHTML='<span style="color:#024f2b">Nenhuma OP reprogramada encontrada.</span>';
+    return;
+  }
+
+  var log=[];
+  var promises=[];
+  var verificadas=0;
+  var corrigidas=0;
+
+  // Para cada OP candidata: busca apontamentos com data === op.data (data nova)
+  // e reconstroi t1/t2/t3 apenas com esses
+  var pendentes=candidatas.length;
+
+  candidatas.forEach(function(op){
+    var fbKey=op.fbKey;
+    var dtNova=op.data; // data atual (para onde foi reprogramada)
+    var fator=op.tipo==='SC'?25:op.tipo==='BG'?750:1;
+
+    DB.ref('apontamentos').orderByChild('opId').equalTo(fbKey).once('value').then(function(snap){
+      var t1Nova=0, t2Nova=0, t3Nova=0;
+      if(snap.exists()){
+        snap.forEach(function(c){
+          var a=c.val();
+          // So conta apontamentos da data nova e nao substituidos
+          if(a.data===dtNova && !a.substituido){
+            t1Nova+=(Number(a.t1)||0);
+            t2Nova+=(Number(a.t2)||0);
+            t3Nova+=(Number(a.t3)||0);
+          }
+        });
+      }
+
+      verificadas++;
+      var t1Atual=Number(op.t1)||0;
+      var t2Atual=Number(op.t2)||0;
+      var t3Atual=Number(op.t3)||0;
+
+      // So corrige se os valores estao diferentes do que deveriam ser
+      var precisaCorrigir=(t1Atual!==t1Nova||t2Atual!==t2Nova||t3Atual!==t3Nova);
+
+      if(precisaCorrigir){
+        corrigidas++;
+        // Recalcula real do novo dia a partir dos apontamentos encontrados
+        var realNovoDia=t1Nova+t2Nova+t3Nova;
+        // Saldo correto = progOriginal (ou prog atual se nunca reprogramou) - realAcumulado - realNovoDia
+        var progOrig=Number(op.progOriginal)||Number(op.prog)||0;
+        var realAcum=Number(op.realAcumulado)||0;
+        var saldoCorr=Math.max(progOrig-realAcum-realNovoDia,0);
+        log.push('OP '+op.id+' ('+dtNova+'): T1 '+fN(t1Atual)+'→'+fN(t1Nova)+' T2 '+fN(t2Atual)+'→'+fN(t2Nova)+' T3 '+fN(t3Atual)+'→'+fN(t3Nova)+' | prog: '+fN(op.prog)+'→'+fN(saldoCorr)+' kg');
+        var updCorr={
+          t1:t1Nova, t2:t2Nova, t3:t3Nova,
+          t1sc:Math.round(t1Nova/fator),
+          t2sc:Math.round(t2Nova/fator),
+          t3sc:Math.round(t3Nova/fator),
+          real:realNovoDia,
+          prog:saldoCorr
+        };
+        if(!op.progOriginal) updCorr.progOriginal=Number(op.prog)||0;
+        if(!op.realAcumulado){
+          // Reconstroi realAcumulado a partir do realPorData excluindo a data nova
+          var rpd=op.realPorData||{};
+          var acum=0;
+          Object.keys(rpd).forEach(function(d){ if(d!==dtNova) acum+=Number(rpd[d])||0; });
+          updCorr.realAcumulado=acum;
+        }
+        promises.push(DB.ref('ops/'+fbKey).update(updCorr));
+      }
+
+      pendentes--;
+      if(pendentes===0){
+        // Todos verificados — executa as correcoes
+        if(!promises.length){
+          if(res) res.innerHTML='<span style="color:#024f2b">✔ '+verificadas+' OPs verificadas — nenhuma precisava de correcao.</span>';
+          return;
+        }
+        Promise.all(promises).then(function(){
+          var html='<strong style="color:#024f2b">✔ '+corrigidas+' OP(s) corrigida(s) de '+verificadas+' verificadas:</strong><br>';
+          html+='<div style="margin-top:6px;padding:8px;background:#f5f9f2;border-radius:6px;font-family:monospace;font-size:11px;max-height:200px;overflow-y:auto">';
+          html+=log.join('<br>');
+          html+='</div>';
+          if(res) res.innerHTML=html;
+          addLog('MANUTENCAO_CORR_REPROG', corrigidas+' OPs corrigidas');
+          toast(corrigidas+' OP(s) corrigida(s)!','ok');
+        }).catch(function(e){
+          if(res) res.innerHTML='<span style="color:#c0392b">Erro: '+e.message+'</span>';
+          toast('Erro na correcao: '+e.message,'err');
+        });
+      }
+    });
+  });
+}
 function renderFila(){
   var grid=G('fila-grid'); if(!grid) return;
   var isPCP=SES&&(SES.perfil==='pcp'||SES.perfil==='admin');
