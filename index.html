@@ -1991,64 +1991,55 @@ function salvarParada(){
 function reprogramarOP(fbKey){
   var op=OPS.filter(function(o){return o.fbKey===fbKey;})[0];
   if(!op) return;
-  if(op.status==='Concluida'){toast('OP já concluída','err');return;}
+  if(op.status==='Concluida'){toast('OP ja concluida','err');return;}
 
-  // Calcula próximo dia a partir da data atual da OP
-  var dtAtual=op.data||hoje();
+  var dtAtual=op.data||hoje(); // data para a qual a OP foi programada (ex: 11/06)
   var dtProx=new Date(dtAtual+'T12:00:00');
   dtProx.setDate(dtProx.getDate()+1);
-  var dtNova=dtProx.toISOString().slice(0,10);
-
-  // Saldo restante
-  var saldo=(Number(op.prog)||0)-(Number(op.real)||0);
+  var dtNova=dtProx.toISOString().slice(0,10); // novo dia (ex: 12/06)
   var fator=op.tipo==='SC'?25:op.tipo==='BG'?750:1;
+
+  // O que foi produzido NO DIA DA OP (dtAtual) — fonte: realPorData[dtAtual]
+  // Tudo que foi apontado nessa OP pertence ao dia programado, independente da hora
+  var realDoDia=Number((op.realPorData||{})[dtAtual])||0;
+
+  // Saldo = prog do dia - o que foi produzido no dia
+  var progOrig=Number(op.progOriginal)||Number(op.prog)||0;
+  var realAcumAnterior=Number(op.realAcumulado)||0; // dias anteriores ja reprogramados
+  var saldo=Math.max(progOrig-realAcumAnterior-realDoDia,0);
   var saldoStr=op.tipo!=='KG'?fN(Math.round(saldo/fator))+' '+(op.tipo==='SC'?'sc':'bg')+' ('+fN(saldo)+' kg)':fN(saldo)+' kg';
 
   if(!confirm(
     'Reprogramar OP '+op.id+' para '+dtNova+'?\n\n'+
-    'Programado: '+fN(op.prog)+' kg\n'+
-    'Realizado:  '+fN(op.real)+' kg\n'+
-    'Saldo:      '+saldoStr+'\n\n'+
-    'A OP será movida para '+dtNova+' mantendo o histórico de apontamentos.'
-  )) return;
-
-  // Saldo restante = novo prog do dia
-  var saldo=Math.max((Number(op.prog)||0)-(Number(op.real)||0),0);
-  var fatorSc=fator;
-  var saldoStr=op.tipo!=='KG'?fN(Math.round(saldo/fatorSc))+' '+(op.tipo==='SC'?'sc':'bg')+' ('+fN(saldo)+' kg)':fN(saldo)+' kg';
-
-  if(!confirm(
-    'Reprogramar OP '+op.id+' para '+dtNova+'?\n\n'+
-    'Programado original: '+fN(op.prog)+' kg\n'+
-    'Ja realizado:        '+fN(op.real)+' kg\n'+
-    'Saldo (novo prog):   '+saldoStr+'\n\n'+
-    'O novo dia iniciara com prog = saldo restante e real zerado.\n'+
-    'Historico completo preservado em realPorData.'
+    'Prog. original:     '+fN(progOrig)+' kg\n'+
+    'Realizado '+dtAtual.split('-').reverse().join('/')+': '+fN(realDoDia)+' kg\n'+
+    'Acumulado anterior: '+fN(realAcumAnterior)+' kg\n'+
+    'Saldo (novo prog):  '+saldoStr+'\n\n'+
+    'O novo dia inicia com real zerado.\n'+
+    'Historico do dia '+dtAtual.split('-').reverse().join('/')+' preservado.'
   )) return;
 
   ld(true,'Reprogramando...');
 
-  // Preserva progOriginal apenas na primeira reprogramacao
   var upd={
     data:dtNova,
     status:'Reprogramada',
     reprogramadaDe:dtAtual,
     reprogramadaEm:agora(),
-    // Novo prog = saldo restante
     prog:saldo,
-    // Zera real e contadores — novo dia comeca do zero
+    // Zera contadores — novo dia comeca do zero
     real:0, t1:0, t2:0, t3:0, t1sc:0, t2sc:0, t3sc:0,
     perda:0
   };
-  // Preserva o prog original para rastreabilidade (so grava uma vez)
+  // Preserva progOriginal apenas na primeira reprogramacao
   if(!op.progOriginal) upd.progOriginal=Number(op.prog)||0;
-  // Acumula historico de reprogramacoes
-  upd.realAcumulado=(Number(op.realAcumulado)||0)+(Number(op.real)||0);
+  // Acumula: dias anteriores + o que foi feito hoje
+  upd.realAcumulado=realAcumAnterior+realDoDia;
 
   DB.ref('ops/'+fbKey).update(upd).then(function(){
     ld(false);
-    toast('OP '+op.id+' reprogramada — novo prog: '+saldoStr,'ok');
-    addLog('REPROGRAMAR',op.id+' | '+dtAtual+' → '+dtNova+' | saldo: '+fN(saldo)+' kg | acum: '+fN(upd.realAcumulado)+' kg');
+    toast('OP '+op.id+' reprogramada para '+dtNova+' — saldo: '+saldoStr,'ok');
+    addLog('REPROGRAMAR',op.id+' | '+dtAtual+' → '+dtNova+' | dia: '+fN(realDoDia)+' kg | saldo: '+fN(saldo)+' kg');
   }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
 }
 
@@ -3511,11 +3502,9 @@ function corrigirOpsReprogramadas(){
   var res=G('corr-reprog-resultado');
   if(res) res.innerHTML='<span style="color:#d29922">Verificando...</span>';
 
-  // Pega todas OPs com status Reprogramada ou Em andamento que tenham reprogramadaDe
-  // (foram reprogramadas em algum momento)
   var candidatas=OPS.filter(function(o){
     return (o.status==='Reprogramada'||o.status==='Em andamento'||o.status==='Liberada')
-      && o.reprogramadaDe; // so as que passaram por reprogramacao
+      && o.reprogramadaDe;
   });
 
   if(!candidatas.length){
@@ -3527,87 +3516,87 @@ function corrigirOpsReprogramadas(){
   var promises=[];
   var verificadas=0;
   var corrigidas=0;
-
-  // Para cada OP candidata: busca apontamentos com data === op.data (data nova)
-  // e reconstroi t1/t2/t3 apenas com esses
   var pendentes=candidatas.length;
 
   candidatas.forEach(function(op){
     var fbKey=op.fbKey;
-    var dtNova=op.data; // data atual (para onde foi reprogramada)
+    var dtAnterior=op.reprogramadaDe; // dia que a OP estava antes (ex: 11/06)
+    var dtNova=op.data;               // dia para onde foi reprogramada (ex: 12/06)
     var fator=op.tipo==='SC'?25:op.tipo==='BG'?750:1;
+    var rpd=op.realPorData||{};
 
-    DB.ref('apontamentos').orderByChild('opId').equalTo(fbKey).once('value').then(function(snap){
-      var t1Nova=0, t2Nova=0, t3Nova=0;
-      if(snap.exists()){
-        snap.forEach(function(c){
-          var a=c.val();
-          // So conta apontamentos da data nova e nao substituidos
-          if(a.data===dtNova && !a.substituido){
-            t1Nova+=(Number(a.t1)||0);
-            t2Nova+=(Number(a.t2)||0);
-            t3Nova+=(Number(a.t3)||0);
-          }
-        });
+    // FONTE DA VERDADE: realPorData[dtAnterior] = o que foi produzido no dia programado
+    var realDoDiaAnt=Number(rpd[dtAnterior])||0;
+    // O que foi produzido no novo dia (pode ter apontamentos ja no 12/06)
+    var realNovoDia=Number(rpd[dtNova])||0;
+
+    // progOriginal = prog antes de qualquer reprogramacao
+    var progOrig=Number(op.progOriginal)||Number(op.prog)||0;
+    // realAcumulado = tudo produzido em dias ANTERIORES ao dtAnterior
+    // Se nao existe, reconstroi somando realPorData exceto dtAnterior e dtNova
+    var realAcumAnterior=Number(op.realAcumulado);
+    if(!op.realAcumulado){
+      realAcumAnterior=0;
+      Object.keys(rpd).forEach(function(d){
+        if(d!==dtAnterior&&d!==dtNova) realAcumAnterior+=Number(rpd[d])||0;
+      });
+    }
+
+    // Saldo correto para o novo dia
+    var saldoCorreto=Math.max(progOrig-realAcumAnterior-realDoDiaAnt,0);
+
+    // real/t1/t2/t3 corretos = apenas o que foi apontado no dtNova
+    // Esses sao zerados se nao houve apontamento ainda no novo dia
+    var realNovoCorreto=realNovoDia;
+
+    verificadas++;
+
+    // Verifica se precisa corrigir
+    var progAtual=Number(op.prog)||0;
+    var realAtual=Number(op.real)||0;
+    var precisaCorrigir=(
+      Math.abs(progAtual-saldoCorreto)>0 ||
+      Math.abs(realAtual-realNovoCorreto)>0 ||
+      !op.progOriginal ||
+      !op.realAcumulado
+    );
+
+    if(precisaCorrigir){
+      corrigidas++;
+      log.push(
+        'OP '+op.id+': '+dtAnterior+' prod='+fN(realDoDiaAnt)+' kg | '+
+        'prog: '+fN(progAtual)+' → '+fN(saldoCorreto)+' kg | '+
+        'real: '+fN(realAtual)+' → '+fN(realNovoCorreto)+' kg'
+      );
+      var updCorr={
+        prog:saldoCorreto,
+        real:realNovoCorreto,
+        t1:0, t2:0, t3:0, t1sc:0, t2sc:0, t3sc:0,
+        progOriginal:progOrig,
+        realAcumulado:realAcumAnterior+realDoDiaAnt
+      };
+      promises.push(DB.ref('ops/'+fbKey).update(updCorr));
+    }
+
+    pendentes--;
+    if(pendentes===0){
+      if(!promises.length){
+        if(res) res.innerHTML='<span style="color:#024f2b">✔ '+verificadas+' OPs verificadas — nenhuma precisava de correcao.</span>';
+        return;
       }
-
-      verificadas++;
-      var t1Atual=Number(op.t1)||0;
-      var t2Atual=Number(op.t2)||0;
-      var t3Atual=Number(op.t3)||0;
-
-      // So corrige se os valores estao diferentes do que deveriam ser
-      var precisaCorrigir=(t1Atual!==t1Nova||t2Atual!==t2Nova||t3Atual!==t3Nova);
-
-      if(precisaCorrigir){
-        corrigidas++;
-        // Recalcula real do novo dia a partir dos apontamentos encontrados
-        var realNovoDia=t1Nova+t2Nova+t3Nova;
-        // Saldo correto = progOriginal (ou prog atual se nunca reprogramou) - realAcumulado - realNovoDia
-        var progOrig=Number(op.progOriginal)||Number(op.prog)||0;
-        var realAcum=Number(op.realAcumulado)||0;
-        var saldoCorr=Math.max(progOrig-realAcum-realNovoDia,0);
-        log.push('OP '+op.id+' ('+dtNova+'): T1 '+fN(t1Atual)+'→'+fN(t1Nova)+' T2 '+fN(t2Atual)+'→'+fN(t2Nova)+' T3 '+fN(t3Atual)+'→'+fN(t3Nova)+' | prog: '+fN(op.prog)+'→'+fN(saldoCorr)+' kg');
-        var updCorr={
-          t1:t1Nova, t2:t2Nova, t3:t3Nova,
-          t1sc:Math.round(t1Nova/fator),
-          t2sc:Math.round(t2Nova/fator),
-          t3sc:Math.round(t3Nova/fator),
-          real:realNovoDia,
-          prog:saldoCorr
-        };
-        if(!op.progOriginal) updCorr.progOriginal=Number(op.prog)||0;
-        if(!op.realAcumulado){
-          // Reconstroi realAcumulado a partir do realPorData excluindo a data nova
-          var rpd=op.realPorData||{};
-          var acum=0;
-          Object.keys(rpd).forEach(function(d){ if(d!==dtNova) acum+=Number(rpd[d])||0; });
-          updCorr.realAcumulado=acum;
-        }
-        promises.push(DB.ref('ops/'+fbKey).update(updCorr));
-      }
-
-      pendentes--;
-      if(pendentes===0){
-        // Todos verificados — executa as correcoes
-        if(!promises.length){
-          if(res) res.innerHTML='<span style="color:#024f2b">✔ '+verificadas+' OPs verificadas — nenhuma precisava de correcao.</span>';
-          return;
-        }
-        Promise.all(promises).then(function(){
-          var html='<strong style="color:#024f2b">✔ '+corrigidas+' OP(s) corrigida(s) de '+verificadas+' verificadas:</strong><br>';
-          html+='<div style="margin-top:6px;padding:8px;background:#f5f9f2;border-radius:6px;font-family:monospace;font-size:11px;max-height:200px;overflow-y:auto">';
-          html+=log.join('<br>');
-          html+='</div>';
-          if(res) res.innerHTML=html;
-          addLog('MANUTENCAO_CORR_REPROG', corrigidas+' OPs corrigidas');
-          toast(corrigidas+' OP(s) corrigida(s)!','ok');
-        }).catch(function(e){
-          if(res) res.innerHTML='<span style="color:#c0392b">Erro: '+e.message+'</span>';
-          toast('Erro na correcao: '+e.message,'err');
-        });
-      }
-    });
+      Promise.all(promises).then(function(){
+        var html='<strong style="color:#024f2b">✔ '+corrigidas+' OP(s) corrigida(s) de '+verificadas+' verificadas:</strong><br>';
+        html+='<div style="margin-top:6px;padding:8px;background:#f5f9f2;border-radius:6px;font-family:monospace;font-size:11px;max-height:200px;overflow-y:auto">';
+        html+=log.join('<br>');
+        html+='</div>';
+        if(res) res.innerHTML=html;
+        addLog('MANUTENCAO_CORR_REPROG',corrigidas+' OPs corrigidas');
+        toast(corrigidas+' OP(s) corrigida(s)!','ok');
+      }).catch(function(e){
+        if(res) res.innerHTML='<span style="color:#c0392b">Erro: '+e.message+'</span>';
+        toast('Erro: '+e.message,'err');
+      });
+    }
   });
 }
 function renderFila(){
