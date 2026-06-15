@@ -1740,9 +1740,11 @@ function salvarApt(){
     t1:0, t2:0, t3:0, real:0, perda:perdaKG,
     obs:G('aob').value, operador:SES.login, ts:agora()
   }));
-    // Perda na data correta do turno
+    // Perda gravada na data da OP — nao na data atual do turno
+    // Evita perda aparecer no dashboard de outro dia quando OP e de data anterior
+    var dtPerda=op?op.data:dtApt;
     if(perdaKG>0) promises.push(DB.ref('perdas_diarias').push({
-      opId:fbKey, data:dtApt, turno:turno,
+      opId:fbKey, data:dtPerda, turno:turno,
       perdaKG:perdaKG, operador:SES.login, ts:agora()
     }));
 
