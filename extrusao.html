@@ -388,15 +388,36 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
 
 <!-- MODAL RESUMO -->
 <div class="ov" id="m-resumo">
-  <div class="modal">
+  <div class="modal" style="max-width:700px">
     <div class="mh">📋 Resumo do Turno</div>
+    <!-- Filtros admin -->
+    <div id="resumo-filtros-adm" style="display:none;background:#f5f9f2;border-radius:8px;padding:10px 12px;margin-bottom:12px;display:none">
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <div><label style="font-size:11px;font-weight:700;color:#4a664a;display:block;margin-bottom:3px">DATA</label>
+          <input type="date" id="resumo-adm-dt" class="fi" style="font-size:12px"></div>
+        <div><label style="font-size:11px;font-weight:700;color:#4a664a;display:block;margin-bottom:3px">TURNO</label>
+          <select id="resumo-adm-turno" class="fi" style="font-size:12px">
+            <option value="1">Turno 1 (21h-05h)</option>
+            <option value="2">Turno 2 (05h-13h)</option>
+            <option value="3">Turno 3 (13h-21h)</option>
+          </select></div>
+        <div><label style="font-size:11px;font-weight:700;color:#4a664a;display:block;margin-bottom:3px">LINHA</label>
+          <select id="resumo-adm-linha" class="fi" style="font-size:12px">
+            <option value="">Todas</option>
+            <option value="Linha 1 (E-240)">Linha 1 (E-240)</option>
+            <option value="Linha 2 (E-200)">Linha 2 (E-200)</option>
+            <option value="Linha 4 (Andritz I)">Linha 4 (Andritz I)</option>
+            <option value="Linha 5 (Andritz II)">Linha 5 (Andritz II)</option>
+          </select></div>
+        <button onclick="resumoAdmBuscar()" class="btn-ok" style="padding:8px 16px;font-size:12px">🔍 Buscar</button>
+      </div>
+    </div>
     <div id="resumo-corpo"></div>
     <div id="repr-campos" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px"></div>
-    </div>
     <div class="mr" style="margin-top:12px">
       <button class="btn-cancel" onclick="fM('m-resumo')">Fechar</button>
       <button onclick="gerarPDFResumoTurno()" style="background:#739630;color:#fff;border:none;padding:11px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">↓ PDF Resumo</button>
-      <button class="btn-ok" onclick="finalizarTurno()">✔ Finalizar Turno</button>
+      <button id="btn-finalizar-turno" class="btn-ok" onclick="finalizarTurno()">✔ Finalizar Turno</button>
     </div>
   </div>
 </div>
@@ -2070,6 +2091,22 @@ function salvarSetup(){
 
 // ── RESUMO TURNO ──────────────────────────────────────────
 function abrirResumo(){
+  // Admin: mostra filtros e pré-preenche com data/turno atual
+  var filtros=G("resumo-filtros-adm");
+  var btnFin=G("btn-finalizar-turno");
+  if(SES&&SES.perfil==="admin"){
+    if(filtros){
+      filtros.style.display="block";
+      var dtEl=G("resumo-adm-dt");
+      if(dtEl&&!dtEl.value) dtEl.value=DT_FILA||hoje();
+      var tEl=G("resumo-adm-turno");
+      if(tEl) tEl.value=SES.turno||1;
+    }
+    if(btnFin) btnFin.style.display="none";
+  } else {
+    if(filtros) filtros.style.display="none";
+    if(btnFin) btnFin.style.display="inline-flex";
+  }
   var h="";
   LINHAS_USER.forEach(function(linha){
     var e=EST[linha]||{apts:[],paradas:[]};
@@ -4888,6 +4925,141 @@ function confConcluirOp(opFk, opId){
     registrarLog("op_extrusao","Concluiu OP "+opId+" via conferência","-");
     confGerar();
   }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+// ── ADMIN: RESUMO POR DIA/TURNO ──────────────────────────
+var _resumoAdmDados={apts:[],paradas:[]};
+
+function resumoAdmBuscar(){
+  var dt=G("resumo-adm-dt").value;
+  var turno=parseInt(G("resumo-adm-turno").value);
+  var linha=G("resumo-adm-linha").value;
+  if(!dt){toast("Selecione a data","err");return;}
+  if(!DB){toast("Firebase não conectado","err");return;}
+  G("resumo-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#4a664a;font-size:12px">Buscando...</div>';
+  Promise.all([
+    DB.ref("extrusao_apts").orderByChild("data").equalTo(dt).once("value"),
+    DB.ref("extrusao_paradas").orderByChild("data").equalTo(dt).once("value"),
+    DB.ref("ops").orderByChild("data").equalTo(dt).once("value")
+  ]).then(function(results){
+    var apts=[], paradas=[], ops=[];
+    if(results[0].exists()) results[0].forEach(function(c){var v=c.val();v.fbKey=c.key;apts.push(v);});
+    if(results[1].exists()) results[1].forEach(function(c){var v=c.val();v.fbKey=c.key;paradas.push(v);});
+    if(results[2].exists()) results[2].forEach(function(c){var v=c.val();v.fbKey=c.key;ops.push(v);});
+
+    // Filtrar por turno e linha
+    apts=apts.filter(function(a){ return a.turno===turno && (!linha||a.linha===linha); });
+    paradas=paradas.filter(function(p){ return p.turno===turno && (!linha||p.linha===linha); });
+
+    _resumoAdmDados={apts:apts,paradas:paradas,ops:ops,dt:dt,turno:turno,linha:linha};
+    resumoAdmRenderizar(apts,paradas,ops,dt,turno,linha);
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+function resumoAdmRenderizar(apts,paradas,ops,dt,turno,linhaFiltro){
+  var linhas=linhaFiltro?[linhaFiltro]:["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
+  var h='<div style="font-size:11px;color:#739630;margin-bottom:10px">'+
+        'Turno '+turno+' · '+dt+(linhaFiltro?' · '+nomeCurto(linhaFiltro):'')+'</div>';
+
+  var totalGeralReal=0, totalGeralMin=0;
+
+  linhas.forEach(function(linha){
+    var aptsL=apts.filter(function(a){return a.linha===linha;});
+    var parasL=paradas.filter(function(p){return p.linha===linha;});
+    if(!aptsL.length&&!parasL.length) return;
+
+    var totalReal=aptsL.reduce(function(s,a){return s+(Number(a.real)||0);},0);
+    var minPara=parasL.reduce(function(s,p){
+      var m=Number(p.minutos)||0;
+      if(!m&&p.horaIni&&p.horaFim){
+        var hi=p.horaIni.split(":"),hf=p.horaFim.split(":");
+        m=(parseInt(hf[0])*60+parseInt(hf[1]))-(parseInt(hi[0])*60+parseInt(hi[1]));
+        if(m<0)m+=1440;
+      }
+      return s+m;
+    },0);
+    totalGeralReal+=totalReal; totalGeralMin+=minPara;
+
+    // OP mais produzida nessa linha nesse turno
+    var opGrp={};
+    aptsL.forEach(function(a){
+      var fk=a.opFbKey||"";
+      if(!opGrp[fk]) opGrp[fk]={num:a.opNum||"",real:0};
+      opGrp[fk].real+=(Number(a.real)||0);
+    });
+    var opPrinc=Object.values(opGrp).sort(function(a,b){return b.real-a.real;})[0];
+
+    h+='<div style="border:1px solid #d4e8d4;border-radius:8px;margin-bottom:10px;overflow:hidden">';
+    h+='<div style="background:#024f2b;color:#fff;padding:7px 12px;font-size:12px;font-weight:700;display:flex;justify-content:space-between">';
+    h+='<span>'+nomeCurto(linha)+'</span>';
+    h+='<span style="font-size:10px;opacity:.8">'+(opPrinc?opPrinc.num:'sem apontamentos')+'</span></div>';
+
+    // Cards resumo
+    h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#d4e8d4">';
+    [{l:"PRODUZIDO",v:fN(totalReal)+" kg",c:"#024f2b"},
+     {l:"PARADAS",v:minH(minPara),c:"#c0392b"},
+     {l:"APONTAMENTOS",v:aptsL.length,c:"#4a664a"},
+     {l:"PARADAS Nº",v:parasL.length,c:"#c0392b"}
+    ].forEach(function(card){
+      h+='<div style="background:#fff;padding:8px;text-align:center">';
+      h+='<div style="font-size:9px;font-weight:700;color:#739630">'+card.l+'</div>';
+      h+='<div style="font-size:14px;font-weight:800;color:'+card.c+'">'+card.v+'</div></div>';
+    });
+    h+='</div>';
+
+    // Apontamentos
+    if(aptsL.length){
+      h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">';
+      h+='<tr style="background:#f5f9f2"><th style="padding:5px 8px;text-align:left;color:#024f2b">Horário</th>';
+      h+='<th style="padding:5px 8px;text-align:left;color:#024f2b">Produto</th>';
+      h+='<th style="padding:5px 8px;text-align:right;color:#024f2b">Real (kg)</th>';
+      h+='<th style="padding:5px 8px;text-align:right;color:#024f2b">Meta (kg/h)</th>';
+      h+='<th style="padding:5px 8px;text-align:right;color:#024f2b">Ef%</th>';
+      h+='<th style="padding:5px 8px;text-align:left;color:#024f2b">OP</th></tr>';
+      aptsL.sort(function(a,b){return (a.horaIni||"")>(b.horaIni||"")?1:-1;}).forEach(function(a,i){
+        var ef=a.metaH?Math.round((Number(a.real)||0)/a.metaH*100):0;
+        var cor=ef>=85?"#024f2b":ef>=70?"#d29922":"#c0392b";
+        h+='<tr style="background:'+(i%2?"#f9fbf9":"#fff")+'">';
+        h+='<td style="padding:4px 8px">'+a.horaIni+' → '+a.horaFim+'</td>';
+        h+='<td style="padding:4px 8px">'+(a.desc||a.cod||"—").slice(0,30)+'</td>';
+        h+='<td style="padding:4px 8px;text-align:right;font-weight:700">'+fN(a.real)+'</td>';
+        h+='<td style="padding:4px 8px;text-align:right">'+fN(a.metaH||0)+'</td>';
+        h+='<td style="padding:4px 8px;text-align:right;font-weight:700;color:'+cor+'">'+ef+'%</td>';
+        h+='<td style="padding:4px 8px;color:#739630">'+a.opNum+'</td></tr>';
+      });
+      h+='</table></div>';
+    }
+
+    // Paradas
+    if(parasL.length){
+      h+='<div style="background:#fdf5f5;padding:6px 8px;font-size:10px;font-weight:700;color:#c0392b">PARADAS</div>';
+      h+='<table style="width:100%;border-collapse:collapse;font-size:11px">';
+      h+='<tr style="background:#fdf5f5"><th style="padding:4px 8px;text-align:left;color:#c0392b">Horário</th>';
+      h+='<th style="padding:4px 8px;text-align:left;color:#c0392b">Motivo</th>';
+      h+='<th style="padding:4px 8px;text-align:right;color:#c0392b">Duração</th></tr>';
+      parasL.sort(function(a,b){return (a.horaIni||"")>(b.horaIni||"")?1:-1;}).forEach(function(p,i){
+        var m=Number(p.minutos)||0;
+        if(!m&&p.horaIni&&p.horaFim){
+          var hi=p.horaIni.split(":"),hf=p.horaFim.split(":");
+          m=(parseInt(hf[0])*60+parseInt(hf[1]))-(parseInt(hi[0])*60+parseInt(hi[1]));
+          if(m<0)m+=1440;
+        }
+        h+='<tr style="background:'+(i%2?"#fff8f8":"#fff")+'">';
+        h+='<td style="padding:4px 8px">'+p.horaIni+' → '+(p.horaFim||"aberta")+'</td>';
+        h+='<td style="padding:4px 8px">'+(p.descricao||"—")+(p.obs?' — '+p.obs:'')+'</td>';
+        h+='<td style="padding:4px 8px;text-align:right;font-weight:700;color:#c0392b">'+(p.horaFim?minH(m):"—")+'</td></tr>';
+      });
+      h+='</table>';
+    }
+    h+='</div>';
+  });
+
+  // Total geral
+  h+='<div style="background:#024f2b;color:#fff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;margin-top:4px">';
+  h+='<span style="font-weight:700">TOTAL TURNO '+turno+' — '+dt+'</span>';
+  h+='<span>'+fN(totalGeralReal)+' kg produzidos · '+minH(totalGeralMin)+' em paradas</span></div>';
+
+  G("resumo-corpo").innerHTML=h;
 }
 </script>
 </body>
