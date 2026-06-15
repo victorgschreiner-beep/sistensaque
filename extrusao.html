@@ -2194,14 +2194,22 @@ function gerarPDFResumoTurno(){
       e.paradas.forEach(function(p,pi){
         if(y>185){doc.addPage();y=15;}
         if(pi%2===0){doc.setFillColor(255,248,248);doc.rect(ML,y-1,W,7,"F");}
+        // Calcular minutos na hora de renderizar — p.minutos pode estar ausente
+        var minPar=Number(p.minutos)||0;
+        if(!minPar && p.horaIni && p.horaFim){
+          var hi=p.horaIni.split(":"), hf=p.horaFim.split(":");
+          minPar=(parseInt(hf[0])*60+parseInt(hf[1]))-(parseInt(hi[0])*60+parseInt(hi[1]));
+          if(minPar<0) minPar+=1440; // virada de meia-noite
+        }
+        var horaFimTxt=p.horaFim||"aberta";
         doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(192,57,43);
-        doc.text((p.horaIni||"")+" → "+(p.horaFim||"..."),ML+2,y+4);
+        doc.text((p.horaIni||"")+" → "+horaFimTxt,ML+2,y+4);
         doc.setTextColor(80,30,30);
-        doc.text(p.descricao||"",ML+35,y+4);
+        doc.text((p.descricao||"").slice(0,40),ML+35,y+4);
         doc.setTextColor(100,100,100);
-        doc.text((p.obs||"").slice(0,40),ML+130,y+4);
+        doc.text((p.obs||"").slice(0,30),ML+150,y+4);
         doc.setTextColor(192,57,43);
-        doc.text(minH(p.minutos||0),ML+245,y+4);
+        doc.text(p.horaFim?minH(minPar):"—",ML+245,y+4);
         y+=7;
       });
     }
