@@ -860,6 +860,14 @@ function pad(n){return String(n).padStart(2,"0");}
 function uid(){return Math.random().toString(36).slice(2,10);}
 function fN(n){return (Number(n)||0).toLocaleString("pt-BR");}
 function minH(min){return pad(Math.floor(min/60))+":"+pad(min%60);}
+function calcMinutos(hi,hf){
+  // Calcula minutos entre dois horários, tratando virada de meia-noite (ex: 21:00→01:50)
+  if(!hi||!hf) return 0;
+  var a=hi.split(":"),b=hf.split(":");
+  var m=(parseInt(b[0])*60+parseInt(b[1]))-(parseInt(a[0])*60+parseInt(a[1]));
+  if(m<0) m+=1440; // virada de meia-noite
+  return m;
+}
 function toast(msg,tipo){var t=G("toast");t.textContent=msg;t.style.background=tipo==="err"?"#c0392b":"#024f2b";t.style.display="block";setTimeout(function(){t.style.display="none";},4500);}
 function fM(id){G(id).classList.remove("on");}
 function aM(id){G(id).classList.add("on");}
@@ -2058,7 +2066,7 @@ function salvarParada(){
   if(!hi){toast("Informe hora de início","err");return;}
   if(!desc){toast("Selecione o motivo","err");return;}
   var min=0;
-  if(hf){var a=hi.split(":"),b=hf.split(":");min=(parseInt(b[0])*60+parseInt(b[1]))-(parseInt(a[0])*60+parseInt(a[1]));}
+  if(hf){var min=calcMinutos(hi,hf);}
   if(!DB){toast("Firebase não conectado","err");return;}
   var turnoPara=turnoDeHora(hi);
   var dataPara=DT_FILA||hoje();
@@ -2112,7 +2120,7 @@ function abrirResumo(){
     var e=EST[linha]||{apts:[],paradas:[]};
     var totalR=e.apts.reduce(function(a,x){return a+(Number(x.real)||0);},0);
     var minPara=0;
-    e.paradas.forEach(function(p){if(p.horaIni&&p.horaFim){var a=p.horaIni.split(":"),b=p.horaFim.split(":");minPara+=(parseInt(b[0])*60+parseInt(b[1]))-(parseInt(a[0])*60+parseInt(a[1]));}});
+    e.paradas.forEach(function(p){if(p.horaIni&&p.horaFim){minPara+=calcMinutos(p.horaIni,p.horaFim);}});
     var nomeL=linha;
     h+="<div class=\"resumo-bloco\"><div class=\"resumo-tit\">"+nomeL+"</div>";
     h+="<div class=\"resumo-row\"><span>Apontamentos</span><span>"+e.apts.length+"</span></div>";
@@ -2140,24 +2148,43 @@ function gerarPDFResumoTurno(){
   var doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
   var W=277, ML=10, y=0;
 
+  // Usa dados do admin se ele buscou outro dia/turno, senão usa estado atual
+  var isAdmPDF=SES&&SES.perfil==="admin"&&_resumoAdmDados&&_resumoAdmDados.apts&&_resumoAdmDados.apts.length>0;
+  var pdfTurno=isAdmPDF?_resumoAdmDados.turno:SES.turno;
+  var pdfDt=isAdmPDF?_resumoAdmDados.dt:(DT_FILA||hoje());
+  var pdfLinha=isAdmPDF?_resumoAdmDados.linha:"";
+
   // ── CABEÇALHO ────────────────────────────────────────────
   doc.setFillColor(2,79,43); doc.rect(0,0,297,20,"F");
   doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(255,255,255);
-  doc.text("RAGUIFE — RESUMO DO TURNO "+SES.turno,ML,13);
+  doc.text("RAGUIFE — RESUMO DO TURNO "+pdfTurno,ML,13);
   doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(180,220,180);
-  doc.text("Data: "+(DT_FILA||hoje())+" · Operador: "+SES.nome+" · Gerado: "+new Date().toLocaleString("pt-BR"),ML,18);
+  doc.text("Data: "+pdfDt+(pdfLinha?" · "+nomeCurto(pdfLinha):"")+" · Gerado: "+new Date().toLocaleString("pt-BR"),ML,18);
   y=26;
 
   var totalGeralReal=0, totalGeralMin=0;
 
-  LINHAS_USER.forEach(function(linha){
-    var e=EST[linha]||{apts:[],paradas:[]};
+  // Linhas a iterar: se admin buscou, agrupa _resumoAdmDados por linha
+  var linhasIter=isAdmPDF
+    ?(pdfLinha?[pdfLinha]:["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"])
+    :LINHAS_USER;
+
+  linhasIter.forEach(function(linha){
+    var apts_l, paras_l;
+    if(isAdmPDF){
+      apts_l=_resumoAdmDados.apts.filter(function(a){return a.linha===linha;});
+      paras_l=_resumoAdmDados.paradas.filter(function(p){return p.linha===linha;});
+      if(!apts_l.length&&!paras_l.length) return;
+    }
+    var e=isAdmPDF?{apts:apts_l,paradas:paras_l,opAtiva:null}:(EST[linha]||{apts:[],paradas:[]});
     var nomeL=linha;
     var totalReal=e.apts.reduce(function(a,x){return a+(Number(x.real)||0);},0);
     var minPara=0;
-    e.paradas.forEach(function(p){if(p.horaIni&&p.horaFim){var a=p.horaIni.split(":"),b=p.horaFim.split(":");minPara+=(parseInt(b[0])*60+parseInt(b[1]))-(parseInt(a[0])*60+parseInt(a[1]));}});
+    e.paradas.forEach(function(p){if(p.horaIni&&p.horaFim){minPara+=calcMinutos(p.horaIni,p.horaFim);}});
     totalGeralReal+=totalReal; totalGeralMin+=minPara;
-    var opAtiva=e.opAtiva?OPS.find(function(o){return o.fbKey===e.opAtiva;})||null:null;
+    var opAtiva=isAdmPDF
+      ?(function(){var op=_resumoAdmDados.ops&&_resumoAdmDados.ops.find(function(o){return e.apts.some(function(a){return a.opFbKey===o.fbKey;});});return op||null;})()
+      :(e.opAtiva?OPS.find(function(o){return o.fbKey===e.opAtiva;})||null:null);
     var metaH=opAtiva?getMetaHora(opAtiva.cod,linha):0;
     var metaTurno=metaH*e.apts.length;
     var adh=metaTurno?Math.min(Math.round(totalReal/metaTurno*100),999):0;
@@ -2293,7 +2320,7 @@ function atualizarBarraTurno(){
   LINHAS_USER.forEach(function(l){
     var e=EST[l]||{apts:[],paradas:[]};
     e.apts.forEach(function(a){totalR+=(Number(a.real)||0);});
-    e.paradas.forEach(function(p){if(p.horaIni&&p.horaFim){var a=p.horaIni.split(":"),b=p.horaFim.split(":");minPara+=(parseInt(b[0])*60+parseInt(b[1]))-(parseInt(a[0])*60+parseInt(a[1]));}});
+    e.paradas.forEach(function(p){if(p.horaIni&&p.horaFim){minPara+=calcMinutos(p.horaIni,p.horaFim);}});
   });
   var d=new Date();
   var tsArr={1:21,2:5,3:13}; var hs=tsArr[SES.turno]||5;
@@ -3662,8 +3689,7 @@ function admSalvar(fbKey){
     updates.codMotivo=parseInt(G("adm-p-cod").value)||0;
     updates.descricao=G("adm-p-desc").value;
     if(updates.horaIni&&updates.horaFim){
-      var a=updates.horaIni.split(":"),b=updates.horaFim.split(":");
-      updates.minutos=(parseInt(b[0])*60+parseInt(b[1]))-(parseInt(a[0])*60+parseInt(a[1]));
+      updates.minutos=calcMinutos(updates.horaIni,updates.horaFim);
     }
     DB.ref("extrusao_paradas/"+fbKey).update(updates).then(function(){
       fM("m-admin-corr");toast("Parada corrigida!","ok");admBuscar();
