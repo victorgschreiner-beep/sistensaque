@@ -251,7 +251,8 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       <div class="turno-item"><div class="turno-val" id="tur-hora">--:--:--</div><div class="turno-lbl">Hora Atual</div></div>
       <div class="turno-item"><div class="turno-val" id="tur-prod">0 kg</div><div class="turno-lbl">Prod. Turno</div></div>
       <div class="turno-item"><div class="turno-val" id="tur-para">00:00</div><div class="turno-lbl">Paradas</div></div>
-      <div class="turno-item"><div class="turno-val" id="tur-ef">100%</div><div class="turno-lbl">Eficiência</div></div>
+      <div class="turno-item"><div class="turno-val" id="tur-ef">—</div><div class="turno-lbl">Efic. kg/h</div></div>
+      <div class="turno-item"><div class="turno-val" id="tur-disp">100%</div><div class="turno-lbl">Disponib.</div></div>
       <button class="btn-resumo" onclick="abrirDashboard()">📊 Dashboard</button>
       <button class="btn-resumo" onclick="abrirResumo()">📋 Resumo Turno</button>
       <button class="btn-resumo" id="btn-conferencia" onclick="abrirConferencia()" style="display:none">🔍 Conferência</button>
@@ -2316,20 +2317,38 @@ function finalizarTurno(){
 
 // ── BARRA TURNO ───────────────────────────────────────────
 function atualizarBarraTurno(){
-  var totalR=0, minPara=0;
+  var totalR=0, minPara=0, totalMeta=0;
   LINHAS_USER.forEach(function(l){
     var e=EST[l]||{apts:[],paradas:[]};
-    e.apts.forEach(function(a){totalR+=(Number(a.real)||0);});
-    e.paradas.forEach(function(p){if(p.horaIni&&p.horaFim){minPara+=calcMinutos(p.horaIni,p.horaFim);}});
+    e.apts.forEach(function(a){
+      totalR+=(Number(a.real)||0);
+      totalMeta+=(Number(a.metaH)||0);
+    });
+    e.paradas.forEach(function(p){
+      if(p.horaIni&&p.horaFim) minPara+=calcMinutos(p.horaIni,p.horaFim);
+    });
   });
+
+  // Minutos decorridos desde início do turno — corrigido para T1 (cruza meia-noite)
   var d=new Date();
-  var tsArr={1:21,2:5,3:13}; var hs=tsArr[SES.turno]||5;
-  var hAtual=d.getHours()+d.getMinutes()/60;
-  var hDisp=Math.max(hAtual-hs,0)*LINHAS_USER.length*60;
-  var ef=hDisp>0?Math.min(Math.round((hDisp-minPara)/hDisp*100),100):100;
+  var hAtualMin=d.getHours()*60+d.getMinutes();
+  var inicioMin={1:21*60, 2:5*60, 3:13*60}[SES.turno]||5*60;
+  var decorrido=hAtualMin-inicioMin;
+  if(decorrido<0) decorrido+=1440; // T1: ex. agora 02:00 - 21:00 = -19h → +24h = 5h
+  var hDisp=decorrido*LINHAS_USER.length; // minutos totais disponíveis (todas as linhas)
+
+  // Disponibilidade: % do tempo sem parada
+  var disp=hDisp>0?Math.min(Math.round((hDisp-minPara)/hDisp*100),100):100;
+
+  // Eficiência kg/h: real vs meta acumulada nos apontamentos
+  var ef=totalMeta>0?Math.min(Math.round(totalR/totalMeta*100),999):0;
+  var corEf=ef>=85?"#4caf50":ef>=70?"#d29922":"#e53935";
+
   G("tur-prod").textContent=fN(totalR)+" kg";
   G("tur-para").textContent=minH(minPara);
-  G("tur-ef").textContent=ef+"%";
+  G("tur-ef").textContent=ef>0?ef+"%":"—";
+  G("tur-ef").style.color=ef>0?corEf:"#024f2b";
+  if(G("tur-disp")) G("tur-disp").textContent=disp+"%";
 }
 
 // ── RELÓGIO ───────────────────────────────────────────────
