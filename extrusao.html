@@ -2584,7 +2584,7 @@ function admRenderOps(ops){
       h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" onclick="admReopenOp(this.dataset.fk,this.dataset.id)" style="background:#d29922;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">↩ Reabrir</button>';
     }
     if(o.status==="Liberada"||o.status==="Reprogramada"){
-      h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" onclick="admReopenOp(this.dataset.fk,this.dataset.id)" style="background:#739630;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">▶ Iniciar</button>';
+      h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" data-linha="'+(o.linha||'')+'" onclick="admIniciarOp(this)" style="background:#739630;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">▶ Iniciar</button>';
     }
     if(o.status==="Em andamento"){
       h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" onclick="admCloseOp(this.dataset.fk,this.dataset.id)" style="background:#024f2b;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✔ Concluir</button>';
@@ -5105,6 +5105,38 @@ function resumoAdmRenderizar(apts,paradas,ops,dt,turno,linhaFiltro){
   h+='<span>'+fN(totalGeralReal)+' kg produzidos · '+minH(totalGeralMin)+' em paradas</span></div>';
 
   G("resumo-corpo").innerHTML=h;
+}
+
+// ── ADMIN: INICIAR OP NA LINHA ────────────────────────────
+function admIniciarOp(btn){
+  var fbKey=btn.dataset.fk;
+  var id=btn.dataset.id;
+  var linha=btn.dataset.linha;
+  if(!fbKey||!DB){toast("Erro ao identificar OP","err");return;}
+
+  // Se linha não veio no dataset, pedir ao usuário
+  if(!linha){
+    var linhas=["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
+    linha=prompt("Em qual linha iniciar a OP "+id+"?\n\n"+linhas.map(function(l,i){return (i+1)+". "+l;}).join("\n")+"\n\nDigite o número:");
+    if(!linha) return;
+    linha=linhas[parseInt(linha)-1];
+    if(!linha){toast("Linha inválida","err");return;}
+  }
+
+  if(!confirm("Iniciar OP "+id+" na "+linha+"?")) return;
+
+  // Verificar se já tem outra OP ativa nessa linha
+  if(EST[linha]&&EST[linha].opAtiva&&!opConcluidaNaExt(EST[linha].opAtiva)){
+    var opAtual=OPS.find(function(o){return o.fbKey===EST[linha].opAtiva;});
+    toast("Linha já tem OP "+(opAtual?opAtual.id:EST[linha].opAtiva)+" em andamento","err");
+    return;
+  }
+
+  // Ativar a OP na linha
+  selecionarOpAtiva(linha, fbKey);
+  toast("OP "+id+" iniciada na "+linha,"ok");
+  registrarLog("op_inicio","Admin iniciou OP "+id+" na "+linha,"-");
+  admBuscarOps();
 }
 </script>
 </body>
