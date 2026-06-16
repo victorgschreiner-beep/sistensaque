@@ -841,6 +841,7 @@ var SES=null, OPS=[], LINHAS_USER=[];
 var linhaAtiva=null;
 var DT_FILA=null;
 var METAS_FB={};     // metas carregadas do Firebase (sobrepõe METAS_IDX)
+var OP_CONCLUIDAS_EXT={};  // cache global de OPs concluídas na extrusão {fbKey: val}
 var METAS_FB_OK=false; // true após primeiro carregamento do Firebase
 // Estado por linha: {opAtiva, apts, paradas}
 var EST={};
@@ -1170,6 +1171,21 @@ function carregarOPs(){
     OPS=[];
     if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;OPS.push(v);});
     renderLinhas();
+    // OPs reprogramadas — avisa e abre seleção se linha sem OP ativa
+    setTimeout(function(){
+      LINHAS_USER.forEach(function(l){
+        var reps=OPS.filter(function(o){
+          return o.linha===l&&o.status==="Reprogramada"&&o.data===(DT_FILA||hoje());
+        });
+        if(!reps.length) return;
+        // Só age se a linha não tiver OP ativa
+        if(EST[l]&&EST[l].opAtiva) return;
+        // Toast de aviso
+        toast("⚠️ "+nomeCurto(l)+" tem OP reprogramada na fila — selecione para iniciar","err");
+        // Abre o modal de seleção de OP para essa linha
+        setTimeout(function(){ abrirSelOp(l); }, 800);
+      });
+    },2000);
     LINHAS_USER.forEach(function(l){
       if(!EST[l].opAtiva){
         verificarHerancaOp(l);
@@ -1311,19 +1327,21 @@ function carregarExtrusao(){
   var isAdmin=SES&&SES.perfil==="admin";
   // Listener único para OPs concluídas na extrusão — fora do forEach para não duplicar
   DB.ref("extrusao_op_concluida").on("value",function(sc){
-    LINHAS_USER.forEach(function(l){ EST[l].opConcluidaExt={}; });
+    // Reseta cache global e por linha
+    OP_CONCLUIDAS_EXT={};
+    LINHAS_USER.forEach(function(l){ if(EST[l]) EST[l].opConcluidaExt={}; });
     if(sc.exists()) sc.forEach(function(c){
       var val=c.val();
       if(!val) return;
-      // Tenta pelo val.linha exato
+      // Cache global — chave é o fbKey da OP
+      OP_CONCLUIDAS_EXT[c.key]=val;
+      // Também associa por linha quando possível
       if(val.linha && EST[val.linha]){
         EST[val.linha].opConcluidaExt[c.key]=val;
-      } else {
-        // Fallback: associa a qualquer linha que tenha essa OP ativa
-        LINHAS_USER.forEach(function(l){
-          if(EST[l].opAtiva===c.key) EST[l].opConcluidaExt[c.key]=val;
-        });
       }
+      LINHAS_USER.forEach(function(l){
+        if(EST[l]) EST[l].opConcluidaExt[c.key]=val;
+      });
     });
     LINHAS_USER.forEach(function(l){renderLinhaCard(l);});
   });
@@ -1428,7 +1446,9 @@ function renderLinhas(){
 }
 
 function opConcluidaNaExt(opFbKey){
-  // Verifica se a OP foi concluída na extrusão (nó separado)
+  // Cache global — mais confiável, independe de linha
+  if(OP_CONCLUIDAS_EXT && OP_CONCLUIDAS_EXT[opFbKey]) return true;
+  // Fallback por linha
   for(var l in EST){
     if(EST[l].opConcluidaExt && EST[l].opConcluidaExt[opFbKey]) return true;
   }
@@ -1528,8 +1548,10 @@ function renderLinhaCard(linha){
       var extTotal=Number(o.realExtrusao)||0;
       var pct=o.prog?Math.min(Math.round(extTotal/(Number(o.prog)||1)*100),100):0;
       var corPct=pct>=90?"#024f2b":pct>=60?"#d29922":"#4a664a";
-      h+='<div class="fila-op'+(isAtiva?" ativa":"")+(o.status==="Concluida"?" concluida":"")+'" data-fk="'+o.fbKey+'" data-l="'+linha+'" onclick="selecionarOpAtiva(this.dataset.l,this.dataset.fk)">';
-      h+='<div><div class="fila-op-num">'+o.id+'</div></div>';
+      var isRep=o.status==="Reprogramada";
+      var estiloRep=isRep?";border-left:3px solid #d29922;background:#fffbf0":"";
+      h+='<div class="fila-op'+(isAtiva?" ativa":"")+(o.status==="Concluida"?" concluida":"")+(isRep?" rep":"")+'" style="'+estiloRep+'" data-fk="'+o.fbKey+'" data-l="'+linha+'" onclick="selecionarOpAtiva(this.dataset.l,this.dataset.fk)">';
+      h+='<div><div class="fila-op-num">'+(isRep?'⚠️ ':'')+o.id+'</div></div>';
       h+='<div class="fila-op-desc">'+(o.desc||o.cod)+'</div>';
       h+='<span class="badge-st '+badgeCls+'">'+o.status+'</span>';
       h+='<div class="fila-op-prog" style="color:'+corPct+'">'+pct+'%</div>';
@@ -1761,6 +1783,7 @@ function concluirOpOperador(btn){
       if(EST[linha]){
         EST[linha].opConcluidaExt=EST[linha].opConcluidaExt||{};
         EST[linha].opConcluidaExt[opFbKey]=registro;
+        OP_CONCLUIDAS_EXT[opFbKey]=registro;
         EST[linha].opAtiva=null;
         EST[linha].opAtivaCache=null;
         var t=SES.turno;
@@ -2798,6 +2821,7 @@ function admReopenOp(fbKey,id){
     LINHAS_USER.forEach(function(l){
       // Limpa EST local imediatamente
       if(EST[l]&&EST[l].opConcluidaExt) delete EST[l].opConcluidaExt[fbKey];
+      if(OP_CONCLUIDAS_EXT) delete OP_CONCLUIDAS_EXT[fbKey];
       // Limpa flag _concluida do dia atual e anterior
       var dt=DT_FILA||hoje();
       var dtAnt=(function(){var d=new Date(dt+"T12:00:00");d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
