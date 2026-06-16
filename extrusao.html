@@ -1986,7 +1986,7 @@ function salvarApt(){
   // Para T1 (noturno) normalizar horas < "05" somando 24h para comparação
   function normH(h,t){
     var n=parseInt(h.replace(":",""));
-    if(t===1 && n<500) n+=2400;
+    if(t===1 && n<=500) n+=2400;
     return n;
   }
   var nHi=normH(hi,turnoApt), nHf=normH(hf,turnoApt);
