@@ -2851,19 +2851,9 @@ function admReopenOp(fbKey,id){
     });
     return Promise.all(promises);
   }).then(function(){
-    toast("OP "+id+" reaberta para apontamento!","ok");
+    toast("OP "+id+" reaberta — aparecerá na fila para o operador","ok");
     registrarLog("op_status","Reabriu OP "+id+" na extrusão","extrusao_op_concluida removido");
-    // Busca a OP para saber a linha e ativar no card
-    var opObj=OPS.find(function(o){return o.fbKey===fbKey;});
-    var linhaOp=opObj?opObj.linha:null;
-    if(linhaOp && LINHAS_USER.indexOf(linhaOp)>=0){
-      // Ativa a OP na linha para aparecer no card
-      selecionarOpAtiva(linhaOp, fbKey);
-    } else if(linhaOp && DB){
-      // Linha não está em LINHAS_USER (admin vendo outra linha) — só grava no Firebase
-      var dt=DT_FILA||hoje(), t=SES.turno;
-      DB.ref("extrusao_op_ativa/"+encId(linhaOp)+"/"+dt+"/t"+t).set(fbKey);
-    }
+    // Rerenderiza cards localmente
     LINHAS_USER.forEach(function(l){renderLinhaCard(l);});
     admBuscarOps();
     if(G("conf-corpo")) confGerar();
@@ -5185,11 +5175,26 @@ function admIniciarOp(btn){
     return;
   }
 
-  // Ativar a OP na linha
-  selecionarOpAtiva(linha, fbKey);
-  toast("OP "+id+" iniciada na "+linha,"ok");
-  registrarLog("op_inicio","Admin iniciou OP "+id+" na "+linha,"-");
-  admBuscarOps();
+  // Grava direto no Firebase — o listener do operador reage automaticamente
+  var dt=DT_FILA||hoje();
+  var t=SES.turno||turnoAtual();
+  var upd={};
+  upd["t"+t]=fbKey;
+  upd["t"+t+"_ts"]=agora();
+  DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt).update(upd).then(function(){
+    // Atualiza estado local também
+    if(EST[linha]){
+      EST[linha].opAtiva=fbKey;
+      EST[linha].opAtivaTs=agora();
+      // Busca cache da OP se não estiver em OPS[]
+      var opObj=OPS.find(function(o){return o.fbKey===fbKey;});
+      if(opObj) EST[linha].opAtivaCache=opObj;
+    }
+    renderLinhaCard(linha);
+    toast("OP "+id+" iniciada na "+linha+" — aparecerá no card do operador","ok");
+    registrarLog("op_inicio","Admin iniciou OP "+id+" na "+linha,"-");
+    admBuscarOps();
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 </script>
 </body>
