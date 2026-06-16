@@ -1159,58 +1159,69 @@ function trocarDataFila(dt){
 
 function carregarOPs(){
   if(!DB){
-    // Sem Firebase — mostra aviso nos cards
     OPS=[];
     renderLinhas();
     toast("Sem conexão com servidor — suba online para ver as OPs","err");
     return;
   }
-  // Cancela listener anterior antes de registrar novo (evita acúmulo ao trocar data)
   DB.ref("ops").off("value");
   DB.ref("ops").orderByChild("data").equalTo(DT_FILA).on("value",function(s){
     OPS=[];
     if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;OPS.push(v);});
-    renderLinhas();
-    // OPs reprogramadas — avisa e abre seleção se linha sem OP ativa
-    setTimeout(function(){
-      LINHAS_USER.forEach(function(l){
-        var reps=OPS.filter(function(o){
-          return o.linha===l&&o.status==="Reprogramada"&&o.data===(DT_FILA||hoje());
+    // Busca também OPs Em andamento e Reprogramadas de outros dias
+    var idsJaTem=OPS.map(function(o){return o.fbKey;});
+    Promise.all([
+      DB.ref("ops").orderByChild("status").equalTo("Em andamento").once("value"),
+      DB.ref("ops").orderByChild("status").equalTo("Reprogramada").once("value")
+    ]).then(function(snaps){
+      snaps.forEach(function(snap){
+        if(!snap.exists()) return;
+        snap.forEach(function(c){
+          if(idsJaTem.indexOf(c.key)<0){
+            var v=c.val(); v.fbKey=c.key;
+            OPS.push(v); idsJaTem.push(c.key);
+          }
         });
-        if(!reps.length) return;
-        // Só age se a linha não tiver OP ativa
-        if(EST[l]&&EST[l].opAtiva) return;
-        // Toast de aviso
-        toast("⚠️ "+nomeCurto(l)+" tem OP reprogramada na fila — selecione para iniciar","err");
-        // Abre o modal de seleção de OP para essa linha
-        setTimeout(function(){ abrirSelOp(l); }, 800);
       });
-    },2000);
+      _posCarregarOPs();
+    }).catch(function(){_posCarregarOPs();});
+  });
+}
+
+function _posCarregarOPs(){
+  renderLinhas();
+  // Avisa OPs reprogramadas sem OP ativa na linha
+  setTimeout(function(){
     LINHAS_USER.forEach(function(l){
-      if(!EST[l].opAtiva){
-        verificarHerancaOp(l);
-      } else {
-        // Se a OP ativa não existe mais em OPS[] (foi excluída do ensaque),
-        // verifica no Firebase se ainda existe
-        var existe=OPS.some(function(o){return o.fbKey===EST[l].opAtiva;});
-        if(!existe && !EST[l].opAtivaCache){
-          DB.ref("ops/"+EST[l].opAtiva).once("value",function(sOp){
-            if(!sOp.exists()){
-              // OP excluída — limpa estado e permite nova seleção
-              EST[l].opAtiva=null;
-              EST[l].opAtivaCache=null;
-              renderLinhaCard(l);
-              toast("OP removida da fila — selecione uma nova OP para continuar","err");
-            } else {
-              // Existe mas não estava em OPS[] (data diferente) — atualiza cache
-              EST[l].opAtivaCache=sOp.val();
-              EST[l].opAtivaCache.fbKey=EST[l].opAtiva;
-              renderLinhaCard(l);
-            }
-          });
-        }
-      }
+      var reps=OPS.filter(function(o){
+        return o.linha===l&&o.status==="Reprogramada";
+      });
+      if(!reps.length) return;
+      if(EST[l]&&EST[l].opAtiva) return;
+      toast("⚠️ "+nomeCurto(l)+" tem OP reprogramada na fila — selecione para iniciar","err");
+      setTimeout(function(){ abrirSelOp(l); }, 800);
     });
+  },2000);
+  LINHAS_USER.forEach(function(l){
+    if(!EST[l].opAtiva){
+      verificarHerancaOp(l);
+    } else {
+      var existe=OPS.some(function(o){return o.fbKey===EST[l].opAtiva;});
+      if(!existe && !EST[l].opAtivaCache){
+        DB.ref("ops/"+EST[l].opAtiva).once("value",function(sOp){
+          if(!sOp.exists()){
+            EST[l].opAtiva=null;
+            EST[l].opAtivaCache=null;
+            renderLinhaCard(l);
+            toast("OP removida da fila — selecione uma nova OP para continuar","err");
+          } else {
+            EST[l].opAtivaCache=sOp.val();
+            EST[l].opAtivaCache.fbKey=EST[l].opAtiva;
+            renderLinhaCard(l);
+          }
+        });
+      }
+    }
   });
 }
 
