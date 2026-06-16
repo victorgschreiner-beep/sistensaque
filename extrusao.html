@@ -1421,11 +1421,12 @@ function carregarExtrusao(){
       }
     }
 
-    DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt).once("value").then(function(s){
+    // Listener em tempo real — reage quando admin inicia/reabre OP remotamente
+    DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt).on("value",function(s){
       if(s.exists()){
         _aplicarOpAtiva(s.val(), dt);
       } else if(t===1){
-        // T1: se não tem nada no dia atual, olha o dia anterior (T3 pode ter gravado lá)
+        // T1: olha o dia anterior
         var dtAnt=(function(){
           var d=new Date(dt+"T12:00:00");
           d.setDate(d.getDate()-1);
