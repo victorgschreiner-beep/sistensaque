@@ -1659,9 +1659,34 @@ function abrirSelOp(linha){
   linhaAtiva=linha;
   G("sel-op-linha").textContent=linha;
   var ops=getOpsLinha(linha);
+  // Se não encontrou OPs, busca direto no Firebase (Em andamento + Reprogramadas)
+  if(!ops.length && DB){
+    G("sel-op-corpo").innerHTML="<div style='text-align:center;padding:20px;color:#4a664a'>Buscando...</div>";
+    aM("m-sel-op");
+    Promise.all([
+      DB.ref("ops").orderByChild("status").equalTo("Em andamento").once("value"),
+      DB.ref("ops").orderByChild("status").equalTo("Reprogramada").once("value"),
+      DB.ref("ops").orderByChild("data").equalTo(DT_FILA||hoje()).once("value")
+    ]).then(function(snaps){
+      var idsJaTem=OPS.map(function(o){return o.fbKey;});
+      snaps.forEach(function(snap){
+        if(!snap.exists()) return;
+        snap.forEach(function(c){
+          if(idsJaTem.indexOf(c.key)<0){var v=c.val();v.fbKey=c.key;OPS.push(v);idsJaTem.push(c.key);}
+        });
+      });
+      _renderSelOp(linha);
+    });
+    return;
+  }
+  _renderSelOp(linha);
+}
+
+function _renderSelOp(linha){
+  var ops=getOpsLinha(linha);
   var atualFk=EST[linha]&&EST[linha].opAtiva;
   var h="";
-  if(!ops.length){h="<div style=\"text-align:center;padding:20px;color:#4a664a\">Nenhuma OP para hoje nesta linha</div>";}
+  if(!ops.length){h="<div style='text-align:center;padding:20px;color:#4a664a'>Nenhuma OP para hoje nesta linha</div>";}
   ops.forEach(function(o){
     var isAt=o.fbKey===atualFk;
     var extTotal=Number(o.realExtrusao)||0;
