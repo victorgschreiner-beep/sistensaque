@@ -2862,37 +2862,52 @@ function admReopenOp(fbKey,id){
     renderLinhaCard(l);
   });
 
-  // Passo 2: remove do Firebase
+  // Passo 2: atualiza status no nó ops/ + remove do Firebase
   var dt=DT_FILA||hoje();
   var dtAnt=(function(){var d=new Date(dt+"T12:00:00");d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
-  var removes=[DB.ref("extrusao_op_concluida/"+fbKey).remove()];
+
+  var operacoes=[
+    DB.ref("ops/"+fbKey).update({status:"Em andamento"}),
+    DB.ref("extrusao_op_concluida/"+fbKey).remove()
+  ];
+
   // Limpa flags _concluida de todos os turnos dos últimos 2 dias
   LINHAS_USER.forEach(function(l){
     [dt,dtAnt].forEach(function(d){
       [1,2,3].forEach(function(t){
-        removes.push(DB.ref("extrusao_op_ativa/"+encId(l)+"/"+d+"/t"+t+"_concluida").remove());
+        operacoes.push(DB.ref("extrusao_op_ativa/"+encId(l)+"/"+d+"/t"+t+"_concluida").remove());
       });
     });
   });
 
-  Promise.all(removes).then(function(){
+  Promise.all(operacoes).then(function(){
+    // Atualiza cache local da OP
+    var opObj=OPS.find(function(o){return o.fbKey===fbKey;});
+    if(opObj) opObj.status="Em andamento";
     toast("OP "+id+" reaberta — selecione no card para apontar","ok");
     registrarLog("op_status","Reabriu OP "+id+" na extrusão","-");
     LINHAS_USER.forEach(function(l){renderLinhaCard(l);});
     admBuscarOps();
     if(G("conf-corpo")) confGerar();
-  }).catch(function(e){toast("Erro: "+e.message,"err");});
+  }).catch(function(e){toast("Erro ao reabrir OP: "+e.message,"err");});
 }
 
 function admCloseOp(fbKey,id){
   if(!confirm("Concluir OP "+id+" na extrusão? O ensaque NÃO será afetado.")) return;
   if(!DB){toast("Firebase não conectado","err");return;}
-  // Descobrir a linha da OP
+
   var opObj=OPS.find(function(o){return o.fbKey===fbKey;});
   var linhaOp=opObj?opObj.linha:"";
   var dt=DT_FILA||hoje();
   var registro={linha:linhaOp,turno:SES.turno,data:dt,operador:SES.login,ts:agora()};
-  DB.ref("extrusao_op_concluida/"+fbKey).set(registro).then(function(){
+
+  // CORREÇÃO: atualiza status no nó ops/ + grava em extrusao_op_concluida
+  Promise.all([
+    DB.ref("ops/"+fbKey).update({status:"Concluida"}),
+    DB.ref("extrusao_op_concluida/"+fbKey).set(registro)
+  ]).then(function(){
+    // Atualiza estado local imediatamente
+    if(opObj) opObj.status="Concluida";
     OP_CONCLUIDAS_EXT[fbKey]=registro;
     LINHAS_USER.forEach(function(l){
       if(EST[l]){
@@ -2905,7 +2920,7 @@ function admCloseOp(fbKey,id){
     toast("OP "+id+" concluída na extrusão!","ok");
     registrarLog("op_extrusao","Admin concluiu OP "+id+" na extrusão","-");
     admBuscarOps();
-  }).catch(function(e){toast("Erro: "+e.message,"err");});
+  }).catch(function(e){toast("Erro ao concluir OP: "+e.message,"err");});
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────
@@ -5201,26 +5216,32 @@ function admIniciarOp(btn){
     return;
   }
 
-  // Grava direto no Firebase — o listener do operador reage automaticamente
   var dt=DT_FILA||hoje();
   var t=SES.turno||turnoAtual();
-  var upd={};
-  upd["t"+t]=fbKey;
-  upd["t"+t+"_ts"]=agora();
-  DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt).update(upd).then(function(){
-    // Atualiza estado local também
+
+  // CORREÇÃO: atualiza status no nó ops/ (causa o listener .on a re-disparar e reconstruir OPS[])
+  // + grava no extrusao_op_ativa para o operador ver em tempo real
+  var updOpAtiva={};
+  updOpAtiva["t"+t]=fbKey;
+  updOpAtiva["t"+t+"_ts"]=agora();
+
+  Promise.all([
+    DB.ref("ops/"+fbKey).update({status:"Em andamento", linha:linha}),
+    DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt).update(updOpAtiva)
+  ]).then(function(){
+    // Atualiza estado local imediatamente (sem aguardar o listener re-disparar)
+    var opObj=OPS.find(function(o){return o.fbKey===fbKey;});
+    if(opObj) opObj.status="Em andamento";
     if(EST[linha]){
       EST[linha].opAtiva=fbKey;
       EST[linha].opAtivaTs=agora();
-      // Busca cache da OP se não estiver em OPS[]
-      var opObj=OPS.find(function(o){return o.fbKey===fbKey;});
       if(opObj) EST[linha].opAtivaCache=opObj;
     }
     renderLinhaCard(linha);
-    toast("OP "+id+" iniciada na "+linha+" — aparecerá no card do operador","ok");
+    toast("OP "+id+" iniciada na "+linha,"ok");
     registrarLog("op_inicio","Admin iniciou OP "+id+" na "+linha,"-");
     admBuscarOps();
-  }).catch(function(e){toast("Erro: "+e.message,"err");});
+  }).catch(function(e){toast("Erro ao iniciar OP: "+e.message,"err");});
 }
 </script>
 </body>
