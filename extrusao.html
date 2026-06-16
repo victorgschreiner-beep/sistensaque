@@ -2854,33 +2854,30 @@ function admExcluirAptOp(btn){
 function admReopenOp(fbKey,id){
   if(!confirm("Reabrir OP "+id+" para apontamento na extrusão?")) return;
   if(!DB){toast("Firebase não conectado","err");return;}
-  // Remove conclusão da extrusão + limpa flag _concluida nos nós de turno
-  // Limpa estado local IMEDIATAMENTE antes mesmo do Firebase responder
-  if(OP_CONCLUIDAS_EXT) delete OP_CONCLUIDAS_EXT[fbKey];
+
+  // Passo 1: limpa estado local imediatamente
+  delete OP_CONCLUIDAS_EXT[fbKey];
   LINHAS_USER.forEach(function(l){
     if(EST[l]&&EST[l].opConcluidaExt) delete EST[l].opConcluidaExt[fbKey];
     renderLinhaCard(l);
   });
 
-  DB.ref("extrusao_op_concluida/"+fbKey).remove().then(function(){
-    var promises=[];
-    LINHAS_USER.forEach(function(l){
-      if(EST[l]&&EST[l].opConcluidaExt) delete EST[l].opConcluidaExt[fbKey];
-      if(OP_CONCLUIDAS_EXT) delete OP_CONCLUIDAS_EXT[fbKey];
-      // Limpa flag _concluida do dia atual e anterior
-      var dt=DT_FILA||hoje();
-      var dtAnt=(function(){var d=new Date(dt+"T12:00:00");d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
-      [dt,dtAnt].forEach(function(d){
-        [1,2,3].forEach(function(t){
-          promises.push(DB.ref("extrusao_op_ativa/"+encId(l)+"/"+d+"/t"+t+"_concluida").remove());
-        });
+  // Passo 2: remove do Firebase
+  var dt=DT_FILA||hoje();
+  var dtAnt=(function(){var d=new Date(dt+"T12:00:00");d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
+  var removes=[DB.ref("extrusao_op_concluida/"+fbKey).remove()];
+  // Limpa flags _concluida de todos os turnos dos últimos 2 dias
+  LINHAS_USER.forEach(function(l){
+    [dt,dtAnt].forEach(function(d){
+      [1,2,3].forEach(function(t){
+        removes.push(DB.ref("extrusao_op_ativa/"+encId(l)+"/"+d+"/t"+t+"_concluida").remove());
       });
     });
-    return Promise.all(promises);
-  }).then(function(){
-    toast("OP "+id+" reaberta — aparecerá na fila para o operador","ok");
-    registrarLog("op_status","Reabriu OP "+id+" na extrusão","extrusao_op_concluida removido");
-    // Rerenderiza cards localmente
+  });
+
+  Promise.all(removes).then(function(){
+    toast("OP "+id+" reaberta — selecione no card para apontar","ok");
+    registrarLog("op_status","Reabriu OP "+id+" na extrusão","-");
     LINHAS_USER.forEach(function(l){renderLinhaCard(l);});
     admBuscarOps();
     if(G("conf-corpo")) confGerar();
@@ -2890,16 +2887,18 @@ function admReopenOp(fbKey,id){
 function admCloseOp(fbKey,id){
   if(!confirm("Concluir OP "+id+" na extrusão? O ensaque NÃO será afetado.")) return;
   if(!DB){toast("Firebase não conectado","err");return;}
-  // Grava apenas em extrusao_op_concluida — NÃO altera ops/ do ensaque
+  // Descobrir a linha da OP
+  var opObj=OPS.find(function(o){return o.fbKey===fbKey;});
+  var linhaOp=opObj?opObj.linha:"";
   var dt=DT_FILA||hoje();
-  var registro={linha:"admin",turno:SES.turno,data:dt,operador:SES.login,ts:agora()};
+  var registro={linha:linhaOp,turno:SES.turno,data:dt,operador:SES.login,ts:agora()};
   DB.ref("extrusao_op_concluida/"+fbKey).set(registro).then(function(){
-    // Limpa EST local em todas as linhas
+    OP_CONCLUIDAS_EXT[fbKey]=registro;
     LINHAS_USER.forEach(function(l){
       if(EST[l]){
         EST[l].opConcluidaExt=EST[l].opConcluidaExt||{};
         EST[l].opConcluidaExt[fbKey]=registro;
-        if(EST[l].opAtiva===fbKey){ EST[l].opAtiva=null; EST[l].opAtivaCache=null; }
+        if(EST[l].opAtiva===fbKey){EST[l].opAtiva=null;EST[l].opAtivaCache=null;}
       }
       renderLinhaCard(l);
     });
