@@ -1189,6 +1189,14 @@ function carregarOPs(){
 }
 
 function _posCarregarOPs(){
+  // CORREÇÃO: preserva EST[l].opAtiva ja setado localmente antes de renderizar
+  // Evita race condition entre listener ops e listener extrusao_op_ativa
+  LINHAS_USER.forEach(function(l){
+    if(EST[l]&&EST[l].opAtiva){
+      var opObj=OPS.find(function(o){return o.fbKey===EST[l].opAtiva;});
+      if(opObj) EST[l].opAtivaCache=opObj;
+    }
+  });
   renderLinhas();
   // Avisa OPs reprogramadas sem OP ativa na linha
   setTimeout(function(){
@@ -5217,24 +5225,26 @@ function admIniciarOp(btn){
   }
 
   var dt=DT_FILA||hoje();
-  var t=SES.turno||turnoAtual();
 
-  // CORREÇÃO: atualiza status no nó ops/ (causa o listener .on a re-disparar e reconstruir OPS[])
-  // + grava no extrusao_op_ativa para o operador ver em tempo real
-  var updOpAtiva={};
-  updOpAtiva["t"+t]=fbKey;
-  updOpAtiva["t"+t+"_ts"]=agora();
+  // CORREÇÃO: grava a OP em TODOS os turnos (t1, t2, t3) para que qualquer
+  // operador logado em qualquer turno enxergue a OP no card
+  var ts=agora();
+  var updOpAtiva={
+    t1:fbKey, t1_ts:ts,
+    t2:fbKey, t2_ts:ts,
+    t3:fbKey, t3_ts:ts
+  };
 
   Promise.all([
     DB.ref("ops/"+fbKey).update({status:"Em andamento", linha:linha}),
     DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt).update(updOpAtiva)
   ]).then(function(){
-    // Atualiza estado local imediatamente (sem aguardar o listener re-disparar)
+    // Atualiza estado local imediatamente
     var opObj=OPS.find(function(o){return o.fbKey===fbKey;});
     if(opObj) opObj.status="Em andamento";
     if(EST[linha]){
       EST[linha].opAtiva=fbKey;
-      EST[linha].opAtivaTs=agora();
+      EST[linha].opAtivaTs=ts;
       if(opObj) EST[linha].opAtivaCache=opObj;
     }
     renderLinhaCard(linha);
