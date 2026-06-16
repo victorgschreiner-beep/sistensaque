@@ -1485,8 +1485,11 @@ function getOpsLinha(linha){
   var dt=DT_FILA||hoje();
   return OPS.filter(function(o){
     if(o.linha!==linha) return false;
-    // Só filtra se foi concluída nessa linha específica
-    if(opConcluidaNaExt(o.fbKey, linha)) return false;
+    // Exclui OPs com status Concluida (campo autoritativo)
+    if(o.status==="Concluida") return false;
+    // Exclui OPs concluídas na extrusão desta linha (controle interno da extrusão)
+    // Mas só se o status ainda for Concluida — evita falso bloqueio após "Voltar à Fila"
+    if(opConcluidaNaExt(o.fbKey, linha) && o.status==="Concluida") return false;
     // Aceita OPs do dia atual OU reprogramadas (data pode ser diferente)
     return o.data===dt || o.status==="Reprogramada";
   }).sort(function(a,b){return (a.criadoEm||'')>(b.criadoEm||'')?1:-1;});
@@ -2653,12 +2656,7 @@ function admRenderOps(ops){
     h+='<div style="display:flex;flex-direction:column;gap:4px">';
     h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" data-desc="'+(o.desc||o.cod)+'" onclick="admVerApts(this.dataset.fk,this.dataset.id,this.dataset.desc)" style="background:#024f2b;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📋 Apontamentos</button>';
     if(o.status==="Concluida"){
-      // Botão "Reabrir Extrusão" — só aparece se foi concluída PELA extrusão (extrusao_op_concluida)
-      // Não aparece se foi concluída pelo ensaque (sem entrada no nó extrusao_op_concluida)
-      var concluidaExtrusao=OP_CONCLUIDAS_EXT&&OP_CONCLUIDAS_EXT[o.fbKey];
-      if(concluidaExtrusao){
-        h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" onclick="admVoltarFila(this.dataset.fk,this.dataset.id)" style="background:#d29922;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">↩ Voltar à Fila</button>';
-      }
+      h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" onclick="admVoltarFila(this.dataset.fk,this.dataset.id)" style="background:#d29922;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">↩ Voltar à Fila</button>';
     }
     if(o.status==="Liberada"||o.status==="Reprogramada"){
       h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" data-linha="'+(o.linha||'')+'" onclick="admIniciarOp(this)" style="background:#739630;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">▶ Iniciar</button>';
