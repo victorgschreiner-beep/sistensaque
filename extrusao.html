@@ -1733,10 +1733,31 @@ function selecionarOpAtiva(linha,fbKey){
     }
     return;
   }
+  // Limpa qualquer flag de concluída para essa OP nessa linha
+  // Garante que a OP selecionada manualmente sempre apareça no card
+  delete OP_CONCLUIDAS_EXT[fbKey];
+  if(EST[linha]&&EST[linha].opConcluidaExt) delete EST[linha].opConcluidaExt[fbKey];
+
   EST[linha].opAtiva=fbKey;
+
+  // Busca cache da OP se não estiver em OPS[]
+  var opObj=OPS.find(function(o){return o.fbKey===fbKey;});
+  if(opObj) EST[linha].opAtivaCache=opObj;
+
   if(DB){
     var dt=DT_FILA||hoje(),t=SES.turno;
-    DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt+"/t"+t).set(fbKey);
+    // Grava nos 3 turnos para garantir visibilidade independente do turno logado
+    var upd={};
+    upd["t1"]=fbKey; upd["t1_ts"]=agora();
+    upd["t2"]=fbKey; upd["t2_ts"]=agora();
+    upd["t3"]=fbKey; upd["t3_ts"]=agora();
+    // Remove flag _concluida para liberar herança
+    upd["t1_concluida"]=null;
+    upd["t2_concluida"]=null;
+    upd["t3_concluida"]=null;
+    DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+dt).update(upd);
+    // Remove de extrusao_op_concluida se existir
+    DB.ref("extrusao_op_concluida/"+fbKey).remove();
   }
   renderLinhaCard(linha);
   toast("OP selecionada","ok");
