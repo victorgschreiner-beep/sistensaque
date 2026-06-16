@@ -2653,7 +2653,12 @@ function admRenderOps(ops){
     h+='<div style="display:flex;flex-direction:column;gap:4px">';
     h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" data-desc="'+(o.desc||o.cod)+'" onclick="admVerApts(this.dataset.fk,this.dataset.id,this.dataset.desc)" style="background:#024f2b;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📋 Apontamentos</button>';
     if(o.status==="Concluida"){
-      h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" onclick="admReopenOp(this.dataset.fk,this.dataset.id)" style="background:#d29922;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">↩ Reabrir</button>';
+      // Botão "Reabrir Extrusão" — só aparece se foi concluída PELA extrusão (extrusao_op_concluida)
+      // Não aparece se foi concluída pelo ensaque (sem entrada no nó extrusao_op_concluida)
+      var concluidaExtrusao=OP_CONCLUIDAS_EXT&&OP_CONCLUIDAS_EXT[o.fbKey];
+      if(concluidaExtrusao){
+        h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" onclick="admVoltarFila(this.dataset.fk,this.dataset.id)" style="background:#d29922;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">↩ Voltar à Fila</button>';
+      }
     }
     if(o.status==="Liberada"||o.status==="Reprogramada"){
       h+='<button data-fk="'+o.fbKey+'" data-id="'+o.id+'" data-linha="'+(o.linha||'')+'" onclick="admIniciarOp(this)" style="background:#739630;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">▶ Iniciar</button>';
@@ -2898,6 +2903,63 @@ function admReopenOp(fbKey,id){
     admBuscarOps();
     if(G("conf-corpo")) confGerar();
   }).catch(function(e){toast("Erro ao reabrir OP: "+e.message,"err");});
+}
+
+function admVoltarFila(fbKey,id){
+  if(!confirm("Devolver OP "+id+" para a fila da extrusão?\n\nA OP voltará com status Liberada.\nO real já apontado será mantido.\nO ensaque não será afetado.")) return;
+  if(!DB){toast("Firebase não conectado","err");return;}
+
+  var dt=DT_FILA||hoje();
+  var dtAnt=(function(){var d=new Date(dt+"T12:00:00");d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
+
+  // Limpa estado local imediatamente
+  delete OP_CONCLUIDAS_EXT[fbKey];
+  LINHAS_USER.forEach(function(l){
+    if(EST[l]&&EST[l].opConcluidaExt) delete EST[l].opConcluidaExt[fbKey];
+  });
+
+  // Operações Firebase:
+  // 1. Volta status para "Liberada" em ops/ (NÃO altera ensaque — ensaque só finaliza, nunca reverte)
+  // 2. Remove de extrusao_op_concluida
+  // 3. Limpa flags _concluida dos turnos dos últimos 2 dias
+  var operacoes=[
+    DB.ref("ops/"+fbKey).update({status:"Liberada"}),
+    DB.ref("extrusao_op_concluida/"+fbKey).remove()
+  ];
+  LINHAS_USER.forEach(function(l){
+    [dt,dtAnt].forEach(function(d){
+      [1,2,3].forEach(function(t){
+        operacoes.push(DB.ref("extrusao_op_ativa/"+encId(l)+"/"+d+"/t"+t+"_concluida").remove());
+      });
+      // Limpa também o vínculo de turno para que a OP não apareça como "ativa" automaticamente
+      // O operador deverá selecioná-la manualmente na fila
+      [1,2,3].forEach(function(t){
+        operacoes.push(
+          DB.ref("extrusao_op_ativa/"+encId(l)+"/"+d+"/t"+t).once("value").then(function(s){
+            if(s.exists()&&s.val()===fbKey){
+              return DB.ref("extrusao_op_ativa/"+encId(l)+"/"+d+"/t"+t).remove();
+            }
+          })
+        );
+      });
+    });
+  });
+
+  Promise.all(operacoes).then(function(){
+    // Atualiza cache local
+    var opObj=OPS.find(function(o){return o.fbKey===fbKey;});
+    if(opObj) opObj.status="Liberada";
+    LINHAS_USER.forEach(function(l){
+      if(EST[l]&&EST[l].opAtiva===fbKey){
+        EST[l].opAtiva=null;
+        EST[l].opAtivaCache=null;
+      }
+      renderLinhaCard(l);
+    });
+    toast("OP "+id+" devolvida para a fila — selecione no card para reiniciar","ok");
+    registrarLog("op_status","Admin devolveu OP "+id+" para fila da extrusão","-");
+    admBuscarOps();
+  }).catch(function(e){toast("Erro ao devolver OP: "+e.message,"err");});
 }
 
 function admCloseOp(fbKey,id){
