@@ -1346,13 +1346,10 @@ function carregarExtrusao(){
       if(!val) return;
       // Cache global — chave é o fbKey da OP
       OP_CONCLUIDAS_EXT[c.key]=val;
-      // Também associa por linha quando possível
+      // Associa APENAS à linha correta — não contaminar outras linhas
       if(val.linha && EST[val.linha]){
         EST[val.linha].opConcluidaExt[c.key]=val;
       }
-      LINHAS_USER.forEach(function(l){
-        if(EST[l]) EST[l].opConcluidaExt[c.key]=val;
-      });
     });
     LINHAS_USER.forEach(function(l){renderLinhaCard(l);});
   });
@@ -1496,7 +1493,7 @@ function renderLinhaCard(linha){
   var opsLinha=getOpsLinha(linha);
   // opAtiva: OPS[] (dia atual) → cache do Firebase (dia anterior) → fallback mínimo
   var opAtivaObj=e.opAtiva?(OPS.find(function(o){return o.fbKey===e.opAtiva;})||e.opAtivaCache||null):null;
-  var opAtiva=(e.opAtiva&&!opConcluidaNaExt(e.opAtiva))
+  var opAtiva=(e.opAtiva&&!opConcluidaNaExt(e.opAtiva,linha))
     ?(opAtivaObj||{fbKey:e.opAtiva,id:'',cod:'',desc:'Carregando...',prog:0,realExtrusao:0})
     :null;
   var metaH=opAtiva?getMetaHora(opAtiva.cod,linha):0;
@@ -2858,12 +2855,16 @@ function admReopenOp(fbKey,id){
   if(!confirm("Reabrir OP "+id+" para apontamento na extrusão?")) return;
   if(!DB){toast("Firebase não conectado","err");return;}
   // Remove conclusão da extrusão + limpa flag _concluida nos nós de turno
+  // Limpa estado local IMEDIATAMENTE antes mesmo do Firebase responder
+  if(OP_CONCLUIDAS_EXT) delete OP_CONCLUIDAS_EXT[fbKey];
+  LINHAS_USER.forEach(function(l){
+    if(EST[l]&&EST[l].opConcluidaExt) delete EST[l].opConcluidaExt[fbKey];
+    renderLinhaCard(l);
+  });
+
   DB.ref("extrusao_op_concluida/"+fbKey).remove().then(function(){
-    // Limpa flag _concluida em todos os nós de data/linha possíveis
-    // Busca os nós que podem ter o flag
     var promises=[];
     LINHAS_USER.forEach(function(l){
-      // Limpa EST local imediatamente
       if(EST[l]&&EST[l].opConcluidaExt) delete EST[l].opConcluidaExt[fbKey];
       if(OP_CONCLUIDAS_EXT) delete OP_CONCLUIDAS_EXT[fbKey];
       // Limpa flag _concluida do dia atual e anterior
