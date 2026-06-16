@@ -1445,10 +1445,19 @@ function renderLinhas(){
   LINHAS_USER.forEach(function(l){renderLinhaCard(l);});
 }
 
-function opConcluidaNaExt(opFbKey){
-  // Cache global — mais confiável, independe de linha
+function opConcluidaNaExt(opFbKey, linha){
+  // Se linha especificada, verifica só para aquela linha
+  if(linha){
+    if(EST[linha]&&EST[linha].opConcluidaExt&&EST[linha].opConcluidaExt[opFbKey]) return true;
+    if(OP_CONCLUIDAS_EXT&&OP_CONCLUIDAS_EXT[opFbKey]){
+      var reg=OP_CONCLUIDAS_EXT[opFbKey];
+      // Só considera concluída se foi nessa linha ou pelo admin
+      if(reg.linha===linha||reg.linha==="admin") return true;
+    }
+    return false;
+  }
+  // Sem linha: verifica globalmente (usado no renderLinhaCard com opAtiva)
   if(OP_CONCLUIDAS_EXT && OP_CONCLUIDAS_EXT[opFbKey]) return true;
-  // Fallback por linha
   for(var l in EST){
     if(EST[l].opConcluidaExt && EST[l].opConcluidaExt[opFbKey]) return true;
   }
@@ -1459,12 +1468,10 @@ function getOpsLinha(linha){
   var dt=DT_FILA||hoje();
   return OPS.filter(function(o){
     if(o.linha!==linha) return false;
-    // NÃO filtra por status do ensaque: extrusão e ensaque são processos independentes
-    // com tempos diferentes. A OP pode estar "Concluida" no ensaque mas ainda em produção
-    // na extrusão, ou vice-versa. Cada sistema controla seu próprio ciclo.
-    // Filtra APENAS OPs concluídas NA EXTRUSÃO (nó extrusao_op_concluida)
-    if(opConcluidaNaExt(o.fbKey)) return false;
-    return o.data===dt;
+    // Só filtra se foi concluída nessa linha específica
+    if(opConcluidaNaExt(o.fbKey, linha)) return false;
+    // Aceita OPs do dia atual OU reprogramadas (data pode ser diferente)
+    return o.data===dt || o.status==="Reprogramada";
   }).sort(function(a,b){return (a.criadoEm||'')>(b.criadoEm||'')?1:-1;});
 }
 
@@ -2835,9 +2842,20 @@ function admReopenOp(fbKey,id){
   }).then(function(){
     toast("OP "+id+" reaberta para apontamento!","ok");
     registrarLog("op_status","Reabriu OP "+id+" na extrusão","extrusao_op_concluida removido");
-    // Re-renderiza todos os cards para refletir a reabertura
+    // Busca a OP para saber a linha e ativar no card
+    var opObj=OPS.find(function(o){return o.fbKey===fbKey;});
+    var linhaOp=opObj?opObj.linha:null;
+    if(linhaOp && LINHAS_USER.indexOf(linhaOp)>=0){
+      // Ativa a OP na linha para aparecer no card
+      selecionarOpAtiva(linhaOp, fbKey);
+    } else if(linhaOp && DB){
+      // Linha não está em LINHAS_USER (admin vendo outra linha) — só grava no Firebase
+      var dt=DT_FILA||hoje(), t=SES.turno;
+      DB.ref("extrusao_op_ativa/"+encId(linhaOp)+"/"+dt+"/t"+t).set(fbKey);
+    }
     LINHAS_USER.forEach(function(l){renderLinhaCard(l);});
     admBuscarOps();
+    if(G("conf-corpo")) confGerar();
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
