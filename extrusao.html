@@ -2406,29 +2406,48 @@ function finalizarTurno(){
 // ── BARRA TURNO ───────────────────────────────────────────
 function atualizarBarraTurno(){
   var totalR=0, minPara=0, totalMeta=0;
+  var t=SES.turno;
+  var isAdmin=(SES.perfil==="admin");
+
   LINHAS_USER.forEach(function(l){
     var e=EST[l]||{apts:[],paradas:[]};
     e.apts.forEach(function(a){
-      totalR+=(Number(a.real)||0);
-      totalMeta+=(Number(a.metaH)||0);
+      // Admin: soma todos os apontamentos do dia | Operador: só do turno atual
+      if(isAdmin||a.turno===t){
+        totalR+=(Number(a.real)||0);
+        totalMeta+=(Number(a.metaH)||0);
+      }
     });
     e.paradas.forEach(function(p){
-      if(p.horaIni&&p.horaFim) minPara+=calcMinutos(p.horaIni,p.horaFim);
+      if(!p.horaIni||!p.horaFim) return;
+      // Admin: soma todas as paradas do dia | Operador: só do turno atual
+      if(isAdmin||p.turno===t){
+        minPara+=calcMinutos(p.horaIni,p.horaFim);
+      }
     });
   });
 
-  // Minutos decorridos desde início do turno — corrigido para T1 (cruza meia-noite)
+  // Minutos decorridos
   var d=new Date();
   var hAtualMin=d.getHours()*60+d.getMinutes();
-  var inicioMin={1:21*60, 2:5*60, 3:13*60}[SES.turno]||5*60;
-  var decorrido=hAtualMin-inicioMin;
-  if(decorrido<0) decorrido+=1440; // T1: ex. agora 02:00 - 21:00 = -19h → +24h = 5h
-  var hDisp=decorrido*LINHAS_USER.length; // minutos totais disponíveis (todas as linhas)
+  var decorrido;
+  if(isAdmin){
+    // Admin: desde 21h de ontem até agora (dia operacional completo = 24h máx)
+    var inicioMin=21*60; // dia começa às 21h do dia anterior
+    decorrido=hAtualMin-inicioMin;
+    if(decorrido<0) decorrido+=1440;
+  } else {
+    // Operador: desde início do turno atual
+    var inicioMin={1:21*60, 2:5*60, 3:13*60}[t]||5*60;
+    decorrido=hAtualMin-inicioMin;
+    if(decorrido<0) decorrido+=1440;
+  }
+  var hDisp=decorrido*LINHAS_USER.length;
 
-  // Disponibilidade: % do tempo sem parada
-  var disp=hDisp>0?Math.min(Math.round((hDisp-minPara)/hDisp*100),100):100;
+  // Disponibilidade: % do tempo sem parada — mínimo 0%
+  var disp=hDisp>0?Math.max(0,Math.round((hDisp-minPara)/hDisp*100)):100;
 
-  // Eficiência kg/h: real vs meta acumulada nos apontamentos
+  // Eficiência kg/h
   var ef=totalMeta>0?Math.min(Math.round(totalR/totalMeta*100),999):0;
   var corEf=ef>=85?"#4caf50":ef>=70?"#d29922":"#e53935";
 
