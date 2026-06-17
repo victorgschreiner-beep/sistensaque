@@ -698,29 +698,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       </div>
     </div>
 
-    <!-- Tabela rastreabilidade -->
-    <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px;margin-bottom:16px">
-      <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">Rastreabilidade — Apontamentos do Período</div>
-      <div style="overflow-x:auto">
-        <table id="dash-tabela" style="width:100%;border-collapse:collapse;font-size:12px">
-          <thead>
-            <tr style="background:#f5f9f2">
-              <th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">Data</th>
-              <th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">Linha</th>
-              <th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">Turno</th>
-              <th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">Hora</th>
-              <th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">OP</th>
-              <th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">Produto</th>
-              <th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">Real (kg)</th>
-              <th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">Meta (kg/h)</th>
-              <th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">%</th>
-              <th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">Operador</th>
-            </tr>
-          </thead>
-          <tbody id="dash-tabela-body"></tbody>
-        </table>
-      </div>
-    </div>
+
 
     <!-- Relatório SKU -->
     <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px;margin-bottom:16px">
@@ -3483,28 +3461,7 @@ function dashRender(apts, paradas, di, df){
     var btnPdf=G("btn-op-pdf");
     if(btnPdf) btnPdf.style.display="none";
   }
-  var aptsSorted=apts.slice().sort(function(a,b){
-    return (a.data+a.horaIni)>(b.data+b.horaIni)?1:-1;
-  });
-  var tbody=G("dash-tabela-body");
-  tbody.innerHTML=aptsSorted.map(function(a,i){
-    var ef=a.metaH?Math.min(Math.round((Number(a.real)||0)/a.metaH*100),999):0;
-    var corEf=ef>=85?"#024f2b":ef>=70?"#d29922":"#c0392b";
-    var nomeL=(a.linha||"");
-    var bg=i%2===0?"#fff":"#f9fbf9";
-    return '<tr style="background:'+bg+'">'+
-      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0">'+a.data+'</td>'+
-      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0">'+nomeL+'</td>'+
-      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;text-align:center">T'+(a.turno||"")+'</td>'+
-      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0">'+a.horaIni+'→'+a.horaFim+'</td>'+
-      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;font-weight:700;color:#024f2b">'+(a.opNum||"")+'</td>'+
-      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0">'+(a.desc||a.cod||"").slice(0,25)+'</td>'+
-      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700">'+fN(a.real)+'</td>'+
-      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;text-align:right">'+fN(a.metaH||0)+'</td>'+
-      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:'+corEf+'">'+ef+'%</td>'+
-      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;color:#666">'+(a.operador||"")+'</td>'+
-      '</tr>';
-  }).join("")||'<tr><td colspan="10" style="text-align:center;padding:20px;color:#4a664a">Nenhum apontamento encontrado</td></tr>';
+  // Tabela de rastreabilidade removida
 }
 
 function dashExportarPDF(){
@@ -3531,17 +3488,7 @@ function dashExportarPDF(){
   });
   y+=8;
 
-  var rows=G("dash-tabela-body").querySelectorAll("tr");
-  rows.forEach(function(row,ri){
-    if(y>195){doc.addPage();y=15;}
-    var cells=row.querySelectorAll("td");
-    if(ri%2===0){doc.setFillColor(248,253,248);doc.rect(ML,y-1,W,7,"F");}
-    doc.setFont("helvetica","normal"); doc.setFontSize(6.5); doc.setTextColor(30,30,30);
-    cells.forEach(function(td,i){
-      if(cols[i]) doc.text((td.textContent||"").slice(0,18),cols[i],y+4);
-    });
-    y+=7;
-  });
+  // Rastreabilidade removida do PDF
 
   doc.save("Dashboard_Extrusao_"+G("dash-di").value+"_"+G("dash-df").value+".pdf");
   toast("PDF gerado!","ok");
