@@ -1228,10 +1228,14 @@ function renderOPs(){
       h+='<button class="btn bxs" style="color:#024f2b;border-color:#024f2b" data-key="'+fid+'" onclick="abrirCorrecao(this.dataset.key)">Corrigir</button>';
       if(o.status!=='Concluida') h+='<button class="btn bxs" style="background:#739630;border-color:#739630;color:#fff" data-key="'+fid+'" onclick="abrirFin(this.dataset.key)">Finalizar</button>';
       if(o.status!=='Concluida') h+='<button class="btn bxs" style="color:#d29922;border-color:#d29922" data-key="'+fid+'" onclick="reprogramarOP(this.dataset.key)" title="Mover OP para o próximo dia">&#8594; Amanhã</button>';
+      if(o.status==='Concluida') h+='<button class="btn bxs" style="color:#1a73e8;border-color:#1a73e8" data-key="'+fid+'" onclick="reabrirOP(this.dataset.key)">&#8635; Reabrir</button>';
       h+='<button class="btn bxs" style="color:#c0392b;border-color:#c0392b" data-key="'+fid+'" onclick="abrirExcluir(this.dataset.key)">Excluir</button>';
     }
     if(canSup && o.status!=='Concluida'){
       h+='<button class="btn bxs" style="color:#d29922;border-color:#d29922" data-key="'+fid+'" onclick="reprogramarOP(this.dataset.key)" title="Mover OP para o próximo dia">&#8594; Amanhã</button>';
+    }
+    if(canSup && o.status==='Concluida'){
+      h+='<button class="btn bxs" style="color:#1a73e8;border-color:#1a73e8" data-key="'+fid+'" onclick="reabrirOP(this.dataset.key)">&#8635; Reabrir</button>';
     }
     h+='<button class="btn bxs" data-key="'+fid+'" onclick="abrirPDF(this.dataset.key)">PDF</button>';
     h+='</td></tr>';
@@ -2122,6 +2126,34 @@ function reprogramarOP(fbKey){
     toast('OP '+op.id+' concluida — nova OP '+novoId+' criada para '+dtNova,'ok');
     addLog('REPROGRAMAR',op.id+' → '+novoId+' | '+dtAtual+' → '+dtNova+' | saldo: '+fN(saldo)+' kg');
   }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
+}
+
+
+// ============================================================
+// REABRIR OP CONCLUIDA
+// ============================================================
+function reabrirOP(fbKey){
+  var op=OPS.find(function(o){return o.fbKey===fbKey;});
+  if(!op){toast('OP não encontrada','err');return;}
+  if(op.status!=='Concluida'){toast('OP não está concluída','err');return;}
+
+  // Apenas PCP, admin e supervisor podem reabrir
+  var p=SES&&SES.perfil;
+  if(p!=='pcp'&&p!=='admin'&&p!=='supervisor'){toast('Sem permissão para reabrir','err');return;}
+
+  if(!confirm('Reabrir OP '+op.id+' — '+(op.desc||op.cod)+'?\n\nA OP voltará para Em andamento.\nO real já apontado será mantido.\nO programado não será alterado.')) return;
+
+  ld(true,'Reabrindo...');
+  // Altera apenas o status — não toca em prog, real, t1, t2, t3, perda
+  DB.ref('ops/'+fbKey).update({status:'Em andamento'}).then(function(){
+    ld(false);
+    toast('OP '+op.id+' reaberta com sucesso','ok');
+    fM('mfin');
+    addLog('REABRIR_OP',op.id);
+  }).catch(function(e){
+    ld(false);
+    toast('Erro ao reabrir: '+e.message,'err');
+  });
 }
 
 function abrirFin(fbKey){
