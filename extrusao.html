@@ -1978,6 +1978,20 @@ function abrirParadaSetup(linha){
 
 // ── APONTAMENTO ───────────────────────────────────────────
 function abrirApt(linha){
+  // CORREÇÃO TURNO 1: avança DT_FILA automaticamente se operador ficou logado
+  // após a meia-noite sem recarregar a página
+  // Turno 1: 21h→5h. Se hora atual < 5h e DT_FILA é ontem, avança para hoje
+  (function verificarDtFila(){
+    var agr=new Date();
+    var hAtual=agr.getHours();
+    var dtHoje=agr.toISOString().slice(0,10);
+    // Só avança se: turno 1, hora entre 0-4h, e DT_FILA não é hoje
+    if(SES.turno===1 && hAtual<5 && DT_FILA && DT_FILA!==dtHoje){
+      trocarDataFila(dtHoje);
+      toast("Data da fila avançada automaticamente para "+dtHoje.split("-").reverse().join("/"),"ok");
+    }
+  })();
+
   linhaAtiva=linha;
   var e=EST[linha]||{};
   var opFk=e.opAtiva;
@@ -2460,6 +2474,14 @@ var ultimaHoraAlert=null;
 function iniciarAlerta(){
   setInterval(function(){
     var d=new Date(), min=d.getMinutes(), hora=pad(d.getHours())+":00";
+    // Avança DT_FILA automaticamente para turno 1 após meia-noite
+    if(SES&&SES.turno===1&&d.getHours()<5){
+      var dtHoje=d.toISOString().slice(0,10);
+      if(DT_FILA&&DT_FILA!==dtHoje){
+        trocarDataFila(dtHoje);
+        toast("Fila avançada automaticamente para "+dtHoje.split("-").reverse().join("/"),"ok");
+      }
+    }
     if(min<5&&hora!==ultimaHoraAlert){
       ultimaHoraAlert=hora;
       var al=G("alerta");
