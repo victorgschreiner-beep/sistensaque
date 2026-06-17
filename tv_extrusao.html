@@ -133,13 +133,79 @@ LINHAS.forEach(function(l){EST[l]={ops:[],apts:[],paradas:[],opAtiva:null};});
 var OPS=[];
 var TOT_MES=0;
 var TOT_DIA=0;
+var METAS_FB={};        // metas do Firebase (têm prioridade)
+var METAS_FB_DESC={};   // índice por desc normalizado → fbKey
 
 function G(id){return document.getElementById(id);}
 function hoje(){return new Date().toISOString().slice(0,10);}
 function pad(n){return String(n).padStart(2,"0");}
 function fN(n){return (Number(n)||0).toLocaleString("pt-BR");}
 function turnoAtual(){var h=new Date().getHours();return h>=21||h<5?1:h<13?2:3;}
-function getMetaH(cod,linha){var m=METAS_IDX[cod];if(!m)return 0;return m[LINHA_META[linha]]||0;}
+function normDesc(s){return (s||"").toUpperCase().trim();}
+
+// Busca meta por NOME (desc) primeiro — Firebase tem prioridade
+// Se não achar por nome, tenta pelo código
+// Isso garante que produtos com nomes iguais mas códigos diferentes usem a mesma meta
+function getMetaH(cod, linha){
+  var chave = LINHA_META[linha];
+  if(!chave) return 0;
+
+  // Prioridade 1: Firebase por código exato
+  if(METAS_FB[cod] && METAS_FB[cod][chave]) return METAS_FB[cod][chave]||0;
+
+  // Prioridade 2: Firebase por nome do produto (desc)
+  // Útil quando o código da OP não bate mas o nome é o mesmo
+  var m_idx = METAS_IDX[cod];
+  if(m_idx && m_idx.desc){
+    var descKey = normDesc(m_idx.desc);
+    var fbKey = METAS_FB_DESC[descKey];
+    if(fbKey && METAS_FB[fbKey] && METAS_FB[fbKey][chave]) return METAS_FB[fbKey][chave]||0;
+  }
+
+  // Prioridade 3: fallback HTML (METAS_IDX)
+  if(m_idx) return m_idx[chave]||0;
+  return 0;
+}
+
+// Busca meta diretamente pelo nome do produto (desc da OP)
+// Usado quando a OP tem desc mas não tem cod reconhecido
+function getMetaHPorDesc(desc, linha){
+  var chave = LINHA_META[linha];
+  if(!chave || !desc) return 0;
+  var descKey = normDesc(desc);
+
+  // Tenta Firebase por desc
+  var fbKey = METAS_FB_DESC[descKey];
+  if(fbKey && METAS_FB[fbKey] && METAS_FB[fbKey][chave]) return METAS_FB[fbKey][chave]||0;
+
+  // Tenta METAS_IDX por desc
+  var keys = Object.keys(METAS_IDX);
+  for(var i=0;i<keys.length;i++){
+    var m = METAS_IDX[keys[i]];
+    if(normDesc(m.desc)===descKey) return m[chave]||0;
+  }
+  return 0;
+}
+
+// Carrega metas do Firebase e monta índice por desc
+function carregarMetasFB(){
+  if(!DB) return;
+  DB.ref("config/metas").on("value", function(s){
+    METAS_FB={};
+    METAS_FB_DESC={};
+    if(s.exists()) s.forEach(function(c){
+      var v=c.val();
+      METAS_FB[c.key]=v;
+      if(v.cod) METAS_FB[c.key].fbKeyCod=v.cod;
+      // Indexa por desc normalizado
+      if(v.desc) METAS_FB_DESC[normDesc(v.desc)]=c.key;
+      // Indexa também pelo cod como chave alternativa
+      if(v.cod && v.cod!==c.key) METAS_FB[v.cod]=v;
+    });
+    // Re-renderiza todos os cards com as metas atualizadas
+    LINHAS.forEach(function(l){ renderCard(l); });
+  });
+}
 function minH(min){return pad(Math.floor(min/60))+":"+pad(min%60);}
 
 // ── VELOCÍMETRO SVG ───────────────────────────────────────
@@ -236,7 +302,13 @@ function renderLinha(linha){
 
   var e=EST[linha];
   var opAtiva=e.opAtiva?OPS.find(function(o){return o.fbKey===e.opAtiva;})||null:null;
-  var metaH=opAtiva?getMetaH(opAtiva.cod,linha):0;
+  // Busca meta por cod primeiro, depois por desc (nome do produto)
+  var metaH=0;
+  if(opAtiva){
+    metaH=getMetaH(opAtiva.cod,linha);
+    // Se não achou por cod, tenta pelo nome do produto
+    if(!metaH && opAtiva.desc) metaH=getMetaHPorDesc(opAtiva.desc,linha);
+  }
   var totalTurno=e.apts.reduce(function(a,x){return a+(Number(x.real)||0);},0);
   var paradaAberta=e.paradas.find(function(p){return !p.horaFim;})||null;
   var nApts=e.apts.length;
@@ -450,7 +522,8 @@ function iniciarRelogio(){
   },1000);
 }
 
-iniciar();
+carregarMetasFB();
+iciar();
 </script>
 </body>
 </html>
