@@ -693,8 +693,15 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
         <div style="font-weight:700;color:#024f2b;font-size:13px">📋 Histórico da Ordem de Produção</div>
         <button id="btn-op-pdf" onclick="exportarOpPDF()" style="display:none;background:#024f2b;color:#fff;border:none;padding:7px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">↓ Baixar PDF</button>
       </div>
+      <!-- Busca direta por OP — independente dos filtros do dashboard -->
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;padding:10px;background:#f5f9f2;border-radius:8px;border:1px solid #d4e8d4">
+        <span style="font-size:11px;font-weight:700;color:#4a664a;white-space:nowrap">Buscar OP:</span>
+        <input type="text" id="dash-op-busca-direta" class="fi" placeholder="Ex: 06371101001" style="width:180px;flex:1" 
+          onkeydown="if(event.key==='Enter') buscarOpDireta()">
+        <button onclick="buscarOpDireta()" style="background:#024f2b;color:#fff;border:none;padding:7px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">🔍 Buscar</button>
+      </div>
       <div id="dash-op-corpo">
-        <div style="text-align:center;padding:20px;color:#4a664a;font-size:13px">Informe um nº de ordem no filtro e clique em Gerar para ver o detalhamento</div>
+        <div style="text-align:center;padding:20px;color:#4a664a;font-size:13px">Busque uma OP pelo número para ver o histórico completo</div>
       </div>
     </div>
 
@@ -3512,11 +3519,59 @@ function dashRender(apts, paradas, di, df){
       if(btnPdf) btnPdf.style.display="block";
     }
   } else if(corpOp && !opFiltro){
-    corpOp.innerHTML='<div style="text-align:center;padding:20px;color:#4a664a;font-size:13px">Informe um nº de ordem no filtro e clique em Gerar para ver o detalhamento</div>';
+    corpOp.innerHTML='<div style="text-align:center;padding:20px;color:#4a664a;font-size:13px">Busque uma OP pelo número para ver o histórico completo</div>';
     var btnPdf=G("btn-op-pdf");
     if(btnPdf) btnPdf.style.display="none";
   }
   // Tabela de rastreabilidade removida
+}
+
+// Renderiza histórico da OP com apts já carregados — reutilizável pela busca direta
+function dashRenderOP(apts, op, opFiltro){
+  var corpOp=G("dash-op-corpo");
+  if(!corpOp) return;
+  var porTurnoOP={1:[],2:[],3:[]};
+  apts.forEach(function(a){porTurnoOP[a.turno||1].push(a);});
+  var totalOP=apts.reduce(function(a,x){return a+(Number(x.real)||0);},0);
+
+  var h='<div style="background:#f5f9f2;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;gap:20px;align-items:center">';
+  h+='<div><div style="font-size:11px;color:#739630;font-weight:700">ORDEM</div><div style="font-size:16px;font-weight:800;color:#024f2b">'+opFiltro+'</div></div>';
+  if(op){h+='<div><div style="font-size:11px;color:#739630;font-weight:700">PRODUTO</div><div style="font-size:13px;font-weight:600">'+(op.desc||op.cod)+'</div></div>';}
+  h+='<div><div style="font-size:11px;color:#739630;font-weight:700">TOTAL EXTRUSADO</div><div style="font-size:18px;font-weight:800;color:#024f2b">'+fN(totalOP)+' kg</div></div>';
+  if(op&&op.prog){
+    var pctOP=Math.round(totalOP/Number(op.prog)*100);
+    var corOP=pctOP>=85?"#024f2b":pctOP>=70?"#d29922":"#c0392b";
+    h+='<div><div style="font-size:11px;color:#739630;font-weight:700">PROG / ADERÊNCIA</div><div style="font-size:16px;font-weight:800;color:'+corOP+'">'+fN(op.prog)+' kg · '+pctOP+'%</div></div>';
+  }
+  h+='</div>';
+
+  [1,2,3].forEach(function(t){
+    var aptsT=porTurnoOP[t];
+    if(!aptsT.length) return;
+    var totT=aptsT.reduce(function(a,x){return a+(Number(x.real)||0);},0);
+    h+='<div style="margin-bottom:10px">';
+    h+='<div style="background:#024f2b;color:#fff;padding:6px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;display:flex;justify-content:space-between">';
+    h+='<span>TURNO '+t+'</span><span>Total: '+fN(totT)+' kg</span></div>';
+    h+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    h+='<tr style="background:#f5f9f2"><th style="padding:6px 8px;text-align:left;color:#024f2b">Data</th><th style="padding:6px 8px;text-align:left;color:#024f2b">Linha</th><th style="padding:6px 8px;text-align:left;color:#024f2b">Hora</th><th style="padding:6px 8px;text-align:right;color:#024f2b">Real (kg)</th><th style="padding:6px 8px;text-align:right;color:#024f2b">Meta (kg/h)</th><th style="padding:6px 8px;text-align:right;color:#024f2b">%</th><th style="padding:6px 8px;text-align:left;color:#024f2b">Operador</th></tr>';
+    aptsT.sort(function(a,b){return (a.data+a.horaIni)>(b.data+b.horaIni)?1:-1;}).forEach(function(a,i){
+      var ef=a.metaH?Math.min(Math.round((Number(a.real)||0)/a.metaH*100),999):0;
+      var corEf=ef>=85?"#024f2b":ef>=70?"#d29922":"#c0392b";
+      h+='<tr style="background:'+(i%2===0?"#fff":"#f9fbf9")+'">';
+      h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0">'+a.data+'</td>';
+      h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0">'+(a.linha||'')+'</td>';
+      h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0">'+a.horaIni+' → '+a.horaFim+'</td>';
+      h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700">'+fN(a.real)+'</td>';
+      h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;text-align:right">'+fN(a.metaH||0)+'</td>';
+      h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:'+corEf+'">'+ef+'%</td>';
+      h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;color:#666">'+a.operador+'</td>';
+      h+='</tr>';
+    });
+    h+='</table></div>';
+  });
+
+  corpOp.innerHTML=h;
+  if(G("btn-op-pdf")) G("btn-op-pdf").style.display="block";
 }
 
 function dashExportarPDF(){
@@ -3923,6 +3978,63 @@ function admExcluir(fbKey){
 }
 
 // == EXPORTAR HISTORICO OP EM PDF ============================
+
+// ── BUSCA DIRETA DE OP NO HISTÓRICO ───────────────────────
+function buscarOpDireta(){
+  var opNum=(G("dash-op-busca-direta")&&G("dash-op-busca-direta").value||"").trim();
+  if(!opNum){toast("Informe o número da OP","err");return;}
+  if(!DB){toast("Firebase não conectado","err");return;}
+
+  G("dash-op-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#4a664a">Buscando...</div>';
+  if(G("btn-op-pdf")) G("btn-op-pdf").style.display="none";
+
+  // Sincroniza o campo do dashboard com o filtro de OP para o PDF funcionar
+  if(G("dash-op-f")) G("dash-op-f").value=opNum;
+
+  // Busca OP no OPS[] ou diretamente no Firebase
+  var opRef=OPS.find(function(o){return o.id===opNum||o.id.includes(opNum);});
+
+  var buscas=[];
+  if(opRef&&opRef.fbKey){
+    buscas.push(DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(opRef.fbKey).once("value"));
+  }
+  buscas.push(DB.ref("extrusao_apts").orderByChild("opNum").equalTo(opNum).once("value"));
+
+  Promise.all(buscas).then(function(snaps){
+    var aptsMap={};
+    snaps.forEach(function(snap){
+      if(snap.exists()) snap.forEach(function(c){
+        var v=c.val();v.fbKey=c.key;aptsMap[c.key]=v;
+      });
+    });
+    var apts=Object.values(aptsMap);
+    if(!apts.length){
+      G("dash-op-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#c0392b">Nenhum apontamento encontrado para a OP '+opNum+'</div>';
+      return;
+    }
+
+    // Busca OP no Firebase se não encontrou em OPS[]
+    if(!opRef){
+      var fbKeyRef=apts[0].opFbKey;
+      opRef=fbKeyRef?OPS.find(function(o){return o.fbKey===fbKeyRef;}):null;
+    }
+
+    // Reutiliza a função do dashboard para renderizar o histórico
+    // Popula _DASH_CACHE com os apts encontrados
+    window._DASH_CACHE=window._DASH_CACHE||{apts:[],paradas:[]};
+    // Adiciona apts ao cache sem duplicar
+    var existKeys=(window._DASH_CACHE.apts||[]).map(function(a){return a.fbKey;});
+    apts.forEach(function(a){if(!existKeys.includes(a.fbKey)) window._DASH_CACHE.apts.push(a);});
+
+    // Renderiza usando a função existente do dashboard
+    dashRenderOP(apts, opRef, opNum);
+
+    if(G("btn-op-pdf")) G("btn-op-pdf").style.display="inline-block";
+  }).catch(function(e){
+    G("dash-op-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#c0392b">Erro: '+e.message+'</div>';
+  });
+}
+
 function exportarOpPDF(){
   if(typeof jspdf==="undefined"){toast("jsPDF nao disponivel","err");return;}
   var opFiltro=(G("dash-op-f")&&G("dash-op-f").value||"").trim();
