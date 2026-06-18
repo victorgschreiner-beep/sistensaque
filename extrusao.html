@@ -1520,7 +1520,25 @@ function renderLinhaCard(linha){
     h+='<div class="prog-bar"><div class="prog-fill prog-gr2" style="width:'+progTurno+'%"></div></div>';
     h+='</div>';
   } else {
-    h+='<div class="op-sem-ativa" onclick="abrirSelOp(this.dataset.l)" data-l="'+linha+'">Toque para selecionar OP em extrusão</div>';
+    // Verifica se há OP concluída na extrusão nesta linha ainda em andamento no ensaque
+    var opConclExt=null;
+    if(EST[linha]&&EST[linha].opConcluidaExt){
+      var keys=Object.keys(EST[linha].opConcluidaExt);
+      for(var ki=0;ki<keys.length;ki++){
+        var opC=OPS.find(function(o){return o.fbKey===keys[ki];});
+        if(opC&&opC.status==='Em andamento'){opConclExt=opC;break;}
+      }
+    }
+    if(opConclExt){
+      h+='<div style="background:#1a3a2a;border:1px solid #2d5a3d;border-radius:8px;padding:12px;margin-bottom:8px;text-align:center">';
+      h+='<div style="color:#4caf50;font-size:11px;font-weight:700;margin-bottom:4px">✅ EXTRUSÃO CONCLUÍDA</div>';
+      h+='<div style="color:#a8d5b5;font-size:12px;font-weight:700">OP: '+opConclExt.id+'</div>';
+      h+='<div style="color:#7ab890;font-size:11px;margin-top:2px">'+(opConclExt.desc||opConclExt.cod||'')+'</div>';
+      h+='<div style="color:#d29922;font-size:11px;font-weight:700;margin-top:6px">⏳ Aguardando encerramento no ensaque</div>';
+      h+='</div>';
+    } else {
+      h+='<div class="op-sem-ativa" onclick="abrirSelOp(this.dataset.l)" data-l="'+linha+'">Toque para selecionar OP em extrusão</div>';
+    }
   }
 
   h+='<div class="btn-row">';
