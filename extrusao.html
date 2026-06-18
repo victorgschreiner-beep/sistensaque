@@ -2234,16 +2234,26 @@ function abrirResumo(){
     reprH+='<div class="fg"><label class="fl">Reprocesso '+nomeL+' (kg)</label><input class="fi" type="number" id="repr-'+encId(l)+'" value="0" min="0"></div>';
   });
   G("repr-campos").innerHTML=reprH;
-  // Carrega reprocesso já salvo para este turno/data/operador
-  var chave=(DT_FILA||hoje())+"_t"+SES.turno+"_"+encId(SES.login);
-  DB.ref("extrusao_turno/"+chave+"/reprocesso").once("value",function(s){
-    if(s.exists()){
-      var saved=s.val();
-      LINHAS_USER.forEach(function(l){
-        var el=G("repr-"+encId(l));
-        if(el&&saved[encId(l)]) el.value=saved[encId(l)];
-      });
-    }
+  // Carrega reprocesso salvo — busca por data+turno (independente do login)
+  var dtBusca=DT_FILA||hoje();
+  var tBusca=SES.turno;
+  DB.ref("extrusao_turno").orderByChild("data").equalTo(dtBusca).once("value",function(s){
+    if(!s.exists()) return;
+    var reprocessoMerge={};
+    s.forEach(function(c){
+      var v=c.val();
+      // Considera apenas registros do turno correto
+      if(v.turno===tBusca && v.reprocesso){
+        // Mescla — último registro ganha (mais recente pelo ts)
+        Object.keys(v.reprocesso).forEach(function(k){
+          if(v.reprocesso[k]) reprocessoMerge[k]=v.reprocesso[k];
+        });
+      }
+    });
+    LINHAS_USER.forEach(function(l){
+      var el=G("repr-"+encId(l));
+      if(el && reprocessoMerge[encId(l)]) el.value=reprocessoMerge[encId(l)];
+    });
   });
   aM("m-resumo");
 }
@@ -3918,16 +3928,26 @@ function exportarOpPDF(){
   var opFiltro=(G("dash-op-f")&&G("dash-op-f").value||"").trim();
   if(!opFiltro){toast("Nenhuma OP carregada","err");return;}
 
-  // Busca dados da OP e apontamentos do periodo atual
-  var DASH_DATA_CACHE=window._DASH_CACHE||{apts:[],paradas:[]};
-  var apts=DASH_DATA_CACHE.apts.filter(function(a){return (a.opNum||"").includes(opFiltro);});
-  if(!apts.length){toast("Sem apontamentos para exportar","err");return;}
+  // Busca TODOS os apontamentos da OP no Firebase (não limitado ao período do dashboard)
+  toast("Buscando todos os apontamentos da OP...","ok");
+  DB.ref("extrusao_apts").orderByChild("opNum").equalTo(opFiltro).once("value",function(snap){
+    var apts=[];
+    if(snap.exists()) snap.forEach(function(c){var v=c.val();v.fbKey=c.key;apts.push(v);});
+    if(!apts.length){
+      // Fallback: tenta pelo cache atual
+      var DASH_DATA_CACHE=window._DASH_CACHE||{apts:[],paradas:[]};
+      apts=DASH_DATA_CACHE.apts.filter(function(a){return (a.opNum||"").includes(opFiltro);});
+    }
+    if(!apts.length){toast("Sem apontamentos para exportar","err");return;}
+    var opFkRef=apts[0]&&apts[0].opFbKey;
+    var op=opFkRef
+      ?OPS.find(function(o){return o.fbKey===opFkRef;})
+      :OPS.find(function(o){return o.id===opFiltro||o.id.includes(opFiltro);});
+    _gerarPDFOpComDados(apts,op,opFiltro);
+  });
+}
 
-  // FIX: busca OP pelo opFbKey do primeiro apontamento — mais confiavel que o id textual
-  var opFkRef=apts[0]&&apts[0].opFbKey;
-  var op=opFkRef
-    ?OPS.find(function(o){return o.fbKey===opFkRef;})
-    :OPS.find(function(o){return o.id===opFiltro||o.id.includes(opFiltro);});
+function _gerarPDFOpComDados(apts,op,opFiltro){
 
   var jsPDF=jspdf.jsPDF;
   var doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
@@ -3948,7 +3968,15 @@ function exportarOpPDF(){
 
   // ── DADOS DA ORDEM ────────────────────────────────────────
   var totalReal=apts.reduce(function(s,a){return s+(Number(a.real)||0);},0);
-  var aptsOrdenados=apts.slice().sort(function(a,b){return (a.data+a.horaIni)>(b.data+b.horaIni)?1:-1;});
+  // Ordena considerando turno 1 (cruza meia-noite): horas < 05h valem como 24h+
+  function sortKeyApt(a){
+    var h=parseInt((a.horaIni||"00:00").split(":")[0]);
+    var t=a.turno||1;
+    // T1: 21h-05h — horas 00-04 pertencem ao dia seguinte, normaliza somando 24
+    var hNorm=(t===1&&h<5)?h+24:h;
+    return a.data+"_"+String(hNorm).padStart(2,"0");
+  }
+  var aptsOrdenados=apts.slice().sort(function(a,b){return sortKeyApt(a)>sortKeyApt(b)?1:-1;});
   var primeiroApt=aptsOrdenados[0];
   var ultimoApt=aptsOrdenados[aptsOrdenados.length-1];
 
