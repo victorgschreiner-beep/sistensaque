@@ -2234,6 +2234,17 @@ function abrirResumo(){
     reprH+='<div class="fg"><label class="fl">Reprocesso '+nomeL+' (kg)</label><input class="fi" type="number" id="repr-'+encId(l)+'" value="0" min="0"></div>';
   });
   G("repr-campos").innerHTML=reprH;
+  // Carrega reprocesso já salvo para este turno/data/operador
+  var chave=(DT_FILA||hoje())+"_t"+SES.turno+"_"+encId(SES.login);
+  DB.ref("extrusao_turno/"+chave+"/reprocesso").once("value",function(s){
+    if(s.exists()){
+      var saved=s.val();
+      LINHAS_USER.forEach(function(l){
+        var el=G("repr-"+encId(l));
+        if(el&&saved[encId(l)]) el.value=saved[encId(l)];
+      });
+    }
+  });
   aM("m-resumo");
 }
 
@@ -2405,8 +2416,17 @@ function finalizarTurno(){
     reprocesso[encId(l)]=parseInt(G("repr-"+encId(l))&&G("repr-"+encId(l)).value)||0;
   });
   if(!DB){toast("Firebase não conectado","err");return;}
-  DB.ref("extrusao_turno").push({turno:SES.turno,data:DT_FILA||hoje(),linhas:LINHAS_USER,operador:SES.login,reprocesso:reprocesso,ts:agora()})
-    .then(function(){fM("m-resumo");toast("Turno finalizado!","ok");});
+  // Chave fixa: data_turno_login — permite sobrescrever sem duplicar
+  var chave=(DT_FILA||hoje())+"_t"+SES.turno+"_"+encId(SES.login);
+  DB.ref("extrusao_turno/"+chave).set({turno:SES.turno,data:DT_FILA||hoje(),linhas:LINHAS_USER,operador:SES.login,reprocesso:reprocesso,ts:agora()})
+    .then(function(){
+      toast("Turno finalizado! Gerando PDF...","ok");
+      // Gera PDF automaticamente após salvar
+      setTimeout(function(){
+        gerarPDFResumoTurno();
+        fM("m-resumo");
+      },400);
+    });
 }
 
 // ── BARRA TURNO ───────────────────────────────────────────
