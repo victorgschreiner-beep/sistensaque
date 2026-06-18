@@ -3928,23 +3928,41 @@ function exportarOpPDF(){
   var opFiltro=(G("dash-op-f")&&G("dash-op-f").value||"").trim();
   if(!opFiltro){toast("Nenhuma OP carregada","err");return;}
 
-  // Busca TODOS os apontamentos da OP no Firebase (não limitado ao período do dashboard)
-  toast("Buscando todos os apontamentos da OP...","ok");
-  DB.ref("extrusao_apts").orderByChild("opNum").equalTo(opFiltro).once("value",function(snap){
-    var apts=[];
-    if(snap.exists()) snap.forEach(function(c){var v=c.val();v.fbKey=c.key;apts.push(v);});
+  // Busca OP pelo número para obter o fbKey
+  var opRef=OPS.find(function(o){return o.id===opFiltro||o.id.includes(opFiltro);});
+
+  // Busca TODOS os apontamentos da OP no Firebase pelo opFbKey (mais confiável que opNum)
+  // Estratégia: busca por opFbKey se disponível, senão por opNum
+  var buscaPromises=[];
+  if(opRef&&opRef.fbKey){
+    buscaPromises.push(DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(opRef.fbKey).once("value"));
+  }
+  buscaPromises.push(DB.ref("extrusao_apts").orderByChild("opNum").equalTo(opFiltro).once("value"));
+
+  toast("Buscando todos os apontamentos...","ok");
+  Promise.all(buscaPromises).then(function(snaps){
+    var aptsMap={};
+    snaps.forEach(function(snap){
+      if(snap.exists()) snap.forEach(function(c){
+        var v=c.val();v.fbKey=c.key;
+        aptsMap[c.key]=v; // deduplica por fbKey
+      });
+    });
+    var apts=Object.values(aptsMap);
+
     if(!apts.length){
-      // Fallback: tenta pelo cache atual
+      // Fallback: usa cache do dashboard
       var DASH_DATA_CACHE=window._DASH_CACHE||{apts:[],paradas:[]};
       apts=DASH_DATA_CACHE.apts.filter(function(a){return (a.opNum||"").includes(opFiltro);});
     }
     if(!apts.length){toast("Sem apontamentos para exportar","err");return;}
+
     var opFkRef=apts[0]&&apts[0].opFbKey;
-    var op=opFkRef
+    var op=opRef||(opFkRef
       ?OPS.find(function(o){return o.fbKey===opFkRef;})
-      :OPS.find(function(o){return o.id===opFiltro||o.id.includes(opFiltro);});
+      :OPS.find(function(o){return o.id===opFiltro||o.id.includes(opFiltro);}));
     _gerarPDFOpComDados(apts,op,opFiltro);
-  });
+  }).catch(function(e){toast("Erro ao buscar apontamentos: "+e.message,"err");});
 }
 
 function _gerarPDFOpComDados(apts,op,opFiltro){
