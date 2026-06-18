@@ -4042,32 +4042,55 @@ function exportarOpPDF(){
 
   // Busca OP pelo número para obter o fbKey
   var opRef=OPS.find(function(o){return o.id===opFiltro||o.id.includes(opFiltro);});
-
-  // Busca TODOS os apontamentos da OP no Firebase pelo opFbKey (mais confiável que opNum)
-  // Estratégia: busca por opFbKey se disponível, senão por opNum
-  var buscaPromises=[];
-  if(opRef&&opRef.fbKey){
-    buscaPromises.push(DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(opRef.fbKey).once("value"));
+  if(!opRef){
+    // Tenta buscar OP diretamente no Firebase por id
+    DB.ref("ops").orderByChild("id").equalTo(opFiltro).once("value",function(s){
+      if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;opRef=v;});
+      _buscarAptsEGerarPDF(opRef,opFiltro);
+    });
+    return;
   }
-  buscaPromises.push(DB.ref("extrusao_apts").orderByChild("opNum").equalTo(opFiltro).once("value"));
+  _buscarAptsEGerarPDF(opRef,opFiltro);
+}
 
+function _buscarAptsEGerarPDF(opRef,opFiltro){
+  // Busca TODOS os apontamentos no Firebase — varredura completa por opNum
+  // Não depende de índice: filtra client-side após buscar por data range amplo
   toast("Buscando todos os apontamentos...","ok");
-  Promise.all(buscaPromises).then(function(snaps){
+
+  // Estratégia: busca por opFbKey E por opNum em paralelo e deduplica
+  var buscas=[];
+  if(opRef&&opRef.fbKey){
+    buscas.push(DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(opRef.fbKey).once("value"));
+  }
+  buscas.push(DB.ref("extrusao_apts").orderByChild("opNum").equalTo(opFiltro).once("value"));
+
+  Promise.all(buscas).then(function(snaps){
     var aptsMap={};
     snaps.forEach(function(snap){
       if(snap.exists()) snap.forEach(function(c){
-        var v=c.val();v.fbKey=c.key;
-        aptsMap[c.key]=v; // deduplica por fbKey
+        var v=c.val();v.fbKey=c.key;aptsMap[c.key]=v;
       });
     });
     var apts=Object.values(aptsMap);
 
+    // Se não achou por índice, varredura por opNum client-side (sem índice Firebase)
     if(!apts.length){
-      // Fallback: usa cache do dashboard
-      var DASH_DATA_CACHE=window._DASH_CACHE||{apts:[],paradas:[]};
-      apts=DASH_DATA_CACHE.apts.filter(function(a){return (a.opNum||"").includes(opFiltro);});
+      DB.ref("extrusao_apts").once("value",function(s){
+        var aptsAll=[];
+        if(s.exists()) s.forEach(function(c){
+          var v=c.val();v.fbKey=c.key;
+          if((v.opNum||"").includes(opFiltro)||(v.opFbKey&&opRef&&v.opFbKey===opRef.fbKey)){
+            aptsAll.push(v);
+          }
+        });
+        if(!aptsAll.length){toast("Sem apontamentos para exportar","err");return;}
+        var opFkRef=aptsAll[0].opFbKey;
+        var op=opRef||(opFkRef?OPS.find(function(o){return o.fbKey===opFkRef;}):null);
+        _gerarPDFOpComDados(aptsAll,op,opFiltro);
+      });
+      return;
     }
-    if(!apts.length){toast("Sem apontamentos para exportar","err");return;}
 
     var opFkRef=apts[0]&&apts[0].opFbKey;
     var op=opRef||(opFkRef
