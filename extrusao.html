@@ -4122,14 +4122,19 @@ function _gerarPDFOpComDados(apts,op,opFiltro){
   // ── DADOS DA ORDEM ────────────────────────────────────────
   var totalReal=apts.reduce(function(s,a){return s+(Number(a.real)||0);},0);
   // Ordena considerando turno 1 (cruza meia-noite): horas < 05h valem como 24h+
-  function sortKeyApt(a){
+  // Converte apt para timestamp absoluto em minutos para ordenação correta
+  // independente de turno, data ou cruzamento de meia-noite
+  function aptParaMinutos(a){
+    var partes=(a.data||"2000-01-01").split("-");
+    var diasDesdeEpoca=Math.floor(new Date(a.data+"T12:00:00").getTime()/86400000);
     var h=parseInt((a.horaIni||"00:00").split(":")[0]);
-    var t=a.turno||1;
-    // T1: 21h-05h — horas 00-04 pertencem ao dia seguinte, normaliza somando 24
-    var hNorm=(t===1&&h<5)?h+24:h;
-    return a.data+"_"+String(hNorm).padStart(2,"0");
+    var m=parseInt((a.horaIni||"00:00").split(":")[1]||0);
+    var minDia=h*60+m;
+    // T1: apontamentos das 00h-04h pertencem ao dia seguinte cronologicamente
+    if((a.turno||1)===1 && h<5) diasDesdeEpoca+=1;
+    return diasDesdeEpoca*1440+minDia;
   }
-  var aptsOrdenados=apts.slice().sort(function(a,b){return sortKeyApt(a)>sortKeyApt(b)?1:-1;});
+  var aptsOrdenados=apts.slice().sort(function(a,b){return aptParaMinutos(a)-aptParaMinutos(b);});
   var primeiroApt=aptsOrdenados[0];
   var ultimoApt=aptsOrdenados[aptsOrdenados.length-1];
 
