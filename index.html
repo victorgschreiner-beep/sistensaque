@@ -1572,7 +1572,7 @@ function renderOpCards(){
     h+='<button class="btn bp bsm" data-key="'+fid+'" onclick="abrirApt(this.dataset.key)">Apontar</button>';
     h+='<button class="btn bsm" style="color:#024f2b;border-color:#024f2b" data-key="'+fid+'" onclick="abrirEditarApt(this.dataset.key)">Editar Apontamento</button>';
     h+='<button class="btn bsm" style="color:#c0392b;border-color:#c0392b" data-key="'+fid+'" onclick="abrirParada(this.dataset.key)">Parada</button>';
-    if(o.status==='Em andamento'||(o.status==='Liberada'&&(o.real||0)>0)) h+='<button class="btn bg2 bsm" data-key="'+fid+'" onclick="abrirFin(this.dataset.key)">Finalizar</button>';
+    if(o.status==='Em andamento'||o.status==='Reprogramada'||(o.status==='Liberada'&&(o.real||0)>0)) h+='<button class="btn bg2 bsm" data-key="'+fid+'" onclick="abrirFin(this.dataset.key)">Finalizar</button>';
     if(o.tipo==='KG') h+='<button class="btn bo bsm" data-key="'+fid+'" onclick="abrirSilos(this.dataset.key)">Silos</button>';
     h+='</div></div>';
   }
