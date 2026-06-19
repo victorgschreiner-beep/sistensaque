@@ -4122,28 +4122,30 @@ function _gerarPDFOpComDados(apts,op,opFiltro){
   // ── DADOS DA ORDEM ────────────────────────────────────────
   var totalReal=apts.reduce(function(s,a){return s+(Number(a.real)||0);},0);
   // Ordena considerando turno 1 (cruza meia-noite): horas < 05h valem como 24h+
-  // Ordena por DATA OPERACIONAL — virada do dia às 21h, não à meia-noite
-  // Sequência produtiva real: 21:00 → 22:00 → 23:00 → 00:00 → ... → 20:59
-  // Horas >= 21h: pertencem ao dia operacional do dia SEGUINTE (calendário)
-  // Horas < 21h: pertencem ao dia operacional do dia atual (calendário)
-  function aptParaMinutosOp(a){
-    var h=parseInt((a.horaIni||"00:00").split(":")[0]);
-    var m=parseInt((a.horaIni||"00:00").split(":")[1]||0);
-    // Data calendário base do apontamento
-    var diasBase=Math.floor(new Date((a.data||"2000-01-01")+"T12:00:00").getTime()/86400000);
-    // Se hora >= 21h, esse apontamento pertence ao dia operacional seguinte
-    // Para ordenação: avança 1 dia operacional e normaliza hora (21h=0, 22h=1, etc)
-    var minSeq;
-    if(h>=21){
-      // 21:00=0min, 22:00=60min, 23:00=120min, 00:00 do próximo dia=180min...
-      minSeq=(diasBase+1)*1440 + (h-21)*60 + m;
-    } else {
-      // 00:00=180min, 01:00=240min, ..., 20:59=1439min (relativo ao dia op)
-      minSeq=diasBase*1440 + (h+3)*60 + m;
-    }
-    return minSeq;
+  // CHAVE DE ORDENAÇÃO OPERACIONAL — ignora data calendário, usa apenas o peso da hora
+  // dentro do ciclo operacional 21:00 → 20:59
+  // 21h=0, 22h=1, 23h=2, 00h=3, 01h=4, ..., 20h=23
+  function pesoHoraOp(horaStr){
+    var h=parseInt((horaStr||"00:00").split(":")[0]);
+    var m=parseInt((horaStr||"00:00").split(":")[1]||0);
+    var ordemH=(h>=21)?(h-21):(h+3);
+    return ordemH*60+m;
   }
-  var aptsOrdenados=apts.slice().sort(function(a,b){return aptParaMinutosOp(a)-aptParaMinutosOp(b);});
+  // Para múltiplos dias operacionais na mesma OP, soma blocos de 1440 (24h)
+  // contando quantas viradas operacionais (21h) já passaram desde o primeiro apontamento
+  var aptsComPeso=apts.map(function(a){
+    return {apt:a, pesoHora:pesoHoraOp(a.horaIni)};
+  });
+  // Ordena primeiro pela data calendário bruta para agrupar blocos do mesmo dia operacional,
+  // depois aplica o peso operacional dentro de cada bloco de 21h-20h59
+  function chaveOrdenacao(a){
+    var h=parseInt((a.horaIni||"00:00").split(":")[0]);
+    var diasBase=Math.floor(new Date((a.data||"2000-01-01")+"T12:00:00").getTime()/86400000);
+    // Horas >=21h pertencem ao bloco operacional do dia seguinte
+    var diaOp=(h>=21)?(diasBase+1):diasBase;
+    return diaOp*1440+pesoHoraOp(a.horaIni);
+  }
+  var aptsOrdenados=apts.slice().sort(function(a,b){return chaveOrdenacao(a)-chaveOrdenacao(b);});
   var primeiroApt=aptsOrdenados[0];
   var ultimoApt=aptsOrdenados[aptsOrdenados.length-1];
 
