@@ -928,12 +928,19 @@ function renderDash(){
     } else if(o.reprogramadaDe===dt){
       // Prog original = progOriginal + realAcumulado anterior + o que foi feito nesse dia
       // = o que estava programado quando a OP era desse dia
-      var progOrig=Number(o.progOriginal)||0;
+      //
+      // ATENCAO UNIDADES: o.progOriginal esta na unidade de EXIBICAO (sc/bg/kg, igual o.prog),
+      // mas o.realAcumulado e realPorData[dt] estao sempre em KG. E preciso converter
+      // progOriginal para KG antes de subtrair, e converter o resultado de volta para a
+      // unidade de exibicao antes de somar em tp (que acumula na mesma unidade que o.prog).
+      var fatorDia=o.tipo==='SC'?25:o.tipo==='BG'?750:1;
+      var progOrigKGdash=(Number(o.progOriginal)||0)*fatorDia;
       var realAcum=Number(o.realAcumulado)||0;
       var rpd=o.realPorData||{};
       var realDia=Number(rpd[dt])||0;
-      // Prog do dia = saldo que sobrou para esse dia = progOrig - acumulado anterior
-      tp+=Math.max(progOrig-realAcum+realDia,0);
+      // Prog do dia (em KG) = saldo que sobrou para esse dia = progOrig - acumulado anterior
+      var progDiaKG=Math.max(progOrigKGdash-realAcum+realDia,0);
+      tp+=fatorDia!==1?Math.round(progDiaKG/fatorDia):progDiaKG;
     }
   });
 
@@ -2046,17 +2053,25 @@ function reprogramarOP(fbKey){
   var dtNova=dtProx.toISOString().slice(0,10);
   var fator=op.tipo==='SC'?25:op.tipo==='BG'?750:1;
 
-  // Real do dia atual — fonte confiavel: realPorData[dtAtual]
+  // Real do dia atual — fonte confiavel: realPorData[dtAtual] (sempre em KG)
   var realDoDia=Number((op.realPorData||{})[dtAtual])||0;
-  var progOrig=Number(op.progOriginal)||Number(op.prog)||0;
-  var realAcumAnterior=Number(op.realAcumulado)||0;
-  var novoRealAcum=realAcumAnterior+realDoDia;
-  var saldo=Math.max(progOrig-novoRealAcum,0);
-  var saldoStr=op.tipo!=='KG'?fN(Math.round(saldo/fator))+' '+(op.tipo==='SC'?'sc':'bg')+' ('+fN(saldo)+' kg)':fN(saldo)+' kg';
+
+  // IMPORTANTE: op.prog / op.progOriginal sao guardados na UNIDADE DE EXIBICAO
+  // (sc para tipo SC, bg para tipo BG, kg para tipo KG) — NUNCA em kg puro p/ SC e BG.
+  // realPorData e realAcumulado, por outro lado, sao sempre em KG.
+  // Por isso e necessario converter progOriginal para KG antes de qualquer conta,
+  // senao a subtracao mistura sc/bg com kg e gera saldo sem sentido.
+  var progOrigUnidade=Number(op.progOriginal)||Number(op.prog)||0; // na unidade de exibicao
+  var progOrigKG=progOrigUnidade*fator; // sempre convertido p/ KG a partir daqui
+
+  var realAcumAnterior=Number(op.realAcumulado)||0; // ja em KG
+  var novoRealAcum=realAcumAnterior+realDoDia; // KG
+  var saldoKG=Math.max(progOrigKG-novoRealAcum,0); // saldo sempre em KG
+  var saldoStr=op.tipo!=='KG'?fN(Math.round(saldoKG/fator))+' '+(op.tipo==='SC'?'sc':'bg')+' ('+fN(saldoKG)+' kg)':fN(saldoKG)+' kg';
 
   if(!confirm(
     'Reprogramar OP '+op.id+' para '+dtNova+'?\n\n'+
-    'Prog. original:     '+fN(progOrig)+' kg\n'+
+    'Prog. original:     '+fN(progOrigKG)+' kg\n'+
     'Realizado '+dtAtual.split('-').reverse().join('/')+': '+fN(realDoDia)+' kg\n'+
     'Acumulado anterior: '+fN(realAcumAnterior)+' kg\n'+
     'Saldo (novo prog):  '+saldoStr+'\n\n'+
@@ -2098,13 +2113,17 @@ function reprogramarOP(fbKey){
     reordPromises.push(DB.ref('ops/'+o.fbKey+'/filaPosicao').set(posAtual+1));
   });
 
+  // saldo da nova OP precisa estar na MESMA unidade de exibicao usada em todo o
+  // resto do sistema (op.prog sempre em sc/bg/kg, nunca em kg puro p/ SC e BG)
+  var saldoUnidade=op.tipo!=='KG'?Math.round(saldoKG/fator):saldoKG;
+
   var novaOp={
     id:novoId,
     cod:op.cod, desc:op.desc||op.cod,
     linha:op.linha, tipo:op.tipo,
     lote:op.lote||'', obs:op.obs||'',
     data:dtNova,
-    prog:saldo,
+    prog:saldoUnidade,
     real:0, t1:0, t2:0, t3:0, t1sc:0, t2sc:0, t3sc:0,
     perda:0, perdaSC:0,
     status:'Reprogramada',
@@ -2112,7 +2131,7 @@ function reprogramarOP(fbKey){
     reprogramadaEm:agora(),
     reprogramadaDeId:op.id,
     reprogramadaDeFbKey:fbKey,
-    progOriginal:progOrig,
+    progOriginal:progOrigUnidade,
     realAcumulado:novoRealAcum,
     filaPosicao:0,
     criadoPor:SES.login,
@@ -3643,14 +3662,16 @@ function corrigirOpsReprogramadas(){
 
     var realDoDiaAnt=Number(rpd[dtAnterior])||0;
 
-    var progOrig=Number(op.progOriginal)||Number(op.prog)||0;
+    var progOrig=Number(op.progOriginal)||Number(op.prog)||0; // unidade de exibicao (sc/bg/kg)
+    var progOrigKG=progOrig*fator; // convertido p/ KG — realAcumAnterior/realDoDiaAnt sao KG
     var realAcumAnterior=Number(op.realAcumulado)||0;
     if(!op.realAcumulado){
       Object.keys(rpd).forEach(function(d){
         if(d!==dtAnterior&&d!==dtNova) realAcumAnterior+=Number(rpd[d])||0;
       });
     }
-    var saldoCorreto=Math.max(progOrig-realAcumAnterior-realDoDiaAnt,0);
+    var saldoCorretoKG=Math.max(progOrigKG-realAcumAnterior-realDoDiaAnt,0);
+    var saldoCorreto=fator!==1?Math.round(saldoCorretoKG/fator):saldoCorretoKG; // de volta p/ unidade de exibicao
 
     // Busca apontamentos do dtNova para reconstruir t1/t2/t3 corretamente
     // NUNCA zera sem antes verificar o que existe no novo dia
