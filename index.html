@@ -464,7 +464,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div class="fr"><div class="fg"><label class="fl">Perdas / Refugos <span style="color:#739630;font-size:11px">(sempre em KG)</span></label><input type="number" id="ape" min="0" value="0" placeholder="kg"></div><div class="fg"><label class="fl">Operador</label><input type="text" id="aop" readonly style="opacity:.6"></div></div>
   <div class="fg"><label class="fl">Observacoes</label><input type="text" id="aob"></div>
   <div class="alw" id="akg" style="display:none">Producao em KG: ao salvar, informe o destino nos silos.</div>
-  <input type="hidden" id="aid"><input type="hidden" id="atipo">
+  <input type="hidden" id="aid"><input type="hidden" id="atipo"><input type="hidden" id="adtctx">
   <div class="mfoot"><button class="btn bsm" onclick="fM('mapt')">Cancelar</button><button class="btn bsm bg2" onclick="salvarApt()">Salvar Apontamento</button></div>
 </div></div>
 
@@ -594,6 +594,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
   <input type="hidden" id="eafbkey">
   <input type="hidden" id="eatipo">
+  <input type="hidden" id="eadtctx">
   <input type="hidden" id="eamodo"> <!-- 'perda' = so perda, '' = normal -->
   <div class="mfoot">
     <button class="btn bsm" onclick="fM('meditapt')">Cancelar</button>
@@ -1030,7 +1031,7 @@ function renderDash(){
     }
     G('dops').innerHTML=h2||'<tr><td colspan="8" style="text-align:center;color:#4a664a;padding:20px">Nenhuma OP para esta data.</td></tr>';
     renderCharts(ops, aptsPorOp);
-    renderAderenciaSKU(ops, aptsPorOp);
+    renderAderenciaSKU(ops, aptsPorOp, dt);
   }).catch(function(e){ console.error('Erro dashboard:',e); });
 }
 function renderCharts(ops, aptsPorOp){
@@ -1070,21 +1071,24 @@ function renderCharts(ops, aptsPorOp){
 // ============================================================
 // ADERÊNCIA POR SKU
 // ============================================================
-function renderAderenciaSKU(ops, aptsPorOp){
+function renderAderenciaSKU(ops, aptsPorOp, dt){
   var body=G('dash-sku-body');
   var foot=G('dash-sku-foot');
   var resumo=G('dash-sku-resumo');
   if(!body) return;
 
-  // Programado + Realizado: só OPs programadas para o dia
-  // Real = o.real da OP (total acumulado — reflete se a OP foi entregue)
+  // Programado + Realizado: só OPs programadas para o dia.
+  // Real = realPorData[dt] se existir (produção especifica daquele dia), senao o.real
+  // (MESMA REGRA dos cards do topo — nunca conta producao de outro dia presa na OP)
   var skus={};
   ops.forEach(function(o){
     var cod=o.cod||'SEM_COD';
     var desc=o.desc||o.cod||'—';
     if(!skus[cod]) skus[cod]={cod:cod,desc:desc,prog:0,real:0};
+    var rpd=o.realPorData||{};
+    var realOp=dt?(Number(rpd[dt])||Number(o.real)||0):(Number(o.real)||0);
     skus[cod].prog += Number(o.prog)||0;
-    skus[cod].real += Number(o.real)||0;
+    skus[cod].real += realOp;
   });
 
   // Converte para array e ordena: primeiro os com prog > 0, depois % crescente (pior primeiro)
@@ -1568,6 +1572,13 @@ function abrirApt(fbKey){
   G('aid').value=fbKey; G('atipo').value=tipo;
   G('aop').value=SES.nome; G('aob').value='';
 
+  // Data do apontamento = data do filtro selecionado na tela de Cards do Operador.
+  // Se o operador esta vendo a planilha do dia 22 e aponta, o apontamento vale pro dia 22,
+  // mesmo que o relogio do servidor ja tenha virado pro dia 23 (lancamento atrasado).
+  // Fallback para hoje() apenas se nao houver filtro de data selecionado (campo vazio).
+  var dtCtx=G('op-fdt')&&G('op-fdt').value?G('op-fdt').value:hoje();
+  G('adtctx').value=dtCtx;
+
   // Hint
   var hint=tipo==='SC'?'1 SC = 25 kg — sistema converte automaticamente':tipo==='BG'?'1 BG = 750 kg — sistema converte automaticamente':'';
   var hEl=G('apt-hint'); if(hEl){hEl.textContent=hint;hEl.style.display=hint?'block':'none';}
@@ -1617,11 +1628,13 @@ function abrirApt(fbKey){
   }
   G('akg').style.display=(tipo==='KG')?'block':'none';
 
-  // Mostra data calculada automaticamente para cada turno
+  // Mostra a data que sera efetivamente gravada (= filtro da tela), igual p/ T1/T2/T3.
+  // Antes calculava por relogio do servidor (dataTurno) — podia divergir da planilha
+  // que o operador esta vendo, principalmente em lancamentos atrasados (madrugada).
   [1,2,3].forEach(function(t){
     var infoEl=G('adt'+t+'-info');
     if(!infoEl) return;
-    infoEl.textContent=labelDataTurno(t);
+    infoEl.textContent='Data: '+dtCtx.split('-').reverse().join('/');
   });
   G('mapt').classList.add('on');
 }
@@ -1667,12 +1680,14 @@ function salvarApt(){
   var totalStr=tipo==='SC'?fN(t1sc+t2sc+t3sc)+' SC = '+fN(real)+' kg':fN(real)+' kg';
   var fatorStr=' (+'+novosStr+' | Total: '+totalStr+')';
 
-  // Data calculada automaticamente por turno — sem input manual do operador
-  var isPCP=SES.perfil==='pcp'||SES.perfil==='admin';
-  var dtT1=dataTurno(1);
-  var dtT2=dataTurno(2);
-  var dtT3=dataTurno(3);
-  var dtApt=turno===1?dtT1:turno===2?dtT2:turno===3?dtT3:hoje();
+  // Data do apontamento = data do filtro selecionado na tela (Cards do Operador),
+  // capturada em abrirApt() e guardada no campo hidden 'adtctx'.
+  // Isso evita que lancamentos atrasados (ex: T3 do dia 22 digitado ja na madrugada
+  // do dia 23) gravem na data errada — vale a planilha que o operador esta vendo,
+  // nao o relogio do servidor no momento do clique em "Salvar".
+  var dtCtx=G('adtctx')&&G('adtctx').value?G('adtctx').value:hoje();
+  var dtT1=dtCtx, dtT2=dtCtx, dtT3=dtCtx;
+  var dtApt=dtCtx;
 
   // Recalcula totais acumulados por data
   // Busca apontamentos anteriores desta OP para calcular real total por data
@@ -1812,6 +1827,9 @@ function abrirEditarApt(fbKey){
   G('editapt-titulo').textContent='Editar Apontamento - '+op.id;
   G('eafbkey').value=fbKey;
   G('eatipo').value=tipo;
+  // Data de contexto = filtro de data selecionado na tela de Cards do Operador.
+  // Usada para saber em qual data do realPorData aplicar o delta de correcao.
+  G('eadtctx').value=G('op-fdt')&&G('op-fdt').value?G('op-fdt').value:hoje();
 
   // Labels com unidade
   G('editapt-lbl1').textContent='Turno 1 ('+unid+')';
@@ -1964,20 +1982,38 @@ function salvarEdicaoApt(){
   var t1=t1sc*fator, t2=t2sc*fator, t3=t3sc*fator;
   var real=t1+t2+t3;
 
+  // Delta de producao (KG) causado por esta edicao — usado para ajustar realPorData
+  // na MESMA data que o operador esta vendo na tela (eadtctx), evitando que o.real
+  // total da OP fique dessincronizado do somatorio de realPorData (a fonte usada
+  // pelo Dashboard para o calculo diario).
+  var origReal=(Number(op.t1)||0)+(Number(op.t2)||0)+(Number(op.t3)||0);
+  var deltaReal=real-origReal; // pode ser negativo se a edicao reduziu o valor
+
+  var dtCtx=G('eadtctx')&&G('eadtctx').value?G('eadtctx').value:hoje();
+
   ld(true,'Salvando edicao...');
-  ld(true,'Salvando edicao...');
-  Promise.all([
-    DB.ref('ops/'+fbKey).update({
-      t1:t1, t2:t2, t3:t3, real:real,
-      t1sc:t1sc, t2sc:t2sc, t3sc:t3sc,
-      perda:perdaKG
-    }),
-    DB.ref('correcoes/'+fbKey).push({
-      ts:agora(), usuario:SES.login, perfil:SES.perfil,
-      turno:turno, motivo:motivo,
-      t1:t1, t2:t2, t3:t3, real:real, perda:perdaKG
-    })
-  ]).then(function(){
+
+  DB.ref('ops/'+fbKey).child('realPorData').once('value').then(function(snapRPD){
+    var rpd=snapRPD.val()||{};
+    if(deltaReal!==0){
+      rpd[dtCtx]=Math.max((Number(rpd[dtCtx])||0)+deltaReal,0);
+      if(rpd[dtCtx]===0) delete rpd[dtCtx]; // limpa entrada zerada
+    }
+    return Promise.all([
+      DB.ref('ops/'+fbKey).update({
+        t1:t1, t2:t2, t3:t3, real:real,
+        t1sc:t1sc, t2sc:t2sc, t3sc:t3sc,
+        perda:perdaKG,
+        realPorData:rpd
+      }),
+      DB.ref('correcoes/'+fbKey).push({
+        ts:agora(), usuario:SES.login, perfil:SES.perfil,
+        turno:turno, motivo:motivo,
+        t1:t1, t2:t2, t3:t3, real:real, perda:perdaKG,
+        dataContexto:dtCtx, deltaReal:deltaReal
+      })
+    ]);
+  }).then(function(){
     ld(false);
     toast('Apontamento do '+(turno>0?'Turno '+turno:'turno')+' editado!','ok');
     fM('meditapt');
