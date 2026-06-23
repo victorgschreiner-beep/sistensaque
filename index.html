@@ -2146,7 +2146,7 @@ function reprogramarOP(fbKey){
   }).then(function(ref){
     ld(false);
     toast('OP '+op.id+' concluida — nova OP '+novoId+' criada para '+dtNova,'ok');
-    addLog('REPROGRAMAR',op.id+' → '+novoId+' | '+dtAtual+' → '+dtNova+' | saldo: '+fN(saldo)+' kg');
+    addLog('REPROGRAMAR',op.id+' → '+novoId+' | '+dtAtual+' → '+dtNova+' | saldo: '+fN(saldoKG)+' kg');
   }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
 }
 
