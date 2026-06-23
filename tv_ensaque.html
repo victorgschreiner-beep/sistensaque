@@ -43,20 +43,18 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;height:1
 
 /* TURNOS */
 .turnos-section{flex-shrink:0}
-.turnos-titulo{background:#024f2b;color:#fff;font-size:11px;font-weight:800;padding:6px 14px;border-radius:8px 8px 0 0;letter-spacing:.5px;text-transform:uppercase}
+.turnos-titulo{background:#024f2b;color:#fff;font-size:11px;font-weight:800;padding:6px 14px;border-radius:8px 8px 0 0;letter-spacing:.5px;text-transform:uppercase;display:flex;align-items:center;justify-content:space-between}
 .turnos-row{display:grid;grid-template-columns:1fr 1fr 1fr;border:1px solid #d4e8d4;border-top:none;border-radius:0 0 8px 8px;overflow:hidden;background:#fff}
-.turno-card{padding:10px 14px;border-right:1px solid #d4e8d4}
+.turno-card{padding:10px 14px;border-right:1px solid #d4e8d4;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:center}
 .turno-card:last-child{border-right:none}
 .turno-card.atual{background:#f0f7ec}
-.turno-nome{font-size:11px;font-weight:700;color:#739630;margin-bottom:4px}
-.turno-kg{font-size:20px;font-weight:800;color:#024f2b}
-.turno-sub{font-size:10px;color:#666;margin-top:1px}
-.prog-bar{background:#e8f0e8;border-radius:4px;height:6px;margin-top:6px;overflow:hidden}
-.prog-fill{height:100%;border-radius:4px;transition:width .5s}
-.fill-ok{background:#024f2b}
-.fill-warn{background:#d29922}
-.fill-bad{background:#c0392b}
-.turno-pct{font-size:11px;font-weight:700;text-align:right;margin-top:2px}
+.turno-nome{font-size:11px;font-weight:700;color:#739630;margin-bottom:2px;grid-column:1/-1}
+.turno-mc-lbl{font-size:9px;font-weight:700;color:#739630;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
+.turno-mc-val{font-size:17px;font-weight:800;line-height:1}
+.turno-mc-sub{font-size:9px;color:#666;margin-top:1px}
+.fill-ok{color:#024f2b}
+.fill-warn{color:#d29922}
+.fill-bad{color:#c0392b}
 
 /* BARRA TURNOS DETALHE */
 .turnos-detalhe{background:#011a0a;border-top:1px solid #1a3a1a;height:36px;display:flex;align-items:center;overflow:hidden;flex-shrink:0}
@@ -139,17 +137,39 @@ var firebaseConfig={apiKey:"AIzaSyB52cXfvtmY2xXu9vMkMPhCWU-rp6NXhxc",authDomain:
 var DB=null;
 try{firebase.initializeApp(firebaseConfig);DB=firebase.database();}catch(e){console.warn(e);}
 
-var OPS=[], APTS=[], PERDAS=[];
+var OPS=[], PERDAS=[];
 var CHARTS={};
+var DT_ATUAL=null; // data operacional carregada agora — usada para detectar virada de dia
+var REF_OPS=null, REF_PERDAS=null; // referências dos listeners ativos, para poder desligar na virada
+
 function G(id){return document.getElementById(id);}
 function hoje(){return new Date().toISOString().slice(0,10);}
 function pad(n){return String(n).padStart(2,"0");}
 function fN(n){return (Number(n)||0).toLocaleString("pt-BR");}
-function turnoAtual(){var h=new Date().getHours();return h>=21||h<5?1:h<13?2:3;}
-function turnoDeHora(h){return h>=21||h<5?1:h<13?2:3;}
 
-function realDia(op){
-  var dt=hoje();
+// Hora local Brasil (UTC-3) — mesma base do dashboard, independe do fuso do dispositivo da TV
+function horaLocalBR(){
+  var h=new Date().getUTCHours()-3;
+  if(h<0) h+=24;
+  return h;
+}
+function turnoAtual(){var h=horaLocalBR();return h>=21||h<5?1:h<13?2:3;}
+
+// Data operacional do dia — mesma regra do dashboard (dataTurno):
+// Turno 1 (21h→05h): depois das 21h já é a data de amanhã (turno em curso termina amanhã)
+// Turno 2 e 3: sempre hoje
+// Isso faz a TV virar de dia no horário certo, sem cortar o T1 na metade.
+function dataOperacionalAtual(){
+  var h=horaLocalBR();
+  if(h>=21){
+    var d=new Date();
+    d.setUTCDate(d.getUTCDate()+1);
+    return d.toISOString().slice(0,10);
+  }
+  return hoje();
+}
+
+function realDia(op,dt){
   if(op.realPorData&&op.realPorData[dt]) return Number(op.realPorData[dt]);
   return Number(op.real)||0;
 }
@@ -157,70 +177,31 @@ function realDia(op){
 function iniciar(){
   iniciarRelogio();
   if(!DB) return;
-  var dt=hoje();
-  DB.ref("ops").orderByChild("data").equalTo(dt).on("value",function(s){
+  carregarDia(dataOperacionalAtual());
+  // Verifica a cada minuto se a data operacional virou — se virou, reabre os listeners no novo dia
+  setInterval(function(){
+    var dtNova=dataOperacionalAtual();
+    if(dtNova!==DT_ATUAL) carregarDia(dtNova);
+  },60000);
+}
+
+// Liga os listeners do Firebase para a data informada.
+// Desliga os listeners antigos primeiro — evita ficar acumulando listeners de dias anteriores.
+function carregarDia(dt){
+  if(REF_OPS) REF_OPS.off("value");
+  if(REF_PERDAS) REF_PERDAS.off("value");
+  DT_ATUAL=dt;
+  OPS=[];PERDAS=[];
+
+  REF_OPS=DB.ref("ops").orderByChild("data").equalTo(dt);
+  REF_OPS.on("value",function(s){
     OPS=[];
     if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;OPS.push(v);});
     renderTudo();
   });
-  // Busca apontamentos do dia atual + ontem (T3 até 11h)
-  function carregarApts(){
-    var dtHoje=hoje();
-    var dtOntem=new Date(); dtOntem.setDate(dtOntem.getDate()-1);
-    var dtOntemStr=dtOntem.toISOString().slice(0,10);
-    var horaAtual=new Date().getHours();
-    var incluirT3Ontem=(horaAtual<11);
 
-    DB.ref("apontamentos").orderByChild("data").equalTo(dtHoje).on("value",function(sHoje){
-      var todosApts=[];
-      if(sHoje.exists()) sHoje.forEach(function(c){
-        var v=c.val(); v.fbKey=c.key;
-        if(!v.turno || v.turno===0) return;
-        // T3 com ts antes das 13h = pertence ao turno anterior
-        // Usa getHours() que já é hora local do browser
-        if(v.turno===3 && v.ts){
-          var tsLocal=new Date(v.ts);
-          var tsHoraLocal=tsLocal.getHours();
-          var horaAtualLocal=new Date().getHours();
-          // Se apontamento T3 foi feito entre 21h e 13h (madrugada/manhã)
-          // e agora está entre 11h e 13h → é do T3 anterior, zera
-          var eraNoturno=(tsHoraLocal>=21||tsHoraLocal<13);
-          var agoreEmTransicao=(horaAtualLocal>=11&&horaAtualLocal<13);
-          if(eraNoturno && agoreEmTransicao) return;
-        }
-        todosApts.push(v);
-      });
-
-      function processar(aptsExtras){
-        if(aptsExtras) aptsExtras.forEach(function(v){
-          if(incluirT3Ontem && v.turno===3) todosApts.push(v);
-        });
-        var seen={}, aptsUniq=[];
-        todosApts.sort(function(a,b){return (a.ts||"")>(b.ts||"")?-1:1;});
-        todosApts.forEach(function(a){
-          var key=a.opId+'_'+a.real;
-          if(!seen[key]){seen[key]=true;aptsUniq.push(a);}
-        });
-        APTS=aptsUniq;
-        renderTudo();
-      }
-
-      if(incluirT3Ontem){
-        DB.ref("apontamentos").orderByChild("data").equalTo(dtOntemStr).once("value",function(sOntem){
-          var extrasOntem=[];
-          if(sOntem.exists()) sOntem.forEach(function(c){
-            var v=c.val(); v.fbKey=c.key;
-            if(v.turno===3) extrasOntem.push(v);
-          });
-          processar(extrasOntem);
-        });
-      } else {
-        processar(null);
-      }
-    });
-  }
-  carregarApts();
-  DB.ref("perdas_diarias").orderByChild("data").equalTo(dt).on("value",function(s){
+  REF_PERDAS=DB.ref("perdas_diarias").orderByChild("data").equalTo(dt);
+  REF_PERDAS.on("value",function(s){
     PERDAS=[];
     if(s.exists()) s.forEach(function(c){var v=c.val();PERDAS.push(v);});
     renderTudo();
@@ -228,29 +209,28 @@ function iniciar(){
 }
 
 function renderTudo(){
-  var dt=hoje(), t=turnoAtual();
+  var dt=DT_ATUAL||dataOperacionalAtual(), t=turnoAtual();
 
   // ── TOTAIS ────────────────────────────────────────────────
   var totalProg=OPS.reduce(function(a,o){return a+(Number(o.prog)||0);},0);
-  var totalBom=OPS.reduce(function(a,o){return a+realDia(o);},0);
-  var totalPerda=PERDAS.reduce(function(a,p){return a+(Number(p.quantidade)||0);},0);
+  var totalBom=OPS.reduce(function(a,o){return a+realDia(o,dt);},0);
+  var totalPerda=PERDAS.reduce(function(a,p){return a+(Number(p.perdaKG)||Number(p.quantidade)||0);},0);
   var totalProc=totalBom+totalPerda;
   var nAndamento=OPS.filter(function(o){return o.status==="Em andamento";}).length;
   var nConc=OPS.filter(function(o){return o.status==="Concluida";}).length;
   var adhGeral=totalProg?Math.min(Math.round(totalBom/totalProg*100),999):0;
-  var corAdh=adhGeral>=85?"val-gr":adhGeral>=70?"val-or":"val-rd";
 
   G("c-prog").textContent=fN(totalProg);
   G("c-bom").textContent=fN(totalBom);
   G("c-bom-pct").textContent=adhGeral+"% do prog.";
-  G("c-bom").className="card-val "+(adhGeral>=85?"val-gr":adhGeral>=70?"val-or":"val-rd");
+  G("c-bom").className="card-val "+(adhGeral>=90?"val-gr":adhGeral>=60?"val-or":"val-rd");
   G("c-perda").textContent=fN(totalPerda);
   G("c-total").textContent=fN(totalProc);
   G("c-ops").textContent=OPS.length;
   G("c-ops-sub").textContent=nAndamento+" em andamento";
   G("c-conc").textContent=nConc;
   G("c-conc-sub").textContent="de "+OPS.length+" OPs";
-  G("adh-geral-txt").textContent=adhGeral+"% de aderência geral do dia";
+  G("adh-geral-txt").textContent=adhGeral+"% de aderência geral do dia · "+dt.split("-").reverse().join("/");
 
   // ── GRÁFICO LINHAS ────────────────────────────────────────
   var linhas=["Linha 1","Linha 2","Linha 4","Linha 5"];
@@ -259,7 +239,7 @@ function renderTudo(){
   linhas.forEach(function(l){progL[l]=0;bomL[l]=0;});
   OPS.forEach(function(o){
     var l=mapL[o.linha]||o.linha;
-    if(progL[l]!==undefined){progL[l]+=(Number(o.prog)||0);bomL[l]+=realDia(o);}
+    if(progL[l]!==undefined){progL[l]+=(Number(o.prog)||0);bomL[l]+=realDia(o,dt);}
   });
   mkChart("g-linha","bar",linhas,[
     {label:"Programado",data:linhas.map(function(l){return progL[l];}),backgroundColor:"rgba(115,150,48,.3)",borderColor:"#739630",borderWidth:1},
@@ -276,56 +256,35 @@ function renderTudo(){
     borderWidth:2,borderColor:"#fff"
   }],{plugins:{legend:{position:"bottom",labels:{font:{size:11},boxWidth:14}}}});
 
-  // ── TURNOS — usa realPorData das OPs + proporção dos apontamentos do dia ──
-  var porTurno={1:{real:0,prog:0},2:{real:0,prog:0},3:{real:0,prog:0}};
-  var dtHoje=hoje();
-
-  // Soma apontamentos de hoje por turno para calcular proporção
-  var aptsPorOpTurno={};
-  APTS.forEach(function(a){
-    if(a.data!==dtHoje) return;
-    var ti=Number(a.turno)||0;
-    if(ti<1||ti>3) return;
-    var oid=a.opId||"";
-    if(!aptsPorOpTurno[oid]) aptsPorOpTurno[oid]={1:0,2:0,3:0,total:0};
-    aptsPorOpTurno[oid][ti]+=Number(a.real)||0;
-    aptsPorOpTurno[oid].total+=Number(a.real)||0;
-  });
-
-  // Distribui realPorData de cada OP proporcionalmente entre os turnos
-  OPS.forEach(function(op){
-    var realHoje=Number(op.realPorData&&op.realPorData[dtHoje])||0;
-    if(!realHoje) return;
-    var dist=aptsPorOpTurno[op.fbKey]||aptsPorOpTurno[op.id];
-    if(!dist||!dist.total){
-      porTurno[turnoAtual()].real+=realHoje;
-      return;
-    }
+  // ── TURNOS — real e perda direto dos campos da OP (o.t1/o.t2/o.t3), igual o dashboard ──
+  // Cada OP grava o quanto cada turno apontou nela (o['t'+turno]). Somando entre todas
+  // as OPs do dia chegamos no real de cada turno — mesma fonte de dado do bloco
+  // "Detalhamento por Turno" do dashboard, sem precisar de apontamentos brutos.
+  var porTurno={1:{real:0,perda:0},2:{real:0,perda:0},3:{real:0,perda:0}};
+  OPS.forEach(function(o){
     [1,2,3].forEach(function(ti){
-      var prop=dist[ti]/dist.total;
-      porTurno[ti].real+=Math.round(realHoje*prop);
+      porTurno[ti].real+=Number(o["t"+ti])||0;
     });
   });
-
-  // Programado dividido igualmente
+  PERDAS.forEach(function(p){
+    var ti=Number(p.turno)||0;
+    if(ti>=1&&ti<=3) porTurno[ti].perda+=Number(p.perdaKG)||Number(p.quantidade)||0;
+  });
+  // Programado dividido igualmente entre os 3 turnos (não há programado por turno na OP)
   var progPorTurno=Math.round(totalProg/3);
-  [1,2,3].forEach(function(ti){porTurno[ti].prog=progPorTurno;});
-  _porTurno=porTurno; // expõe globalmente
 
   var nomes={1:"Turno 1  (21h — 05h)",2:"Turno 2  (05h — 13h)",3:"Turno 3  (13h — 21h)"};
   var h="";
   [1,2,3].forEach(function(ti){
-    var adh=porTurno[ti].prog?Math.min(Math.round(porTurno[ti].real/porTurno[ti].prog*100),999):0;
-    var cor=adh>=85?"#024f2b":adh>=70?"#d29922":"#c0392b";
-    var fillCls=adh>=85?"fill-ok":adh>=70?"fill-warn":"fill-bad";
+    var realT=porTurno[ti].real, perdaT=porTurno[ti].perda;
+    var adh=progPorTurno?Math.min(Math.round(realT/progPorTurno*100),999):0;
+    var corCls=adh>=90?"fill-ok":adh>=60?"fill-warn":"fill-bad";
     var atual=ti===t;
-    var pctRealiz=totalBom?Math.round(porTurno[ti].real/totalBom*100):0;
     h+='<div class="turno-card'+(atual?" atual":"")+'">';
-    h+='<div class="turno-nome">'+nomes[ti]+(atual?' <span style="background:#024f2b;color:#fff;padding:1px 6px;border-radius:10px;font-size:9px">ATUAL</span>':'')+' </div>';
-    h+='<div class="turno-kg" style="color:'+cor+'">'+fN(porTurno[ti].real)+' <span style="font-size:12px;color:#4a664a">kg</span></div>';
-    h+='<div class="turno-sub">'+adh+'% do prog. | '+pctRealiz+'% do realizado</div>';
-    h+='<div class="prog-bar"><div class="prog-fill '+fillCls+'" style="width:'+Math.min(adh,100)+'%"></div></div>';
-    h+='<div class="turno-pct" style="color:'+cor+'">'+adh+'%</div>';
+    h+='<div class="turno-nome">'+nomes[ti]+(atual?' <span style="background:#024f2b;color:#fff;padding:1px 6px;border-radius:10px;font-size:9px">ATUAL</span>':'')+'</div>';
+    h+='<div><div class="turno-mc-lbl">Prod. Bom</div><div class="turno-mc-val '+corCls+'">'+fN(realT)+'</div><div class="turno-mc-sub">kg</div></div>';
+    h+='<div><div class="turno-mc-lbl">Aderência</div><div class="turno-mc-val '+corCls+'">'+adh+'%</div><div class="turno-mc-sub">vs prog.</div></div>';
+    h+='<div><div class="turno-mc-lbl">Perda</div><div class="turno-mc-val fill-bad">'+fN(perdaT)+'</div><div class="turno-mc-sub">kg perdidos</div></div>';
     h+='</div>';
   });
   G("turnos-row").innerHTML=h;
@@ -338,7 +297,7 @@ function renderTudo(){
   var rodH="";
   [0,1].forEach(function(){
     opsSorted.forEach(function(op){
-      var r=realDia(op);
+      var r=realDia(op,dt);
       var prog=Number(op.prog)||0;
       var pct=prog?Math.min(Math.round(r/prog*100),999):0;
       var corPct=pct>=85?"rod-pct-ok":pct>=70?"rod-pct-warn":"rod-pct-bad";
@@ -355,17 +314,15 @@ function renderTudo(){
   G("rod-scroll").innerHTML=rodH||'<span class="rod-item">Nenhuma OP para hoje</span>';
   G("rod-scroll").style.animationDuration=Math.max(opsSorted.length*5,20)+"s";
 
-  // ── BARRA DETALHE TURNOS ─────────────────────────────────
+  // ── BARRA DETALHE TURNOS (scroll) ────────────────────────
   var nomesTurno={1:"TURNO 1 · 21h-05h",2:"TURNO 2 · 05h-13h",3:"TURNO 3 · 13h-21h"};
   var tdH="";
   [1,2,3].forEach(function(ti){
-    var realT=porTurno[ti].real;
-    var progT=porTurno[ti].prog;
-    var adhT=progT?Math.min(Math.round(realT/progT*100),999):0;
-    var cor=adhT>=85?"#2ea043":adhT>=70?"#f39c12":"#e74c3c";
-    var perdaT=APTS.filter(function(a){return a.turno===ti;}).reduce(function(s,a){return s+(Number(a.perda)||0);},0);
+    var realT=porTurno[ti].real, perdaT=porTurno[ti].perda;
+    var adhT=progPorTurno?Math.min(Math.round(realT/progPorTurno*100),999):0;
+    var cor=adhT>=90?"#2ea043":adhT>=60?"#f39c12":"#e74c3c";
     tdH+='<span class="td-item">';
-    tdH+='<span class="td-turno">'+nomesTurno[ti]+(ti===t?" ◀":"")+' </span>';
+    tdH+='<span class="td-turno">'+nomesTurno[ti]+(ti===t?" ◀":"")+'</span>';
     tdH+='<span style="color:#e8f0e8;font-weight:600">'+fN(realT)+' kg</span>';
     tdH+='<span style="color:'+cor+';font-weight:700">'+adhT+'%</span>';
     if(perdaT>0) tdH+='<span style="color:#e74c3c">Perda: '+fN(perdaT)+' kg</span>';
