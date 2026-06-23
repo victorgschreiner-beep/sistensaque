@@ -1514,7 +1514,7 @@ function renderLinhaCard(linha){
     h+='<div class="op-ativa-box" onclick="abrirSelOp(this.dataset.l)" data-l="'+linha+'">';
     h+='<div class="op-num">▶ EM EXTRUSÃO — OP: '+opAtiva.id+'</div>';
     h+='<div class="op-desc">'+(opAtiva.desc||opAtiva.cod)+'</div>';
-    h+='<div class="op-meta">Meta: '+fN(metaH)+' kg/h · Prog: '+fN(opAtiva.prog)+' kg</div>';
+    h+='<div class="op-meta">'+(opAtiva.lote?'Lote: '+opAtiva.lote+' · ':'')+'Meta: '+fN(metaH)+' kg/h · Prog: '+fN(opAtiva.prog)+' kg</div>';
     h+='</div>';
     h+='<div class="prog-wrap">';
     h+='<div class="prog-label"><span>Extrusão na OP</span><span>'+fN(totalOpExt)+' / '+fN(opAtiva.prog)+' kg ('+progExt+'%)</span></div>';
@@ -1564,7 +1564,7 @@ function renderLinhaCard(linha){
       var estiloRep=isRep?";border-left:3px solid #d29922;background:#fffbf0":"";
       h+='<div class="fila-op'+(isAtiva?" ativa":"")+(o.status==="Concluida"?" concluida":"")+(isRep?" rep":"")+'" style="'+estiloRep+'" data-fk="'+o.fbKey+'" data-l="'+linha+'" onclick="selecionarOpAtiva(this.dataset.l,this.dataset.fk)">';
       var concluidaExt=OP_CONCLUIDAS_EXT&&OP_CONCLUIDAS_EXT[o.fbKey];
-      h+='<div><div class="fila-op-num">'+(isRep?'⚠️ ':'')+o.id+'</div></div>';
+      h+='<div><div class="fila-op-num">'+(isRep?'⚠️ ':'')+o.id+'</div>'+(o.lote?'<div style="font-size:9px;color:#4a664a;font-weight:600;margin-top:1px">Lote '+o.lote+'</div>':'')+'</div>';
       h+='<div class="fila-op-desc">'+(o.desc||o.cod)+'</div>';
       if(concluidaExt){
         h+='<span style="background:#1a3a2a;color:#4caf50;border:1px solid #2d5a3d;border-radius:4px;font-size:9px;font-weight:700;padding:2px 5px;white-space:nowrap">✅ Ext. concluída</span>';
