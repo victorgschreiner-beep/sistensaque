@@ -1189,8 +1189,11 @@ function renderOPs(){
   if(ln) ops=ops.filter(function(o){return o.linha===ln;});
   if(tp) ops=ops.filter(function(o){return o.tipo===tp;});
   if(dt) ops=ops.filter(function(o){
-    // Inclui OPs do dia E OPs reprogramadas a partir desse dia
-    return o.data===dt || o.reprogramadaDe===dt;
+    // Mostra apenas a OP no seu dia atual (o.data).
+    // A OP reprogramada (status 'Reprogramada') so deve aparecer no dia novo (dtNova),
+    // nunca no dia de origem (reprogramadaDe) — esse contexto e exclusivo do Dashboard,
+    // que recalcula prog/real por dia. Aqui na lista, a OP existe uma vez so, no seu dia.
+    return o.data===dt;
   });
   if(lote) ops=ops.filter(function(o){return (o.lote||'').toLowerCase().indexOf(lote)!==-1;});
 
