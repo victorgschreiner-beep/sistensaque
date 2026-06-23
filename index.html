@@ -901,53 +901,28 @@ function renderDash(){
   var ln=G('dash-fln')?G('dash-fln').value:'';
   var turnoFiltro=G('dash-turno')?parseInt(G('dash-turno').value)||0:0;
 
-  // OPs do dia:
-  // - OPs com data===dt (programadas para esse dia, incluindo reprogramadas que vieram de outro dia)
-  // - OPs com data!=dt mas que tem reprogramadaDe===dt (foram reprogramadas A PARTIR desse dia)
-  //   → aparecem no dia original com prog original, e realizado via realPorData[dt]
+  // OPs do dia — REGRA UNICA, igual a lista de Ordens de Producao (renderOPs):
+  // mostra apenas OPs cujo campo 'data' e igual ao dia filtrado (registro fisico).
+  // Nao reconstitui historico de OPs reprogramadas a partir deste dia (reprogramadaDe)
+  // para que Dashboard e Lista sempre exibam o mesmo conjunto de OPs e os mesmos totais.
   var vistosFbKey={};
   var ops=[];
   OPS.forEach(function(o){
     if(ln && o.linha!==ln) return;
     if(vistosFbKey[o.fbKey]) return;
-    var eraDesteDia = o.data===dt;
-    var foiReprogramadaDesteDia = o.reprogramadaDe===dt;
-    if(!eraDesteDia && !foiReprogramadaDesteDia) return;
+    if(o.data!==dt) return;
     vistosFbKey[o.fbKey]=true;
     ops.push(o);
   });
 
-  // PROGRAMADO:
-  // - OPs com data===dt: usa prog atual
-  // - OPs reprogramadas A PARTIR desse dia (reprogramadaDe===dt): usa progOriginal
-  //   para mostrar o que estava programado originalmente nesse dia
+  // PROGRAMADO: soma o.prog de cada OP do dia (mesmo valor exibido na lista)
   var tp=0;
   ops.forEach(function(o){
-    if(o.data===dt){
-      tp+=Number(o.prog)||0;
-    } else if(o.reprogramadaDe===dt){
-      // Prog original = progOriginal + realAcumulado anterior + o que foi feito nesse dia
-      // = o que estava programado quando a OP era desse dia
-      //
-      // ATENCAO UNIDADES: o.progOriginal esta na unidade de EXIBICAO (sc/bg/kg, igual o.prog),
-      // mas o.realAcumulado e realPorData[dt] estao sempre em KG. E preciso converter
-      // progOriginal para KG antes de subtrair, e converter o resultado de volta para a
-      // unidade de exibicao antes de somar em tp (que acumula na mesma unidade que o.prog).
-      var fatorDia=o.tipo==='SC'?25:o.tipo==='BG'?750:1;
-      var progOrigKGdash=(Number(o.progOriginal)||0)*fatorDia;
-      var realAcum=Number(o.realAcumulado)||0;
-      var rpd=o.realPorData||{};
-      var realDia=Number(rpd[dt])||0;
-      // Prog do dia (em KG) = saldo que sobrou para esse dia = progOrig - acumulado anterior
-      var progDiaKG=Math.max(progOrigKGdash-realAcum+realDia,0);
-      tp+=fatorDia!==1?Math.round(progDiaKG/fatorDia):progDiaKG;
-    }
+    tp+=Number(o.prog)||0;
   });
 
-  // REALIZADO:
-  // - OPs com data===dt: usa realPorData[dt] se existe, senao op.real
-  // - OPs reprogramadas a partir desse dia: usa APENAS realPorData[dt]
-  //   (nunca op.real pois esse ja e do novo dia)
+  // REALIZADO: usa realPorData[dt] se existir (apontamento granular), senao o.real
+  // (mesma fonte de dado que a lista de Ordens de Producao usa para exibir o.real)
   var aptsPorOp={};
   var dadosPorTurno={
     1:{real:0,perda:0,sc:0,bg:0,kg:0},
@@ -957,17 +932,7 @@ function renderDash(){
 
   ops.forEach(function(o){
     var rpd=o.realPorData||{};
-    var realOp;
-    if(o.reprogramadaDe===dt){
-      // Reprogramada a partir desse dia — usa SO realPorData[dt], nunca op.real
-      realOp=Number(rpd[dt])||0;
-    } else if(o.data===dt){
-      // OP programada para esse dia — usa realPorData[dt] se existe, senao op.real
-      // Mas se tem reprogramadaDe preenchido (veio de outro dia), usa so realPorData[dt]
-      realOp=o.reprogramadaDe?Number(rpd[dt])||0:(Number(rpd[dt])||Number(o.real)||0);
-    } else {
-      realOp=0;
-    }
+    var realOp=Number(rpd[dt])||Number(o.real)||0;
     if(realOp<=0) return;
     aptsPorOp[o.fbKey]=realOp;
     if(turnoFiltro>0){
@@ -1007,11 +972,10 @@ function renderDash(){
       });
     }
     // Fallback perda: OPs sem perdas_diarias E sem realPorData (dados antigos)
-    // Exclui OPs reprogramadas sem producao no dia atual — perda pertence ao dia anterior
+    // Exclui OPs com historico estruturado de qualquer fallback (evita duplicar perda)
     ops.forEach(function(o){
       if(opIdsComPerda[o.fbKey]) return; // ja contou via perdas_diarias
       if(o.realPorData) return; // tem historico estruturado — nao usa fallback
-      if(o.reprogramadaDe && !(Number(o.real)||0)) return; // reprogramada sem real no novo dia
       tperda+=Number(o.perda)||0;
     });
 
