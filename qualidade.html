@@ -195,6 +195,11 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <h2 style="font-size:16px;font-weight:700;color:#024f2b">Linhas em Produção <span style="font-size:11px;color:#739630;font-weight:500">&#9679; ao vivo</span></h2>
     <button class="btn bsm" onclick="carregarLinhasAtivas()">↻ Atualizar</button>
   </div>
+  <div class="tabs">
+    <button class="tab on" id="tab-prod-todas" onclick="filtrarProducao('todas')">Todas</button>
+    <button class="tab" id="tab-prod-andamento" onclick="filtrarProducao('andamento')">Em Produção</button>
+    <button class="tab" id="tab-prod-pendente" onclick="filtrarProducao('pendente')">Aguardando Qualidade <span class="nc-dot" id="prod-pendente-dot" style="display:none"></span></button>
+  </div>
   <div class="linhas-grid" id="linhas-grid">
     <div style="grid-column:1/-1;text-align:center;padding:30px;color:#739630">Carregando linhas...</div>
   </div>
@@ -763,13 +768,31 @@ function carregarLinhasAtivas(){
   });
 }
 
+var FILTRO_PRODUCAO='todas'; // 'todas' | 'andamento' | 'pendente'
+
+function filtrarProducao(modo){
+  FILTRO_PRODUCAO=modo;
+  document.querySelectorAll('#scr-producao .tab').forEach(function(t){t.classList.remove('on');});
+  G('tab-prod-'+(modo==='todas'?'todas':modo==='andamento'?'andamento':'pendente')).classList.add('on');
+  renderLinhasGrid();
+}
+
 function renderLinhasGrid(){
   var grid=G('linhas-grid');
   var h='';
+  var algumCard=false;
+
   LINHAS.forEach(function(linha){
     var ops=OPS_ATIVAS[linha]||[];
-    if(ops.length){
-      ops.forEach(function(op){
+    var opsFiltradas = ops.filter(function(op){
+      if(FILTRO_PRODUCAO==='andamento') return op.pendenteExtrusao;
+      if(FILTRO_PRODUCAO==='pendente') return !op.pendenteExtrusao;
+      return true; // 'todas'
+    });
+
+    if(opsFiltradas.length){
+      algumCard=true;
+      opsFiltradas.forEach(function(op){
         var pq=PARAMS_QUAL[op.cod];
         var concluidaExt = !op.pendenteExtrusao;
         h+='<div class="linha-card '+(concluidaExt?'pendente-qual':'ativa')+'" onclick="abrirInspecaoOP(\''+esc(linha)+'\',\''+esc(op.fbKey)+'\')">';
@@ -781,15 +804,29 @@ function renderLinhasGrid(){
         if(concluidaExt) h+='<button class="btn bxs bp" style="margin-top:8px" onclick="event.stopPropagation();concluirParaQualidade(\''+esc(op.fbKey)+'\',\''+esc(linha)+'\')">✔ Concluir para Qualidade</button>';
         h+='</div>';
       });
-    } else {
+    } else if(FILTRO_PRODUCAO==='todas' && !ops.length){
+      // Só mostra o card "Parada" na visão "Todas" — nas abas filtradas, linha sem pendência simplesmente não aparece
+      algumCard=true;
       h+='<div class="linha-card semop">';
       h+='<div class="linha-nome">'+linha+'<span class="badge bcz">Parada</span></div>';
       h+='<div class="linha-prod" style="margin-top:6px">Nenhuma OP em produção</div>';
       h+='</div>';
-
     }
   });
+
+  if(!algumCard){
+    var msg = FILTRO_PRODUCAO==='andamento' ? 'Nenhuma linha em produção no momento'
+            : FILTRO_PRODUCAO==='pendente' ? 'Nenhuma OP aguardando conclusão da Qualidade — tudo em dia! ✅'
+            : 'Nenhuma linha encontrada';
+    h='<div style="grid-column:1/-1;text-align:center;padding:30px;color:#999">'+msg+'</div>';
+  }
+
   grid.innerHTML=h;
+
+  // Atualiza o indicador de pendências na aba, mesmo quando ela não está selecionada
+  var totalPendentes=0;
+  LINHAS.forEach(function(linha){ (OPS_ATIVAS[linha]||[]).forEach(function(op){ if(!op.pendenteExtrusao) totalPendentes++; }); });
+  G('prod-pendente-dot').style.display = totalPendentes>0 ? 'inline-block' : 'none';
 }
 
 function esc(s){return String(s).replace(/'/g,"\\'");}
