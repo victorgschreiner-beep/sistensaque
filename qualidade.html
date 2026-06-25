@@ -278,8 +278,16 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div id="admtab-prod">
     <div class="ch">
       <input type="text" id="params-busca" placeholder="Buscar código ou descrição..." style="width:260px" oninput="renderParamsLista()">
-      <button class="btn bp" onclick="abrirNovoParam()">+ Novo Produto</button>
+      <div style="display:flex;gap:8px">
+        <label class="btn bsm" style="background:#739630;border-color:#739630;color:#fff;cursor:pointer">
+          ⇣ Importar Planilha
+          <input type="file" id="params-upload" accept=".xlsx,.xls" style="display:none" onchange="importarPlanilhaParams(this)">
+        </label>
+        <button class="btn bsm" onclick="exportarPlanilhaParams()">⇡ Exportar Planilha</button>
+        <button class="btn bp" onclick="abrirNovoParam()">+ Novo Produto</button>
+      </div>
     </div>
+    <div id="import-status" style="display:none;margin-bottom:12px"></div>
     <div class="card">
       <div class="tw"><table>
         <thead><tr><th>Código</th><th>Descrição</th><th>Unid.</th><th>Umidade</th><th>AW</th><th>Densidade</th><th>Status</th><th></th></tr></thead>
@@ -452,6 +460,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 // ============================================================
 // FIREBASE CONFIG — mesmo banco do ensaque/extrusão
@@ -1465,6 +1474,140 @@ function confirmarExcluirUsuario(){
     fM('ov-excluir-usuario');
     carregarUsuarios();
   }).catch(function(e){ toast('Erro: '+e.message,'err'); });
+}
+
+// ============================================================
+// IMPORTAR / EXPORTAR PLANILHA DE PARÂMETROS
+// ============================================================
+// Colunas esperadas na planilha (cabeçalho exato, linha 1):
+var COLUNAS_PARAMS = [
+  ['Codigo','codigo'],['Descricao','descricao'],['Unidade','unidade'],
+  ['PB_min_%','pbMin'],['EE_min_%','eeMin'],['MM_max_%','mmMax'],
+  ['Umidade_min_%','umidMin'],['Umidade_max_%','umidMax'],
+  ['AW_min','awMin'],['AW_max','awMax'],
+  ['Densidade_min_gL','densMin'],['Densidade_max_gL','densMax'],
+  ['Corte_min_mm','corteMin'],['Corte_max_mm','corteMax'],
+  ['Diametro_min_mm','diamMin'],['Diametro_max_mm','diamMax'],
+  ['Temp_max_C','tempMax']
+];
+
+function exportarPlanilhaParams(){
+  var codigos=Object.keys(PARAMS_QUAL).sort();
+  if(!codigos.length){ toast('Nenhum parâmetro cadastrado para exportar','err'); return; }
+  var header=COLUNAS_PARAMS.map(function(c){return c[0];});
+  var linhas=[header];
+  codigos.forEach(function(cod){
+    var p=PARAMS_QUAL[cod];
+    var linha=COLUNAS_PARAMS.map(function(c){
+      var v = c[1]==='codigo' ? cod : p[c[1]];
+      return (v===undefined||v===null) ? '' : v;
+    });
+    linhas.push(linha);
+  });
+  var ws=XLSX.utils.aoa_to_sheet(linhas);
+  ws['!cols']=[{wch:16},{wch:42},{wch:9},{wch:10},{wch:10},{wch:10},{wch:13},{wch:13},{wch:9},{wch:9},{wch:14},{wch:14},{wch:12},{wch:12},{wch:14},{wch:14},{wch:11}];
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Parametros');
+  XLSX.writeFile(wb,'parametros_qualidade_'+hoje()+'.xlsx');
+  toast('Planilha exportada!','ok');
+}
+
+var IMPORT_PENDENTE=null;
+
+function importarPlanilhaParams(input){
+  var file=input.files[0];
+  if(!file) return;
+  var statusEl=G('import-status');
+  statusEl.style.display='block';
+  statusEl.className='ali';
+  statusEl.textContent='Lendo planilha...';
+
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+      var ws=wb.Sheets[wb.SheetNames[0]];
+      var linhas=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      if(!linhas.length){ throw new Error('Planilha vazia'); }
+
+      var header=linhas[0].map(function(h){return String(h).trim();});
+      var idxMap={};
+      COLUNAS_PARAMS.forEach(function(c){
+        var idx=header.indexOf(c[0]);
+        idxMap[c[1]]=idx; // -1 se não encontrar a coluna
+      });
+      if(idxMap['codigo']===-1){
+        throw new Error('Coluna "Codigo" não encontrada. Verifique se o cabeçalho da planilha está correto (linha 1).');
+      }
+
+      var produtos={}, semCodigo=0;
+      for(var i=1;i<linhas.length;i++){
+        var row=linhas[i];
+        var cod=String(row[idxMap['codigo']]||'').trim();
+        if(!cod || cod.toLowerCase()==='nan'){ semCodigo++; continue; }
+        var p={codigo:cod};
+        COLUNAS_PARAMS.forEach(function(c){
+          if(c[1]==='codigo') return;
+          var idx=idxMap[c[1]];
+          if(idx===-1){ p[c[1]]=null; return; }
+          var v=row[idx];
+          if(c[1]==='descricao' || c[1]==='unidade'){
+            p[c[1]] = v===''?'':String(v).trim();
+          } else {
+            p[c[1]] = (v===''||v===undefined||v===null) ? null : Number(v);
+          }
+        });
+        produtos[cod]=p;
+      }
+
+      var qtd=Object.keys(produtos).length;
+      if(!qtd){ throw new Error('Nenhum produto válido encontrado na planilha.'); }
+
+      IMPORT_PENDENTE=produtos;
+      statusEl.className='alw';
+      statusEl.innerHTML='⚠ Planilha lida: <strong>'+qtd+' produtos</strong> válidos'+
+        (semCodigo?' ('+semCodigo+' linha(s) ignorada(s) por falta de código)':'')+
+        '.<br>Isso vai <strong>substituir</strong> os parâmetros dos produtos com o mesmo código já cadastrados (produtos não listados na planilha são mantidos).<br>'+
+        '<button class="btn bsm bp" style="margin-top:8px" onclick="confirmarImportacaoParams()">Confirmar Importação</button> '+
+        '<button class="btn bsm" style="margin-top:8px" onclick="cancelarImportacaoParams()">Cancelar</button>';
+
+    } catch(err){
+      statusEl.className='aler';
+      statusEl.textContent='Erro ao ler planilha: '+err.message;
+      IMPORT_PENDENTE=null;
+    }
+    input.value='';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function cancelarImportacaoParams(){
+  IMPORT_PENDENTE=null;
+  G('import-status').style.display='none';
+}
+
+function confirmarImportacaoParams(){
+  if(!IMPORT_PENDENTE) return;
+  var statusEl=G('import-status');
+  statusEl.className='ali';
+  statusEl.textContent='Importando para o Firebase...';
+
+  var updates={};
+  Object.keys(IMPORT_PENDENTE).forEach(function(cod){
+    updates['qualidade_params/'+cod]=IMPORT_PENDENTE[cod];
+  });
+
+  DB.ref().update(updates).then(function(){
+    Object.assign(PARAMS_QUAL, IMPORT_PENDENTE);
+    var qtd=Object.keys(IMPORT_PENDENTE).length;
+    statusEl.style.display='none';
+    IMPORT_PENDENTE=null;
+    toast(qtd+' produtos importados com sucesso!','ok');
+    renderParamsLista();
+  }).catch(function(e){
+    statusEl.className='aler';
+    statusEl.textContent='Erro ao importar: '+e.message;
+  });
 }
 
 
