@@ -119,6 +119,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
 .linha-card{background:#fff;border:1px solid var(--bd);border-radius:var(--r2);padding:16px;cursor:pointer;transition:.15s;border-left:4px solid #aaa;box-shadow:0 1px 4px rgba(2,79,43,.06)}
 .linha-card:hover{box-shadow:0 4px 14px rgba(2,79,43,.12);transform:translateY(-1px)}
 .linha-card.ativa{border-left-color:#d29922}
+.linha-card.pendente-qual{border-left-color:#c0392b;background:rgba(192,57,43,.04)}
 .linha-card.semop{border-left-color:#aaa;opacity:.65;cursor:default}
 .linha-card.semop:hover{transform:none;box-shadow:0 1px 4px rgba(2,79,43,.06)}
 .linha-nome{font-size:13px;font-weight:700;color:#024f2b;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
@@ -174,6 +175,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div class="nav">
     <button class="nb on" id="nb-prod" onclick="go('producao',this)">Produção</button>
     <button class="nb" id="nb-nc" onclick="go('nc',this)">NC <span class="nc-dot" id="nc-dot" style="display:none"></span></button>
+    <button class="nb" id="nb-retencoes" onclick="go('retencoes',this)">Retenções <span class="nc-dot" id="ret-dot" style="display:none"></span></button>
     <button class="nb" id="nb-dash" onclick="go('dashboard',this)">Dashboard</button>
     <button class="nb" id="nb-rast" onclick="go('rastreio',this)">Rastreabilidade</button>
     <button class="nb" id="nb-params" style="display:none" onclick="go('params',this)">Parâmetros</button>
@@ -224,6 +226,32 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
 </div>
 
+<!-- ============ TELA: RETENÇÕES PARA REANÁLISE ============ -->
+<div class="scr" id="scr-retencoes">
+  <div class="ch">
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Retenções para Reanálise</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <select id="ret-filtro-status" style="width:auto" onchange="renderRetencoesFiltrado()">
+        <option value="">Todos os status</option>
+        <option value="Pendente">Pendente</option>
+        <option value="Liberada">Liberada</option>
+        <option value="Originou NC">Originou NC</option>
+      </select>
+      <select id="ret-filtro-linha" style="width:auto" onchange="renderRetencoesFiltrado()">
+        <option value="">Todas as linhas</option>
+        <option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option>
+        <option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option>
+      </select>
+    </div>
+  </div>
+  <div class="card">
+    <div class="tw"><table>
+      <thead><tr><th>Data/Hora</th><th>OP</th><th>Produto</th><th>Lote</th><th>Linha</th><th>Qtd. Retida</th><th>Motivo</th><th>Status</th><th></th></tr></thead>
+      <tbody id="ret-corpo"><tr><td colspan="9" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr></tbody>
+    </table></div>
+  </div>
+</div>
+
 <!-- ============ TELA: DASHBOARD ============ -->
 <div class="scr" id="scr-dashboard">
   <div class="ch">
@@ -239,14 +267,31 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <select id="dash-analista" style="width:auto" onchange="gerarDashboardQual()">
         <option value="">Todos os analistas</option>
       </select>
+      <select id="dash-sku" style="width:auto;min-width:220px" onchange="gerarDashboardQual()">
+        <option value="">Todos os produtos (visão geral)</option>
+      </select>
+      <button class="btn bsm" onclick="exportarDashboardPDF()">⇣ Exportar PDF</button>
     </div>
   </div>
   <div class="mrow" id="dash-cards"></div>
-  <div class="g2">
+
+  <!-- Visão por SKU específico — só aparece quando um produto é selecionado no filtro -->
+  <div id="dash-sku-evolucao" style="display:none">
+    <div class="card">
+      <div class="ch"><span class="ct" id="dash-sku-titulo">Evolução do Produto no Período</span></div>
+      <div style="position:relative;height:220px"><canvas id="chSkuEvolucao"></canvas></div>
+    </div>
+    <div class="g2">
+      <div class="card"><div class="ch"><span class="ct">Parâmetros Fora da Faixa (ocorrências)</span></div><div style="position:relative;height:190px"><canvas id="chSkuParametros"></canvas></div></div>
+      <div class="card"><div class="ch"><span class="ct">Histórico de Inspeções do Produto</span></div><div class="tw" id="dash-sku-historico"></div></div>
+    </div>
+  </div>
+
+  <div class="g2" id="dash-visao-geral">
     <div class="card"><div class="ch"><span class="ct">Aprovadas x Reprovadas</span></div><div style="position:relative;height:190px"><canvas id="chQualStatus"></canvas></div></div>
     <div class="card"><div class="ch"><span class="ct">Desvios por Linha</span></div><div style="position:relative;height:190px"><canvas id="chQualLinha"></canvas></div></div>
   </div>
-  <div class="g2">
+  <div class="g2" id="dash-visao-geral-2">
     <div class="card"><div class="ch"><span class="ct">Produtos com Mais Desvios</span></div><div class="tw" id="dash-prod-desvios"></div></div>
     <div class="card"><div class="ch"><span class="ct">Umidade Média por Linha</span></div><div style="position:relative;height:190px"><canvas id="chUmidade"></canvas></div></div>
   </div>
@@ -334,9 +379,15 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="ct" style="margin-bottom:10px">Avaliação Visual / Textual</div>
     <div id="insp-params-texto"></div>
   </div>
-  <div class="mfoot">
-    <button class="btn" onclick="fM('ov-insp')">Cancelar</button>
-    <button class="btn bp" onclick="salvarInspecao()" id="btn-salvar-insp">💾 Salvar Inspeção</button>
+  <div class="mfoot" style="justify-content:space-between">
+    <div style="display:flex;gap:8px">
+      <button class="btn bo" onclick="abrirRetencaoDaInspecao()">🔒 Reter para Reanálise</button>
+      <button class="btn br" onclick="abrirNCDaInspecao()">⚠ Abrir NC</button>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" onclick="fM('ov-insp')">Cancelar</button>
+      <button class="btn bp" onclick="salvarInspecao()" id="btn-salvar-insp">💾 Salvar Inspeção</button>
+    </div>
   </div>
 </div>
 </div>
@@ -347,6 +398,12 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div class="mt">Abrir Não Conformidade</div>
   <div id="nc-origem-info" class="aler"></div>
   <div class="fg"><label class="fl">Descrição da Não Conformidade</label><textarea id="nc-desc" placeholder="Descreva o problema identificado..."></textarea></div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Quantidade do Lote Afetada</label><input type="number" step="0.01" id="nc-qtd" placeholder="Ex: 500"></div>
+    <div class="fg"><label class="fl">Unidade</label>
+      <select id="nc-qtd-unidade"><option value="KG">KG</option><option value="SC">SC</option><option value="BG">BG</option></select>
+    </div>
+  </div>
   <div class="fg"><label class="fl">Causa Provável</label><textarea id="nc-causa" placeholder="Causa raiz identificada ou suspeita..."></textarea></div>
   <div class="fg"><label class="fl">Ação Corretiva</label><textarea id="nc-acao" placeholder="O que será feito para corrigir..."></textarea></div>
   <div class="fr">
@@ -382,6 +439,42 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div class="mfoot">
     <button class="btn" onclick="fM('ov-nc-detalhe')">Fechar</button>
     <button class="btn bp" onclick="salvarEdicaoNC()">💾 Salvar Alterações</button>
+  </div>
+</div>
+</div>
+
+<!-- ============ MODAL: RETER PARA REANÁLISE ============ -->
+<div class="ov" id="ov-retencao">
+<div class="modal">
+  <div class="mt">Reter Lote para Reanálise</div>
+  <div id="ret-origem-info" class="ali"></div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Quantidade Retida</label><input type="number" step="0.01" id="ret-qtd" placeholder="Ex: 500"></div>
+    <div class="fg"><label class="fl">Unidade</label>
+      <select id="ret-unidade"><option value="KG">KG</option><option value="SC">SC</option><option value="BG">BG</option></select>
+    </div>
+  </div>
+  <div class="fg"><label class="fl">Motivo da Retenção</label><textarea id="ret-motivo" placeholder="Por que esse lote está sendo retido para reanálise..."></textarea></div>
+  <div class="alw">A retenção fica pendente até um supervisor liberar o lote ou abrir uma Não Conformidade a partir dela.</div>
+  <div class="mfoot">
+    <button class="btn" onclick="fM('ov-retencao')">Cancelar</button>
+    <button class="btn bo" onclick="salvarRetencao()">🔒 Confirmar Retenção</button>
+  </div>
+</div>
+</div>
+
+<!-- ============ MODAL: DECISÃO SOBRE RETENÇÃO (supervisão) ============ -->
+<div class="ov" id="ov-retencao-decisao">
+<div class="modal">
+  <div class="mt">Decisão sobre Retenção</div>
+  <div id="retd-info" class="card"></div>
+  <div class="fg"><label class="fl">Observação da decisão</label><textarea id="retd-obs" placeholder="Justificativa da liberação ou da abertura de NC..."></textarea></div>
+  <div class="mfoot" style="justify-content:space-between">
+    <button class="btn" onclick="fM('ov-retencao-decisao')">Cancelar</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn bg2" onclick="liberarRetencao()">✔ Liberar Lote</button>
+      <button class="btn br" onclick="abrirNCDaRetencao()">⚠ Abrir NC</button>
+    </div>
   </div>
 </div>
 </div>
@@ -434,7 +527,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div class="fg"><label class="fl">Nome completo</label><input type="text" id="usr-nome"></div>
   <div class="fg"><label class="fl">Senha</label><input type="password" id="usr-senha" placeholder="Mínimo 4 caracteres"></div>
   <div class="fg"><label class="fl">Perfil</label>
-    <select id="usr-perfil"><option value="qualidade">Qualidade</option><option value="admin">Administrador</option></select>
+    <select id="usr-perfil"><option value="qualidade">Qualidade</option><option value="supervisao">Supervisão</option><option value="admin">Administrador</option></select>
   </div>
   <div class="mfoot">
     <button class="btn bsm" onclick="fM('ov-usuario')">Cancelar</button>
@@ -461,6 +554,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 // ============================================================
 // FIREBASE CONFIG — mesmo banco do ensaque/extrusão
@@ -530,7 +624,7 @@ function doLogin(){
     var found=null;
     snap.forEach(function(c){ var v=c.val(); if(v.senha===p && v.inativo!==true && v.ativo!==false) found=v; });
     if(!found){ G('lerr').style.display='block'; return; }
-    if(found.perfil!=='qualidade' && found.perfil!=='admin'){
+    if(found.perfil!=='qualidade' && found.perfil!=='supervisao' && found.perfil!=='admin'){
       G('lerr').textContent='Sem acesso ao módulo de Qualidade';
       G('lerr').style.display='block';
       return;
@@ -560,7 +654,7 @@ function doLogout(){
 function aplicarSessao(){
   G('unm').textContent=SES.nome||SES.login;
   G('uav').textContent=(SES.nome||SES.login).slice(0,2).toUpperCase();
-  G('pfil').textContent=SES.perfil==='admin'?'Admin':'Qualidade';
+  G('pfil').textContent=SES.perfil==='admin'?'Admin':SES.perfil==='supervisao'?'Supervisão':'Qualidade';
   G('nb-params').style.display=SES.perfil==='admin'?'':'none';
 }
 
@@ -569,11 +663,16 @@ function iniciarApp(){
     carregarLinhasAtivas();
   });
   monitorarNCAbertas();
+  monitorarRetencoesAbertas();
+}
+
+function podeLiberarRetencao(){
+  return SES && (SES.perfil==='supervisao' || SES.perfil==='admin');
 }
 
 document.addEventListener('keydown',function(e){
   if(e.key==='Escape'){
-    ['ov-insp','ov-nc','ov-nc-detalhe','ov-param','ov-usuario','ov-excluir-usuario'].forEach(fM);
+    ['ov-insp','ov-nc','ov-nc-detalhe','ov-param','ov-usuario','ov-excluir-usuario','ov-retencao','ov-retencao-decisao'].forEach(fM);
   }
 });
 
@@ -587,6 +686,7 @@ function go(s,btn){
   if(btn) btn.classList.add('on');
   if(s==='producao') carregarLinhasAtivas();
   else if(s==='nc') renderNC();
+  else if(s==='retencoes') renderRetencoes();
   else if(s==='dashboard') {
     if(!G('dash-di').value){
       var d=hoje();
@@ -621,18 +721,42 @@ function carregarParamsQual(cb){
 // ============================================================
 // TELA: PRODUÇÃO — Linhas ativas
 // ============================================================
+// Uma OP aparece enquanto: status='Em andamento' OU (status='Concluida' E qualidade ainda não concluiu).
+// Isso permite inspecionar com atraso, mesmo após a extrusão já ter finalizado a OP —
+// e também permite duas OPs simultâneas na mesma linha (a antiga pendente + a nova já em produção).
 function carregarLinhasAtivas(){
   var grid=G('linhas-grid');
   grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:30px;color:#739630">Carregando linhas...</div>';
-  DB.ref('ops').orderByChild('status').equalTo('Em andamento').once('value').then(function(s){
+  Promise.all([
+    DB.ref('ops').orderByChild('status').equalTo('Em andamento').once('value'),
+    DB.ref('ops').orderByChild('status').equalTo('Concluida').once('value'),
+    DB.ref('qualidade_op_concluida').once('value')
+  ]).then(function(results){
+    var qualConcluidas={};
+    if(results[2].exists()) results[2].forEach(function(c){ qualConcluidas[c.key]=true; });
+
     OPS_ATIVAS={};
-    if(s.exists()){
-      s.forEach(function(c){
-        var o=c.val(); o.fbKey=c.key;
-        // pode haver mais de uma OP "Em andamento" por linha em teoria (não deveria) — guarda a mais recente
-        if(!OPS_ATIVAS[o.linha] || (o.ts||'') > (OPS_ATIVAS[o.linha].ts||'')) OPS_ATIVAS[o.linha]=o;
-      });
-    }
+    LINHAS.forEach(function(l){ OPS_ATIVAS[l]=[]; });
+
+    results[0].forEach(function(c){
+      var o=c.val(); o.fbKey=c.key; o.pendenteExtrusao=true;
+      if(OPS_ATIVAS[o.linha]) OPS_ATIVAS[o.linha].push(o);
+    });
+    results[1].forEach(function(c){
+      var o=c.val(); o.fbKey=c.key; o.pendenteExtrusao=false;
+      // Só entra se a extrusão concluiu MAS a qualidade ainda não confirmou
+      if(!qualConcluidas[o.fbKey] && OPS_ATIVAS[o.linha]){
+        // evita duplicar se por algum motivo já estiver na lista (não deveria, status são exclusivos)
+        var jaTem=OPS_ATIVAS[o.linha].some(function(x){return x.fbKey===o.fbKey;});
+        if(!jaTem) OPS_ATIVAS[o.linha].push(o);
+      }
+    });
+
+    // Ordena cada linha: pendentes de qualidade (já concluídas na extrusão) primeiro, depois as em andamento
+    LINHAS.forEach(function(l){
+      OPS_ATIVAS[l].sort(function(a,b){ return (a.pendenteExtrusao?1:0)-(b.pendenteExtrusao?1:0); });
+    });
+
     renderLinhasGrid();
   }).catch(function(e){
     grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:30px;color:#c0392b">Erro: '+e.message+'</div>';
@@ -643,21 +767,26 @@ function renderLinhasGrid(){
   var grid=G('linhas-grid');
   var h='';
   LINHAS.forEach(function(linha){
-    var op=OPS_ATIVAS[linha];
-    if(op){
-      var pq=PARAMS_QUAL[op.cod];
-      h+='<div class="linha-card ativa" onclick="abrirInspecao(\''+esc(linha)+'\')">';
-      h+='<div class="linha-nome">'+linha+'<span class="badge bam">Em produção</span></div>';
-      h+='<div class="linha-op">OP '+op.id+'</div>';
-      h+='<div class="linha-prod">'+(op.desc||op.cod)+'</div>';
-      if(op.lote) h+='<div class="linha-lote">Lote '+op.lote+'</div>';
-      if(!pq) h+='<div class="linha-ult" style="color:#c0392b">⚠ Sem parâmetros cadastrados (cod. '+op.cod+')</div>';
-      h+='</div>';
+    var ops=OPS_ATIVAS[linha]||[];
+    if(ops.length){
+      ops.forEach(function(op){
+        var pq=PARAMS_QUAL[op.cod];
+        var concluidaExt = !op.pendenteExtrusao;
+        h+='<div class="linha-card '+(concluidaExt?'pendente-qual':'ativa')+'" onclick="abrirInspecaoOP(\''+esc(linha)+'\',\''+esc(op.fbKey)+'\')">';
+        h+='<div class="linha-nome">'+linha+(concluidaExt?'<span class="badge bam">Concluída — aguarda Qualidade</span>':'<span class="badge bam">Em produção</span>')+'</div>';
+        h+='<div class="linha-op">OP '+op.id+'</div>';
+        h+='<div class="linha-prod">'+(op.desc||op.cod)+'</div>';
+        if(op.lote) h+='<div class="linha-lote">Lote '+op.lote+'</div>';
+        if(!pq) h+='<div class="linha-ult" style="color:#c0392b">⚠ Sem parâmetros cadastrados (cod. '+op.cod+')</div>';
+        if(concluidaExt) h+='<button class="btn bxs bp" style="margin-top:8px" onclick="event.stopPropagation();concluirParaQualidade(\''+esc(op.fbKey)+'\',\''+esc(linha)+'\')">✔ Concluir para Qualidade</button>';
+        h+='</div>';
+      });
     } else {
       h+='<div class="linha-card semop">';
       h+='<div class="linha-nome">'+linha+'<span class="badge bcz">Parada</span></div>';
       h+='<div class="linha-prod" style="margin-top:6px">Nenhuma OP em produção</div>';
       h+='</div>';
+
     }
   });
   grid.innerHTML=h;
@@ -876,6 +1005,7 @@ function abrirModalNC(inspFbKey, registro, camposReprovados){
     '<strong>Parâmetro(s) fora de especificação:</strong><br>'+detalhesParam;
 
   G('nc-desc').value=''; G('nc-causa').value=''; G('nc-acao').value='';
+  G('nc-qtd').value=''; G('nc-qtd-unidade').value=(registro.unidade||'KG');
   G('nc-resp').value=SES.nome||SES.login; G('nc-prazo').value='';
   aM('ov-nc');
 }
@@ -885,6 +1015,26 @@ function abrirNCManual(){
   NC_CONTEXTO={inspFbKey:null, registro:null, camposReprovados:[]};
   G('nc-origem-info').innerHTML='Não conformidade avulsa (sem inspeção de origem).';
   G('nc-desc').value=''; G('nc-causa').value=''; G('nc-acao').value='';
+  G('nc-qtd').value=''; G('nc-qtd-unidade').value='KG';
+  G('nc-resp').value=SES.nome||SES.login; G('nc-prazo').value='';
+  aM('ov-nc');
+}
+
+// Abrir NC manualmente a partir da inspeção que o analista está preenchendo no momento —
+// diferente da abertura automática (abrirPerguntaNC), esta não depende de reprovação numérica:
+// o analista pode abrir por qualquer motivo (visual, observação, etc).
+function abrirNCDaInspecao(){
+  if(!INSP_CONTEXTO || !INSP_CONTEXTO.op){ toast('Nenhuma inspeção em andamento','err'); return; }
+  var op=INSP_CONTEXTO.op, linha=INSP_CONTEXTO.linha;
+  NC_CONTEXTO={
+    inspFbKey:null, // a inspeção ainda não foi salva neste momento — NC fica vinculada pela OP, não pelo fbKey da inspeção
+    registro:{opFbKey:op.fbKey, opId:op.id, cod:op.cod, desc:op.desc||op.cod, lote:op.lote||'', linha:linha, turno:turnoDeHora(G('insp-hora').value), data:G('insp-data').value, hora:G('insp-hora').value, unidade:op.tipo||'KG'},
+    camposReprovados:[]
+  };
+  G('nc-origem-info').innerHTML='<strong>OP '+op.id+'</strong> — '+(op.desc||op.cod)+
+    (op.lote?' — Lote: '+op.lote:'')+'<br>Linha: '+linha+' — aberta manualmente durante a inspeção (sem reprovação automática de parâmetro).';
+  G('nc-desc').value=''; G('nc-causa').value=''; G('nc-acao').value='';
+  G('nc-qtd').value=''; G('nc-qtd-unidade').value=(op.tipo||'KG');
   G('nc-resp').value=SES.nome||SES.login; G('nc-prazo').value='';
   aM('ov-nc');
 }
@@ -893,6 +1043,7 @@ function salvarNC(){
   var desc=G('nc-desc').value.trim();
   if(!desc){ toast('Descreva a não conformidade','err'); return; }
   var r=NC_CONTEXTO.registro;
+  var qtd=G('nc-qtd').value;
   var nc={
     inspecaoFbKey: NC_CONTEXTO.inspFbKey,
     opFbKey: r?r.opFbKey:null, opId: r?r.opId:null, cod: r?r.cod:null,
@@ -900,6 +1051,8 @@ function salvarNC(){
     turno: r?r.turno:null, maquina: r?r.linha:null,
     parametrosReprovados: NC_CONTEXTO.camposReprovados,
     descricao: desc,
+    quantidadeAfetada: qtd!==''?Number(qtd):null,
+    unidadeAfetada: G('nc-qtd-unidade').value,
     causa: G('nc-causa').value.trim(),
     acaoCorretiva: G('nc-acao').value.trim(),
     responsavel: G('nc-resp').value.trim(),
@@ -914,6 +1067,7 @@ function salvarNC(){
     }
     toast('Não Conformidade aberta!','ok');
     fM('ov-nc');
+
     carregarLinhasAtivas();
     monitorarNCAbertas();
   }).catch(function(e){ toast('Erro: '+e.message,'err'); });
@@ -954,7 +1108,7 @@ function renderNCFiltrado(){
     h+='<td>'+(n.desc||'—')+'</td>';
     h+='<td>'+(n.lote||'—')+'</td>';
     h+='<td>'+(n.linha||'—')+'</td>';
-    h+='<td>'+((n.parametrosReprovados||[]).join(', ')||'—')+'</td>';
+    h+='<td>'+((n.parametrosReprovados||[]).join(', ')||'—')+(n.quantidadeAfetada?' · '+fN(n.quantidadeAfetada,2)+' '+(n.unidadeAfetada||''):'')+'</td>';
     h+='<td><span class="badge '+stCls+'">'+n.status+'</span></td>';
     h+='<td'+(prazoVencido?' style="color:#c0392b;font-weight:700"':'')+'>'+(n.prazo?n.prazo.split('-').reverse().join('/'):'—')+(prazoVencido?' ⚠':'')+'</td>';
     h+='<td><button class="btn bxs">Ver</button></td>';
@@ -971,6 +1125,7 @@ function abrirDetalheNC(fbKey){
   G('ncd-info').innerHTML='<strong>OP '+(n.opId||'—')+'</strong> — '+(n.desc||'')+
     (n.lote?' — Lote: '+n.lote:'')+'<br>Linha: '+(n.linha||'—')+' — Turno: '+(n.turno||'—')+
     '<br>Parâmetro(s): '+((n.parametrosReprovados||[]).join(', ')||'—')+
+    (n.quantidadeAfetada?'<br>Quantidade afetada: <strong>'+fN(n.quantidadeAfetada,2)+' '+(n.unidadeAfetada||'')+'</strong>':'')+
     '<br>Aberta em '+(n.aberturaTs?n.aberturaTs.slice(0,10).split('-').reverse().join('/'):'—')+' por '+(n.aberturaAnalista||'—');
   G('ncd-desc').value=n.descricao||'';
   G('ncd-causa').value=n.causa||'';
@@ -1008,14 +1163,184 @@ function monitorarNCAbertas(){
 }
 
 // ============================================================
+// RETENÇÕES PARA REANÁLISE
+// ============================================================
+var RET_LISTA=[];
+var RET_CONTEXTO=null;
+
+// Abre o modal de retenção a partir da inspeção em andamento.
+function abrirRetencaoDaInspecao(){
+  if(!INSP_CONTEXTO || !INSP_CONTEXTO.op){ toast('Nenhuma inspeção em andamento','err'); return; }
+  var op=INSP_CONTEXTO.op, linha=INSP_CONTEXTO.linha;
+  RET_CONTEXTO={
+    opFbKey:op.fbKey, opId:op.id, cod:op.cod, desc:op.desc||op.cod,
+    lote:op.lote||'', linha:linha, turno:turnoDeHora(G('insp-hora').value),
+    data:G('insp-data').value, hora:G('insp-hora').value
+  };
+  G('ret-origem-info').innerHTML='<strong>OP '+op.id+'</strong> — '+(op.desc||op.cod)+
+    (op.lote?' — Lote: '+op.lote:'')+'<br>Linha: '+linha;
+  G('ret-qtd').value=''; G('ret-unidade').value=(op.tipo||'KG'); G('ret-motivo').value='';
+  aM('ov-retencao');
+}
+
+function salvarRetencao(){
+  var qtd=G('ret-qtd').value, motivo=G('ret-motivo').value.trim();
+  if(!qtd||Number(qtd)<=0){ toast('Informe a quantidade retida','err'); return; }
+  if(!motivo){ toast('Informe o motivo da retenção','err'); return; }
+  var r=RET_CONTEXTO;
+  var reg={
+    opFbKey:r.opFbKey, opId:r.opId, cod:r.cod, desc:r.desc, lote:r.lote, linha:r.linha,
+    turno:r.turno, data:r.data, hora:r.hora,
+    quantidade:Number(qtd), unidade:G('ret-unidade').value, motivo:motivo,
+    status:'Pendente',
+    analista:SES.login, analistaNome:SES.nome||SES.login, ts:agora()
+  };
+  DB.ref('qualidade_retencoes').push(reg).then(function(){
+    toast('Lote retido para reanálise!','ok');
+    fM('ov-retencao');
+    monitorarRetencoesAbertas();
+  }).catch(function(e){ toast('Erro: '+e.message,'err'); });
+}
+
+function renderRetencoes(){
+  var corpo=G('ret-corpo');
+  corpo.innerHTML='<tr><td colspan="9" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr>';
+  DB.ref('qualidade_retencoes').once('value').then(function(s){
+    RET_LISTA=[];
+    if(s.exists()) s.forEach(function(c){ var v=c.val(); v.fbKey=c.key; RET_LISTA.push(v); });
+    RET_LISTA.sort(function(a,b){ return (b.ts||'')>(a.ts||'')?1:-1; });
+    renderRetencoesFiltrado();
+  }).catch(function(e){
+    corpo.innerHTML='<tr><td colspan="9" style="text-align:center;padding:20px;color:#c0392b">Erro: '+e.message+'</td></tr>';
+  });
+}
+
+function renderRetencoesFiltrado(){
+  var fStatus=G('ret-filtro-status').value, fLinha=G('ret-filtro-linha').value;
+  var lista=RET_LISTA.filter(function(r){
+    if(fStatus && r.status!==fStatus) return false;
+    if(fLinha && r.linha!==fLinha) return false;
+    return true;
+  });
+  var corpo=G('ret-corpo');
+  if(!lista.length){
+    corpo.innerHTML='<tr><td colspan="9" style="text-align:center;padding:20px;color:#999">Nenhuma retenção encontrada</td></tr>';
+    return;
+  }
+  var podeAgir=podeLiberarRetencao();
+  var h='';
+  lista.forEach(function(r){
+    var stCls = r.status==='Liberada'?'bvd':r.status==='Originou NC'?'brd':'bam';
+    h+='<tr style="cursor:pointer" onclick="abrirDetalheRetencao(\''+r.fbKey+'\')">';
+    h+='<td>'+(r.data?r.data.split('-').reverse().join('/'):'—')+' '+(r.hora||'')+'</td>';
+    h+='<td>'+(r.opId||'—')+'</td>';
+    h+='<td>'+(r.desc||'—')+'</td>';
+    h+='<td>'+(r.lote||'—')+'</td>';
+    h+='<td>'+(r.linha||'—')+'</td>';
+    h+='<td>'+fN(r.quantidade,2)+' '+(r.unidade||'')+'</td>';
+    h+='<td>'+(r.motivo||'—')+'</td>';
+    h+='<td><span class="badge '+stCls+'">'+r.status+'</span></td>';
+    h+='<td><button class="btn bxs">'+(r.status==='Pendente'&&podeAgir?'Decidir':'Ver')+'</button></td>';
+    h+='</tr>';
+  });
+  corpo.innerHTML=h;
+}
+
+var RETD_FBKEY=null;
+function abrirDetalheRetencao(fbKey){
+  var r=RET_LISTA.find(function(x){return x.fbKey===fbKey;});
+  if(!r) return;
+  RETD_FBKEY=fbKey;
+  var podeAgir = podeLiberarRetencao() && r.status==='Pendente';
+
+  G('retd-info').innerHTML='<strong>OP '+(r.opId||'—')+'</strong> — '+(r.desc||'')+
+    (r.lote?' — Lote: '+r.lote:'')+'<br>Linha: '+(r.linha||'—')+' — Turno: '+(r.turno||'—')+
+    '<br>Quantidade retida: <strong>'+fN(r.quantidade,2)+' '+(r.unidade||'')+'</strong>'+
+    '<br>Motivo: '+(r.motivo||'—')+
+    '<br>Retido em '+(r.data?r.data.split('-').reverse().join('/'):'—')+' '+(r.hora||'')+' por '+(r.analistaNome||r.analista||'—')+
+    '<br>Status: <span class="badge '+(r.status==='Liberada'?'bvd':r.status==='Originou NC'?'brd':'bam')+'">'+r.status+'</span>'+
+    (r.decisaoObs?'<br><br><strong>Decisão:</strong> '+r.decisaoObs+' — '+(r.decisaoPor||'—'):'');
+
+  G('retd-obs').value='';
+
+  // Só mostra os botões de ação (Liberar/Abrir NC) se: perfil tem permissão E está pendente
+  var footer=document.querySelector('#ov-retencao-decisao .mfoot');
+  footer.style.display = podeAgir ? 'flex' : 'none';
+  if(!podeAgir){
+    // modo somente visualização — adiciona um botão de fechar simples se não houver ações
+    if(!document.getElementById('retd-fechar-only')){
+      var btn=document.createElement('button');
+      btn.id='retd-fechar-only'; btn.className='btn'; btn.textContent='Fechar';
+      btn.onclick=function(){ fM('ov-retencao-decisao'); };
+      footer.parentNode.appendChild(btn);
+    }
+    document.getElementById('retd-fechar-only').style.display='inline-flex';
+  } else if(document.getElementById('retd-fechar-only')){
+    document.getElementById('retd-fechar-only').style.display='none';
+  }
+
+  aM('ov-retencao-decisao');
+}
+
+function liberarRetencao(){
+  if(!RETD_FBKEY) return;
+  if(!podeLiberarRetencao()){ toast('Apenas supervisão ou admin podem liberar retenções','err'); return; }
+  DB.ref('qualidade_retencoes/'+RETD_FBKEY).update({
+    status:'Liberada', decisaoObs:G('retd-obs').value.trim()||'Liberado após reanálise',
+    decisaoPor:SES.nome||SES.login, decisaoTs:agora()
+  }).then(function(){
+    toast('Lote liberado!','ok');
+    fM('ov-retencao-decisao');
+    renderRetencoes();
+    monitorarRetencoesAbertas();
+  }).catch(function(e){ toast('Erro: '+e.message,'err'); });
+}
+
+function abrirNCDaRetencao(){
+  if(!RETD_FBKEY) return;
+  if(!podeLiberarRetencao()){ toast('Apenas supervisão ou admin podem decidir sobre retenções','err'); return; }
+  var r=RET_LISTA.find(function(x){return x.fbKey===RETD_FBKEY;});
+  if(!r) return;
+
+  // Marca a retenção como "Originou NC" e abre o modal de NC já com os dados herdados
+  DB.ref('qualidade_retencoes/'+RETD_FBKEY).update({
+    status:'Originou NC', decisaoObs:G('retd-obs').value.trim()||'Confirmado problema na reanálise',
+    decisaoPor:SES.nome||SES.login, decisaoTs:agora()
+  }).then(function(){
+    fM('ov-retencao-decisao');
+    NC_CONTEXTO={
+      inspFbKey:null,
+      registro:{opFbKey:r.opFbKey, opId:r.opId, cod:r.cod, desc:r.desc, lote:r.lote, linha:r.linha, turno:r.turno, data:r.data, hora:r.hora, unidade:r.unidade},
+      camposReprovados:[]
+    };
+    G('nc-origem-info').innerHTML='<strong>OP '+r.opId+'</strong> — '+r.desc+
+      (r.lote?' — Lote: '+r.lote:'')+'<br>Linha: '+r.linha+'<br>Originada de retenção para reanálise — motivo: '+r.motivo;
+    G('nc-desc').value=r.motivo||''; G('nc-causa').value=''; G('nc-acao').value='';
+    G('nc-qtd').value=r.quantidade; G('nc-qtd-unidade').value=r.unidade||'KG';
+    G('nc-resp').value=SES.nome||SES.login; G('nc-prazo').value='';
+    aM('ov-nc');
+    renderRetencoes();
+    monitorarRetencoesAbertas();
+  }).catch(function(e){ toast('Erro: '+e.message,'err'); });
+}
+
+function monitorarRetencoesAbertas(){
+  DB.ref('qualidade_retencoes').orderByChild('status').equalTo('Pendente').once('value').then(function(s){
+    G('ret-dot').style.display = (s.exists() && s.numChildren()>0) ? 'inline-block' : 'none';
+  });
+}
+
+// ============================================================
 // DASHBOARD
 // ============================================================
 var DASH_CHARTS={};
 
+var DASH_DADOS_ATUAIS=null; // cache do último resultado, usado pela exportação em PDF
+
 function gerarDashboardQual(){
   var di=G('dash-di').value, df=G('dash-df').value;
   if(!di||!df){ toast('Informe o período','err'); return; }
-  var linhaF=G('dash-linha').value, analistaF=G('dash-analista').value;
+  var linhaF=G('dash-linha').value, analistaF=G('dash-analista').value, skuF=G('dash-sku').value;
 
   G('dash-cards').innerHTML='<div style="grid-column:1/-1;text-align:center;padding:20px;color:#739630">Carregando...</div>';
 
@@ -1028,6 +1353,7 @@ function gerarDashboardQual(){
 
     INSPECOES_CACHE=insp;
     popularFiltroAnalistas(insp);
+    popularFiltroSku(insp);
 
     if(linhaF) insp=insp.filter(function(i){return i.linha===linhaF;});
     if(analistaF) insp=insp.filter(function(i){return i.analista===analistaF;});
@@ -1036,11 +1362,27 @@ function gerarDashboardQual(){
       return dt>=di && dt<=df && (!linhaF || n.linha===linhaF);
     });
 
+    DASH_DADOS_ATUAIS={di:di, df:df, linhaF:linhaF, analistaF:analistaF, skuF:skuF, insp:insp, ncs:ncsNoPeriodo};
+
     renderDashCards(insp, ncsNoPeriodo);
-    renderChartStatus(insp);
-    renderChartLinha(insp);
-    renderTabelaProdutosDesvio(insp);
-    renderChartUmidade(insp);
+
+    if(skuF){
+      // Visão focada: evolução de UM produto ao longo do período selecionado
+      G('dash-sku-evolucao').style.display='block';
+      G('dash-visao-geral').style.display='none';
+      G('dash-visao-geral-2').style.display='none';
+      var inspSku=insp.filter(function(i){return i.cod===skuF;});
+      renderEvolucaoSku(skuF, inspSku);
+    } else {
+      // Visão geral: todos os produtos agregados, como já existia
+      G('dash-sku-evolucao').style.display='none';
+      G('dash-visao-geral').style.display='grid';
+      G('dash-visao-geral-2').style.display='grid';
+      renderChartStatus(insp);
+      renderChartLinha(insp);
+      renderTabelaProdutosDesvio(insp);
+      renderChartUmidade(insp);
+    }
   }).catch(function(e){
     G('dash-cards').innerHTML='<div style="color:#c0392b;padding:20px">Erro: '+e.message+'</div>';
   });
@@ -1057,6 +1399,94 @@ function popularFiltroAnalistas(insp){
   });
   sel.innerHTML=h;
   sel.value=atual;
+}
+
+function popularFiltroSku(insp){
+  var sel=G('dash-sku');
+  var atual=sel.value;
+  var prods={};
+  insp.forEach(function(i){ prods[i.cod]=i.desc||i.cod; });
+  var h='<option value="">Todos os produtos (visão geral)</option>';
+  Object.keys(prods).sort().forEach(function(cod){
+    h+='<option value="'+cod+'">'+cod+' — '+prods[cod]+'</option>';
+  });
+  sel.innerHTML=h;
+  sel.value=atual;
+}
+
+// ============================================================
+// VISÃO POR SKU — evolução ao longo do período filtrado
+// ============================================================
+function renderEvolucaoSku(cod, inspSku){
+  var desc = inspSku.length ? (inspSku[0].desc||cod) : cod;
+  G('dash-sku-titulo').textContent='Evolução — '+cod+' ('+desc+')';
+
+  if(!inspSku.length){
+    G('chSkuEvolucao').parentNode.innerHTML='<div style="text-align:center;padding:30px;color:#999;font-size:12px">Nenhuma inspeção deste produto no período selecionado</div>';
+    G('dash-sku-historico').innerHTML='';
+    if(DASH_CHARTS.skuParam) DASH_CHARTS.skuParam.destroy();
+    return;
+  }
+
+  // Ordena por data/hora para a linha do tempo
+  inspSku.sort(function(a,b){ return (a.data+a.hora) > (b.data+b.hora) ? 1 : -1; });
+
+  // Gráfico de evolução: para cada campo numérico que tiver dado, uma linha ao longo do tempo
+  var labels=inspSku.map(function(i){ return i.data.split('-').slice(1).reverse().join('/')+' '+i.hora; });
+  var datasets=[];
+  var cores=['#024f2b','#739630','#d29922','#c0392b','#5b21b6','#036b3a','#8a5700','#1a6b3a','#4a664a'];
+  CAMPOS_NUM.forEach(function(c, idx){
+    var temDado = inspSku.some(function(i){ return i.resultados && i.resultados[c.key]!==undefined; });
+    if(!temDado) return;
+    datasets.push({
+      label:c.label,
+      data:inspSku.map(function(i){ return (i.resultados&&i.resultados[c.key]!==undefined) ? i.resultados[c.key] : null; }),
+      borderColor:cores[idx%cores.length], backgroundColor:cores[idx%cores.length],
+      spanGaps:true, tension:.2
+    });
+  });
+
+  if(DASH_CHARTS.skuEvol) DASH_CHARTS.skuEvol.destroy();
+  DASH_CHARTS.skuEvol=new Chart(G('chSkuEvolucao'),{
+    type:'line',
+    data:{labels:labels, datasets:datasets},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom',labels:{font:{size:10}}}},
+      scales:{y:{beginAtZero:false}}}
+  });
+
+  // Gráfico de ocorrências de reprovação por parâmetro, para este SKU no período
+  var ocorrencias={};
+  CAMPOS_NUM.forEach(function(c){ ocorrencias[c.label]=0; });
+  inspSku.forEach(function(i){
+    Object.keys(i.aprovacoes||{}).forEach(function(k){
+      if(!i.aprovacoes[k]){
+        var c=CAMPOS_NUM.find(function(x){return x.key===k;});
+        if(c) ocorrencias[c.label]++;
+      }
+    });
+  });
+  var labelsOc=Object.keys(ocorrencias).filter(function(l){return ocorrencias[l]>0;});
+  if(DASH_CHARTS.skuParam) DASH_CHARTS.skuParam.destroy();
+  if(!labelsOc.length){
+    G('chSkuParametros').parentNode.innerHTML='<div style="text-align:center;padding:30px;color:#999;font-size:12px">Nenhuma reprovação registrada para este produto no período</div>';
+  } else {
+    DASH_CHARTS.skuParam=new Chart(G('chSkuParametros'),{
+      type:'bar',
+      data:{labels:labelsOc, datasets:[{label:'Ocorrências fora da faixa', data:labelsOc.map(function(l){return ocorrencias[l];}), backgroundColor:'#c0392b'}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}
+    });
+  }
+
+  // Histórico tabular do produto
+  var h='<table><thead><tr><th>Data</th><th>Hora</th><th>Linha</th><th>Lote</th><th>Status</th><th>Analista</th></tr></thead><tbody>';
+  inspSku.slice().reverse().forEach(function(i){
+    var stCls = i.statusGeral==='reprovado'?'brd':i.statusGeral==='aprovado'?'bvd':'bcz';
+    h+='<tr><td>'+i.data.split('-').reverse().join('/')+'</td><td>'+i.hora+'</td><td>'+i.linha+'</td><td>'+(i.lote||'—')+'</td>';
+    h+='<td><span class="badge '+stCls+'">'+(i.statusGeral||'—')+'</span></td><td>'+(i.analistaNome||i.analista||'—')+'</td></tr>';
+  });
+  h+='</tbody></table>';
+  G('dash-sku-historico').innerHTML=h;
 }
 
 function renderDashCards(insp, ncs){
@@ -1150,6 +1580,167 @@ function renderChartUmidade(insp){
 }
 
 // ============================================================
+// EXPORTAÇÃO DO DASHBOARD EM PDF
+// ============================================================
+function fDtBR(dt){ return dt?dt.split('-').reverse().join('/'):''; }
+
+function exportarDashboardPDF(){
+  if(typeof jspdf==='undefined'){ toast('jsPDF não disponível','err'); return; }
+  if(!DASH_DADOS_ATUAIS){ toast('Gere o dashboard antes de exportar','err'); return; }
+  var d=DASH_DADOS_ATUAIS;
+  if(d.skuF) exportarFichaSkuPDF(d);
+  else exportarRelatorioGeralPDF(d);
+}
+
+function pdfCabecalho(doc, titulo, subtitulo){
+  doc.setFillColor(2,79,43); doc.rect(0,0,297,20,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(255,255,255);
+  doc.text(titulo,10,13);
+  doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(180,220,180);
+  doc.text(subtitulo,10,18);
+}
+
+function pdfCards(doc, y, cards){
+  var W=277, ML=10;
+  var cw=(W-5)/cards.length;
+  cards.forEach(function(card,i){
+    var cx=ML+i*cw+(i>0?1:0);
+    doc.setFillColor(245,250,245); doc.rect(cx,y,cw-1,14,'F');
+    doc.setDrawColor(200,220,200); doc.rect(cx,y,cw-1,14,'S');
+    doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(100,130,100);
+    doc.text(card.l,cx+(cw-1)/2,y+4.5,{align:'center'});
+    doc.setFontSize(9); doc.setTextColor(card.c[0],card.c[1],card.c[2]);
+    doc.text(String(card.v),cx+(cw-1)/2,y+11,{align:'center'});
+  });
+  return y+18;
+}
+
+function pdfTabela(doc, y, titulo, header, linhas, larguras){
+  var ML=10, W=277;
+  doc.setFillColor(2,79,43); doc.rect(ML,y,W,6,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+  doc.text(titulo,ML+4,y+4.5);
+  y+=7;
+  doc.setFillColor(235,245,235);
+  doc.rect(ML,y,W,5.5,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(2,79,43);
+  var x=ML+2;
+  header.forEach(function(h,i){ doc.text(h,x,y+3.8); x+=larguras[i]; });
+  y+=6;
+  doc.setFont('helvetica','normal'); doc.setTextColor(40,40,40);
+  linhas.forEach(function(linha,idx){
+    if(y>190){ doc.addPage('a4','landscape'); y=15; }
+    if(idx%2===0){ doc.setFillColor(250,250,250); doc.rect(ML,y,W,5.2,'F'); }
+    x=ML+2;
+    linha.forEach(function(v,i){ doc.text(String(v),x,y+3.6); x+=larguras[i]; });
+    y+=5.2;
+  });
+  return y+4;
+}
+
+function exportarRelatorioGeralPDF(d){
+  var jsPDF=jspdf.jsPDF;
+  var doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  pdfCabecalho(doc,'RELATÓRIO DE QUALIDADE — VISÃO GERAL',
+    'Período: '+fDtBR(d.di)+' a '+fDtBR(d.df)+
+    (d.linhaF?' | Linha: '+d.linhaF:'')+
+    (d.analistaF?' | Analista: '+d.analistaF:'')+
+    '  |  Emitido: '+new Date().toLocaleString('pt-BR')+'  |  '+(SES?SES.nome:''));
+
+  var total=d.insp.length;
+  var aprovadas=d.insp.filter(function(i){return i.statusGeral==='aprovado';}).length;
+  var reprovadas=d.insp.filter(function(i){return i.statusGeral==='reprovado';}).length;
+  var ncAbertas=d.ncs.filter(function(n){return n.status==='Aberta'||n.status==='Em andamento';}).length;
+  var ncConcluidas=d.ncs.filter(function(n){return n.status==='Concluída';}).length;
+
+  var y=26;
+  y=pdfCards(doc,y,[
+    {l:'TOTAL ANÁLISES',v:total,c:[2,79,43]},
+    {l:'APROVADAS',v:aprovadas+' ('+(total?Math.round(aprovadas/total*100):0)+'%)',c:[2,79,43]},
+    {l:'REPROVADAS',v:reprovadas+' ('+(total?Math.round(reprovadas/total*100):0)+'%)',c:[192,57,43]},
+    {l:'NC ABERTAS',v:ncAbertas,c:[210,153,34]},
+    {l:'NC CONCLUÍDAS',v:ncConcluidas,c:[2,79,43]}
+  ]);
+
+  // Produtos com mais desvios
+  var porProd={};
+  d.insp.forEach(function(i){
+    if(i.statusGeral!=='reprovado') return;
+    var key=i.cod+'|'+(i.desc||'');
+    porProd[key]=(porProd[key]||0)+1;
+  });
+  var arrProd=Object.keys(porProd).map(function(k){
+    var p=k.split('|'); return [p[0], p[1]||'—', porProd[k]];
+  }).sort(function(a,b){return b[2]-a[2];}).slice(0,15);
+  if(arrProd.length){
+    y=pdfTabela(doc,y,'PRODUTOS COM MAIS DESVIOS',['Código','Produto','Reprovações'],arrProd,[35,180,40]);
+  }
+
+  // Não conformidades do período
+  if(d.ncs.length){
+    var linhasNc=d.ncs.map(function(n){
+      return [n.opId||'—', n.lote||'—', n.linha||'—', n.descricao||'—', n.status, n.responsavel||'—'];
+    });
+    y=pdfTabela(doc,y,'NÃO CONFORMIDADES DO PERÍODO',['OP','Lote','Linha','Descrição','Status','Responsável'],linhasNc,[20,25,40,100,30,40]);
+  }
+
+  doc.save('Qualidade_Geral_'+d.di+'_a_'+d.df+'.pdf');
+  toast('PDF exportado!','ok');
+}
+
+function exportarFichaSkuPDF(d){
+  var inspSkuCheck=d.insp.filter(function(i){return i.cod===d.skuF;});
+  if(inspSkuCheck.length>300 && !confirm('Este produto tem '+inspSkuCheck.length+' inspeções no período selecionado — o PDF vai ficar com várias páginas de histórico. Deseja continuar mesmo assim? (Considere reduzir o período para um relatório mais objetivo)')) return;
+
+  var jsPDF=jspdf.jsPDF;
+  var doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  var inspSku=d.insp.filter(function(i){return i.cod===d.skuF;}).sort(function(a,b){return (a.data+a.hora)>(b.data+b.hora)?1:-1;});
+  var desc = inspSku.length ? (inspSku[0].desc||d.skuF) : d.skuF;
+
+  pdfCabecalho(doc,'FICHA DE QUALIDADE — '+d.skuF,
+    desc+'  |  Período: '+fDtBR(d.di)+' a '+fDtBR(d.df)+
+    (d.linhaF?' | Linha: '+d.linhaF:'')+
+    '  |  Emitido: '+new Date().toLocaleString('pt-BR')+'  |  '+(SES?SES.nome:''));
+
+  var total=inspSku.length;
+  var aprovadas=inspSku.filter(function(i){return i.statusGeral==='aprovado';}).length;
+  var reprovadas=inspSku.filter(function(i){return i.statusGeral==='reprovado';}).length;
+
+  var y=26;
+  y=pdfCards(doc,y,[
+    {l:'INSPEÇÕES NO PERÍODO',v:total,c:[2,79,43]},
+    {l:'APROVADAS',v:aprovadas,c:[2,79,43]},
+    {l:'REPROVADAS',v:reprovadas,c:[192,57,43]},
+    {l:'TAXA DE APROVAÇÃO',v:(total?Math.round(aprovadas/total*100):0)+'%',c:total&&aprovadas/total>=.9?[2,79,43]:[210,153,34]}
+  ]);
+
+  // Médias por parâmetro numérico, comparado com a faixa cadastrada
+  var pq=PARAMS_QUAL[d.skuF];
+  var linhasParam=[];
+  CAMPOS_NUM.forEach(function(c){
+    var valores=inspSku.map(function(i){ return i.resultados&&i.resultados[c.key]; }).filter(function(v){return v!==undefined&&v!==null;});
+    if(!valores.length) return;
+    var media=valores.reduce(function(s,v){return s+Number(v);},0)/valores.length;
+    linhasParam.push([c.label, fN(media,2)+(c.unidade?' '+c.unidade:''), faixaTexto(c,pq), valores.length]);
+  });
+  if(linhasParam.length){
+    y=pdfTabela(doc,y,'MÉDIA DOS PARÂMETROS NO PERÍODO',['Parâmetro','Média Observada','Faixa Especificada','Nº Leituras'],linhasParam,[55,60,80,40]);
+  }
+
+  // Histórico completo de inspeções deste produto
+  if(inspSku.length){
+    var linhasHist=inspSku.map(function(i){
+      var fora=Object.keys(i.aprovacoes||{}).filter(function(k){return !i.aprovacoes[k];});
+      var foraLabels=fora.map(function(k){ var c=CAMPOS_NUM.find(function(x){return x.key===k;}); return c?c.label:k; });
+      return [fDtBR(i.data), i.hora, i.linha, i.lote||'—', i.statusGeral||'—', foraLabels.join(', ')||'—', i.analistaNome||i.analista||'—'];
+    });
+    y=pdfTabela(doc,y,'HISTÓRICO DE INSPEÇÕES',['Data','Hora','Linha','Lote','Status','Parâm. Fora','Analista'],linhasHist,[20,16,40,25,25,80,40]);
+  }
+
+  doc.save('Ficha_Qualidade_'+d.skuF+'_'+d.di+'_a_'+d.df+'.pdf');
+  toast('PDF exportado!','ok');
+}
+
 // RASTREABILIDADE POR LOTE
 // ============================================================
 function buscarRastreio(){
@@ -1339,7 +1930,7 @@ function carregarUsuarios(){
       s.forEach(function(c){
         var u=c.val();
         // Lista apenas perfis relevantes a este módulo, para não misturar com operador/pcp/supervisor do ensaque
-        if(u.perfil==='qualidade' || u.perfil==='admin'){
+        if(u.perfil==='qualidade' || u.perfil==='supervisao' || u.perfil==='admin'){
           u.fbKey=c.key;
           USUARIOS_CACHE.push(u);
         }
@@ -1361,11 +1952,11 @@ function renderUsuariosLista(){
   USUARIOS_CACHE.forEach(function(u){
     var ativo = u.inativo!==true;
     var isSelf = SES && u.login===SES.login;
-    var pcls = u.perfil==='admin' ? 'bpx' : 'baz';
+    var pcls = u.perfil==='admin' ? 'bpx' : u.perfil==='supervisao' ? 'bam' : 'baz';
     h+='<tr style="opacity:'+(ativo?1:.55)+'">';
     h+='<td style="font-weight:600">'+u.login+'</td>';
     h+='<td>'+(u.nome||'—')+'</td>';
-    h+='<td><span class="badge '+pcls+'">'+(u.perfil==='admin'?'Administrador':'Qualidade')+'</span></td>';
+    h+='<td><span class="badge '+pcls+'">'+(u.perfil==='admin'?'Administrador':u.perfil==='supervisao'?'Supervisão':'Qualidade')+'</span></td>';
     h+='<td><span class="badge '+(ativo?'bvd':'bcz')+'">'+(ativo?'Ativo':'Inativo')+'</span></td>';
     h+='<td style="white-space:nowrap;display:flex;gap:4px">';
     if(isSelf){
@@ -1611,9 +2202,10 @@ function confirmarImportacaoParams(){
 }
 
 
-function abrirInspecao(linha){
-  var op=OPS_ATIVAS[linha];
-  if(!op){ toast('Linha sem OP ativa','err'); return; }
+function abrirInspecaoOP(linha, opFbKey){
+  var ops=OPS_ATIVAS[linha]||[];
+  var op=ops.find(function(o){return o.fbKey===opFbKey;});
+  if(!op){ toast('OP não encontrada','err'); return; }
   var pq=PARAMS_QUAL[op.cod];
   var horaIni=horaAtual();
   var turno=turnoDeHora(horaIni);
@@ -1626,7 +2218,8 @@ function abrirInspecao(linha){
   G('insp-titulo').textContent='Inspeção — '+linha;
   G('insp-op-info').innerHTML='<strong>OP '+op.id+'</strong> — '+(op.desc||op.cod)+
     (op.lote?' &nbsp;|&nbsp; Lote: <strong>'+op.lote+'</strong>':'')+
-    ' &nbsp;|&nbsp; Código: '+op.cod;
+    ' &nbsp;|&nbsp; Código: '+op.cod+
+    (!op.pendenteExtrusao?' &nbsp;|&nbsp; <span style="color:#d29922;font-weight:700">OP já concluída na extrusão — inspeção retroativa</span>':'');
   G('insp-hora').value=horaIni;
   G('insp-data').value=dataIni;
   G('insp-turno').value='Turno '+turno;
@@ -1637,6 +2230,21 @@ function abrirInspecao(linha){
 
   // Verifica se já existe inspeção nesta linha/OP na hora atual (arredondada para hora cheia)
   verificarDuplicidadeInspecao(linha, op, dataIni);
+}
+
+// ============================================================
+// CONCLUIR PARA QUALIDADE — marca que a qualidade já terminou de
+// acompanhar esta OP. NUNCA grava em ops/ — apenas em um nó próprio
+// da qualidade, respeitando o isolamento entre módulos.
+// ============================================================
+function concluirParaQualidade(opFbKey, linha){
+  if(!confirm('Confirmar que a Qualidade já concluiu o acompanhamento desta OP?\n\nIsso vai remover o card da tela de Produção.')) return;
+  DB.ref('qualidade_op_concluida/'+opFbKey).set({
+    ts:agora(), analista:SES.login, analistaNome:SES.nome||SES.login, linha:linha
+  }).then(function(){
+    toast('OP concluída para Qualidade!','ok');
+    carregarLinhasAtivas();
+  }).catch(function(e){ toast('Erro: '+e.message,'err'); });
 }
 
 function horaCheiaDe(h){ return h.split(':')[0]+':00'; }
