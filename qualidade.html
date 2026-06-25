@@ -290,6 +290,8 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <div class="card"><div class="ch"><span class="ct">Parâmetros Fora da Faixa (ocorrências)</span></div><div style="position:relative;height:190px"><canvas id="chSkuParametros"></canvas></div></div>
       <div class="card"><div class="ch"><span class="ct">Histórico de Inspeções do Produto</span></div><div class="tw" id="dash-sku-historico"></div></div>
     </div>
+    <div class="ch" style="margin-top:6px"><span class="ct">Cartas de Controle Estatístico de Processo (CEP)</span></div>
+    <div id="dash-sku-cep"></div>
   </div>
 
   <div class="g2" id="dash-visao-geral">
@@ -1461,6 +1463,7 @@ function renderEvolucaoSku(cod, inspSku){
   if(!inspSku.length){
     G('chSkuEvolucao').parentNode.innerHTML='<div style="text-align:center;padding:30px;color:#999;font-size:12px">Nenhuma inspeção deste produto no período selecionado</div>';
     G('dash-sku-historico').innerHTML='';
+    G('dash-sku-cep').innerHTML='<div class="card" style="text-align:center;color:#999;font-size:12px">Nenhum dado disponível para gerar cartas de controle</div>';
     if(DASH_CHARTS.skuParam) DASH_CHARTS.skuParam.destroy();
     return;
   }
@@ -1524,6 +1527,85 @@ function renderEvolucaoSku(cod, inspSku){
   });
   h+='</tbody></table>';
   G('dash-sku-historico').innerHTML=h;
+
+  renderCEP(inspSku);
+}
+
+// ============================================================
+// CARTAS DE CONTROLE ESTATÍSTICO DE PROCESSO (CEP)
+// ============================================================
+// Para cada variável numérica com pelo menos 2 leituras no período:
+// Linha Central (LC) = média dos valores
+// Limite Superior de Controle (LSC) = média + 3 * desvio padrão (amostral)
+// Limite Inferior de Controle (LIC) = média - 3 * desvio padrão (amostral)
+// Pontos fora do LSC/LIC são destacados em vermelho — sinal de causa especial, não de
+// não-conformidade de especificação (esses limites são estatísticos, calculados a partir
+// dos próprios dados do período, e não substituem a faixa cadastrada em Parâmetros).
+var CEP_CHARTS={};
+
+function desvioPadrao(valores, media){
+  if(valores.length<2) return 0;
+  var somaQuad=valores.reduce(function(s,v){ return s+Math.pow(v-media,2); },0);
+  return Math.sqrt(somaQuad/(valores.length-1)); // desvio padrão amostral (n-1)
+}
+
+function renderCEP(inspSku){
+  var container=G('dash-sku-cep');
+  var algumaCarta=false;
+  var htmlVazio='';
+
+  // Limpa gráficos anteriores para não acumular instâncias do Chart.js
+  Object.keys(CEP_CHARTS).forEach(function(k){ if(CEP_CHARTS[k]) CEP_CHARTS[k].destroy(); });
+  CEP_CHARTS={};
+  container.innerHTML='';
+
+  CAMPOS_NUM.forEach(function(campo){
+    var pontos=inspSku
+      .map(function(i){ return {x:i.data.split('-').reverse().join('/')+' '+i.hora, v:(i.resultados&&i.resultados[campo.key])}; })
+      .filter(function(p){ return p.v!==undefined && p.v!==null; });
+
+    if(pontos.length<2) return; // sem dado suficiente para nem tentar uma carta dessa variável
+
+    algumaCarta=true;
+    var valores=pontos.map(function(p){ return Number(p.v); });
+    var media=valores.reduce(function(s,v){return s+v;},0)/valores.length;
+    var dp=desvioPadrao(valores, media);
+    var lsc=media+3*dp, lic=media-3*dp;
+    var foraControle=valores.filter(function(v){ return v>lsc || v<lic; }).length;
+    var poucosPontos = pontos.length<8;
+
+    var cardId='cep-card-'+campo.key, canvasId='cep-chart-'+campo.key;
+    var html='<div class="card" id="'+cardId+'">';
+    html+='<div class="ch"><span class="ct">CEP — '+campo.label+'</span>';
+    html+='<span style="font-size:11px;color:#4a664a">LC '+fN(media,2)+' &nbsp;|&nbsp; LSC '+fN(lsc,2)+' &nbsp;|&nbsp; LIC '+fN(lic,2)+
+          (foraControle?' &nbsp;|&nbsp; <span style="color:#c0392b;font-weight:700">'+foraControle+' ponto(s) fora de controle</span>':'')+'</span></div>';
+    if(poucosPontos) html+='<div class="alw" style="margin-bottom:10px;font-size:11px">⚠ Apenas '+pontos.length+' leitura(s) no período — limites estatísticos pouco confiáveis com poucos pontos. Considere ampliar o período para uma análise mais robusta.</div>';
+    html+='<div style="position:relative;height:170px"><canvas id="'+canvasId+'"></canvas></div>';
+    html+='</div>';
+    container.insertAdjacentHTML('beforeend', html);
+
+    var coresPonto=valores.map(function(v){ return (v>lsc||v<lic) ? '#c0392b' : '#024f2b'; });
+
+    CEP_CHARTS[campo.key]=new Chart(G(canvasId),{
+      type:'line',
+      data:{
+        labels:pontos.map(function(p){return p.x;}),
+        datasets:[
+          {label:campo.label, data:valores, borderColor:'#024f2b', backgroundColor:'#024f2b', pointBackgroundColor:coresPonto, pointRadius:4, tension:0},
+          {label:'LC', data:valores.map(function(){return media;}), borderColor:'#739630', borderDash:[4,3], pointRadius:0, borderWidth:1.5},
+          {label:'LSC', data:valores.map(function(){return lsc;}), borderColor:'#c0392b', borderDash:[2,2], pointRadius:0, borderWidth:1.2},
+          {label:'LIC', data:valores.map(function(){return lic;}), borderColor:'#c0392b', borderDash:[2,2], pointRadius:0, borderWidth:1.2}
+        ]
+      },
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{position:'bottom',labels:{font:{size:9},boxHeight:2}}},
+        scales:{y:{beginAtZero:false}}}
+    });
+  });
+
+  if(!algumaCarta){
+    container.innerHTML='<div class="card" style="text-align:center;color:#999;font-size:12px">Nenhuma variável com leituras suficientes (mínimo 2) para gerar carta de controle no período</div>';
+  }
 }
 
 function renderDashCards(insp, ncs){
