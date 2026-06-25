@@ -1,0 +1,1525 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Raguife — Qualidade</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f4f6f4;--bg2:#ffffff;--bg3:#eef2ee;--bg4:#dde6dd;
+  --bd:#c8d8c8;--bd2:#b0c8b0;
+  --tx:#1a2e1a;--tx2:#4a664a;--tx3:#739630;
+  --ac:#024f2b;--ac2:#036b3a;--acbg:rgba(2,79,43,.10);
+  --gr:#024f2b;--or:#d29922;--rd:#c0392b;
+  --orbg:rgba(210,153,34,.15);--rdbg:rgba(192,57,43,.12);
+  --r:8px;--r2:12px;
+}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--tx);font-size:14px;min-height:100vh}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg3)}::-webkit-scrollbar-thumb{background:#024f2b;border-radius:3px}
+input,select,textarea{width:100%;padding:9px 12px;background:#f7faf7;border:1px solid #c8d8c8;border-radius:var(--r);color:#1a2e1a;font-size:13px;outline:none;font-family:inherit;transition:.15s}
+input:focus,select:focus,textarea:focus{border-color:#024f2b;box-shadow:0 0 0 3px rgba(2,79,43,.15)}
+textarea{resize:vertical;min-height:64px}
+select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%23739630' d='M5 7L0 2h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 16px;border-radius:var(--r);border:1px solid #c8d8c8;background:#f4f6f4;color:#1a2e1a;cursor:pointer;font-size:13px;font-weight:500;transition:.15s;font-family:inherit;white-space:nowrap}
+.btn:hover{background:#dde6dd}
+.bp{background:#024f2b;border-color:#024f2b;color:#fff}.bp:hover{background:#036b3a}
+.bg2{background:#739630;border-color:#739630;color:#fff}.bg2:hover{opacity:.85}
+.br{background:#c0392b;border-color:#c0392b;color:#fff}.br:hover{opacity:.85}
+.bo{background:#d29922;border-color:#d29922;color:#fff}.bo:hover{opacity:.85}
+.bsm{padding:5px 11px;font-size:12px}.bxs{padding:3px 8px;font-size:11px}.bfw{width:100%}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.lerr{color:#c0392b;font-size:12px;margin-top:8px;display:none;text-align:center}
+
+/* LOGIN */
+#pg-login{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#024f2b 0%,#036b3a 60%,#739630 100%)}
+.lbox{background:#fff;border-radius:var(--r2);padding:36px 32px;width:380px;box-shadow:0 8px 40px rgba(0,0,0,.25)}
+.logo{text-align:center;margin-bottom:28px}
+.logo-t{font-size:18px;font-weight:700;color:#024f2b;margin-top:8px}
+.logo-s{font-size:12px;color:#739630;margin-top:3px;font-weight:500}
+.fld{margin-bottom:14px}
+.fld label{display:block;font-size:12px;color:#4a664a;margin-bottom:5px;font-weight:500}
+
+/* APP */
+#pg-app{display:none;min-height:100vh;flex-direction:column}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:8px 18px;background:#024f2b;border-bottom:2px solid #739630;position:sticky;top:0;z-index:50;flex-wrap:wrap;gap:8px;box-shadow:0 2px 12px rgba(2,79,43,.25)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;color:#fff}
+.pill{font-size:11px;padding:2px 9px;border-radius:20px;background:rgba(115,150,48,.25);color:#b6d46a;border:1px solid rgba(115,150,48,.4)}
+.nav{display:flex;gap:2px;flex-wrap:wrap}
+.nb{padding:6px 13px;border:none;background:transparent;color:rgba(255,255,255,.75);border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;transition:.1s;font-family:inherit}
+.nb:hover{background:rgba(255,255,255,.12);color:#fff}.nb.on{background:#739630;color:#fff}
+.nb .nc-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#c0392b;margin-left:5px;vertical-align:middle}
+.ubar{display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.85)}
+.av{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:#739630;color:#fff}
+.rtdot{width:8px;height:8px;border-radius:50%;background:#b6d46a;display:inline-block;margin-right:4px;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.content{flex:1;padding:16px;overflow-y:auto;max-height:calc(100vh - 58px)}
+.scr{display:none}.scr.on{display:block}
+
+/* CARDS */
+.card{background:#fff;border:1px solid var(--bd);border-radius:var(--r2);padding:16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(2,79,43,.06)}
+.ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+.ct{font-size:11px;font-weight:700;color:#739630;text-transform:uppercase;letter-spacing:.06em}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.mrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px}
+.mc{background:#fff;border:1px solid var(--bd);border-radius:var(--r);padding:13px 15px;box-shadow:0 1px 4px rgba(2,79,43,.05)}
+.ml{font-size:10px;color:#739630;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;font-weight:600}
+.mv{font-size:22px;font-weight:700}
+.ms{font-size:11px;color:#4a664a;margin-top:2px}
+.cg{color:#024f2b}.co{color:#d29922}.cr{color:#c0392b}.cb{color:#036b3a}
+
+@media (max-width:980px){.g2,.g3{grid-template-columns:1fr}}
+
+/* TABLE */
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:#024f2b;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #024f2b;white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--bd);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(2,79,43,.03)}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+.bvd{background:rgba(2,79,43,.1);color:#024f2b}
+.bam{background:rgba(210,153,34,.15);color:#8a5700}
+.baz{background:rgba(2,79,43,.08);color:#024f2b}
+.bcz{background:#eef2ee;color:#4a664a}
+.bpx{background:rgba(139,92,246,.15);color:#5b21b6}
+.brd{background:rgba(192,57,43,.12);color:#c0392b}
+
+/* MODAL */
+.ov{position:fixed;inset:0;background:rgba(1,40,22,.65);z-index:200;display:none;align-items:center;justify-content:center;padding:12px}
+.ov.on{display:flex}
+.modal{background:#fff;border:1px solid #c8d8c8;border-radius:var(--r2);padding:22px 24px;width:620px;max-width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 8px 32px rgba(2,79,43,.15)}
+.modal.wide{width:820px}
+.mt{font-size:16px;font-weight:700;margin-bottom:16px;color:#024f2b}
+.mfoot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--bd)}
+.fr{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.fr3{grid-template-columns:1fr 1fr 1fr}
+.fr4{grid-template-columns:1fr 1fr 1fr 1fr}
+.fg{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.fl{font-size:12px;color:#4a664a;font-weight:500}
+@media (max-width:640px){.fr,.fr3,.fr4{grid-template-columns:1fr}}
+
+/* TOAST */
+#twrap{position:fixed;bottom:18px;right:18px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.tos{padding:11px 16px;border-radius:var(--r);font-size:13px;font-weight:500;animation:tin .2s ease;max-width:320px}
+.tok{background:#024f2b;color:#fff}.terr{background:#c0392b;color:#fff}.tinf{background:#739630;color:#fff}
+@keyframes tin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* MISC */
+.tabs{display:flex;border:1px solid var(--bd);border-radius:var(--r);overflow:hidden;width:fit-content;margin-bottom:16px}
+.tab{padding:6px 16px;border:none;background:#eef2ee;color:#4a664a;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;transition:.1s}
+.tab.on{background:#024f2b;color:#fff}
+.alw{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:12px;background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.3);color:#8a5700}
+.ali{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:12px;background:rgba(2,79,43,.08);border:1px solid rgba(2,79,43,.2);color:#024f2b}
+.aler{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:12px;background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.25);color:#c0392b}
+
+/* LINHA CARDS (tela Produção) */
+.linhas-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.linha-card{background:#fff;border:1px solid var(--bd);border-radius:var(--r2);padding:16px;cursor:pointer;transition:.15s;border-left:4px solid #aaa;box-shadow:0 1px 4px rgba(2,79,43,.06)}
+.linha-card:hover{box-shadow:0 4px 14px rgba(2,79,43,.12);transform:translateY(-1px)}
+.linha-card.ativa{border-left-color:#d29922}
+.linha-card.semop{border-left-color:#aaa;opacity:.65;cursor:default}
+.linha-card.semop:hover{transform:none;box-shadow:0 1px 4px rgba(2,79,43,.06)}
+.linha-nome{font-size:13px;font-weight:700;color:#024f2b;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.linha-op{font-size:15px;font-weight:700;color:#1a2e1a}
+.linha-prod{font-size:12px;color:#4a664a;margin-top:2px}
+.linha-lote{display:inline-block;margin-top:6px;font-size:11px;font-weight:700;color:#024f2b;background:rgba(2,79,43,.08);padding:2px 8px;border-radius:4px}
+.linha-ult{font-size:11px;color:#739630;margin-top:8px}
+
+/* CAMPOS DE INSPEÇÃO */
+.param-row{display:grid;grid-template-columns:1.3fr .9fr .9fr 1fr;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--bg3)}
+.param-row:last-child{border-bottom:none}
+.param-nome{font-size:12px;font-weight:600;color:#1a2e1a}
+.param-faixa{font-size:11px;color:#739630}
+.param-input{position:relative}
+.param-status{font-size:11px;font-weight:700;text-align:center;padding:4px 6px;border-radius:6px}
+.param-ok{background:rgba(2,79,43,.1);color:#024f2b}
+.param-fora{background:rgba(192,57,43,.12);color:#c0392b}
+.param-vazio{background:#eef2ee;color:#aaa}
+@media (max-width:760px){.param-row{grid-template-columns:1fr;gap:4px}}
+
+#loader{position:fixed;inset:0;background:rgba(1,40,22,.7);z-index:1000;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+#loader.on{display:flex}
+.spin{width:34px;height:34px;border:3px solid rgba(115,150,48,.3);border-top-color:#739630;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="twrap"></div>
+<div id="loader"><div class="spin"></div><div style="color:rgba(255,255,255,.8);font-size:13px" id="lmsg">Aguarde...</div></div>
+
+<!-- LOGIN -->
+<div id="pg-login">
+<div class="lbox">
+  <div class="logo">
+    <div class="logo-t">🔬 Raguife — Qualidade</div>
+    <div class="logo-s">Confiança que Inspira</div>
+  </div>
+  <div style="text-align:center;font-size:12px;color:#739630;margin-bottom:16px;font-weight:500"><span class="rtdot"></span>Firebase conectado</div>
+  <div class="fld"><label>Usuário</label><input type="text" id="lu" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()"></div>
+  <div class="fld"><label>Senha</label><input type="password" id="lp" onkeydown="if(event.key==='Enter')doLogin()"></div>
+  <div class="lerr" id="lerr">Usuário ou senha incorretos.</div>
+  <button class="btn bp bfw" style="margin-top:18px;padding:11px" onclick="doLogin()">Entrar</button>
+</div>
+</div>
+
+<!-- APP -->
+<div id="pg-app" style="display:none;flex-direction:column;min-height:100vh">
+<div class="topbar">
+  <div class="brand">
+    <span>🔬 Raguife — Qualidade</span>
+    <span class="pill" id="pfil">Qualidade</span>
+  </div>
+  <div class="nav">
+    <button class="nb on" id="nb-prod" onclick="go('producao',this)">Produção</button>
+    <button class="nb" id="nb-nc" onclick="go('nc',this)">NC <span class="nc-dot" id="nc-dot" style="display:none"></span></button>
+    <button class="nb" id="nb-dash" onclick="go('dashboard',this)">Dashboard</button>
+    <button class="nb" id="nb-rast" onclick="go('rastreio',this)">Rastreabilidade</button>
+    <button class="nb" id="nb-params" style="display:none" onclick="go('params',this)">Parâmetros</button>
+  </div>
+  <div class="ubar">
+    <span class="rtdot"></span>
+    <span id="unm"></span>
+    <div class="av" id="uav">?</div>
+    <button class="btn bsm" style="background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.3)" onclick="doLogout()">Sair</button>
+  </div>
+</div>
+<div class="content">
+
+<!-- ============ TELA: PRODUÇÃO ============ -->
+<div class="scr on" id="scr-producao">
+  <div class="ch">
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Linhas em Produção <span style="font-size:11px;color:#739630;font-weight:500">&#9679; ao vivo</span></h2>
+    <button class="btn bsm" onclick="carregarLinhasAtivas()">↻ Atualizar</button>
+  </div>
+  <div class="linhas-grid" id="linhas-grid">
+    <div style="grid-column:1/-1;text-align:center;padding:30px;color:#739630">Carregando linhas...</div>
+  </div>
+</div>
+
+<!-- ============ TELA: NC ============ -->
+<div class="scr" id="scr-nc">
+  <div class="ch">
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Não Conformidades</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <select id="nc-filtro-status" style="width:auto" onchange="renderNCFiltrado()">
+        <option value="">Todos os status</option>
+        <option value="Aberta">Aberta</option>
+        <option value="Em andamento">Em andamento</option>
+        <option value="Concluída">Concluída</option>
+      </select>
+      <select id="nc-filtro-linha" style="width:auto" onchange="renderNCFiltrado()">
+        <option value="">Todas as linhas</option>
+        <option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option>
+        <option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option>
+      </select>
+    </div>
+  </div>
+  <div class="card">
+    <div class="tw"><table>
+      <thead><tr><th>Abertura</th><th>OP</th><th>Produto</th><th>Lote</th><th>Linha</th><th>Parâmetro</th><th>Status</th><th>Prazo</th><th></th></tr></thead>
+      <tbody id="nc-corpo"><tr><td colspan="9" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr></tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- ============ TELA: DASHBOARD ============ -->
+<div class="scr" id="scr-dashboard">
+  <div class="ch">
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Dashboard de Qualidade</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input type="date" id="dash-di" style="width:auto" onchange="gerarDashboardQual()">
+      <input type="date" id="dash-df" style="width:auto" onchange="gerarDashboardQual()">
+      <select id="dash-linha" style="width:auto" onchange="gerarDashboardQual()">
+        <option value="">Todas as linhas</option>
+        <option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option>
+        <option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option>
+      </select>
+      <select id="dash-analista" style="width:auto" onchange="gerarDashboardQual()">
+        <option value="">Todos os analistas</option>
+      </select>
+    </div>
+  </div>
+  <div class="mrow" id="dash-cards"></div>
+  <div class="g2">
+    <div class="card"><div class="ch"><span class="ct">Aprovadas x Reprovadas</span></div><div style="position:relative;height:190px"><canvas id="chQualStatus"></canvas></div></div>
+    <div class="card"><div class="ch"><span class="ct">Desvios por Linha</span></div><div style="position:relative;height:190px"><canvas id="chQualLinha"></canvas></div></div>
+  </div>
+  <div class="g2">
+    <div class="card"><div class="ch"><span class="ct">Produtos com Mais Desvios</span></div><div class="tw" id="dash-prod-desvios"></div></div>
+    <div class="card"><div class="ch"><span class="ct">Umidade Média por Linha</span></div><div style="position:relative;height:190px"><canvas id="chUmidade"></canvas></div></div>
+  </div>
+</div>
+
+<!-- ============ TELA: RASTREABILIDADE ============ -->
+<div class="scr" id="scr-rastreio">
+  <div class="ch"><h2 style="font-size:16px;font-weight:700;color:#024f2b">Rastreabilidade por Lote</h2></div>
+  <div class="card">
+    <div class="fr">
+      <div class="fg"><label class="fl">Buscar por Lote ou OP</label><input type="text" id="rast-busca" placeholder="Digite o lote ou número da OP" onkeydown="if(event.key==='Enter')buscarRastreio()"></div>
+      <div class="fg" style="align-self:flex-end"><button class="btn bp bfw" onclick="buscarRastreio()">🔍 Buscar</button></div>
+    </div>
+  </div>
+  <div id="rast-resultado"></div>
+</div>
+
+<!-- ============ TELA: ADMIN (PARÂMETROS + USUÁRIOS) ============ -->
+<div class="scr" id="scr-params">
+  <div class="ch">
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Administração</h2>
+  </div>
+  <div class="tabs">
+    <button class="tab on" id="tab-prod" onclick="adminTab('prod')">Produtos</button>
+    <button class="tab" id="tab-usr" onclick="adminTab('usr')">Usuários</button>
+  </div>
+
+  <!-- SUB-ABA: PRODUTOS -->
+  <div id="admtab-prod">
+    <div class="ch">
+      <input type="text" id="params-busca" placeholder="Buscar código ou descrição..." style="width:260px" oninput="renderParamsLista()">
+      <button class="btn bp" onclick="abrirNovoParam()">+ Novo Produto</button>
+    </div>
+    <div class="card">
+      <div class="tw"><table>
+        <thead><tr><th>Código</th><th>Descrição</th><th>Unid.</th><th>Umidade</th><th>AW</th><th>Densidade</th><th>Status</th><th></th></tr></thead>
+        <tbody id="params-corpo"><tr><td colspan="8" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- SUB-ABA: USUÁRIOS -->
+  <div id="admtab-usr" style="display:none">
+    <div class="ch">
+      <span class="ct">Usuários de Qualidade</span>
+      <button class="btn bp" onclick="abrirNovoUsuario()">+ Novo Usuário</button>
+    </div>
+    <div class="card">
+      <div class="tw"><table>
+        <thead><tr><th>Login</th><th>Nome</th><th>Perfil</th><th>Status</th><th>Ações</th></tr></thead>
+        <tbody id="usuarios-corpo"><tr><td colspan="5" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+</div>
+
+
+</div>
+</div>
+
+<!-- ============ MODAL: INSPEÇÃO ============ -->
+<div class="ov" id="ov-insp">
+<div class="modal wide">
+  <div class="mt" id="insp-titulo">Inspeção de Qualidade</div>
+  <div id="insp-op-info" class="ali"></div>
+  <div class="fr3">
+    <div class="fg"><label class="fl">Hora da Inspeção</label><input type="time" id="insp-hora"></div>
+    <div class="fg"><label class="fl">Turno</label><input type="text" id="insp-turno" disabled></div>
+    <div class="fg"><label class="fl">Data</label><input type="date" id="insp-data"></div>
+  </div>
+  <div id="insp-aviso-dup" class="alw" style="display:none"></div>
+  <div class="card" style="margin-bottom:12px">
+    <div class="ct" style="margin-bottom:10px">Parâmetros Numéricos</div>
+    <div id="insp-params-numericos"></div>
+  </div>
+  <div class="card">
+    <div class="ct" style="margin-bottom:10px">Avaliação Visual / Textual</div>
+    <div id="insp-params-texto"></div>
+  </div>
+  <div class="mfoot">
+    <button class="btn" onclick="fM('ov-insp')">Cancelar</button>
+    <button class="btn bp" onclick="salvarInspecao()" id="btn-salvar-insp">💾 Salvar Inspeção</button>
+  </div>
+</div>
+</div>
+
+<!-- ============ MODAL: ABRIR NC ============ -->
+<div class="ov" id="ov-nc">
+<div class="modal">
+  <div class="mt">Abrir Não Conformidade</div>
+  <div id="nc-origem-info" class="aler"></div>
+  <div class="fg"><label class="fl">Descrição da Não Conformidade</label><textarea id="nc-desc" placeholder="Descreva o problema identificado..."></textarea></div>
+  <div class="fg"><label class="fl">Causa Provável</label><textarea id="nc-causa" placeholder="Causa raiz identificada ou suspeita..."></textarea></div>
+  <div class="fg"><label class="fl">Ação Corretiva</label><textarea id="nc-acao" placeholder="O que será feito para corrigir..."></textarea></div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Responsável</label><input type="text" id="nc-resp" placeholder="Nome do responsável"></div>
+    <div class="fg"><label class="fl">Prazo</label><input type="date" id="nc-prazo"></div>
+  </div>
+  <div class="mfoot">
+    <button class="btn" onclick="fM('ov-nc')">Cancelar</button>
+    <button class="btn br" onclick="salvarNC()">⚠ Abrir NC</button>
+  </div>
+</div>
+</div>
+
+<!-- ============ MODAL: DETALHE / EDITAR NC ============ -->
+<div class="ov" id="ov-nc-detalhe">
+<div class="modal wide">
+  <div class="mt">Detalhe da Não Conformidade</div>
+  <div id="ncd-info" class="card"></div>
+  <div class="fg"><label class="fl">Descrição</label><textarea id="ncd-desc"></textarea></div>
+  <div class="fg"><label class="fl">Causa</label><textarea id="ncd-causa"></textarea></div>
+  <div class="fg"><label class="fl">Ação Corretiva</label><textarea id="ncd-acao"></textarea></div>
+  <div class="fr3">
+    <div class="fg"><label class="fl">Responsável</label><input type="text" id="ncd-resp"></div>
+    <div class="fg"><label class="fl">Prazo</label><input type="date" id="ncd-prazo"></div>
+    <div class="fg"><label class="fl">Status</label>
+      <select id="ncd-status">
+        <option value="Aberta">Aberta</option>
+        <option value="Em andamento">Em andamento</option>
+        <option value="Concluída">Concluída</option>
+      </select>
+    </div>
+  </div>
+  <div class="mfoot">
+    <button class="btn" onclick="fM('ov-nc-detalhe')">Fechar</button>
+    <button class="btn bp" onclick="salvarEdicaoNC()">💾 Salvar Alterações</button>
+  </div>
+</div>
+</div>
+
+<!-- ============ MODAL: CADASTRO/EDIÇÃO DE PARÂMETRO ============ -->
+<div class="ov" id="ov-param">
+<div class="modal wide">
+  <div class="mt" id="param-titulo">Parâmetros do Produto</div>
+  <div class="fr3">
+    <div class="fg"><label class="fl">Código do Produto</label><input type="text" id="pp-codigo"></div>
+    <div class="fg" style="grid-column:span 2"><label class="fl">Descrição</label><input type="text" id="pp-desc"></div>
+  </div>
+  <div class="fg"><label class="fl">Unidade</label>
+    <select id="pp-unidade"><option value="KG">KG</option><option value="SC">SC</option><option value="BG">BG</option></select>
+  </div>
+  <div class="fr4">
+    <div class="fg"><label class="fl">PB mín (%)</label><input type="number" step="0.01" id="pp-pbMin"></div>
+    <div class="fg"><label class="fl">EE mín (%)</label><input type="number" step="0.01" id="pp-eeMin"></div>
+    <div class="fg"><label class="fl">MM máx (%)</label><input type="number" step="0.01" id="pp-mmMax"></div>
+    <div class="fg"><label class="fl">Temp. máx (°C acima ambiente)</label><input type="number" step="0.1" id="pp-tempMax"></div>
+  </div>
+  <div class="fr4">
+    <div class="fg"><label class="fl">Umidade mín (%)</label><input type="number" step="0.01" id="pp-umidMin"></div>
+    <div class="fg"><label class="fl">Umidade máx (%)</label><input type="number" step="0.01" id="pp-umidMax"></div>
+    <div class="fg"><label class="fl">AW mín</label><input type="number" step="0.001" id="pp-awMin"></div>
+    <div class="fg"><label class="fl">AW máx</label><input type="number" step="0.001" id="pp-awMax"></div>
+  </div>
+  <div class="fr4">
+    <div class="fg"><label class="fl">Densidade mín (g/L)</label><input type="number" step="1" id="pp-densMin"></div>
+    <div class="fg"><label class="fl">Densidade máx (g/L)</label><input type="number" step="1" id="pp-densMax"></div>
+    <div class="fg"><label class="fl">Corte mín (mm)</label><input type="number" step="0.1" id="pp-corteMin"></div>
+    <div class="fg"><label class="fl">Corte máx (mm)</label><input type="number" step="0.1" id="pp-corteMax"></div>
+  </div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Diâmetro mín (mm)</label><input type="number" step="0.1" id="pp-diamMin"></div>
+    <div class="fg"><label class="fl">Diâmetro máx (mm)</label><input type="number" step="0.1" id="pp-diamMax"></div>
+  </div>
+  <div class="mfoot">
+    <button class="btn" onclick="fM('ov-param')">Cancelar</button>
+    <button class="btn bp" onclick="salvarParam()">💾 Salvar Parâmetros</button>
+  </div>
+</div>
+</div>
+
+<!-- ============ MODAL: NOVO/EDITAR USUÁRIO ============ -->
+<div class="ov" id="ov-usuario">
+<div class="modal" style="max-width:400px">
+  <div class="mt" id="usr-titulo">Novo Usuário</div>
+  <div class="fg"><label class="fl">Login</label><input type="text" id="usr-login" placeholder="ex: qual.maria"></div>
+  <div class="fg"><label class="fl">Nome completo</label><input type="text" id="usr-nome"></div>
+  <div class="fg"><label class="fl">Senha</label><input type="password" id="usr-senha" placeholder="Mínimo 4 caracteres"></div>
+  <div class="fg"><label class="fl">Perfil</label>
+    <select id="usr-perfil"><option value="qualidade">Qualidade</option><option value="admin">Administrador</option></select>
+  </div>
+  <div class="mfoot">
+    <button class="btn bsm" onclick="fM('ov-usuario')">Cancelar</button>
+    <button class="btn bsm bp" onclick="salvarUsuario()" id="btn-salvar-usuario">Criar Usuário</button>
+  </div>
+</div>
+</div>
+
+<div class="ov" id="ov-excluir-usuario">
+<div class="modal" style="max-width:380px">
+  <div class="mt">Confirmar Exclusão</div>
+  <div class="aler" id="excluir-usr-msg"></div>
+  <div class="fg"><label class="fl">Digite o login para confirmar</label><input type="text" id="excluir-usr-confirm"></div>
+  <input type="hidden" id="excluir-usr-fbkey">
+  <input type="hidden" id="excluir-usr-login">
+  <div class="mfoot">
+    <button class="btn bsm" onclick="fM('ov-excluir-usuario')">Cancelar</button>
+    <button class="btn bsm br" onclick="confirmarExcluirUsuario()">Excluir</button>
+  </div>
+</div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+// ============================================================
+// FIREBASE CONFIG — mesmo banco do ensaque/extrusão
+// ============================================================
+var firebaseConfig = {
+  apiKey: "AIzaSyB52cXfvtmY2xXu9vMkMPhCWU-rp6NXhxc",
+  authDomain: "sistema-ensaque.firebaseapp.com",
+  databaseURL: "https://sistema-ensaque-default-rtdb.firebaseio.com",
+  projectId: "sistema-ensaque"
+};
+firebase.initializeApp(firebaseConfig);
+var DB = firebase.database();
+
+// ============================================================
+// GLOBAIS
+// ============================================================
+var SES = null;
+var LINHAS = ["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
+var PARAMS_QUAL = {};          // cache de qualidade_params
+var OPS_ATIVAS = {};           // cache linha -> OP ativa
+var INSP_CONTEXTO = null;      // contexto da inspeção sendo editada
+var NC_LISTA = [];
+var INSPECOES_CACHE = [];
+
+// ============================================================
+// UTILS
+// ============================================================
+function G(id){return document.getElementById(id);}
+function hoje(){
+  // Data operacional: a partir das 21h pertence ao próximo dia (início do T1) — mesma regra do extrusao.html
+  var now=new Date();
+  if(now.getHours()>=21) now=new Date(now.getTime()+24*60*60*1000);
+  return now.toISOString().slice(0,10);
+}
+function agora(){return new Date().toISOString();}
+function horaAtual(){var d=new Date();return pad(d.getHours())+":"+pad(d.getMinutes());}
+function pad(n){return String(n).padStart(2,"0");}
+function uid(){return Math.random().toString(36).slice(2,10);}
+function fN(n,dec){if(n===null||n===undefined||n==='')return '—';return Number(n).toLocaleString("pt-BR",{minimumFractionDigits:dec||0,maximumFractionDigits:dec!==undefined?dec:2});}
+function aM(id){G(id).classList.add('on');}
+function fM(id){G(id).classList.remove('on');}
+function ld(on,msg){G('loader').classList.toggle('on',!!on);if(msg)G('lmsg').textContent=msg;}
+function toast(msg,tipo){
+  var t=document.createElement('div');
+  t.className='tos '+(tipo==='err'?'terr':tipo==='info'?'tinf':'tok');
+  t.textContent=msg;
+  G('twrap').appendChild(t);
+  setTimeout(function(){t.remove();},3200);
+}
+function turnoAtual(){var h=new Date().getHours();return h>=21||h<5?1:h<13?2:3;}
+function turnoDeHora(horaStr){
+  if(!horaStr) return turnoAtual();
+  var h=parseInt(horaStr.split(":")[0]);
+  return h>=21||h<5?1:h<13?2:3;
+}
+
+// ============================================================
+// LOGIN / LOGOUT
+// ============================================================
+function doLogin(){
+  var u=G('lu').value.trim(), p=G('lp').value;
+  if(!u||!p) return;
+  ld(true,'Autenticando...');
+  DB.ref('usuarios').orderByChild('login').equalTo(u).once('value').then(function(snap){
+    ld(false);
+    if(!snap.exists()){ G('lerr').style.display='block'; return; }
+    var found=null;
+    snap.forEach(function(c){ var v=c.val(); if(v.senha===p && v.inativo!==true && v.ativo!==false) found=v; });
+    if(!found){ G('lerr').style.display='block'; return; }
+    if(found.perfil!=='qualidade' && found.perfil!=='admin'){
+      G('lerr').textContent='Sem acesso ao módulo de Qualidade';
+      G('lerr').style.display='block';
+      return;
+    }
+    SES=found;
+    G('lerr').style.display='none';
+    G('lp').value='';
+    G('pg-login').style.display='none';
+    G('pg-app').style.display='flex';
+    aplicarSessao();
+    iniciarApp();
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
+function doLogout(){
+  SES=null;
+  G('pg-app').style.display='none';
+  G('pg-login').style.display='flex';
+  G('lu').value=''; G('lp').value='';
+  if(DB){
+    DB.ref('ops').off();
+    DB.ref('qualidade_inspecoes').off();
+    DB.ref('qualidade_nc').off();
+  }
+}
+
+function aplicarSessao(){
+  G('unm').textContent=SES.nome||SES.login;
+  G('uav').textContent=(SES.nome||SES.login).slice(0,2).toUpperCase();
+  G('pfil').textContent=SES.perfil==='admin'?'Admin':'Qualidade';
+  G('nb-params').style.display=SES.perfil==='admin'?'':'none';
+}
+
+function iniciarApp(){
+  carregarParamsQual(function(){
+    carregarLinhasAtivas();
+  });
+  monitorarNCAbertas();
+}
+
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'){
+    ['ov-insp','ov-nc','ov-nc-detalhe','ov-param','ov-usuario','ov-excluir-usuario'].forEach(fM);
+  }
+});
+
+// ============================================================
+// ROTEAMENTO DE TELAS
+// ============================================================
+function go(s,btn){
+  document.querySelectorAll('.scr').forEach(function(e){e.classList.remove('on');});
+  document.querySelectorAll('.nb').forEach(function(e){e.classList.remove('on');});
+  var el=G('scr-'+s); if(el) el.classList.add('on');
+  if(btn) btn.classList.add('on');
+  if(s==='producao') carregarLinhasAtivas();
+  else if(s==='nc') renderNC();
+  else if(s==='dashboard') {
+    if(!G('dash-di').value){
+      var d=hoje();
+      G('dash-di').value=d; G('dash-df').value=d;
+    }
+    gerarDashboardQual();
+  }
+  else if(s==='params') adminTab(ADMIN_ABA_ATUAL);
+}
+
+var ADMIN_ABA_ATUAL='prod';
+function adminTab(aba){
+  ADMIN_ABA_ATUAL=aba;
+  G('tab-prod').classList.toggle('on', aba==='prod');
+  G('tab-usr').classList.toggle('on', aba==='usr');
+  G('admtab-prod').style.display = aba==='prod' ? 'block' : 'none';
+  G('admtab-usr').style.display = aba==='usr' ? 'block' : 'none';
+  if(aba==='prod') renderParamsLista();
+  else if(aba==='usr') carregarUsuarios();
+}
+
+// ============================================================
+// CARREGAMENTO DE PARÂMETROS DE QUALIDADE
+// ============================================================
+function carregarParamsQual(cb){
+  DB.ref('qualidade_params').once('value').then(function(s){
+    PARAMS_QUAL = s.exists()? s.val() : {};
+    if(cb) cb();
+  }).catch(function(e){ toast('Erro ao carregar parâmetros: '+e.message,'err'); });
+}
+
+// ============================================================
+// TELA: PRODUÇÃO — Linhas ativas
+// ============================================================
+function carregarLinhasAtivas(){
+  var grid=G('linhas-grid');
+  grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:30px;color:#739630">Carregando linhas...</div>';
+  DB.ref('ops').orderByChild('status').equalTo('Em andamento').once('value').then(function(s){
+    OPS_ATIVAS={};
+    if(s.exists()){
+      s.forEach(function(c){
+        var o=c.val(); o.fbKey=c.key;
+        // pode haver mais de uma OP "Em andamento" por linha em teoria (não deveria) — guarda a mais recente
+        if(!OPS_ATIVAS[o.linha] || (o.ts||'') > (OPS_ATIVAS[o.linha].ts||'')) OPS_ATIVAS[o.linha]=o;
+      });
+    }
+    renderLinhasGrid();
+  }).catch(function(e){
+    grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:30px;color:#c0392b">Erro: '+e.message+'</div>';
+  });
+}
+
+function renderLinhasGrid(){
+  var grid=G('linhas-grid');
+  var h='';
+  LINHAS.forEach(function(linha){
+    var op=OPS_ATIVAS[linha];
+    if(op){
+      var pq=PARAMS_QUAL[op.cod];
+      h+='<div class="linha-card ativa" onclick="abrirInspecao(\''+esc(linha)+'\')">';
+      h+='<div class="linha-nome">'+linha+'<span class="badge bam">Em produção</span></div>';
+      h+='<div class="linha-op">OP '+op.id+'</div>';
+      h+='<div class="linha-prod">'+(op.desc||op.cod)+'</div>';
+      if(op.lote) h+='<div class="linha-lote">Lote '+op.lote+'</div>';
+      if(!pq) h+='<div class="linha-ult" style="color:#c0392b">⚠ Sem parâmetros cadastrados (cod. '+op.cod+')</div>';
+      h+='</div>';
+    } else {
+      h+='<div class="linha-card semop">';
+      h+='<div class="linha-nome">'+linha+'<span class="badge bcz">Parada</span></div>';
+      h+='<div class="linha-prod" style="margin-top:6px">Nenhuma OP em produção</div>';
+      h+='</div>';
+    }
+  });
+  grid.innerHTML=h;
+}
+
+function esc(s){return String(s).replace(/'/g,"\\'");}
+
+// ============================================================
+// DEFINIÇÃO DOS CAMPOS DE INSPEÇÃO
+// ============================================================
+// Campos numéricos: comparados contra qualidade_params. mode define a regra de aprovação.
+//   'range'  -> aprova se min<=valor<=max
+//   'min'    -> aprova se valor>=min (reprova abaixo)
+//   'max'    -> aprova se valor<=max (reprova acima)
+var CAMPOS_NUM = [
+  {key:'umid', label:'Umidade (%)', unidade:'%', mode:'range', pMin:'umidMin', pMax:'umidMax'},
+  {key:'aw',   label:'AW',          unidade:'',  mode:'range', pMin:'awMin',   pMax:'awMax'},
+  {key:'dens', label:'Densidade (g/L)', unidade:'g/L', mode:'range', pMin:'densMin', pMax:'densMax'},
+  {key:'corte',label:'Corte (mm)',  unidade:'mm', mode:'range', pMin:'corteMin', pMax:'corteMax'},
+  {key:'diam', label:'Diâmetro (mm)', unidade:'mm', mode:'range', pMin:'diamMin', pMax:'diamMax'},
+  {key:'temp', label:'Temperatura (°C acima ambiente)', unidade:'°C', mode:'max', pMax:'tempMax'},
+  {key:'pb',   label:'PB (%)', unidade:'%', mode:'min', pMin:'pbMin'},
+  {key:'ee',   label:'EE (%)', unidade:'%', mode:'min', pMin:'eeMin'},
+  {key:'mm',   label:'MM (%)', unidade:'%', mode:'max', pMax:'mmMax'}
+];
+// Campos textuais: avaliação manual do analista, sem faixa numérica de aprovação automática.
+var CAMPOS_TXT = [
+  {key:'flutuabilidade', label:'Flutuabilidade'},
+  {key:'finos', label:'Finos'},
+  {key:'visual', label:'Visual'},
+  {key:'resistencia', label:'Resistência'},
+  {key:'embalagem', label:'Embalagem'},
+  {key:'caixa', label:'Caixa'},
+  {key:'cozimento', label:'Cozimento'}
+];
+
+function avaliarCampo(campo, valor, pq){
+  if(valor===''||valor===null||valor===undefined||isNaN(valor)) return null; // não preenchido
+  valor=Number(valor);
+  if(!pq) return null; // sem parâmetro cadastrado -> não dá pra avaliar
+  if(campo.mode==='range'){
+    var min=pq[campo.pMin], max=pq[campo.pMax];
+    if(min===undefined||min===null||max===undefined||max===null) return null;
+    return valor>=min && valor<=max;
+  }
+  if(campo.mode==='min'){
+    var pmin=pq[campo.pMin];
+    if(pmin===undefined||pmin===null) return null;
+    return valor>=pmin;
+  }
+  if(campo.mode==='max'){
+    var pmax=pq[campo.pMax];
+    if(pmax===undefined||pmax===null) return null;
+    return valor<=pmax;
+  }
+  return null;
+}
+
+function faixaTexto(campo, pq){
+  if(!pq) return '—';
+  if(campo.mode==='range'){
+    var min=pq[campo.pMin], max=pq[campo.pMax];
+    if(min===undefined||min===null||max===undefined||max===null) return '—';
+    return fN(min,2)+' a '+fN(max,2)+' '+campo.unidade;
+  }
+  if(campo.mode==='min'){
+    var pmin=pq[campo.pMin];
+    return (pmin===undefined||pmin===null)?'—':('mín. '+fN(pmin,2)+' '+campo.unidade);
+  }
+  if(campo.mode==='max'){
+    var pmax=pq[campo.pMax];
+    return (pmax===undefined||pmax===null)?'—':('máx. '+fN(pmax,2)+' '+campo.unidade);
+  }
+  return '—';
+}
+
+// ============================================================
+// MONTAR FORMULÁRIO DE INSPEÇÃO
+// ============================================================
+function montarFormularioInspecao(dadosExistentes){
+  var pq=INSP_CONTEXTO.pq;
+  var res = dadosExistentes ? (dadosExistentes.resultados||{}) : {};
+
+  var hNum='';
+  CAMPOS_NUM.forEach(function(c){
+    var val = res[c.key]!==undefined ? res[c.key] : '';
+    hNum+='<div class="param-row">';
+    hNum+='<div><div class="param-nome">'+c.label+'</div><div class="param-faixa">Faixa: '+faixaTexto(c,pq)+'</div></div>';
+    hNum+='<div class="param-input"><input type="number" step="0.01" id="ip-'+c.key+'" value="'+val+'" oninput="recalcCampo(\''+c.key+'\')" placeholder="Valor"></div>';
+    hNum+='<div></div>';
+    hNum+='<div class="param-status param-vazio" id="st-'+c.key+'">—</div>';
+    hNum+='</div>';
+  });
+  G('insp-params-numericos').innerHTML=hNum;
+
+  var hTxt='';
+  CAMPOS_TXT.forEach(function(c){
+    var val = res[c.key]!==undefined ? res[c.key] : '';
+    hTxt+='<div class="fg"><label class="fl">'+c.label+'</label><input type="text" id="ip-'+c.key+'" value="'+(val||'').replace(/"/g,'&quot;')+'" placeholder="Conforme / Não conforme / observação"></div>';
+  });
+  G('insp-params-texto').innerHTML=hTxt;
+
+  // recalcula status de cada campo já preenchido (modo edição)
+  CAMPOS_NUM.forEach(function(c){ recalcCampo(c.key); });
+}
+
+function recalcCampo(key){
+  var campo=CAMPOS_NUM.find(function(c){return c.key===key;});
+  var input=G('ip-'+key);
+  var elStatus=G('st-'+key);
+  if(!input||!elStatus) return;
+  var valor=input.value;
+  var aprovado=avaliarCampo(campo, valor, INSP_CONTEXTO.pq);
+  if(valor===''){
+    elStatus.className='param-status param-vazio'; elStatus.textContent='—';
+  } else if(aprovado===null){
+    elStatus.className='param-status param-vazio'; elStatus.textContent='s/ faixa';
+  } else if(aprovado){
+    elStatus.className='param-status param-ok'; elStatus.textContent='✔ Aprovado';
+  } else {
+    elStatus.className='param-status param-fora'; elStatus.textContent='✖ Fora';
+  }
+}
+
+function coletarResultadosInspecao(){
+  var resultados={}, aprovacoes={}, algumaReprova=false, algumaAvaliada=false;
+  CAMPOS_NUM.forEach(function(c){
+    var v=G('ip-'+c.key).value;
+    if(v!==''){
+      resultados[c.key]=Number(v);
+      var ap=avaliarCampo(c, v, INSP_CONTEXTO.pq);
+      if(ap!==null){
+        aprovacoes[c.key]=ap;
+        algumaAvaliada=true;
+        if(!ap) algumaReprova=true;
+      }
+    }
+  });
+  CAMPOS_TXT.forEach(function(c){
+    var v=G('ip-'+c.key).value;
+    if(v!=='') resultados[c.key]=v;
+  });
+  return {resultados:resultados, aprovacoes:aprovacoes, algumaReprova:algumaReprova, algumaAvaliada:algumaAvaliada};
+}
+
+// ============================================================
+// SALVAR INSPEÇÃO
+// ============================================================
+function salvarInspecao(){
+  var hora=G('insp-hora').value, data=G('insp-data').value;
+  if(!hora||!data){ toast('Informe hora e data','err'); return; }
+  var coleta=coletarResultadosInspecao();
+  if(Object.keys(coleta.resultados).length===0){ toast('Informe ao menos um resultado','err'); return; }
+
+  var op=INSP_CONTEXTO.op, linha=INSP_CONTEXTO.linha;
+  var turno=turnoDeHora(hora);
+  var statusGeral = coleta.algumaAvaliada ? (coleta.algumaReprova?'reprovado':'aprovado') : 'sem_avaliacao';
+
+  var registro={
+    opFbKey:op.fbKey, opId:op.id, cod:op.cod, desc:op.desc||op.cod,
+    lote:op.lote||'', linha:linha, turno:turno, data:data, hora:hora,
+    analista:SES.login, analistaNome:SES.nome||SES.login, ts:agora(),
+    resultados:coleta.resultados, aprovacoes:coleta.aprovacoes,
+    statusGeral:statusGeral
+  };
+
+  var fbKeyExistente=INSP_CONTEXTO.editandoFbKey;
+  var ref = fbKeyExistente ? DB.ref('qualidade_inspecoes/'+fbKeyExistente) : DB.ref('qualidade_inspecoes').push();
+  var fbKey = fbKeyExistente || ref.key;
+
+  ref.set(registro).then(aposSalvar).catch(function(e){ toast('Erro ao salvar: '+e.message,'err'); });
+
+  function aposSalvar(){
+    toast(fbKeyExistente?'Inspeção atualizada!':'Inspeção salva!','ok');
+    fM('ov-insp');
+    if(coleta.algumaReprova){
+      abrirPerguntaNC(fbKey, registro);
+    } else {
+      carregarLinhasAtivas();
+    }
+  }
+}
+
+function abrirPerguntaNC(inspFbKey, registro){
+  var camposReprovados=Object.keys(registro.aprovacoes).filter(function(k){return !registro.aprovacoes[k];});
+  var nomes=camposReprovados.map(function(k){
+    var c=CAMPOS_NUM.find(function(x){return x.key===k;});
+    return c?c.label:k;
+  }).join(', ');
+  if(confirm('A inspeção foi REPROVADA em: '+nomes+'.\n\nDeseja abrir uma Não Conformidade agora?')){
+    abrirModalNC(inspFbKey, registro, camposReprovados);
+  } else {
+    carregarLinhasAtivas();
+  }
+}
+
+// ============================================================
+// NÃO CONFORMIDADES
+// ============================================================
+var NC_CONTEXTO=null;
+
+function abrirModalNC(inspFbKey, registro, camposReprovados){
+  var detalhesParam = camposReprovados.map(function(k){
+    var c=CAMPOS_NUM.find(function(x){return x.key===k;});
+    var pq=PARAMS_QUAL[registro.cod];
+    return (c?c.label:k)+': valor '+fN(registro.resultados[k],2)+' — faixa esperada '+faixaTexto(c,pq);
+  }).join('<br>');
+
+  NC_CONTEXTO={
+    inspFbKey:inspFbKey, registro:registro, camposReprovados:camposReprovados
+  };
+
+  G('nc-origem-info').innerHTML='<strong>OP '+registro.opId+'</strong> — '+registro.desc+
+    (registro.lote?' — Lote: '+registro.lote:'')+'<br>'+
+    'Linha: '+registro.linha+' — Turno: '+registro.turno+' — '+registro.data+' '+registro.hora+'<br><br>'+
+    '<strong>Parâmetro(s) fora de especificação:</strong><br>'+detalhesParam;
+
+  G('nc-desc').value=''; G('nc-causa').value=''; G('nc-acao').value='';
+  G('nc-resp').value=SES.nome||SES.login; G('nc-prazo').value='';
+  aM('ov-nc');
+}
+
+function abrirNCManual(){
+  // permite abrir NC sem origem de inspeção (caso futuro / uso avulso)
+  NC_CONTEXTO={inspFbKey:null, registro:null, camposReprovados:[]};
+  G('nc-origem-info').innerHTML='Não conformidade avulsa (sem inspeção de origem).';
+  G('nc-desc').value=''; G('nc-causa').value=''; G('nc-acao').value='';
+  G('nc-resp').value=SES.nome||SES.login; G('nc-prazo').value='';
+  aM('ov-nc');
+}
+
+function salvarNC(){
+  var desc=G('nc-desc').value.trim();
+  if(!desc){ toast('Descreva a não conformidade','err'); return; }
+  var r=NC_CONTEXTO.registro;
+  var nc={
+    inspecaoFbKey: NC_CONTEXTO.inspFbKey,
+    opFbKey: r?r.opFbKey:null, opId: r?r.opId:null, cod: r?r.cod:null,
+    desc: r?r.desc:null, lote: r?r.lote:null, linha: r?r.linha:null,
+    turno: r?r.turno:null, maquina: r?r.linha:null,
+    parametrosReprovados: NC_CONTEXTO.camposReprovados,
+    descricao: desc,
+    causa: G('nc-causa').value.trim(),
+    acaoCorretiva: G('nc-acao').value.trim(),
+    responsavel: G('nc-resp').value.trim(),
+    prazo: G('nc-prazo').value,
+    status:'Aberta',
+    aberturaTs: agora(), aberturaAnalista: SES.login
+  };
+  var ref=DB.ref('qualidade_nc').push();
+  ref.set(nc).then(function(){
+    if(NC_CONTEXTO.inspFbKey){
+      DB.ref('qualidade_inspecoes/'+NC_CONTEXTO.inspFbKey).update({ncAberta:true, ncFbKey:ref.key});
+    }
+    toast('Não Conformidade aberta!','ok');
+    fM('ov-nc');
+    carregarLinhasAtivas();
+    monitorarNCAbertas();
+  }).catch(function(e){ toast('Erro: '+e.message,'err'); });
+}
+
+function renderNC(){
+  var corpo=G('nc-corpo');
+  corpo.innerHTML='<tr><td colspan="9" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr>';
+  DB.ref('qualidade_nc').once('value').then(function(s){
+    NC_LISTA=[];
+    if(s.exists()) s.forEach(function(c){ var v=c.val(); v.fbKey=c.key; NC_LISTA.push(v); });
+    NC_LISTA.sort(function(a,b){ return (b.aberturaTs||'')>(a.aberturaTs||'')?1:-1; });
+    renderNCFiltrado();
+  }).catch(function(e){
+    corpo.innerHTML='<tr><td colspan="9" style="text-align:center;padding:20px;color:#c0392b">Erro: '+e.message+'</td></tr>';
+  });
+}
+
+function renderNCFiltrado(){
+  var fStatus=G('nc-filtro-status').value, fLinha=G('nc-filtro-linha').value;
+  var lista=NC_LISTA.filter(function(n){
+    if(fStatus && n.status!==fStatus) return false;
+    if(fLinha && n.linha!==fLinha) return false;
+    return true;
+  });
+  var corpo=G('nc-corpo');
+  if(!lista.length){
+    corpo.innerHTML='<tr><td colspan="9" style="text-align:center;padding:20px;color:#999">Nenhuma não conformidade encontrada</td></tr>';
+    return;
+  }
+  var h='';
+  lista.forEach(function(n){
+    var stCls = n.status==='Concluída'?'bvd':n.status==='Em andamento'?'bam':'brd';
+    var prazoVencido = n.prazo && n.status!=='Concluída' && n.prazo<hoje();
+    h+='<tr style="cursor:pointer" onclick="abrirDetalheNC(\''+n.fbKey+'\')">';
+    h+='<td>'+(n.aberturaTs?n.aberturaTs.slice(0,10).split('-').reverse().join('/'):'—')+'</td>';
+    h+='<td>'+(n.opId||'—')+'</td>';
+    h+='<td>'+(n.desc||'—')+'</td>';
+    h+='<td>'+(n.lote||'—')+'</td>';
+    h+='<td>'+(n.linha||'—')+'</td>';
+    h+='<td>'+((n.parametrosReprovados||[]).join(', ')||'—')+'</td>';
+    h+='<td><span class="badge '+stCls+'">'+n.status+'</span></td>';
+    h+='<td'+(prazoVencido?' style="color:#c0392b;font-weight:700"':'')+'>'+(n.prazo?n.prazo.split('-').reverse().join('/'):'—')+(prazoVencido?' ⚠':'')+'</td>';
+    h+='<td><button class="btn bxs">Ver</button></td>';
+    h+='</tr>';
+  });
+  corpo.innerHTML=h;
+}
+
+var NCD_FBKEY=null;
+function abrirDetalheNC(fbKey){
+  var n=NC_LISTA.find(function(x){return x.fbKey===fbKey;});
+  if(!n) return;
+  NCD_FBKEY=fbKey;
+  G('ncd-info').innerHTML='<strong>OP '+(n.opId||'—')+'</strong> — '+(n.desc||'')+
+    (n.lote?' — Lote: '+n.lote:'')+'<br>Linha: '+(n.linha||'—')+' — Turno: '+(n.turno||'—')+
+    '<br>Parâmetro(s): '+((n.parametrosReprovados||[]).join(', ')||'—')+
+    '<br>Aberta em '+(n.aberturaTs?n.aberturaTs.slice(0,10).split('-').reverse().join('/'):'—')+' por '+(n.aberturaAnalista||'—');
+  G('ncd-desc').value=n.descricao||'';
+  G('ncd-causa').value=n.causa||'';
+  G('ncd-acao').value=n.acaoCorretiva||'';
+  G('ncd-resp').value=n.responsavel||'';
+  G('ncd-prazo').value=n.prazo||'';
+  G('ncd-status').value=n.status||'Aberta';
+  aM('ov-nc-detalhe');
+}
+
+function salvarEdicaoNC(){
+  if(!NCD_FBKEY) return;
+  var statusNovo=G('ncd-status').value;
+  var upd={
+    descricao:G('ncd-desc').value.trim(),
+    causa:G('ncd-causa').value.trim(),
+    acaoCorretiva:G('ncd-acao').value.trim(),
+    responsavel:G('ncd-resp').value.trim(),
+    prazo:G('ncd-prazo').value,
+    status:statusNovo
+  };
+  if(statusNovo==='Concluída') upd.conclusaoTs=agora();
+  DB.ref('qualidade_nc/'+NCD_FBKEY).update(upd).then(function(){
+    toast('Não Conformidade atualizada!','ok');
+    fM('ov-nc-detalhe');
+    renderNC();
+    monitorarNCAbertas();
+  }).catch(function(e){ toast('Erro: '+e.message,'err'); });
+}
+
+function monitorarNCAbertas(){
+  DB.ref('qualidade_nc').orderByChild('status').equalTo('Aberta').once('value').then(function(s){
+    G('nc-dot').style.display = (s.exists() && s.numChildren()>0) ? 'inline-block' : 'none';
+  });
+}
+
+// ============================================================
+// DASHBOARD
+// ============================================================
+var DASH_CHARTS={};
+
+function gerarDashboardQual(){
+  var di=G('dash-di').value, df=G('dash-df').value;
+  if(!di||!df){ toast('Informe o período','err'); return; }
+  var linhaF=G('dash-linha').value, analistaF=G('dash-analista').value;
+
+  G('dash-cards').innerHTML='<div style="grid-column:1/-1;text-align:center;padding:20px;color:#739630">Carregando...</div>';
+
+  Promise.all([
+    DB.ref('qualidade_inspecoes').orderByChild('data').startAt(di).endAt(df).once('value'),
+    DB.ref('qualidade_nc').once('value')
+  ]).then(function(results){
+    var insp=[]; results[0].forEach(function(c){ var v=c.val(); v.fbKey=c.key; insp.push(v); });
+    var ncs=[]; results[1].forEach(function(c){ var v=c.val(); v.fbKey=c.key; ncs.push(v); });
+
+    INSPECOES_CACHE=insp;
+    popularFiltroAnalistas(insp);
+
+    if(linhaF) insp=insp.filter(function(i){return i.linha===linhaF;});
+    if(analistaF) insp=insp.filter(function(i){return i.analista===analistaF;});
+    var ncsNoPeriodo=ncs.filter(function(n){
+      var dt=(n.aberturaTs||'').slice(0,10);
+      return dt>=di && dt<=df && (!linhaF || n.linha===linhaF);
+    });
+
+    renderDashCards(insp, ncsNoPeriodo);
+    renderChartStatus(insp);
+    renderChartLinha(insp);
+    renderTabelaProdutosDesvio(insp);
+    renderChartUmidade(insp);
+  }).catch(function(e){
+    G('dash-cards').innerHTML='<div style="color:#c0392b;padding:20px">Erro: '+e.message+'</div>';
+  });
+}
+
+function popularFiltroAnalistas(insp){
+  var sel=G('dash-analista');
+  var atual=sel.value;
+  var nomes={};
+  insp.forEach(function(i){ nomes[i.analista]=i.analistaNome||i.analista; });
+  var h='<option value="">Todos os analistas</option>';
+  Object.keys(nomes).sort().forEach(function(login){
+    h+='<option value="'+login+'">'+nomes[login]+'</option>';
+  });
+  sel.innerHTML=h;
+  sel.value=atual;
+}
+
+function renderDashCards(insp, ncs){
+  var total=insp.length;
+  var aprovadas=insp.filter(function(i){return i.statusGeral==='aprovado';}).length;
+  var reprovadas=insp.filter(function(i){return i.statusGeral==='reprovado';}).length;
+  var ncAbertas=ncs.filter(function(n){return n.status==='Aberta'||n.status==='Em andamento';}).length;
+  var ncConcluidas=ncs.filter(function(n){return n.status==='Concluída';}).length;
+
+  var h='';
+  h+='<div class="mc"><div class="ml">Total de Análises</div><div class="mv cg">'+total+'</div></div>';
+  h+='<div class="mc"><div class="ml">Aprovadas</div><div class="mv cg">'+aprovadas+'</div><div class="ms">'+(total?Math.round(aprovadas/total*100):0)+'%</div></div>';
+  h+='<div class="mc"><div class="ml">Reprovadas</div><div class="mv cr">'+reprovadas+'</div><div class="ms">'+(total?Math.round(reprovadas/total*100):0)+'%</div></div>';
+  h+='<div class="mc"><div class="ml">NC Abertas</div><div class="mv co">'+ncAbertas+'</div></div>';
+  h+='<div class="mc"><div class="ml">NC Concluídas</div><div class="mv cg">'+ncConcluidas+'</div></div>';
+  G('dash-cards').innerHTML=h;
+}
+
+function renderChartStatus(insp){
+  var aprovadas=insp.filter(function(i){return i.statusGeral==='aprovado';}).length;
+  var reprovadas=insp.filter(function(i){return i.statusGeral==='reprovado';}).length;
+  var semAval=insp.length-aprovadas-reprovadas;
+  if(DASH_CHARTS.status) DASH_CHARTS.status.destroy();
+  DASH_CHARTS.status=new Chart(G('chQualStatus'),{
+    type:'doughnut',
+    data:{labels:['Aprovadas','Reprovadas','Sem avaliação'],datasets:[{data:[aprovadas,reprovadas,semAval],backgroundColor:['#024f2b','#c0392b','#dde6dd']}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:11}}}}}
+  });
+}
+
+function renderChartLinha(insp){
+  var porLinha={};
+  LINHAS.forEach(function(l){ porLinha[l]={total:0,reprov:0}; });
+  insp.forEach(function(i){
+    if(!porLinha[i.linha]) porLinha[i.linha]={total:0,reprov:0};
+    porLinha[i.linha].total++;
+    if(i.statusGeral==='reprovado') porLinha[i.linha].reprov++;
+  });
+  var labels=Object.keys(porLinha);
+  var data=labels.map(function(l){return porLinha[l].reprov;});
+  if(DASH_CHARTS.linha) DASH_CHARTS.linha.destroy();
+  DASH_CHARTS.linha=new Chart(G('chQualLinha'),{
+    type:'bar',
+    data:{labels:labels.map(function(l){return l.replace(/\(.*\)/,'').trim();}),datasets:[{label:'Reprovações',data:data,backgroundColor:'#c0392b'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}
+  });
+}
+
+function renderTabelaProdutosDesvio(insp){
+  var porProd={};
+  insp.forEach(function(i){
+    if(i.statusGeral!=='reprovado') return;
+    var key=i.cod+'|'+(i.desc||'');
+    porProd[key]=(porProd[key]||0)+1;
+  });
+  var arr=Object.keys(porProd).map(function(k){
+    var parts=k.split('|');
+    return {cod:parts[0], desc:parts[1], qtd:porProd[k]};
+  }).sort(function(a,b){return b.qtd-a.qtd;}).slice(0,10);
+
+  if(!arr.length){
+    G('dash-prod-desvios').innerHTML='<div style="text-align:center;padding:16px;color:#999;font-size:12px">Nenhum desvio no período</div>';
+    return;
+  }
+  var h='<table><thead><tr><th>Código</th><th>Produto</th><th style="text-align:right">Reprovações</th></tr></thead><tbody>';
+  arr.forEach(function(p){
+    h+='<tr><td>'+p.cod+'</td><td>'+(p.desc||'—')+'</td><td style="text-align:right;font-weight:700;color:#c0392b">'+p.qtd+'</td></tr>';
+  });
+  h+='</tbody></table>';
+  G('dash-prod-desvios').innerHTML=h;
+}
+
+function renderChartUmidade(insp){
+  var porLinha={};
+  LINHAS.forEach(function(l){ porLinha[l]={soma:0,n:0}; });
+  insp.forEach(function(i){
+    var u=i.resultados&&i.resultados.umid;
+    if(u===undefined||u===null) return;
+    if(!porLinha[i.linha]) porLinha[i.linha]={soma:0,n:0};
+    porLinha[i.linha].soma+=Number(u);
+    porLinha[i.linha].n++;
+  });
+  var labels=Object.keys(porLinha);
+  var data=labels.map(function(l){ return porLinha[l].n ? +(porLinha[l].soma/porLinha[l].n).toFixed(2) : 0; });
+  if(DASH_CHARTS.umid) DASH_CHARTS.umid.destroy();
+  DASH_CHARTS.umid=new Chart(G('chUmidade'),{
+    type:'bar',
+    data:{labels:labels.map(function(l){return l.replace(/\(.*\)/,'').trim();}),datasets:[{label:'Umidade média (%)',data:data,backgroundColor:'#739630'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}
+  });
+}
+
+// ============================================================
+// RASTREABILIDADE POR LOTE
+// ============================================================
+function buscarRastreio(){
+  var termo=G('rast-busca').value.trim();
+  if(!termo){ toast('Digite um lote ou número de OP','err'); return; }
+  G('rast-resultado').innerHTML='<div style="text-align:center;padding:30px;color:#739630">Buscando...</div>';
+
+  DB.ref('ops').once('value').then(function(s){
+    var ops=[];
+    if(s.exists()) s.forEach(function(c){
+      var o=c.val(); o.fbKey=c.key;
+      var matchLote=(o.lote||'').toLowerCase().indexOf(termo.toLowerCase())!==-1;
+      var matchOp=String(o.id||'').toLowerCase().indexOf(termo.toLowerCase())!==-1;
+      if(matchLote||matchOp) ops.push(o);
+    });
+    if(!ops.length){
+      G('rast-resultado').innerHTML='<div class="card" style="text-align:center;color:#999">Nenhuma OP encontrada para "'+termo+'"</div>';
+      return;
+    }
+    Promise.all(ops.map(function(op){ return montarRastreioOP(op); })).then(function(blocos){
+      G('rast-resultado').innerHTML=blocos.join('');
+    });
+  }).catch(function(e){
+    G('rast-resultado').innerHTML='<div style="color:#c0392b;padding:20px">Erro: '+e.message+'</div>';
+  });
+}
+
+function montarRastreioOP(op){
+  return Promise.all([
+    DB.ref('extrusao_apts').orderByChild('opFbKey').equalTo(op.fbKey).once('value'),
+    DB.ref('extrusao_paradas').orderByChild('opFbKey').equalTo(op.fbKey).once('value'),
+    DB.ref('qualidade_inspecoes').orderByChild('opFbKey').equalTo(op.fbKey).once('value'),
+    DB.ref('qualidade_nc').orderByChild('opFbKey').equalTo(op.fbKey).once('value')
+  ]).then(function(r){
+    var apts=[]; r[0].forEach(function(c){apts.push(c.val());});
+    var paradas=[]; r[1].forEach(function(c){paradas.push(c.val());});
+    var insps=[]; r[2].forEach(function(c){var v=c.val();v.fbKey=c.key;insps.push(v);});
+    var ncs=[]; r[3].forEach(function(c){ncs.push(c.val());});
+
+    var totalReal = apts.reduce(function(s,a){return s+(Number(a.real)||0);},0);
+
+    var h='<div class="card">';
+    h+='<div class="ch"><span class="ct">OP '+op.id+' — '+(op.desc||op.cod)+'</span><span class="badge bvd">'+(op.status||'—')+'</span></div>';
+    h+='<div class="fr3" style="margin-bottom:14px">';
+    h+='<div><div class="fl">Lote</div><div style="font-weight:700;color:#024f2b">'+(op.lote||'—')+'</div></div>';
+    h+='<div><div class="fl">Linha / Máquina</div><div>'+(op.linha||'—')+'</div></div>';
+    h+='<div><div class="fl">Data de Produção</div><div>'+(op.data?op.data.split('-').reverse().join('/'):'—')+'</div></div>';
+    h+='</div>';
+
+    h+='<div class="ct" style="margin-bottom:6px">Produção (Extrusão)</div>';
+    h+='<div style="font-size:12px;color:#4a664a;margin-bottom:12px">Total apontado: <strong>'+fN(totalReal)+' kg</strong> em '+apts.length+' apontamento(s) — '+paradas.length+' parada(s) registrada(s)</div>';
+
+    h+='<div class="ct" style="margin-bottom:6px">Resultados de Qualidade ('+insps.length+')</div>';
+    if(insps.length){
+      h+='<div class="tw"><table><thead><tr><th>Hora</th><th>Analista</th><th>Status</th><th>Parâmetros fora</th></tr></thead><tbody>';
+      insps.forEach(function(i){
+        var fora=Object.keys(i.aprovacoes||{}).filter(function(k){return !i.aprovacoes[k];});
+        h+='<tr><td>'+(i.hora||'—')+'</td><td>'+(i.analistaNome||i.analista||'—')+'</td>';
+        h+='<td><span class="badge '+(i.statusGeral==='reprovado'?'brd':'bvd')+'">'+(i.statusGeral||'—')+'</span></td>';
+        h+='<td>'+(fora.join(', ')||'—')+'</td></tr>';
+      });
+      h+='</tbody></table></div>';
+    } else {
+      h+='<div style="font-size:12px;color:#999;margin-bottom:12px">Nenhuma inspeção registrada para esta OP</div>';
+    }
+
+    h+='<div class="ct" style="margin-top:14px;margin-bottom:6px">Não Conformidades ('+ncs.length+')</div>';
+    if(ncs.length){
+      h+='<div class="tw"><table><thead><tr><th>Descrição</th><th>Status</th><th>Responsável</th></tr></thead><tbody>';
+      ncs.forEach(function(n){
+        h+='<tr><td>'+(n.descricao||'—')+'</td><td><span class="badge '+(n.status==='Concluída'?'bvd':'brd')+'">'+n.status+'</span></td><td>'+(n.responsavel||'—')+'</td></tr>';
+      });
+      h+='</tbody></table></div>';
+    } else {
+      h+='<div style="font-size:12px;color:#999">Nenhuma não conformidade registrada</div>';
+    }
+    h+='</div>';
+    return h;
+  });
+}
+
+// ============================================================
+// ADMIN — CADASTRO DE PARÂMETROS
+// ============================================================
+function renderParamsLista(){
+  var busca=(G('params-busca').value||'').toLowerCase();
+  var corpo=G('params-corpo');
+  var codigos=Object.keys(PARAMS_QUAL).sort();
+  var h='';
+  codigos.forEach(function(cod){
+    var p=PARAMS_QUAL[cod];
+    if(busca && cod.toLowerCase().indexOf(busca)===-1 && (p.descricao||'').toLowerCase().indexOf(busca)===-1) return;
+    var incompleto = !p.umidMin && !p.umidMax && !p.densMin && !p.pbMin;
+    h+='<tr style="cursor:pointer" onclick="abrirEditarParam(\''+esc(cod)+'\')">';
+    h+='<td><strong>'+cod+'</strong></td>';
+    h+='<td>'+(p.descricao||'—')+'</td>';
+    h+='<td>'+(p.unidade||'—')+'</td>';
+    h+='<td>'+(p.umidMin!=null?fN(p.umidMin,1)+' a '+fN(p.umidMax,1)+'%':'—')+'</td>';
+    h+='<td>'+(p.awMin!=null?fN(p.awMin,3)+' a '+fN(p.awMax,3):'—')+'</td>';
+    h+='<td>'+(p.densMin!=null?fN(p.densMin,0)+' a '+fN(p.densMax,0):'—')+'</td>';
+    h+='<td>'+(incompleto?'<span class="badge brd">Incompleto</span>':'<span class="badge bvd">OK</span>')+'</td>';
+    h+='<td><button class="btn bxs">Editar</button></td>';
+    h+='</tr>';
+  });
+  corpo.innerHTML=h || '<tr><td colspan="8" style="text-align:center;padding:20px;color:#999">Nenhum produto encontrado</td></tr>';
+}
+
+function abrirNovoParam(){
+  G('param-titulo').textContent='Novo Produto';
+  ['codigo','desc','umidMin','umidMax','awMin','awMax','densMin','densMax','corteMin','corteMax',
+   'diamMin','diamMax','pbMin','eeMin','mmMax','tempMax'].forEach(function(f){
+    var el=G('pp-'+f); if(el) el.value='';
+  });
+  G('pp-codigo').disabled=false;
+  G('pp-unidade').value='KG';
+  aM('ov-param');
+}
+
+function abrirEditarParam(cod){
+  var p=PARAMS_QUAL[cod];
+  if(!p) return;
+  G('param-titulo').textContent='Editar Produto — '+cod;
+  G('pp-codigo').value=cod;
+  G('pp-codigo').disabled=true;
+  G('pp-desc').value=p.descricao||'';
+  G('pp-unidade').value=p.unidade||'KG';
+  G('pp-pbMin').value=p.pbMin!=null?p.pbMin:'';
+  G('pp-eeMin').value=p.eeMin!=null?p.eeMin:'';
+  G('pp-mmMax').value=p.mmMax!=null?p.mmMax:'';
+  G('pp-tempMax').value=p.tempMax!=null?p.tempMax:'';
+  G('pp-umidMin').value=p.umidMin!=null?p.umidMin:'';
+  G('pp-umidMax').value=p.umidMax!=null?p.umidMax:'';
+  G('pp-awMin').value=p.awMin!=null?p.awMin:'';
+  G('pp-awMax').value=p.awMax!=null?p.awMax:'';
+  G('pp-densMin').value=p.densMin!=null?p.densMin:'';
+  G('pp-densMax').value=p.densMax!=null?p.densMax:'';
+  G('pp-corteMin').value=p.corteMin!=null?p.corteMin:'';
+  G('pp-corteMax').value=p.corteMax!=null?p.corteMax:'';
+  G('pp-diamMin').value=p.diamMin!=null?p.diamMin:'';
+  G('pp-diamMax').value=p.diamMax!=null?p.diamMax:'';
+  aM('ov-param');
+}
+
+function numOrNull(v){ return v===''||v===undefined||v===null ? null : Number(v); }
+
+function salvarParam(){
+  var cod=G('pp-codigo').value.trim();
+  if(!cod){ toast('Informe o código do produto','err'); return; }
+  var p={
+    codigo:cod,
+    descricao:G('pp-desc').value.trim(),
+    unidade:G('pp-unidade').value,
+    pbMin:numOrNull(G('pp-pbMin').value),
+    eeMin:numOrNull(G('pp-eeMin').value),
+    mmMax:numOrNull(G('pp-mmMax').value),
+    tempMax:numOrNull(G('pp-tempMax').value),
+    umidMin:numOrNull(G('pp-umidMin').value),
+    umidMax:numOrNull(G('pp-umidMax').value),
+    awMin:numOrNull(G('pp-awMin').value),
+    awMax:numOrNull(G('pp-awMax').value),
+    densMin:numOrNull(G('pp-densMin').value),
+    densMax:numOrNull(G('pp-densMax').value),
+    corteMin:numOrNull(G('pp-corteMin').value),
+    corteMax:numOrNull(G('pp-corteMax').value),
+    diamMin:numOrNull(G('pp-diamMin').value),
+    diamMax:numOrNull(G('pp-diamMax').value)
+  };
+  DB.ref('qualidade_params/'+cod).set(p).then(function(){
+    PARAMS_QUAL[cod]=p;
+    toast('Parâmetros salvos!','ok');
+    fM('ov-param');
+    renderParamsLista();
+  }).catch(function(e){ toast('Erro: '+e.message,'err'); });
+}
+
+// ============================================================
+// ADMIN — GESTÃO DE USUÁRIOS (perfis qualidade/admin)
+// ============================================================
+var USUARIOS_CACHE=[];
+
+function carregarUsuarios(){
+  var corpo=G('usuarios-corpo');
+  corpo.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr>';
+  DB.ref('usuarios').once('value').then(function(s){
+    USUARIOS_CACHE=[];
+    if(s.exists()){
+      s.forEach(function(c){
+        var u=c.val();
+        // Lista apenas perfis relevantes a este módulo, para não misturar com operador/pcp/supervisor do ensaque
+        if(u.perfil==='qualidade' || u.perfil==='admin'){
+          u.fbKey=c.key;
+          USUARIOS_CACHE.push(u);
+        }
+      });
+    }
+    renderUsuariosLista();
+  }).catch(function(e){
+    corpo.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#c0392b">Erro: '+e.message+'</td></tr>';
+  });
+}
+
+function renderUsuariosLista(){
+  var corpo=G('usuarios-corpo');
+  if(!USUARIOS_CACHE.length){
+    corpo.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#999">Nenhum usuário de qualidade cadastrado ainda</td></tr>';
+    return;
+  }
+  var h='';
+  USUARIOS_CACHE.forEach(function(u){
+    var ativo = u.inativo!==true;
+    var isSelf = SES && u.login===SES.login;
+    var pcls = u.perfil==='admin' ? 'bpx' : 'baz';
+    h+='<tr style="opacity:'+(ativo?1:.55)+'">';
+    h+='<td style="font-weight:600">'+u.login+'</td>';
+    h+='<td>'+(u.nome||'—')+'</td>';
+    h+='<td><span class="badge '+pcls+'">'+(u.perfil==='admin'?'Administrador':'Qualidade')+'</span></td>';
+    h+='<td><span class="badge '+(ativo?'bvd':'bcz')+'">'+(ativo?'Ativo':'Inativo')+'</span></td>';
+    h+='<td style="white-space:nowrap;display:flex;gap:4px">';
+    if(isSelf){
+      h+='<span style="font-size:11px;color:#999">Sua conta</span>';
+    } else {
+      h+='<button class="btn bxs" onclick="toggleAtivoUsuario(\''+u.fbKey+'\','+ativo+')" style="'+(ativo?'color:#d29922;border-color:#d29922':'color:#024f2b;border-color:#024f2b')+'">'+(ativo?'Desativar':'Ativar')+'</button>';
+      h+='<button class="btn bxs" onclick="abrirEditarUsuario(\''+u.fbKey+'\')">Editar</button>';
+      h+='<button class="btn bxs" onclick="prepExcluirUsuario(\''+u.fbKey+'\')" style="color:#c0392b;border-color:#c0392b">Excluir</button>';
+    }
+    h+='</td></tr>';
+  });
+  corpo.innerHTML=h;
+}
+
+var USR_EDITANDO_FBKEY=null;
+
+function abrirNovoUsuario(){
+  USR_EDITANDO_FBKEY=null;
+  G('usr-titulo').textContent='Novo Usuário';
+  G('usr-login').value=''; G('usr-login').disabled=false;
+  G('usr-nome').value='';
+  G('usr-senha').value=''; G('usr-senha').placeholder='Mínimo 4 caracteres';
+  G('usr-perfil').value='qualidade';
+  G('btn-salvar-usuario').textContent='Criar Usuário';
+  aM('ov-usuario');
+}
+
+function abrirEditarUsuario(fbKey){
+  var u=USUARIOS_CACHE.find(function(x){return x.fbKey===fbKey;});
+  if(!u) return;
+  USR_EDITANDO_FBKEY=fbKey;
+  G('usr-titulo').textContent='Editar Usuário — '+u.login;
+  G('usr-login').value=u.login; G('usr-login').disabled=true; // login não muda após criado (evita duplicidade/confusão de histórico)
+  G('usr-nome').value=u.nome||'';
+  G('usr-senha').value=''; G('usr-senha').placeholder='Deixe em branco para não alterar';
+  G('usr-perfil').value=u.perfil||'qualidade';
+  G('btn-salvar-usuario').textContent='Salvar Alterações';
+  aM('ov-usuario');
+}
+
+function salvarUsuario(){
+  var login=G('usr-login').value.trim().toLowerCase();
+  var nome=G('usr-nome').value.trim();
+  var senha=G('usr-senha').value;
+  var perfil=G('usr-perfil').value;
+
+  if(!login||!nome){ toast('Preencha login e nome','err'); return; }
+  if(!USR_EDITANDO_FBKEY && senha.length<4){ toast('Senha: mínimo 4 caracteres','err'); return; }
+  if(USR_EDITANDO_FBKEY && senha && senha.length<4){ toast('Senha: mínimo 4 caracteres','err'); return; }
+
+  // Validação de duplicidade de login — checa em TODO o nó usuarios (não só qualidade/admin),
+  // porque o login precisa ser único em todo o sistema (ensaque/extrusão usam o mesmo nó).
+  DB.ref('usuarios').orderByChild('login').equalTo(login).once('value').then(function(s){
+    var conflito=null;
+    if(s.exists()){
+      s.forEach(function(c){
+        if(c.key!==USR_EDITANDO_FBKEY) conflito=c.val();
+      });
+    }
+    if(conflito){
+      toast('Login "'+login+'" já está em uso','err');
+      return;
+    }
+
+    if(USR_EDITANDO_FBKEY){
+      var upd={login:login, nome:nome, perfil:perfil};
+      if(senha) upd.senha=senha;
+      DB.ref('usuarios/'+USR_EDITANDO_FBKEY).update(upd).then(function(){
+        toast('Usuário atualizado!','ok');
+        fM('ov-usuario');
+        carregarUsuarios();
+      }).catch(function(e){ toast('Erro: '+e.message,'err'); });
+    } else {
+      var novo={login:login, nome:nome, senha:senha, perfil:perfil, inativo:false};
+      DB.ref('usuarios').push(novo).then(function(){
+        toast('Usuário criado!','ok');
+        fM('ov-usuario');
+        carregarUsuarios();
+      }).catch(function(e){ toast('Erro: '+e.message,'err'); });
+    }
+  }).catch(function(e){ toast('Erro: '+e.message,'err'); });
+}
+
+function toggleAtivoUsuario(fbKey, estavaAtivo){
+  DB.ref('usuarios/'+fbKey).update({inativo: estavaAtivo}).then(function(){
+    toast(estavaAtivo?'Usuário desativado':'Usuário ativado','ok');
+    carregarUsuarios();
+  }).catch(function(e){ toast('Erro: '+e.message,'err'); });
+}
+
+function prepExcluirUsuario(fbKey){
+  var u=USUARIOS_CACHE.find(function(x){return x.fbKey===fbKey;});
+  if(!u) return;
+  G('excluir-usr-fbkey').value=fbKey;
+  G('excluir-usr-login').value=u.login;
+  G('excluir-usr-confirm').value='';
+  G('excluir-usr-msg').textContent='Excluir o usuário "'+u.login+'" ('+u.nome+')? Esta ação não pode ser desfeita.';
+  aM('ov-excluir-usuario');
+}
+
+function confirmarExcluirUsuario(){
+  var fbKey=G('excluir-usr-fbkey').value, login=G('excluir-usr-login').value;
+  if(G('excluir-usr-confirm').value.trim()!==login){ toast('Login não confere','err'); return; }
+  DB.ref('usuarios/'+fbKey).remove().then(function(){
+    toast('Usuário excluído!','ok');
+    fM('ov-excluir-usuario');
+    carregarUsuarios();
+  }).catch(function(e){ toast('Erro: '+e.message,'err'); });
+}
+
+
+function abrirInspecao(linha){
+  var op=OPS_ATIVAS[linha];
+  if(!op){ toast('Linha sem OP ativa','err'); return; }
+  var pq=PARAMS_QUAL[op.cod];
+  var horaIni=horaAtual();
+  var turno=turnoDeHora(horaIni);
+  var dataIni=hoje();
+
+  INSP_CONTEXTO={
+    linha:linha, op:op, pq:pq, editandoFbKey:null
+  };
+
+  G('insp-titulo').textContent='Inspeção — '+linha;
+  G('insp-op-info').innerHTML='<strong>OP '+op.id+'</strong> — '+(op.desc||op.cod)+
+    (op.lote?' &nbsp;|&nbsp; Lote: <strong>'+op.lote+'</strong>':'')+
+    ' &nbsp;|&nbsp; Código: '+op.cod;
+  G('insp-hora').value=horaIni;
+  G('insp-data').value=dataIni;
+  G('insp-turno').value='Turno '+turno;
+  G('insp-aviso-dup').style.display='none';
+
+  montarFormularioInspecao(null);
+  aM('ov-insp');
+
+  // Verifica se já existe inspeção nesta linha/OP na hora atual (arredondada para hora cheia)
+  verificarDuplicidadeInspecao(linha, op, dataIni);
+}
+
+function horaCheiaDe(h){ return h.split(':')[0]+':00'; }
+
+function verificarDuplicidadeInspecao(linha, op, data){
+  var horaC=horaCheiaDe(G('insp-hora').value);
+  DB.ref('qualidade_inspecoes').orderByChild('opFbKey').equalTo(op.fbKey).once('value').then(function(s){
+    var existente=null;
+    if(s.exists()){
+      s.forEach(function(c){
+        var v=c.val();
+        if(v.linha===linha && v.data===data && horaCheiaDe(v.hora||'00:00')===horaC){
+          existente={fbKey:c.key, dados:v};
+        }
+      });
+    }
+    if(existente){
+      G('insp-aviso-dup').style.display='block';
+      G('insp-aviso-dup').innerHTML='⚠ Já existe uma inspeção registrada para esta linha/OP nesta hora ('+(existente.dados.hora||'')+
+        ' por '+(existente.dados.analista||'—')+'). Os campos abaixo foram carregados para edição.';
+      INSP_CONTEXTO.editandoFbKey=existente.fbKey;
+      montarFormularioInspecao(existente.dados);
+    }
+  });
+}
+
+</script>
+</body>
+</html>
