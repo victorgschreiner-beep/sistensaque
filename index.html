@@ -528,6 +528,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
 <div class="ov" id="mfin"><div class="modal" style="max-width:380px">
   <div class="mt">Finalizar OP</div>
   <p style="font-size:13px;color:#4a664a;margin-bottom:16px" id="finmsg"></p>
+  <div class="aler" id="fin-aviso-ext" style="display:none">&#9888; A extrusão ainda não concluiu esta OP. Tem certeza que deseja finalizar o ensaque mesmo assim?</div>
   <input type="hidden" id="finid">
   <div class="mfoot"><button class="btn bsm" onclick="fM('mfin')">Cancelar</button><button class="btn bsm bg2" onclick="confirmarFin()">Confirmar</button></div>
 </div></div>
@@ -634,6 +635,7 @@ var DB = firebase.database();
 var SES = null;
 var PRODS = [];
 var OPS = [];         // array principal de ops
+var EXT_CONCLUIDA = {}; // {opFbKey: {linha,turno,data,operador,ts}} — OPs que a extrusao ja concluiu
 var SEL_SILOS = [];
 var SILO_OPID = null;
 var PDF_OPID = null;
@@ -769,7 +771,8 @@ function aplicarSessao(){
 function doLogout(){
   // Remove listener
   DB.ref('ops').off();
-  SES=null; OPS=[];
+  DB.ref('extrusao_op_concluida').off();
+  SES=null; OPS=[]; EXT_CONCLUIDA={};
   G('pg-app').style.display='none';
   G('pg-login').style.display='flex';
 }
@@ -859,6 +862,18 @@ function iniciarApp(){
   }, function(err){
     ld(false);
     toast('Erro Firebase: '+err.message,'err');
+  });
+
+  // Listener de OPs concluidas NA EXTRUSAO — usado para alertar o ensaque
+  // antes de finalizar uma OP que a extrusao ainda nao terminou
+  DB.ref('extrusao_op_concluida').on('value', function(snap){
+    EXT_CONCLUIDA={};
+    if(snap.exists()){
+      snap.forEach(function(c){ EXT_CONCLUIDA[c.key]=c.val(); });
+    }
+  }, function(err){
+    // Nao bloqueia o app se este listener falhar — apenas o aviso fica indisponivel
+    console.warn('Erro ao carregar extrusao_op_concluida:', err.message);
   });
 
   // Navega para tela inicial
@@ -2178,16 +2193,29 @@ function reabrirOP(fbKey){
   });
 }
 
+// Verifica se a extrusao ja concluiu esta OP (registro proprio, nao toca em ops/status)
+function extrusaoConcluiuOP(fbKey){
+  return !!(EXT_CONCLUIDA && EXT_CONCLUIDA[fbKey]);
+}
+
 function abrirFin(fbKey){
   var op=null;
   for(var i=0;i<OPS.length;i++){if(OPS[i].fbKey===fbKey){op=OPS[i];break;}}
   G('finid').value=fbKey;
   G('finmsg').textContent='Confirma a finalizacao da '+(op?op.id:fbKey)+'?';
+  var avisoEl=G('fin-aviso-ext');
+  if(avisoEl) avisoEl.style.display=extrusaoConcluiuOP(fbKey)?'none':'';
   G('mfin').classList.add('on');
 }
 
 function confirmarFin(){
   var fbKey=G('finid').value;
+  if(!extrusaoConcluiuOP(fbKey)){
+    var op=null;
+    for(var i=0;i<OPS.length;i++){if(OPS[i].fbKey===fbKey){op=OPS[i];break;}}
+    var ok=confirm('A extrusão ainda não concluiu a OP '+(op?op.id:fbKey)+'.\n\nTem certeza que deseja finalizar o ensaque mesmo assim?');
+    if(!ok) return;
+  }
   ld(true,'Finalizando...');
   DB.ref('ops/'+fbKey).update({status:'Concluida'}).then(function(){
     ld(false);toast('OP finalizada!','ok');fM('mfin');addLog('FINALIZAR',fbKey);
