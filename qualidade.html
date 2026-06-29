@@ -731,40 +731,80 @@ function carregarParamsQual(cb){
 // Uma OP aparece enquanto: status='Em andamento' OU (status='Concluida' E qualidade ainda não concluiu).
 // Isso permite inspecionar com atraso, mesmo após a extrusão já ter finalizado a OP —
 // e também permite duas OPs simultâneas na mesma linha (a antiga pendente + a nova já em produção).
+function encId(s){return s.replace(/[^a-zA-Z0-9]/g,"_");}
+
+// ============================================================
+// TELA: PRODUÇÃO — Linhas ativas
+// ============================================================
+// Importante: a extrusão NÃO usa o campo ops/{fbKey}/status para decidir o que está sendo
+// trabalhado agora numa linha — ela usa um ponteiro próprio em extrusao_op_ativa/{linha}/{data}/t{turno},
+// que aponta para o fbKey da OP selecionada naquele turno (com herança automática entre turnos
+// se a OP anterior não foi concluída). O status formal pode ficar em "Liberada" mesmo com a OP
+// sendo produzida de fato — então replicamos aqui a MESMA fonte de verdade que a extrusão usa,
+// em vez de depender do status, para não perder OPs que estão em produção real.
+//
+// Uma OP aparece como card enquanto:
+// - é a opAtiva do turno atual na linha (extrusao_op_ativa), OU
+// - status='Concluida' E qualidade ainda não confirmou (qualidade_op_concluida)
 function carregarLinhasAtivas(){
   var grid=G('linhas-grid');
   grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:30px;color:#739630">Carregando linhas...</div>';
+
+  var dt=hoje(), turno=turnoAtual();
+
+  var leiturasOpAtiva=LINHAS.map(function(linha){
+    return DB.ref('extrusao_op_ativa/'+encId(linha)+'/'+dt+'/t'+turno).once('value');
+  });
+
   Promise.all([
-    DB.ref('ops').orderByChild('status').equalTo('Em andamento').once('value'),
+    Promise.all(leiturasOpAtiva),
     DB.ref('ops').orderByChild('status').equalTo('Concluida').once('value'),
     DB.ref('qualidade_op_concluida').once('value')
   ]).then(function(results){
+    var opAtivaResults=results[0], concluidasSnap=results[1], qualConcluidasSnap=results[2];
+
     var qualConcluidas={};
-    if(results[2].exists()) results[2].forEach(function(c){ qualConcluidas[c.key]=true; });
+    if(qualConcluidasSnap.exists()) qualConcluidasSnap.forEach(function(c){ qualConcluidas[c.key]=true; });
 
     OPS_ATIVAS={};
     LINHAS.forEach(function(l){ OPS_ATIVAS[l]=[]; });
 
-    results[0].forEach(function(c){
-      var o=c.val(); o.fbKey=c.key; o.pendenteExtrusao=true;
-      if(OPS_ATIVAS[o.linha]) OPS_ATIVAS[o.linha].push(o);
-    });
-    results[1].forEach(function(c){
-      var o=c.val(); o.fbKey=c.key; o.pendenteExtrusao=false;
-      // Só entra se a extrusão concluiu MAS a qualidade ainda não confirmou
-      if(!qualConcluidas[o.fbKey] && OPS_ATIVAS[o.linha]){
-        // evita duplicar se por algum motivo já estiver na lista (não deveria, status são exclusivos)
-        var jaTem=OPS_ATIVAS[o.linha].some(function(x){return x.fbKey===o.fbKey;});
-        if(!jaTem) OPS_ATIVAS[o.linha].push(o);
-      }
+    // Para cada linha, descobre o fbKey real apontado por extrusao_op_ativa (fonte de verdade da extrusão)
+    var fbKeysAtivos=[];
+    var mapaLinhaFbKey={};
+    LINHAS.forEach(function(linha,i){
+      var fbKey=opAtivaResults[i].exists()?opAtivaResults[i].val():null;
+      if(fbKey){ fbKeysAtivos.push(fbKey); mapaLinhaFbKey[fbKey]=linha; }
     });
 
-    // Ordena cada linha: pendentes de qualidade (já concluídas na extrusão) primeiro, depois as em andamento
-    LINHAS.forEach(function(l){
-      OPS_ATIVAS[l].sort(function(a,b){ return (a.pendenteExtrusao?1:0)-(b.pendenteExtrusao?1:0); });
-    });
+    var buscarOps = fbKeysAtivos.map(function(fbKey){ return DB.ref('ops/'+fbKey).once('value'); });
 
-    renderLinhasGrid();
+    Promise.all(buscarOps).then(function(opsResults){
+      opsResults.forEach(function(s, i){
+        if(!s.exists()) return;
+        var fbKey=fbKeysAtivos[i];
+        var linha=mapaLinhaFbKey[fbKey];
+        var o=s.val(); o.fbKey=fbKey; o.pendenteExtrusao=true;
+        if(o.status!=='Concluida'){ // só entra como "em produção" se ainda não foi concluída de fato
+          OPS_ATIVAS[linha].push(o);
+        }
+      });
+
+      // OPs concluídas na extrusão mas ainda pendentes de confirmação da Qualidade
+      if(concluidasSnap.exists()) concluidasSnap.forEach(function(c){
+        var o=c.val(); o.fbKey=c.key; o.pendenteExtrusao=false;
+        if(!qualConcluidas[o.fbKey] && OPS_ATIVAS[o.linha]){
+          var jaTem=OPS_ATIVAS[o.linha].some(function(x){return x.fbKey===o.fbKey;});
+          if(!jaTem) OPS_ATIVAS[o.linha].push(o);
+        }
+      });
+
+      LINHAS.forEach(function(l){
+        OPS_ATIVAS[l].sort(function(a,b){ return (a.pendenteExtrusao?1:0)-(b.pendenteExtrusao?1:0); });
+      });
+
+      renderLinhasGrid();
+    });
   }).catch(function(e){
     grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:30px;color:#c0392b">Erro: '+e.message+'</div>';
   });
