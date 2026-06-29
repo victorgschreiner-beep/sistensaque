@@ -404,19 +404,14 @@ tr:hover td{background:rgba(2,79,43,.03)}
 <div class="modal">
   <div class="mt">Abrir Não Conformidade</div>
   <div id="nc-origem-info" class="aler"></div>
-  <div class="fg"><label class="fl">Descrição da Não Conformidade</label><textarea id="nc-desc" placeholder="Descreva o problema identificado..."></textarea></div>
+  <div class="fg"><label class="fl">Descrição do que Ocorreu</label><textarea id="nc-desc" placeholder="Descreva o problema identificado..."></textarea></div>
   <div class="fr">
-    <div class="fg"><label class="fl">Quantidade do Lote Afetada</label><input type="number" step="0.01" id="nc-qtd" placeholder="Ex: 500"></div>
+    <div class="fg"><label class="fl">Quantidade do Lote Não Conforme</label><input type="number" step="0.01" id="nc-qtd" placeholder="Ex: 500"></div>
     <div class="fg"><label class="fl">Unidade</label>
       <select id="nc-qtd-unidade"><option value="KG">KG</option><option value="SC">SC</option><option value="BG">BG</option></select>
     </div>
   </div>
-  <div class="fg"><label class="fl">Causa Provável</label><textarea id="nc-causa" placeholder="Causa raiz identificada ou suspeita..."></textarea></div>
-  <div class="fg"><label class="fl">Ação Corretiva</label><textarea id="nc-acao" placeholder="O que será feito para corrigir..."></textarea></div>
-  <div class="fr">
-    <div class="fg"><label class="fl">Responsável</label><input type="text" id="nc-resp" placeholder="Nome do responsável"></div>
-    <div class="fg"><label class="fl">Prazo</label><input type="date" id="nc-prazo"></div>
-  </div>
+  <div class="ali" style="font-size:11px">O plano de ação (5W2H) será definido pela supervisão após a abertura desta NC.</div>
   <div class="mfoot">
     <button class="btn" onclick="fM('ov-nc')">Cancelar</button>
     <button class="btn br" onclick="salvarNC()">⚠ Abrir NC</button>
@@ -429,13 +424,26 @@ tr:hover td{background:rgba(2,79,43,.03)}
 <div class="modal wide">
   <div class="mt">Detalhe da Não Conformidade</div>
   <div id="ncd-info" class="card"></div>
-  <div class="fg"><label class="fl">Descrição</label><textarea id="ncd-desc"></textarea></div>
-  <div class="fg"><label class="fl">Causa</label><textarea id="ncd-causa"></textarea></div>
-  <div class="fg"><label class="fl">Ação Corretiva</label><textarea id="ncd-acao"></textarea></div>
-  <div class="fr3">
-    <div class="fg"><label class="fl">Responsável</label><input type="text" id="ncd-resp"></div>
-    <div class="fg"><label class="fl">Prazo</label><input type="date" id="ncd-prazo"></div>
-    <div class="fg"><label class="fl">Status</label>
+  <div class="fg"><label class="fl">Descrição do que Ocorreu (registrado pela Qualidade)</label><textarea id="ncd-desc" disabled style="background:#eef2ee;color:#4a664a"></textarea></div>
+
+  <div class="ch" style="margin-top:6px">
+    <span class="ct">Plano de Ação — 5W2H</span>
+    <span id="ncd-5w2h-readonly-aviso" style="display:none;font-size:11px;color:#999">Somente supervisão ou administrador podem editar o plano de ação</span>
+  </div>
+  <div class="fg"><label class="fl">What — O que será feito?</label><textarea id="ncd-what" placeholder="Ex: Revisar procedimento de limpeza do secador"></textarea></div>
+  <div class="fg"><label class="fl">Why — Por que será feito?</label><textarea id="ncd-why" placeholder="Motivo da ação e benefício esperado"></textarea></div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Where — Onde será feito?</label><input type="text" id="ncd-where" placeholder="Linha, setor, máquina ou processo"></div>
+    <div class="fg"><label class="fl">Who — Quem será responsável?</label><input type="text" id="ncd-who" placeholder="Responsável principal"></div>
+  </div>
+  <div class="fr">
+    <div class="fg"><label class="fl">When — Início</label><input type="date" id="ncd-when-ini"></div>
+    <div class="fg"><label class="fl">When — Conclusão</label><input type="date" id="ncd-when-fim"></div>
+  </div>
+  <div class="fg"><label class="fl">How — Como será feito?</label><textarea id="ncd-how" placeholder="Etapas da execução: elaborar, treinar, validar, registrar evidências..."></textarea></div>
+
+  <div class="fr" style="margin-top:6px">
+    <div class="fg"><label class="fl">Status da Não Conformidade</label>
       <select id="ncd-status">
         <option value="Aberta">Aberta</option>
         <option value="Em andamento">Em andamento</option>
@@ -445,7 +453,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
   <div class="mfoot">
     <button class="btn" onclick="fM('ov-nc-detalhe')">Fechar</button>
-    <button class="btn bp" onclick="salvarEdicaoNC()">💾 Salvar Alterações</button>
+    <button class="btn bp" onclick="salvarEdicaoNC()" id="btn-salvar-edicao-nc">💾 Salvar Alterações</button>
   </div>
 </div>
 </div>
@@ -1083,9 +1091,8 @@ function abrirModalNC(inspFbKey, registro, camposReprovados){
     'Linha: '+registro.linha+' — Turno: '+registro.turno+' — '+registro.data+' '+registro.hora+'<br><br>'+
     '<strong>Parâmetro(s) fora de especificação:</strong><br>'+detalhesParam;
 
-  G('nc-desc').value=''; G('nc-causa').value=''; G('nc-acao').value='';
+  G('nc-desc').value='';
   G('nc-qtd').value=''; G('nc-qtd-unidade').value=(registro.unidade||'KG');
-  G('nc-resp').value=SES.nome||SES.login; G('nc-prazo').value='';
   aM('ov-nc');
 }
 
@@ -1093,9 +1100,8 @@ function abrirNCManual(){
   // permite abrir NC sem origem de inspeção (caso futuro / uso avulso)
   NC_CONTEXTO={inspFbKey:null, registro:null, camposReprovados:[]};
   G('nc-origem-info').innerHTML='Não conformidade avulsa (sem inspeção de origem).';
-  G('nc-desc').value=''; G('nc-causa').value=''; G('nc-acao').value='';
+  G('nc-desc').value='';
   G('nc-qtd').value=''; G('nc-qtd-unidade').value='KG';
-  G('nc-resp').value=SES.nome||SES.login; G('nc-prazo').value='';
   aM('ov-nc');
 }
 
@@ -1112,9 +1118,8 @@ function abrirNCDaInspecao(){
   };
   G('nc-origem-info').innerHTML='<strong>OP '+op.id+'</strong> — '+(op.desc||op.cod)+
     (op.lote?' — Lote: '+op.lote:'')+'<br>Linha: '+linha+' — aberta manualmente durante a inspeção (sem reprovação automática de parâmetro).';
-  G('nc-desc').value=''; G('nc-causa').value=''; G('nc-acao').value='';
+  G('nc-desc').value='';
   G('nc-qtd').value=''; G('nc-qtd-unidade').value=(op.tipo||'KG');
-  G('nc-resp').value=SES.nome||SES.login; G('nc-prazo').value='';
   aM('ov-nc');
 }
 
@@ -1132,12 +1137,10 @@ function salvarNC(){
     descricao: desc,
     quantidadeAfetada: qtd!==''?Number(qtd):null,
     unidadeAfetada: G('nc-qtd-unidade').value,
-    causa: G('nc-causa').value.trim(),
-    acaoCorretiva: G('nc-acao').value.trim(),
-    responsavel: G('nc-resp').value.trim(),
-    prazo: G('nc-prazo').value,
     status:'Aberta',
-    aberturaTs: agora(), aberturaAnalista: SES.login
+    aberturaTs: agora(), aberturaAnalista: SES.login,
+    // Plano de ação (5W2H) — preenchido posteriormente pela supervisão
+    w2h:{what:'',why:'',where:'',who:'',whenIni:'',whenFim:'',how:''}
   };
   var ref=DB.ref('qualidade_nc').push();
   ref.set(nc).then(function(){
@@ -1180,7 +1183,10 @@ function renderNCFiltrado(){
   var h='';
   lista.forEach(function(n){
     var stCls = n.status==='Concluída'?'bvd':n.status==='Em andamento'?'bam':'brd';
-    var prazoVencido = n.prazo && n.status!=='Concluída' && n.prazo<hoje();
+    var w=n.w2h||{};
+    var prazo=w.whenFim||'';
+    var prazoVencido = prazo && n.status!=='Concluída' && prazo<hoje();
+    var planoVazio = !w.what && !w.who && !w.whenFim;
     h+='<tr style="cursor:pointer" onclick="abrirDetalheNC(\''+n.fbKey+'\')">';
     h+='<td>'+(n.aberturaTs?n.aberturaTs.slice(0,10).split('-').reverse().join('/'):'—')+'</td>';
     h+='<td>'+(n.opId||'—')+'</td>';
@@ -1188,8 +1194,8 @@ function renderNCFiltrado(){
     h+='<td>'+(n.lote||'—')+'</td>';
     h+='<td>'+(n.linha||'—')+'</td>';
     h+='<td>'+((n.parametrosReprovados||[]).join(', ')||'—')+(n.quantidadeAfetada?' · '+fN(n.quantidadeAfetada,2)+' '+(n.unidadeAfetada||''):'')+'</td>';
-    h+='<td><span class="badge '+stCls+'">'+n.status+'</span></td>';
-    h+='<td'+(prazoVencido?' style="color:#c0392b;font-weight:700"':'')+'>'+(n.prazo?n.prazo.split('-').reverse().join('/'):'—')+(prazoVencido?' ⚠':'')+'</td>';
+    h+='<td><span class="badge '+stCls+'">'+n.status+'</span>'+(planoVazio?' <span class="badge bcz" style="margin-left:3px">5W2H pendente</span>':'')+'</td>';
+    h+='<td'+(prazoVencido?' style="color:#c0392b;font-weight:700"':'')+'>'+(prazo?prazo.split('-').reverse().join('/'):'—')+(prazoVencido?' ⚠':'')+'</td>';
     h+='<td><button class="btn bxs">Ver</button></td>';
     h+='</tr>';
   });
@@ -1201,30 +1207,51 @@ function abrirDetalheNC(fbKey){
   var n=NC_LISTA.find(function(x){return x.fbKey===fbKey;});
   if(!n) return;
   NCD_FBKEY=fbKey;
+  var w=n.w2h||{};
+
   G('ncd-info').innerHTML='<strong>OP '+(n.opId||'—')+'</strong> — '+(n.desc||'')+
     (n.lote?' — Lote: '+n.lote:'')+'<br>Linha: '+(n.linha||'—')+' — Turno: '+(n.turno||'—')+
     '<br>Parâmetro(s): '+((n.parametrosReprovados||[]).join(', ')||'—')+
-    (n.quantidadeAfetada?'<br>Quantidade afetada: <strong>'+fN(n.quantidadeAfetada,2)+' '+(n.unidadeAfetada||'')+'</strong>':'')+
+    (n.quantidadeAfetada?'<br>Quantidade não conforme: <strong>'+fN(n.quantidadeAfetada,2)+' '+(n.unidadeAfetada||'')+'</strong>':'')+
     '<br>Aberta em '+(n.aberturaTs?n.aberturaTs.slice(0,10).split('-').reverse().join('/'):'—')+' por '+(n.aberturaAnalista||'—');
   G('ncd-desc').value=n.descricao||'';
-  G('ncd-causa').value=n.causa||'';
-  G('ncd-acao').value=n.acaoCorretiva||'';
-  G('ncd-resp').value=n.responsavel||'';
-  G('ncd-prazo').value=n.prazo||'';
+
+  G('ncd-what').value=w.what||'';
+  G('ncd-why').value=w.why||'';
+  G('ncd-where').value=w.where||'';
+  G('ncd-who').value=w.who||'';
+  G('ncd-when-ini').value=w.whenIni||'';
+  G('ncd-when-fim').value=w.whenFim||'';
+  G('ncd-how').value=w.how||'';
   G('ncd-status').value=n.status||'Aberta';
+
+  // Só supervisão/admin podem editar o plano de ação (5W2H) e o status — analista de qualidade só visualiza
+  var podeEditar=podeLiberarRetencao();
+  ['ncd-what','ncd-why','ncd-where','ncd-who','ncd-when-ini','ncd-when-fim','ncd-how','ncd-status'].forEach(function(id){
+    G(id).disabled=!podeEditar;
+  });
+  G('ncd-5w2h-readonly-aviso').style.display=podeEditar?'none':'inline';
+  G('btn-salvar-edicao-nc').style.display=podeEditar?'':'none';
+
   aM('ov-nc-detalhe');
 }
 
 function salvarEdicaoNC(){
   if(!NCD_FBKEY) return;
+  if(!podeLiberarRetencao()){ toast('Apenas supervisão ou admin podem editar o plano de ação','err'); return; }
   var statusNovo=G('ncd-status').value;
   var upd={
-    descricao:G('ncd-desc').value.trim(),
-    causa:G('ncd-causa').value.trim(),
-    acaoCorretiva:G('ncd-acao').value.trim(),
-    responsavel:G('ncd-resp').value.trim(),
-    prazo:G('ncd-prazo').value,
-    status:statusNovo
+    status:statusNovo,
+    w2h:{
+      what:G('ncd-what').value.trim(),
+      why:G('ncd-why').value.trim(),
+      where:G('ncd-where').value.trim(),
+      who:G('ncd-who').value.trim(),
+      whenIni:G('ncd-when-ini').value,
+      whenFim:G('ncd-when-fim').value,
+      how:G('ncd-how').value.trim()
+    },
+    w2hAtualizadoPor:SES.nome||SES.login, w2hAtualizadoTs:agora()
   };
   if(statusNovo==='Concluída') upd.conclusaoTs=agora();
   DB.ref('qualidade_nc/'+NCD_FBKEY).update(upd).then(function(){
@@ -1394,9 +1421,8 @@ function abrirNCDaRetencao(){
     };
     G('nc-origem-info').innerHTML='<strong>OP '+r.opId+'</strong> — '+r.desc+
       (r.lote?' — Lote: '+r.lote:'')+'<br>Linha: '+r.linha+'<br>Originada de retenção para reanálise — motivo: '+r.motivo;
-    G('nc-desc').value=r.motivo||''; G('nc-causa').value=''; G('nc-acao').value='';
+    G('nc-desc').value=r.motivo||'';
     G('nc-qtd').value=r.quantidade; G('nc-qtd-unidade').value=r.unidade||'KG';
-    G('nc-resp').value=SES.nome||SES.login; G('nc-prazo').value='';
     aM('ov-nc');
     renderRetencoes();
     monitorarRetencoesAbertas();
@@ -1838,9 +1864,10 @@ function exportarRelatorioGeralPDF(d){
   // Não conformidades do período
   if(d.ncs.length){
     var linhasNc=d.ncs.map(function(n){
-      return [n.opId||'—', n.lote||'—', n.linha||'—', n.descricao||'—', n.status, n.responsavel||'—'];
+      var w=n.w2h||{};
+      return [n.opId||'—', n.lote||'—', n.linha||'—', n.descricao||'—', n.status, w.who||'—'];
     });
-    y=pdfTabela(doc,y,'NÃO CONFORMIDADES DO PERÍODO',['OP','Lote','Linha','Descrição','Status','Responsável'],linhasNc,[20,25,40,100,30,40]);
+    y=pdfTabela(doc,y,'NÃO CONFORMIDADES DO PERÍODO',['OP','Lote','Linha','Descrição','Status','Responsável (5W2H)'],linhasNc,[20,25,40,90,25,50]);
   }
 
   doc.save('Qualidade_Geral_'+d.di+'_a_'+d.df+'.pdf');
@@ -1977,9 +2004,10 @@ function montarRastreioOP(op){
 
     h+='<div class="ct" style="margin-top:14px;margin-bottom:6px">Não Conformidades ('+ncs.length+')</div>';
     if(ncs.length){
-      h+='<div class="tw"><table><thead><tr><th>Descrição</th><th>Status</th><th>Responsável</th></tr></thead><tbody>';
+      h+='<div class="tw"><table><thead><tr><th>Descrição</th><th>Status</th><th>Responsável (5W2H)</th></tr></thead><tbody>';
       ncs.forEach(function(n){
-        h+='<tr><td>'+(n.descricao||'—')+'</td><td><span class="badge '+(n.status==='Concluída'?'bvd':'brd')+'">'+n.status+'</span></td><td>'+(n.responsavel||'—')+'</td></tr>';
+        var w=n.w2h||{};
+        h+='<tr><td>'+(n.descricao||'—')+'</td><td><span class="badge '+(n.status==='Concluída'?'bvd':'brd')+'">'+n.status+'</span></td><td>'+(w.who||'—')+'</td></tr>';
       });
       h+='</tbody></table></div>';
     } else {
