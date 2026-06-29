@@ -1892,12 +1892,14 @@ function montarRastreioOP(op){
     DB.ref('extrusao_apts').orderByChild('opFbKey').equalTo(op.fbKey).once('value'),
     DB.ref('extrusao_paradas').orderByChild('opFbKey').equalTo(op.fbKey).once('value'),
     DB.ref('qualidade_inspecoes').orderByChild('opFbKey').equalTo(op.fbKey).once('value'),
-    DB.ref('qualidade_nc').orderByChild('opFbKey').equalTo(op.fbKey).once('value')
+    DB.ref('qualidade_nc').orderByChild('opFbKey').equalTo(op.fbKey).once('value'),
+    DB.ref('qualidade_op_concluida/'+op.fbKey).once('value')
   ]).then(function(r){
     var apts=[]; r[0].forEach(function(c){apts.push(c.val());});
     var paradas=[]; r[1].forEach(function(c){paradas.push(c.val());});
     var insps=[]; r[2].forEach(function(c){var v=c.val();v.fbKey=c.key;insps.push(v);});
     var ncs=[]; r[3].forEach(function(c){ncs.push(c.val());});
+    var qualConcluida = r[4].exists() ? r[4].val() : null;
 
     var totalReal = apts.reduce(function(s,a){return s+(Number(a.real)||0);},0);
 
@@ -1908,6 +1910,13 @@ function montarRastreioOP(op){
     h+='<div><div class="fl">Linha / Máquina</div><div>'+(op.linha||'—')+'</div></div>';
     h+='<div><div class="fl">Data de Produção</div><div>'+(op.data?op.data.split('-').reverse().join('/'):'—')+'</div></div>';
     h+='</div>';
+
+    if(qualConcluida){
+      h+='<div class="ali" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
+      h+='<span>✔ Marcada como <strong>Concluída para Qualidade</strong> em '+(qualConcluida.ts?new Date(qualConcluida.ts).toLocaleString('pt-BR'):'—')+' por '+(qualConcluida.analistaNome||qualConcluida.analista||'—')+'</span>';
+      h+='<button class="btn bxs bo" onclick="reabrirParaQualidade(\''+esc(op.fbKey)+'\')">↺ Reabrir para Qualidade</button>';
+      h+='</div>';
+    }
 
     h+='<div class="ct" style="margin-bottom:6px">Produção (Extrusão)</div>';
     h+='<div style="font-size:12px;color:#4a664a;margin-bottom:12px">Total apontado: <strong>'+fN(totalReal)+' kg</strong> em '+apts.length+' apontamento(s) — '+paradas.length+' parada(s) registrada(s)</div>';
@@ -2363,6 +2372,18 @@ function concluirParaQualidade(opFbKey, linha){
   }).then(function(){
     toast('OP concluída para Qualidade!','ok');
     carregarLinhasAtivas();
+  }).catch(function(e){ toast('Erro: '+e.message,'err'); });
+}
+
+// Desfaz a marcação de "Concluída para Qualidade" — a OP volta a aparecer na tela de
+// Produção (na aba "Aguardando Qualidade", já que o status real em ops/ não foi alterado).
+// Nunca toca em ops/ — apenas remove o controle interno da Qualidade, mesmo princípio de
+// isolamento entre módulos usado em concluirParaQualidade().
+function reabrirParaQualidade(opFbKey){
+  if(!confirm('Reabrir esta OP para a Qualidade?\n\nEla voltará a aparecer na tela de Produção, em "Aguardando Qualidade".')) return;
+  DB.ref('qualidade_op_concluida/'+opFbKey).remove().then(function(){
+    toast('OP reaberta para Qualidade!','ok');
+    buscarRastreio();
   }).catch(function(e){ toast('Erro: '+e.message,'err'); });
 }
 
