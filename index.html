@@ -1819,7 +1819,16 @@ function salvarSilos(){
   }
   var str=pts.join(', '), hor=G('sh')?G('sh').value:horaAtual();
   ld(true,'Salvando silos...');
-  DB.ref('ops/'+SILO_OPID).update({silos:str,silosHora:hor}).then(function(){
+  // Registro historico (nunca sobrescreve) - permite multiplos silos por OP ao longo dos turnos
+  DB.ref('silos_registros').push({
+    opId:SILO_OPID, silos:str, hora:hor, turno:(SES.turno||0),
+    data:dataTurno(SES.turno||0), operador:SES.login, ts:agora()
+  }).then(function(){
+    // Atualiza tambem campo resumo da OP (acumulando, sem sobrescrever registros anteriores)
+    var op=OPS.find(function(o){return o.fbKey===SILO_OPID;});
+    var acumulado=(op&&op.silos)?(op.silos+' | '+str):str;
+    return DB.ref('ops/'+SILO_OPID).update({silos:acumulado,silosHora:hor});
+  }).then(function(){
     ld(false);toast('Silos registrados!','ok');fM('msilo');addLog('SILOS',SILO_OPID+'->'+str);
   }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
 }
@@ -2490,15 +2499,25 @@ function dlOP(fromModal){
   if(!op||typeof jspdf==='undefined'){toast('Erro ao gerar PDF','err');return;}
   ld(true,'Buscando apontamentos...');
   DB.ref('apontamentos').orderByChild('opId').equalTo(fbKey).once('value').then(function(snapApt){
-    ld(false);
     var apts=[];
     if(snapApt.exists()) snapApt.forEach(function(c){ apts.push(c.val()); });
     apts.sort(function(a,b){ return (a.ts||'')>(b.ts||'')?1:-1; });
-    _gerarPDFOP(op, apts, fromModal);
-  }).catch(function(){ _gerarPDFOP(op, [], fromModal); });
+    if(op.tipo==='KG'){
+      return DB.ref('silos_registros').orderByChild('opId').equalTo(fbKey).once('value').then(function(snapSil){
+        var silosHist=[];
+        if(snapSil.exists()) snapSil.forEach(function(c){ silosHist.push(c.val()); });
+        silosHist.sort(function(a,b){ return (a.ts||'')>(b.ts||'')?1:-1; });
+        return {apts:apts,silosHist:silosHist};
+      });
+    }
+    return {apts:apts,silosHist:[]};
+  }).then(function(r){
+    ld(false);
+    _gerarPDFOP(op, r.apts, fromModal, r.silosHist);
+  }).catch(function(){ ld(false); _gerarPDFOP(op, [], fromModal, []); });
 }
 
-function _gerarPDFOP(op, apts, fromModal){
+function _gerarPDFOP(op, apts, fromModal, silosHist){
   if(typeof jspdf==='undefined'){toast('jsPDF nao disponivel','err');return;}
   var jsPDF=jspdf.jsPDF;
   var doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
@@ -2535,13 +2554,6 @@ function _gerarPDFOP(op, apts, fromModal){
   var cols=[[ML+4,y+16],[ML+50,y+16],[ML+100,y+16],[ML+145,y+16],
             [ML+4,y+26],[ML+50,y+26],[ML+100,y+26],[ML+145,y+26],
             [ML+4,y+35],[ML+100,y+35]];
-  var campos=[
-    ['Produto',op.cod],['Descricao',(op.desc||op.cod||'').slice(0,28)],
-    ['Linha',op.linha||'-'],['Tipo',op.tipo],
-    ['Data',op.data||'-'],['Lote',op.lote||'-'],
-    ['Status',op.status||'-'],['Lote',op.lote||'-'],
-    ['Obs.',op.obs||'-'],['Silos',op.silos||'-']
-  ];
   // Layout manual 2 colunas
   var dadosOp=[
     {l:'Produto',v:op.cod,x:ML+4,yy:y+16},
@@ -2676,17 +2688,22 @@ function _gerarPDFOP(op, apts, fromModal){
       if(a.substituido) return;
       var dt2=a.data||(a.ts?a.ts.slice(0,10):'s/data');
       var tk=dt2+'_t'+(a.turno||0);
-      if(!gruposDT[tk]) gruposDT[tk]={data:dt2,turno:a.turno||0,real:0,perda:0,operador:a.operador||'',ts:a.ts||''};
+      if(!gruposDT[tk]) gruposDT[tk]={data:dt2,turno:a.turno||0,real:0,perda:0,operador:a.operador||'',ts:a.ts||'',obsList:[]};
       gruposDT[tk].real+=(Number(a.real)||0);
       gruposDT[tk].perda+=(Number(a.perda)||0);
       if((a.ts||'')>gruposDT[tk].ts) gruposDT[tk].operador=a.operador||'';
+      if(a.obs && a.obs.trim() && gruposDT[tk].obsList.indexOf(a.obs.trim())===-1) gruposDT[tk].obsList.push(a.obs.trim());
     });
     var grupos=Object.values(gruposDT).filter(function(g){return g.real>0||g.perda>0;});
     grupos.sort(function(a,b){return a.data>b.data?1:a.data<b.data?-1:a.turno-b.turno;});
 
     grupos.forEach(function(g,gi){
-      if(y>270){doc.addPage();y=20;}
-      if(gi%2===0){doc.setFillColor(248,253,248);doc.rect(ML,y,W,7,'F');}
+      var obsText=(g.obsList||[]).join('  |  ');
+      doc.setFont('helvetica','italic'); doc.setFontSize(7);
+      var obsLines=obsText?doc.splitTextToSize('Obs: '+obsText,W-10):[];
+      var rowH=7+(obsLines.length?obsLines.length*3.5+2:0);
+      if(y+rowH>270){doc.addPage();y=20;}
+      if(gi%2===0){doc.setFillColor(248,253,248);doc.rect(ML,y,W,rowH,'F');}
       doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(30,30,30);
       var realStr=toUnid(g.real);
       var totStr=fN(g.real+g.perda)+' kg';
@@ -2701,6 +2718,11 @@ function _gerarPDFOP(op, apts, fromModal){
       doc.setTextColor(100,100,100);
       doc.text((g.operador||'').slice(0,14),hcols[5],y+5);
       y+=7;
+      if(obsLines.length){
+        doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(150,108,0);
+        doc.text(obsLines,ML+6,y+3);
+        y+=obsLines.length*3.5+2;
+      }
     });
 
     // Totais histórico
@@ -2711,6 +2733,40 @@ function _gerarPDFOP(op, apts, fromModal){
     doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(2,79,43);
     doc.text('CONSOLIDADO: Bom '+toUnid(totR)+' | Perda '+fN(totP)+' kg | Processado '+fN(totR+totP)+' kg',ML+W/2,y+5.5,{align:'center'});
     y+=14;
+  }
+
+  // ── SILOS UTILIZADOS (apenas OP tipo KG) ─────────────────
+  if(op.tipo==='KG' && silosHist && silosHist.length>0){
+    if(y>240){doc.addPage();y=20;}
+    doc.setFillColor(2,79,43); doc.rect(ML,y,W,7,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+    doc.text('SILOS UTILIZADOS (DESTINO DA PRODUCAO)',ML+4,y+5);
+    y+=8;
+
+    doc.setFillColor(220,235,220); doc.rect(ML,y,W,7,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(2,79,43);
+    var scols=[ML+4,ML+32,ML+52,ML+72,ML+95];
+    ['DATA','TURNO','HORA','OPERADOR','SILOS / QUANTIDADE'].forEach(function(h,i){
+      doc.text(h,scols[i],y+5);
+    });
+    y+=8;
+
+    silosHist.forEach(function(s,si){
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
+      var silosLines=doc.splitTextToSize(s.silos||'-',W-(scols[4]-ML)-4);
+      var rowH=Math.max(7,silosLines.length*3.5+3);
+      if(y+rowH>270){doc.addPage();y=20;}
+      if(si%2===0){doc.setFillColor(248,253,248);doc.rect(ML,y,W,rowH,'F');}
+      doc.setTextColor(30,30,30);
+      doc.text(s.data||'-',scols[0],y+5);
+      doc.text(s.turno?'T'+s.turno:'-',scols[1],y+5);
+      doc.text(s.hora||'-',scols[2],y+5);
+      doc.text((s.operador||'').slice(0,16),scols[3],y+5);
+      doc.setFont('helvetica','bold'); doc.setTextColor(2,79,43);
+      doc.text(silosLines,scols[4],y+5);
+      y+=rowH;
+    });
+    y+=6;
   }
 
   // ── RESUMO CONSOLIDADO POR TURNO (rodapé) ───────────────
