@@ -1028,7 +1028,7 @@ function renderDash(){
     var slice=ops.slice(0,8);
     for(var i=0;i<slice.length;i++){
       var o=slice[i];
-      var realDia=aptsPorOp[o.fbKey]||0;
+      var realDia=turnoFiltro>0?(Number(o['t'+turnoFiltro])||0):(aptsPorOp[o.fbKey]||0);
       var p2=pct(realDia,o.prog);
       var c=p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b';
       var prog=o.tipo==='SC'?fN(Math.round((o.prog||0)/25))+' sc':fN(o.prog)+' kg';
