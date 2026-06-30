@@ -5382,6 +5382,8 @@ function resumoAdmBuscar(){
 
     _resumoAdmDados={apts:apts,paradas:paradas,ops:ops,dt:dt,turno:turno,linha:linha};
     resumoAdmRenderizar(apts,paradas,ops,dt,turno,linha);
+    // Recarrega campos de reprocesso para o turno/data selecionado pelo admin
+    carregarReprocessoAdm(dt,turno);
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
@@ -5489,6 +5491,40 @@ function resumoAdmRenderizar(apts,paradas,ops,dt,turno,linhaFiltro){
   h+='<span>'+fN(totalGeralReal)+' kg produzidos · '+minH(totalGeralMin)+' em paradas</span></div>';
 
   G("resumo-corpo").innerHTML=h;
+}
+
+// ── ADMIN: RECARREGAR REPROCESSO POR DATA+TURNO ───────────
+var TODAS_LINHAS=["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
+
+function carregarReprocessoAdm(dt,turno){
+  var el=G("repr-campos");
+  if(!el) return;
+  // Reconstrói campos para todas as linhas (admin pode ver qualquer turno)
+  var linhas=LINHAS_USER&&LINHAS_USER.length?LINHAS_USER:TODAS_LINHAS;
+  var reprH="";
+  linhas.forEach(function(l){
+    reprH+='<div class="fg"><label class="fl">Reprocesso '+l+' (kg)</label>'+
+           '<input class="fi" type="number" id="repr-'+encId(l)+'" value="0" min="0"></div>';
+  });
+  el.innerHTML=reprH;
+  // Carrega valores salvos do Firebase para essa data+turno
+  if(!DB) return;
+  DB.ref("extrusao_turno").orderByChild("data").equalTo(dt).once("value",function(s){
+    if(!s.exists()) return;
+    var merge={};
+    s.forEach(function(c){
+      var v=c.val();
+      if(v.turno===turno && v.reprocesso){
+        Object.keys(v.reprocesso).forEach(function(k){
+          if(v.reprocesso[k]) merge[k]=v.reprocesso[k];
+        });
+      }
+    });
+    linhas.forEach(function(l){
+      var inp=G("repr-"+encId(l));
+      if(inp && merge[encId(l)]) inp.value=merge[encId(l)];
+    });
+  });
 }
 
 // ── ADMIN: INICIAR OP NA LINHA ────────────────────────────
