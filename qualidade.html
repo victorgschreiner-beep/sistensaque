@@ -528,7 +528,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="fg"><label class="fl">Diâmetro máx (mm)</label><input type="number" step="0.1" id="pp-diamMax"></div>
   </div>
   <div class="fr">
-    <div class="fg"><label class="fl">Cozimento mín (mL)</label><input type="number" step="1" id="pp-cozMin"></div>
+    <div class="fg"><label class="fl">Flutuabilidade mín (%) — deixe vazio se não aplicável</label><input type="number" step="0.1" id="pp-fluMin"></div>
     <div class="fg"></div>
   </div>
   <div class="mfoot">
@@ -898,26 +898,26 @@ var CAMPOS_NUM = [
   {key:'dens', label:'Densidade (g/L)', unidade:'g/L', mode:'range', pMin:'densMin', pMax:'densMax'},
   {key:'corte',label:'Corte (mm)',  unidade:'mm', mode:'range', pMin:'corteMin', pMax:'corteMax'},
   {key:'diam', label:'Diâmetro (mm)', unidade:'mm', mode:'range', pMin:'diamMin', pMax:'diamMax'},
-  {key:'temp', label:'Temperatura (°C acima ambiente)', unidade:'°C', mode:'temp_delta', pMax:'tempMax'},
+  {key:'temp', label:'Temperatura (°C acima ambiente)', unidade:'°C', mode:'max', pMax:'tempMax'},
   {key:'pb',   label:'PB (%)', unidade:'%', mode:'min', pMin:'pbMin'},
   {key:'ee',   label:'EE (%)', unidade:'%', mode:'min', pMin:'eeMin'},
   {key:'mm',   label:'MM (%)', unidade:'%', mode:'max', pMax:'mmMax'},
-  {key:'coz',  label:'Cozimento (mL)', unidade:'mL', mode:'min', pMin:'cozMin'}
+  {key:'flu',  label:'Flutuabilidade (%)', unidade:'%', mode:'min', pMin:'fluMin'}
 ];
 // Campos textuais: avaliação manual do analista, sem faixa numérica de aprovação automática.
 var CAMPOS_TXT = [
-  {key:'flutuabilidade', label:'Flutuabilidade'},
   {key:'finos', label:'Finos'},
   {key:'visual', label:'Visual'},
   {key:'resistencia', label:'Resistência'},
   {key:'embalagem', label:'Embalagem'},
-  {key:'caixa', label:'Caixa'}
+  {key:'caixa', label:'Caixa'},
+  {key:'cozimento', label:'Cozimento'}
 ];
 
 function avaliarCampo(campo, valor, pq){
-  if(valor===''||valor===null||valor===undefined||isNaN(valor)) return null;
+  if(valor===''||valor===null||valor===undefined||isNaN(valor)) return null; // não preenchido
   valor=Number(valor);
-  if(!pq) return null;
+  if(!pq) return null; // sem parâmetro cadastrado -> não dá pra avaliar
   if(campo.mode==='range'){
     var min=pq[campo.pMin], max=pq[campo.pMax];
     if(min===undefined||min===null||max===undefined||max===null) return null;
@@ -928,7 +928,7 @@ function avaliarCampo(campo, valor, pq){
     if(pmin===undefined||pmin===null) return null;
     return valor>=pmin;
   }
-  if(campo.mode==='max' || campo.mode==='temp_delta'){
+  if(campo.mode==='max'){
     var pmax=pq[campo.pMax];
     if(pmax===undefined||pmax===null) return null;
     return valor<=pmax;
@@ -951,10 +951,6 @@ function faixaTexto(campo, pq){
     var pmax=pq[campo.pMax];
     return (pmax===undefined||pmax===null)?'—':('máx. '+fN(pmax,2)+' '+campo.unidade);
   }
-  if(campo.mode==='temp_delta'){
-    var pmax=pq[campo.pMax];
-    return (pmax===undefined||pmax===null)?'—':('máx. +'+fN(pmax,1)+'°C acima ambiente');
-  }
   return '—';
 }
 
@@ -968,24 +964,6 @@ function montarFormularioInspecao(dadosExistentes){
   var hNum='';
   CAMPOS_NUM.forEach(function(c){
     var val = res[c.key]!==undefined ? res[c.key] : '';
-
-    if(c.mode==='temp_delta'){
-      // Temperatura: dois campos (ambiente + medida), delta calculado automaticamente
-      var valAmb = res['tempAmbiente']!==undefined ? res['tempAmbiente'] : '';
-      var valMed = res['tempMedida']!==undefined ? res['tempMedida'] : '';
-      hNum+='<div class="param-row" style="grid-template-columns:1.3fr 1.5fr 1fr">';
-      hNum+='<div><div class="param-nome">'+c.label+'</div><div class="param-faixa">Faixa: '+faixaTexto(c,pq)+'</div></div>';
-      hNum+='<div style="display:flex;gap:6px;align-items:center">';
-      hNum+='<div><div style="font-size:10px;color:#739630;margin-bottom:2px">Ambiente (°C)</div><input type="number" step="0.1" id="ip-tempAmbiente" value="'+valAmb+'" oninput="recalcCampo(\'temp\')" placeholder="Ex: 28" style="width:85px"></div>';
-      hNum+='<div style="font-size:14px;color:#999;margin-top:14px">→</div>';
-      hNum+='<div><div style="font-size:10px;color:#739630;margin-bottom:2px">Medida (°C)</div><input type="number" step="0.1" id="ip-tempMedida" value="'+valMed+'" oninput="recalcCampo(\'temp\')" placeholder="Ex: 35" style="width:85px"></div>';
-      hNum+='<div style="font-size:10px;color:#4a664a;margin-top:14px" id="ip-temp-delta-label"></div>';
-      hNum+='</div>';
-      hNum+='<div class="param-status param-vazio" id="st-temp">—</div>';
-      hNum+='</div>';
-      return;
-    }
-
     hNum+='<div class="param-row">';
     hNum+='<div><div class="param-nome">'+c.label+'</div><div class="param-faixa">Faixa: '+faixaTexto(c,pq)+'</div></div>';
     hNum+='<div class="param-input"><input type="number" step="0.01" id="ip-'+c.key+'" value="'+val+'" oninput="recalcCampo(\''+c.key+'\')" placeholder="Valor"></div>';
@@ -1008,30 +986,12 @@ function montarFormularioInspecao(dadosExistentes){
 
 function recalcCampo(key){
   var campo=CAMPOS_NUM.find(function(c){return c.key===key;});
-  if(!campo) return;
+  var input=G('ip-'+key);
   var elStatus=G('st-'+key);
-  if(!elStatus) return;
-
-  var valor;
-  if(campo.mode==='temp_delta'){
-    // Temperatura: calcula delta = medida - ambiente automaticamente
-    var elAmb=G('ip-tempAmbiente'), elMed=G('ip-tempMedida'), elDelta=G('ip-temp-delta-label');
-    var amb=elAmb?elAmb.value:'', med=elMed?elMed.value:'';
-    if(amb===''||med===''){
-      if(elDelta) elDelta.textContent='';
-      elStatus.className='param-status param-vazio'; elStatus.textContent='—'; return;
-    }
-    var delta=Number(med)-Number(amb);
-    if(elDelta) elDelta.textContent='Δ '+fN(delta,1)+'°C';
-    valor=delta.toString();
-  } else {
-    var input=G('ip-'+key);
-    if(!input) return;
-    valor=input.value;
-  }
-
+  if(!input||!elStatus) return;
+  var valor=input.value;
   var aprovado=avaliarCampo(campo, valor, INSP_CONTEXTO.pq);
-  if(valor===''||valor===undefined){
+  if(valor===''){
     elStatus.className='param-status param-vazio'; elStatus.textContent='—';
   } else if(aprovado===null){
     elStatus.className='param-status param-vazio'; elStatus.textContent='s/ faixa';
@@ -1045,24 +1005,9 @@ function recalcCampo(key){
 function coletarResultadosInspecao(){
   var resultados={}, aprovacoes={}, algumaReprova=false, algumaAvaliada=false;
   CAMPOS_NUM.forEach(function(c){
-    var v;
-    if(c.mode==='temp_delta'){
-      // Salva ambiente, medida e o delta calculado
-      var elAmb=G('ip-tempAmbiente'), elMed=G('ip-tempMedida');
-      var amb=elAmb?elAmb.value:'', med=elMed?elMed.value:'';
-      if(amb!==''&&med!==''){
-        var delta=Number(med)-Number(amb);
-        resultados['tempAmbiente']=Number(amb);
-        resultados['tempMedida']=Number(med);
-        resultados['temp']=delta; // delta é o que entra no CEP e na avaliação
-        v=delta.toString();
-      }
-    } else {
-      var input=G('ip-'+c.key);
-      v=input?input.value:'';
-      if(v!=='') resultados[c.key]=Number(v);
-    }
-    if(v!==''&&v!==undefined){
+    var v=G('ip-'+c.key).value;
+    if(v!==''){
+      resultados[c.key]=Number(v);
       var ap=avaliarCampo(c, v, INSP_CONTEXTO.pq);
       if(ap!==null){
         aprovacoes[c.key]=ap;
@@ -2106,7 +2051,7 @@ function renderParamsLista(){
 function abrirNovoParam(){
   G('param-titulo').textContent='Novo Produto';
   ['codigo','desc','umidMin','umidMax','awMin','awMax','densMin','densMax','corteMin','corteMax',
-   'diamMin','diamMax','pbMin','eeMin','mmMax','tempMax','cozMin'].forEach(function(f){
+   'diamMin','diamMax','pbMin','eeMin','mmMax','tempMax','fluMin'].forEach(function(f){
     var el=G('pp-'+f); if(el) el.value='';
   });
   G('pp-codigo').disabled=false;
@@ -2136,7 +2081,7 @@ function abrirEditarParam(cod){
   G('pp-corteMax').value=p.corteMax!=null?p.corteMax:'';
   G('pp-diamMin').value=p.diamMin!=null?p.diamMin:'';
   G('pp-diamMax').value=p.diamMax!=null?p.diamMax:'';
-  G('pp-cozMin').value=p.cozMin!=null?p.cozMin:'';
+  G('pp-fluMin').value=p.fluMin!=null?p.fluMin:'';
   aM('ov-param');
 }
 
@@ -2163,7 +2108,7 @@ function salvarParam(){
     corteMax:numOrNull(G('pp-corteMax').value),
     diamMin:numOrNull(G('pp-diamMin').value),
     diamMax:numOrNull(G('pp-diamMax').value),
-    cozMin:numOrNull(G('pp-cozMin').value)
+    fluMin:numOrNull(G('pp-fluMin').value)
   };
   DB.ref('qualidade_params/'+cod).set(p).then(function(){
     PARAMS_QUAL[cod]=p;
@@ -2337,7 +2282,7 @@ var COLUNAS_PARAMS = [
   ['Corte_min_mm','corteMin'],['Corte_max_mm','corteMax'],
   ['Diametro_min_mm','diamMin'],['Diametro_max_mm','diamMax'],
   ['Temp_max_C','tempMax'],
-  ['Cozimento_min_mL','cozMin']
+  ['Flutuabilidade_min_%','fluMin']
 ];
 
 function exportarPlanilhaParams(){
