@@ -639,6 +639,22 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <!-- Cards resumo -->
     <div id="dash-cards" style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px"></div>
 
+    <!-- Cards por Família -->
+    <div style="font-weight:700;color:#024f2b;font-size:12px;margin-bottom:8px">📦 Produção por Família (AQUA / PET / HORSE)</div>
+    <div id="dash-cards-familia" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px"></div>
+
+    <!-- Família e Granulometria AQUA -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px">
+        <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">Participação por Família (kg)</div>
+        <canvas id="dash-g8" height="200"></canvas>
+      </div>
+      <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px">
+        <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">AQUA — Produção por Granulometria (kg)</div>
+        <canvas id="dash-g9" height="200"></canvas>
+      </div>
+    </div>
+
     <!-- Gráficos linha 1 -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
       <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px">
@@ -3077,6 +3093,32 @@ function admCloseOp(fbKey,id){
 // ── DASHBOARD ─────────────────────────────────────────────
 var DASH_CHARTS={};
 
+// Classifica um código de produto em família: PET (CAT/DOG), HORSE (HOR) ou AQUA (demais)
+function familiaProduto(cod){
+  var c=(cod||"").toUpperCase().trim();
+  if(c.indexOf("CAT")===0||c.indexOf("DOG")===0) return "PET";
+  if(c.indexOf("HOR")===0) return "HORSE";
+  return "AQUA";
+}
+
+// Extrai a granulometria de uma descrição de produto AQUA, normalizando o formato
+// Ex: "TOP FISH 4.0 A 6.0MM 32%" e "4.00 A 6.00MM PLUS 32%" caem no mesmo bucket "4.00 a 6.00MM"
+function granulometriaProduto(desc){
+  var d=(desc||"").toUpperCase();
+  var m=d.match(/(\d+(?:[.,]\d+)?)\s*A\s*(\d+(?:[.,]\d+)?)\s*MM/);
+  if(m){
+    var a=parseFloat(m[1].replace(",","."));
+    var b=parseFloat(m[2].replace(",","."));
+    if(!isNaN(a)&&!isNaN(b)) return a.toFixed(2)+" a "+b.toFixed(2)+"MM";
+  }
+  var m2=d.match(/(\d+(?:[.,]\d+)?)\s*MM/);
+  if(m2){
+    var v=parseFloat(m2[1].replace(",","."));
+    if(!isNaN(v)) return v.toFixed(2)+"MM";
+  }
+  return "Sem granulometria identificada";
+}
+
 function abrirConferencia(){
   var sec=G("secao-conferencia");
   if(!sec) return;
@@ -3180,6 +3222,19 @@ function dashRender(apts, paradas, di, df){
     porSKU[k].real+=(Number(a.real)||0);
   });
 
+  // Por família (AQUA / PET / HORSE) e, dentro de AQUA, por granulometria
+  var porFamilia={AQUA:0,PET:0,HORSE:0};
+  var porGranAqua={};
+  apts.forEach(function(a){
+    var fam=familiaProduto(a.cod);
+    porFamilia[fam]+=(Number(a.real)||0);
+    if(fam==="AQUA"){
+      var gran=granulometriaProduto(a.desc||a.cod||"");
+      if(!porGranAqua[gran]) porGranAqua[gran]=0;
+      porGranAqua[gran]+=(Number(a.real)||0);
+    }
+  });
+
   // Motivos de parada
   var porMotivo={};
   paradas.forEach(function(p){
@@ -3223,6 +3278,24 @@ function dashRender(apts, paradas, di, df){
       '<div style="font-size:18px;font-weight:800;color:'+card.c+'">'+card.v+'</div></div>';
   }).join("");
 
+  // ── CARDS POR FAMÍLIA ────────────────────────────────────
+  var totFamGeral=porFamilia.AQUA+porFamilia.PET+porFamilia.HORSE;
+  var cardsFam=[
+    {l:"AQUA",n:porFamilia.AQUA,c:"#024f2b"},
+    {l:"PET",n:porFamilia.PET,c:"#739630"},
+    {l:"HORSE",n:porFamilia.HORSE,c:"#d29922"}
+  ];
+  var elFam=G("dash-cards-familia");
+  if(elFam){
+    elFam.innerHTML=cardsFam.map(function(card){
+      var pct=totFamGeral?Math.round(card.n/totFamGeral*100):0;
+      return '<div style="background:#fff;border-radius:10px;border:1px solid #d4e8d4;padding:12px;text-align:center">'+
+        '<div style="font-size:10px;font-weight:700;color:#739630;margin-bottom:4px">'+card.l+'</div>'+
+        '<div style="font-size:18px;font-weight:800;color:'+card.c+'">'+fN(card.n)+' kg</div>'+
+        '<div style="font-size:11px;color:#4a664a;margin-top:2px">'+pct+'% do total</div></div>';
+    }).join("");
+  }
+
   // ── GRÁFICOS ─────────────────────────────────────────────
   function mkChart(id,type,labels,datasets,opts){
     if(DASH_CHARTS[id]) DASH_CHARTS[id].destroy();
@@ -3247,6 +3320,34 @@ function dashRender(apts, paradas, di, df){
   if(G("dash-sku-relatorio")) G("dash-sku-relatorio").innerHTML='<div style="text-align:center;padding:16px;font-size:12px;color:#4a664a">Selecione um SKU acima e clique em Ver</div>';
   if(G("btn-sku-pdf")) G("btn-sku-pdf").style.display="none";
   renderParadasMes(paradas);
+
+  // G8 — Participação por família (AQUA/PET/HORSE)
+  if(DASH_CHARTS["dash-g8"]) DASH_CHARTS["dash-g8"].destroy();
+  var ctxFam=document.getElementById("dash-g8");
+  if(ctxFam){
+    DASH_CHARTS["dash-g8"]=new Chart(ctxFam,{
+      type:"doughnut",
+      data:{labels:["AQUA","PET","HORSE"],datasets:[{data:[porFamilia.AQUA,porFamilia.PET,porFamilia.HORSE],backgroundColor:["#024f2b","#739630","#d29922"],borderWidth:0}]},
+      options:{
+        responsive:true,
+        plugins:{
+          legend:{position:"bottom",labels:{font:{size:10},boxWidth:12}},
+          tooltip:{callbacks:{label:function(ctx){
+            var v=ctx.parsed||0;
+            var pct=totFamGeral?Math.round(v/totFamGeral*100):0;
+            return ctx.label+": "+fN(v)+" kg ("+pct+"%)";
+          }}}
+        }
+      }
+    });
+  }
+
+  // G9 — AQUA: produção por granulometria (todos os produtos da mesma faixa somados)
+  var granOrdenado=Object.entries(porGranAqua).sort(function(a,b){return b[1]-a[1];});
+  mkChart("dash-g9","bar",
+    granOrdenado.map(function(g){return g[0];}),
+    [{label:"kg",data:granOrdenado.map(function(g){return g[1];}),backgroundColor:"rgba(2,79,43,.75)"}],
+    {indexAxis:"y",plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:10}}}}});
 
   // G1 — Real vs Meta por dia
   var datas=Object.keys(porData).sort();
