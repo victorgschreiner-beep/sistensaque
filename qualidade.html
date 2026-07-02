@@ -2583,7 +2583,7 @@ function exportarPlanilhaParams(){
     linhas.push(linha);
   });
   var ws=XLSX.utils.aoa_to_sheet(linhas);
-  ws['!cols']=[{wch:16},{wch:42},{wch:9},{wch:10},{wch:10},{wch:10},{wch:13},{wch:13},{wch:9},{wch:9},{wch:14},{wch:14},{wch:12},{wch:12},{wch:14},{wch:14},{wch:11}];
+  ws['!cols']=[{wch:16},{wch:42},{wch:9},{wch:10},{wch:10},{wch:10},{wch:13},{wch:13},{wch:9},{wch:9},{wch:14},{wch:14},{wch:12},{wch:12},{wch:14},{wch:14},{wch:11},{wch:16},{wch:16}];
   var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Parametros');
   XLSX.writeFile(wb,'parametros_qualidade_'+hoje()+'.xlsx');
