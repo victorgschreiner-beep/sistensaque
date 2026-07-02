@@ -80,6 +80,22 @@ body{font-family:"Segoe UI",sans-serif;background:#060e06;color:#e8f0e8;height:1
 .rod-sep{color:#1a3a1a;font-size:18px}
 @keyframes scroll-left{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 .rod-total{margin-left:auto;padding:0 20px;font-size:13px;font-weight:700;color:#739630;white-space:nowrap;flex-shrink:0;border-left:1px solid #1a3a1a}
+
+/* QUALIDADE — bloco no card */
+.qual-wrap{width:100%;background:#0d1a0d;border:1px solid #1a3a1a;border-radius:8px;padding:6px 7px}
+.qual-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.qual-lbl{font-size:9px;font-weight:700;color:#739630;text-transform:uppercase;letter-spacing:.5px}
+.qual-hora{font-size:9px;color:#5a7a5a;font-variant-numeric:tabular-nums}
+.qual-row{display:flex;gap:3px}
+.qual-chip{flex:1;text-align:center;border-radius:5px;padding:3px 1px;background:#111f11;min-width:0}
+.qual-chip .qc-l{font-size:8px;color:#5a7a5a;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.qual-chip .qc-v{font-size:12px;font-weight:800;color:#8aa88a;line-height:1.3}
+.qual-chip.ok{background:rgba(46,160,67,.15)}
+.qual-chip.ok .qc-v{color:#2ea043}
+.qual-chip.bad{background:rgba(231,76,60,.20);animation:qflicker 1.4s infinite}
+.qual-chip.bad .qc-v{color:#ff5c4d}
+@keyframes qflicker{0%,100%{box-shadow:0 0 0 rgba(231,76,60,0)}50%{box-shadow:0 0 9px rgba(231,76,60,.65)}}
+.qual-vazio{font-size:10px;color:#4a664a;text-align:center;padding:4px 0}
 </style>
 </head>
 <body>
@@ -129,7 +145,26 @@ var LINHA_META={"Linha 1 (E-240)":"metaL1","Linha 2 (E-200)":"metaL2","Linha 4 (
 var LINHAS=["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
 var NOMES={"Linha 1 (E-240)":"LINHA 1","Linha 2 (E-200)":"LINHA 2","Linha 4 (Andritz I)":"LINHA 4","Linha 5 (Andritz II)":"LINHA 5"};
 var EST={};
-LINHAS.forEach(function(l){EST[l]={ops:[],apts:[],paradas:[],opAtiva:null};});
+LINHAS.forEach(function(l){EST[l]={ops:[],apts:[],paradas:[],opAtiva:null,qualLeituras:[]};});
+
+// Campos exibidos na TV — mesmas chaves gravadas por qualidade.html em "resultados"/"aprovacoes"
+var QUAL_CAMPOS=[
+  {key:"umid", label:"UMID"},
+  {key:"aw",   label:"AW"},
+  {key:"dens", label:"DENS"},
+  {key:"corte",label:"CORTE"},
+  {key:"diam", label:"DIÂM"}
+];
+
+// Retorna a inspeção mais recente da linha vinculada à OP ativa (evita mostrar
+// análise de uma OP/produto anterior como se fosse do produto em produção agora)
+function ultimaQualidade(linha, opFbKey){
+  if(!opFbKey) return null;
+  var arr=(EST[linha].qualLeituras||[]).filter(function(v){return v.opFbKey===opFbKey;});
+  if(!arr.length) return null;
+  arr.sort(function(a,b){return (a.ts||"")<(b.ts||"")?-1:1;});
+  return arr[arr.length-1];
+}
 var OPS=[];
 var TOT_MES=0;
 var TOT_DIA=0;
@@ -385,6 +420,28 @@ function renderLinha(linha){
   h+='<div class="met"><div class="met-v c-bad">'+minH(minParaTotal)+'</div><div class="met-l">paradas</div></div>';
   h+='</div>';
 
+  // Qualidade — última inspeção da OP ativa nesta linha
+  h+='<div class="qual-wrap">';
+  var qUlt=opAtiva?ultimaQualidade(linha,opAtiva.fbKey):null;
+  if(!opAtiva){
+    h+='<div class="qual-vazio">— sem OP ativa —</div>';
+  } else if(!qUlt){
+    h+='<div class="qual-hdr"><span class="qual-lbl">🧪 Qualidade</span></div>';
+    h+='<div class="qual-vazio">Aguardando análise</div>';
+  } else {
+    h+='<div class="qual-hdr"><span class="qual-lbl">🧪 Qualidade</span><span class="qual-hora">'+(qUlt.hora||"")+'</span></div>';
+    h+='<div class="qual-row">';
+    QUAL_CAMPOS.forEach(function(c){
+      var val=qUlt.resultados?qUlt.resultados[c.key]:undefined;
+      var ap=qUlt.aprovacoes?qUlt.aprovacoes[c.key]:undefined;
+      var cls=(val===undefined||val===null)?"":(ap===true?"ok":ap===false?"bad":"");
+      var vTxt=(val===undefined||val===null)?"—":(Number(val).toLocaleString("pt-BR",{maximumFractionDigits:2}));
+      h+='<div class="qual-chip '+cls+'"><div class="qc-l">'+c.label+'</div><div class="qc-v">'+vTxt+'</div></div>';
+    });
+    h+='</div>';
+  }
+  h+='</div>';
+
   // Motivo da parada ativa
   if(paradaAberta){
     h+='<div style="background:#1a0808;border:1px solid #c0392b;border-radius:8px;padding:6px 10px;width:100%;text-align:center">';
@@ -474,6 +531,16 @@ function iniciar(){
       EST[linha].opAtiva=s.exists()?s.val():null;
       renderLinha(linha);
     });
+  });
+
+  // Qualidade — leitura somente (nunca grava), isolado do módulo de qualidade
+  DB.ref("qualidade_inspecoes").orderByChild("data").equalTo(dt).on("value",function(s){
+    LINHAS.forEach(function(l){EST[l].qualLeituras=[];});
+    if(s.exists()) s.forEach(function(c){
+      var v=c.val();
+      if(EST[v.linha]) EST[v.linha].qualLeituras.push(v);
+    });
+    LINHAS.forEach(function(l){renderLinha(l);});
   });
 
   // Total do dia — todos os turnos
