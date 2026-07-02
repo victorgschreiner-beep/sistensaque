@@ -284,10 +284,15 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div id="dash-sku-evolucao" style="display:none">
     <div class="card">
       <div class="ch"><span class="ct" id="dash-sku-titulo">Evolução do Produto no Período</span></div>
+      <div id="dash-sku-evol-msg" style="display:none;text-align:center;padding:30px;color:#999;font-size:12px"></div>
       <div style="position:relative;height:220px"><canvas id="chSkuEvolucao"></canvas></div>
     </div>
     <div class="g2">
-      <div class="card"><div class="ch"><span class="ct">Parâmetros Fora da Faixa (ocorrências)</span></div><div style="position:relative;height:190px"><canvas id="chSkuParametros"></canvas></div></div>
+      <div class="card">
+        <div class="ch"><span class="ct">Parâmetros Fora da Faixa (ocorrências)</span></div>
+        <div id="dash-sku-param-msg" style="display:none;text-align:center;padding:30px;color:#999;font-size:12px"></div>
+        <div style="position:relative;height:190px"><canvas id="chSkuParametros"></canvas></div>
+      </div>
       <div class="card"><div class="ch"><span class="ct">Histórico de Inspeções do Produto</span></div><div class="tw" id="dash-sku-historico"></div></div>
     </div>
     <div class="ch" style="margin-top:6px"><span class="ct">Cartas de Controle Estatístico de Processo (CEP)</span></div>
@@ -310,7 +315,10 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div class="card">
     <div class="fr">
       <div class="fg"><label class="fl">Buscar por Lote ou OP</label><input type="text" id="rast-busca" placeholder="Digite o lote ou número da OP" onkeydown="if(event.key==='Enter')buscarRastreio()"></div>
-      <div class="fg" style="align-self:flex-end"><button class="btn bp bfw" onclick="buscarRastreio()">🔍 Buscar</button></div>
+      <div class="fg" style="align-self:flex-end;display:flex;gap:8px">
+        <button class="btn bp" style="flex:1" onclick="buscarRastreio()">🔍 Buscar</button>
+        <button class="btn bsm" id="btn-rast-pdf" style="display:none" onclick="exportarRastreabilidadePDF()">⇣ Exportar PDF</button>
+      </div>
     </div>
   </div>
   <div id="rast-resultado"></div>
@@ -526,10 +534,6 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div class="fr">
     <div class="fg"><label class="fl">Diâmetro mín (mm)</label><input type="number" step="0.1" id="pp-diamMin"></div>
     <div class="fg"><label class="fl">Diâmetro máx (mm)</label><input type="number" step="0.1" id="pp-diamMax"></div>
-  </div>
-  <div class="fr">
-    <div class="fg"><label class="fl">Flutuabilidade mín (%) — vazio se não aplicável</label><input type="number" step="0.1" id="pp-fluMin"></div>
-    <div class="fg"><label class="fl">Cozimento mín (mL)</label><input type="number" step="1" id="pp-cozMin"></div>
   </div>
   <div class="mfoot">
     <button class="btn" onclick="fM('ov-param')">Cancelar</button>
@@ -898,26 +902,26 @@ var CAMPOS_NUM = [
   {key:'dens', label:'Densidade (g/L)', unidade:'g/L', mode:'range', pMin:'densMin', pMax:'densMax'},
   {key:'corte',label:'Corte (mm)',  unidade:'mm', mode:'range', pMin:'corteMin', pMax:'corteMax'},
   {key:'diam', label:'Diâmetro (mm)', unidade:'mm', mode:'range', pMin:'diamMin', pMax:'diamMax'},
-  {key:'temp', label:'Temperatura (°C acima ambiente)', unidade:'°C', mode:'temp_delta', pMax:'tempMax'},
+  {key:'temp', label:'Temperatura (°C acima ambiente)', unidade:'°C', mode:'max', pMax:'tempMax'},
   {key:'pb',   label:'PB (%)', unidade:'%', mode:'min', pMin:'pbMin'},
   {key:'ee',   label:'EE (%)', unidade:'%', mode:'min', pMin:'eeMin'},
-  {key:'mm',   label:'MM (%)', unidade:'%', mode:'max', pMax:'mmMax'},
-  {key:'flu',  label:'Flutuabilidade (%)', unidade:'%', mode:'min', pMin:'fluMin'},
-  {key:'coz',  label:'Cozimento (mL)', unidade:'mL', mode:'min', pMin:'cozMin'}
+  {key:'mm',   label:'MM (%)', unidade:'%', mode:'max', pMax:'mmMax'}
 ];
 // Campos textuais: avaliação manual do analista, sem faixa numérica de aprovação automática.
 var CAMPOS_TXT = [
+  {key:'flutuabilidade', label:'Flutuabilidade'},
   {key:'finos', label:'Finos'},
   {key:'visual', label:'Visual'},
   {key:'resistencia', label:'Resistência'},
   {key:'embalagem', label:'Embalagem'},
-  {key:'caixa', label:'Caixa'}
+  {key:'caixa', label:'Caixa'},
+  {key:'cozimento', label:'Cozimento'}
 ];
 
 function avaliarCampo(campo, valor, pq){
-  if(valor===''||valor===null||valor===undefined||isNaN(valor)) return null;
+  if(valor===''||valor===null||valor===undefined||isNaN(valor)) return null; // não preenchido
   valor=Number(valor);
-  if(!pq) return null;
+  if(!pq) return null; // sem parâmetro cadastrado -> não dá pra avaliar
   if(campo.mode==='range'){
     var min=pq[campo.pMin], max=pq[campo.pMax];
     if(min===undefined||min===null||max===undefined||max===null) return null;
@@ -928,7 +932,7 @@ function avaliarCampo(campo, valor, pq){
     if(pmin===undefined||pmin===null) return null;
     return valor>=pmin;
   }
-  if(campo.mode==='max'||campo.mode==='temp_delta'){
+  if(campo.mode==='max'){
     var pmax=pq[campo.pMax];
     if(pmax===undefined||pmax===null) return null;
     return valor<=pmax;
@@ -951,10 +955,6 @@ function faixaTexto(campo, pq){
     var pmax=pq[campo.pMax];
     return (pmax===undefined||pmax===null)?'—':('máx. '+fN(pmax,2)+' '+campo.unidade);
   }
-  if(campo.mode==='temp_delta'){
-    var pmax=pq[campo.pMax];
-    return (pmax===undefined||pmax===null)?'—':('máx. +'+fN(pmax,1)+'°C acima ambiente');
-  }
   return '—';
 }
 
@@ -968,26 +968,6 @@ function montarFormularioInspecao(dadosExistentes){
   var hNum='';
   CAMPOS_NUM.forEach(function(c){
     var val = res[c.key]!==undefined ? res[c.key] : '';
-
-    if(c.mode==='temp_delta'){
-      // Temperatura: dois inputs (ambiente + medida), delta calculado automaticamente
-      var valAmb = res['tempAmbiente']!==undefined ? res['tempAmbiente'] : '';
-      var valMed = res['tempMedida']!==undefined ? res['tempMedida'] : '';
-      hNum+='<div class="param-row" style="grid-template-columns:1.3fr 1.8fr 1fr">';
-      hNum+='<div><div class="param-nome">'+c.label+'</div><div class="param-faixa">Faixa: '+faixaTexto(c,pq)+'</div></div>';
-      hNum+='<div style="display:flex;gap:8px;align-items:flex-end">';
-      hNum+='<div><div style="font-size:10px;color:#739630;margin-bottom:2px">Amb. (°C)</div>';
-      hNum+='<input type="number" step="0.1" id="ip-tempAmbiente" value="'+valAmb+'" oninput="recalcCampo(\'temp\')" placeholder="Ex: 28" style="width:80px"></div>';
-      hNum+='<div style="font-size:14px;color:#999;padding-bottom:6px">→</div>';
-      hNum+='<div><div style="font-size:10px;color:#739630;margin-bottom:2px">Ração (°C)</div>';
-      hNum+='<input type="number" step="0.1" id="ip-tempMedida" value="'+valMed+'" oninput="recalcCampo(\'temp\')" placeholder="Ex: 35" style="width:80px"></div>';
-      hNum+='<div style="font-size:11px;color:#4a664a;padding-bottom:6px;min-width:54px" id="ip-temp-delta-label"></div>';
-      hNum+='</div>';
-      hNum+='<div class="param-status param-vazio" id="st-temp">—</div>';
-      hNum+='</div>';
-      return;
-    }
-
     hNum+='<div class="param-row">';
     hNum+='<div><div class="param-nome">'+c.label+'</div><div class="param-faixa">Faixa: '+faixaTexto(c,pq)+'</div></div>';
     hNum+='<div class="param-input"><input type="number" step="0.01" id="ip-'+c.key+'" value="'+val+'" oninput="recalcCampo(\''+c.key+'\')" placeholder="Valor"></div>';
@@ -1010,31 +990,12 @@ function montarFormularioInspecao(dadosExistentes){
 
 function recalcCampo(key){
   var campo=CAMPOS_NUM.find(function(c){return c.key===key;});
-  if(!campo) return;
+  var input=G('ip-'+key);
   var elStatus=G('st-'+key);
-  if(!elStatus) return;
-
-  var valor;
-  if(campo.mode==='temp_delta'){
-    // Calcula delta = temperatura da ração - temperatura ambiente
-    var elAmb=G('ip-tempAmbiente'), elMed=G('ip-tempMedida'), elLbl=G('ip-temp-delta-label');
-    var amb = elAmb ? elAmb.value : '';
-    var med = elMed ? elMed.value : '';
-    if(amb===''||med===''){
-      if(elLbl) elLbl.textContent='';
-      elStatus.className='param-status param-vazio'; elStatus.textContent='—'; return;
-    }
-    var delta = Number(med) - Number(amb);
-    if(elLbl) elLbl.textContent='Δ '+fN(delta,1)+'°C';
-    valor = String(delta);
-  } else {
-    var input=G('ip-'+key);
-    if(!input) return;
-    valor=input.value;
-  }
-
+  if(!input||!elStatus) return;
+  var valor=input.value;
   var aprovado=avaliarCampo(campo, valor, INSP_CONTEXTO.pq);
-  if(valor===''||valor===undefined){
+  if(valor===''){
     elStatus.className='param-status param-vazio'; elStatus.textContent='—';
   } else if(aprovado===null){
     elStatus.className='param-status param-vazio'; elStatus.textContent='s/ faixa';
@@ -1048,23 +1009,6 @@ function recalcCampo(key){
 function coletarResultadosInspecao(){
   var resultados={}, aprovacoes={}, algumaReprova=false, algumaAvaliada=false;
   CAMPOS_NUM.forEach(function(c){
-    if(c.mode==='temp_delta'){
-      var elAmb=G('ip-tempAmbiente'), elMed=G('ip-tempMedida');
-      var amb=elAmb?elAmb.value:'', med=elMed?elMed.value:'';
-      if(amb!==''&&med!==''){
-        var delta=Number(med)-Number(amb);
-        resultados['tempAmbiente']=Number(amb);
-        resultados['tempMedida']=Number(med);
-        resultados['temp']=delta;
-        var ap=avaliarCampo(c, String(delta), INSP_CONTEXTO.pq);
-        if(ap!==null){
-          aprovacoes['temp']=ap;
-          algumaAvaliada=true;
-          if(!ap) algumaReprova=true;
-        }
-      }
-      return;
-    }
     var v=G('ip-'+c.key).value;
     if(v!==''){
       resultados[c.key]=Number(v);
@@ -1591,17 +1535,29 @@ function renderEvolucaoSku(cod, inspSku){
   G('dash-sku-titulo').textContent='Evolução — '+cod+' ('+desc+')';
 
   if(!inspSku.length){
-    G('chSkuEvolucao').parentNode.innerHTML='<div style="text-align:center;padding:30px;color:#999;font-size:12px">Nenhuma inspeção deste produto no período selecionado</div>';
+    // Mostra mensagem sem destruir os canvas
+    G('dash-sku-evol-msg').textContent='Nenhuma inspeção deste produto no período selecionado';
+    G('dash-sku-evol-msg').style.display='block';
+    G('chSkuEvolucao').style.display='none';
+    G('dash-sku-param-msg').textContent='Nenhum dado disponível para este produto no período';
+    G('dash-sku-param-msg').style.display='block';
+    G('chSkuParametros').style.display='none';
     G('dash-sku-historico').innerHTML='';
-    G('dash-sku-cep').innerHTML='<div class="card" style="text-align:center;color:#999;font-size:12px">Nenhum dado disponível para gerar cartas de controle</div>';
-    if(DASH_CHARTS.skuParam) DASH_CHARTS.skuParam.destroy();
+    G('dash-sku-cep').innerHTML='<div class="card" style="text-align:center;color:#999;font-size:12px;padding:20px">Nenhum dado disponível para gerar cartas de controle</div>';
+    if(DASH_CHARTS.skuEvol){ DASH_CHARTS.skuEvol.destroy(); DASH_CHARTS.skuEvol=null; }
+    if(DASH_CHARTS.skuParam){ DASH_CHARTS.skuParam.destroy(); DASH_CHARTS.skuParam=null; }
     return;
   }
+
+  // Garante que canvas estão visíveis e mensagens ocultas
+  G('dash-sku-evol-msg').style.display='none';
+  G('chSkuEvolucao').style.display='';
+  G('dash-sku-param-msg').style.display='none';
+  G('chSkuParametros').style.display='';
 
   // Ordena por data/hora para a linha do tempo
   inspSku.sort(function(a,b){ return (a.data+a.hora) > (b.data+b.hora) ? 1 : -1; });
 
-  // Gráfico de evolução: para cada campo numérico que tiver dado, uma linha ao longo do tempo
   var labels=inspSku.map(function(i){ return i.data.split('-').slice(1).reverse().join('/')+' '+i.hora; });
   var datasets=[];
   var cores=['#024f2b','#739630','#d29922','#c0392b','#5b21b6','#036b3a','#8a5700','#1a6b3a','#4a664a'];
@@ -1625,7 +1581,7 @@ function renderEvolucaoSku(cod, inspSku){
       scales:{y:{beginAtZero:false}}}
   });
 
-  // Gráfico de ocorrências de reprovação por parâmetro, para este SKU no período
+  // Gráfico de ocorrências de reprovação por parâmetro
   var ocorrencias={};
   CAMPOS_NUM.forEach(function(c){ ocorrencias[c.label]=0; });
   inspSku.forEach(function(i){
@@ -1639,8 +1595,14 @@ function renderEvolucaoSku(cod, inspSku){
   var labelsOc=Object.keys(ocorrencias).filter(function(l){return ocorrencias[l]>0;});
   if(DASH_CHARTS.skuParam) DASH_CHARTS.skuParam.destroy();
   if(!labelsOc.length){
-    G('chSkuParametros').parentNode.innerHTML='<div style="text-align:center;padding:30px;color:#999;font-size:12px">Nenhuma reprovação registrada para este produto no período</div>';
+    // Sem reprovações: mostra mensagem, mantém canvas oculto
+    G('dash-sku-param-msg').textContent='Nenhuma reprovação registrada para este produto no período';
+    G('dash-sku-param-msg').style.display='block';
+    G('chSkuParametros').style.display='none';
+    DASH_CHARTS.skuParam=null;
   } else {
+    G('dash-sku-param-msg').style.display='none';
+    G('chSkuParametros').style.display='';
     DASH_CHARTS.skuParam=new Chart(G('chSkuParametros'),{
       type:'bar',
       data:{labels:labelsOc, datasets:[{label:'Ocorrências fora da faixa', data:labelsOc.map(function(l){return ocorrencias[l];}), backgroundColor:'#c0392b'}]},
@@ -1648,7 +1610,7 @@ function renderEvolucaoSku(cod, inspSku){
     });
   }
 
-  // Histórico tabular do produto
+  // Histórico tabular
   var h='<table><thead><tr><th>Data</th><th>Hora</th><th>Linha</th><th>Lote</th><th>Status</th><th>Analista</th></tr></thead><tbody>';
   inspSku.slice().reverse().forEach(function(i){
     var stCls = i.statusGeral==='reprovado'?'brd':i.statusGeral==='aprovado'?'bvd':'bcz';
@@ -1993,10 +1955,14 @@ function exportarFichaSkuPDF(d){
 
 // RASTREABILIDADE POR LOTE
 // ============================================================
+var RAST_CACHE=[]; // cache dos dados brutos da última busca para exportação PDF
+
 function buscarRastreio(){
   var termo=G('rast-busca').value.trim();
   if(!termo){ toast('Digite um lote ou número de OP','err'); return; }
   G('rast-resultado').innerHTML='<div style="text-align:center;padding:30px;color:#739630">Buscando...</div>';
+  G('btn-rast-pdf').style.display='none';
+  RAST_CACHE=[];
 
   DB.ref('ops').once('value').then(function(s){
     var ops=[];
@@ -2010,8 +1976,10 @@ function buscarRastreio(){
       G('rast-resultado').innerHTML='<div class="card" style="text-align:center;color:#999">Nenhuma OP encontrada para "'+termo+'"</div>';
       return;
     }
-    Promise.all(ops.map(function(op){ return montarRastreioOP(op); })).then(function(blocos){
-      G('rast-resultado').innerHTML=blocos.join('');
+    Promise.all(ops.map(function(op){ return montarRastreioOP(op); })).then(function(resultados){
+      RAST_CACHE=resultados.map(function(r){return r.dados;});
+      G('rast-resultado').innerHTML=resultados.map(function(r){return r.html;}).join('');
+      G('btn-rast-pdf').style.display='';
     });
   }).catch(function(e){
     G('rast-resultado').innerHTML='<div style="color:#c0392b;padding:20px">Erro: '+e.message+'</div>';
@@ -2031,9 +1999,13 @@ function montarRastreioOP(op){
     var insps=[]; r[2].forEach(function(c){var v=c.val();v.fbKey=c.key;insps.push(v);});
     var ncs=[]; r[3].forEach(function(c){ncs.push(c.val());});
     var qualConcluida = r[4].exists() ? r[4].val() : null;
-
     var totalReal = apts.reduce(function(s,a){return s+(Number(a.real)||0);},0);
+    var pq = PARAMS_QUAL[op.cod] || {};
 
+    // Ordena inspeções por hora
+    insps.sort(function(a,b){ return (a.data+a.hora)>(b.data+b.hora)?1:-1; });
+
+    // ---- HTML ----
     var h='<div class="card">';
     h+='<div class="ch"><span class="ct">OP '+op.id+' — '+(op.desc||op.cod)+'</span><span class="badge bvd">'+(op.status||'—')+'</span></div>';
     h+='<div class="fr3" style="margin-bottom:14px">';
@@ -2054,12 +2026,33 @@ function montarRastreioOP(op){
 
     h+='<div class="ct" style="margin-bottom:6px">Resultados de Qualidade ('+insps.length+')</div>';
     if(insps.length){
-      h+='<div class="tw"><table><thead><tr><th>Hora</th><th>Analista</th><th>Status</th><th>Parâmetros fora</th></tr></thead><tbody>';
+      h+='<div class="tw"><table><thead><tr><th>Data</th><th>Hora</th><th>Analista</th><th>Status</th><th style="min-width:200px">Parâmetros Lançados</th></tr></thead><tbody>';
       insps.forEach(function(i){
-        var fora=Object.keys(i.aprovacoes||{}).filter(function(k){return !i.aprovacoes[k];});
-        h+='<tr><td>'+(i.hora||'—')+'</td><td>'+(i.analistaNome||i.analista||'—')+'</td>';
-        h+='<td><span class="badge '+(i.statusGeral==='reprovado'?'brd':'bvd')+'">'+(i.statusGeral||'—')+'</span></td>';
-        h+='<td>'+(fora.join(', ')||'—')+'</td></tr>';
+        var stCls=i.statusGeral==='reprovado'?'brd':'bvd';
+        h+='<tr>';
+        h+='<td>'+(i.data?i.data.split('-').reverse().join('/'):'—')+'</td>';
+        h+='<td>'+(i.hora||'—')+'</td>';
+        h+='<td>'+(i.analistaNome||i.analista||'—')+'</td>';
+        h+='<td><span class="badge '+stCls+'">'+(i.statusGeral||'—')+'</span></td>';
+        h+='<td><div style="font-size:11px;line-height:1.7">';
+        // Mostra todos os parâmetros lançados com destaque nos fora da faixa
+        CAMPOS_NUM.forEach(function(c){
+          var val=i.resultados&&i.resultados[c.key];
+          if(val===undefined||val===null) return;
+          var fora=i.aprovacoes&&i.aprovacoes[c.key]===false;
+          var faixa=faixaTexto(c,pq);
+          h+='<span style="'+(fora?'color:#c0392b;font-weight:700':'')+'">';
+          h+=c.label+': '+fN(val,2)+(c.unidade?' '+c.unidade:'');
+          if(fora) h+=' ⚠ ('+faixa+')';
+          h+='</span><br>';
+        });
+        CAMPOS_TXT.forEach(function(c){
+          var val=i.resultados&&i.resultados[c.key];
+          if(!val) return;
+          h+='<span>'+c.label+': '+val+'</span><br>';
+        });
+        h+='</div></td>';
+        h+='</tr>';
       });
       h+='</tbody></table></div>';
     } else {
@@ -2078,13 +2071,169 @@ function montarRastreioOP(op){
       h+='<div style="font-size:12px;color:#999">Nenhuma não conformidade registrada</div>';
     }
     h+='</div>';
-    return h;
+
+    // Retorna HTML + dados brutos para o PDF
+    return {
+      html: h,
+      dados: {op:op, apts:apts, paradas:paradas, insps:insps, ncs:ncs, totalReal:totalReal, pq:pq, qualConcluida:qualConcluida}
+    };
   });
 }
 
 // ============================================================
-// ADMIN — CADASTRO DE PARÂMETROS
+// EXPORTAÇÃO PDF — RASTREABILIDADE
 // ============================================================
+function exportarRastreabilidadePDF(){
+  if(typeof jspdf==='undefined'){ toast('jsPDF não disponível','err'); return; }
+  if(!RAST_CACHE.length){ toast('Faça uma busca antes de exportar','err'); return; }
+  var jsPDF=jspdf.jsPDF;
+  var doc=new jsPDF({orientation:'landscape', unit:'mm', format:'a4'});
+  var termo=G('rast-busca').value.trim();
+  var W=277, ML=10;
+
+  pdfCabecalho(doc,
+    'RASTREABILIDADE — '+termo,
+    'Emitido em: '+new Date().toLocaleString('pt-BR')+'  |  Operador: '+(SES?SES.nome||SES.login:'—')
+  );
+
+  var y=26;
+
+  RAST_CACHE.forEach(function(d, idx){
+    var op=d.op, insps=d.insps, ncs=d.ncs, pq=d.pq;
+
+    // Cabeçalho da OP
+    if(idx>0){ doc.addPage('a4','landscape'); y=15; }
+    doc.setFillColor(2,79,43); doc.rect(ML,y,W,7,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(255,255,255);
+    doc.text('OP '+op.id+' — '+(op.desc||op.cod),ML+3,y+4.8);
+    doc.setFont('helvetica','normal'); doc.setFontSize(8);
+    doc.text('Status: '+(op.status||'—'),200,y+4.8);
+    y+=9;
+
+    // Info da OP
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(40,40,40);
+    doc.text('Lote: '+(op.lote||'—')+'   |   Linha: '+(op.linha||'—')+'   |   Data: '+(op.data?op.data.split('-').reverse().join('/'):'—')+'   |   Produção: '+fN(d.totalReal)+' kg em '+d.apts.length+' apontamento(s) — '+d.paradas.length+' parada(s)',ML,y+4);
+    y+=8;
+
+    if(d.qualConcluida){
+      doc.setFillColor(240,248,240); doc.rect(ML,y,W,5,'F');
+      doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(2,79,43);
+      doc.text('✔ Concluída para Qualidade em: '+(d.qualConcluida.ts?new Date(d.qualConcluida.ts).toLocaleString('pt-BR'):'—')+' por '+(d.qualConcluida.analistaNome||'—'),ML+2,y+3.5);
+      y+=6;
+    }
+
+    // ---- Seção de Inspeções ----
+    doc.setFillColor(115,150,48); doc.rect(ML,y,W,5.5,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+    doc.text('RESULTADOS DE QUALIDADE ('+insps.length+' inspeção(ões))',ML+3,y+3.8);
+    y+=6.5;
+
+    if(!insps.length){
+      doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(150,150,150);
+      doc.text('Nenhuma inspeção registrada para esta OP',ML+3,y+4);
+      y+=8;
+    } else {
+      // Cabeçalho da tabela de inspeções
+      doc.setFillColor(235,245,235); doc.rect(ML,y,W,5,'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(2,79,43);
+      var cols=[ML+2, ML+22, ML+42, ML+70, ML+90];
+      ['Data','Hora','Analista','Status','Parâmetros (⚠ = fora da faixa)'].forEach(function(h,i){ doc.text(h,cols[i],y+3.5); });
+      y+=5.5;
+
+      insps.forEach(function(insp){
+        var reprovado=insp.statusGeral==='reprovado';
+        // Monta lista de parâmetros com alertas
+        var params=[];
+        CAMPOS_NUM.forEach(function(c){
+          var val=insp.resultados&&insp.resultados[c.key];
+          if(val===undefined||val===null) return;
+          var fora=insp.aprovacoes&&insp.aprovacoes[c.key]===false;
+          var txt=c.label+': '+fN(val,2)+(c.unidade?' '+c.unidade:'');
+          if(fora) txt+=' ⚠ ('+faixaTexto(c,pq)+')';
+          params.push({txt:txt, fora:fora});
+        });
+        CAMPOS_TXT.forEach(function(c){
+          var val=insp.resultados&&insp.resultados[c.key];
+          if(val) params.push({txt:c.label+': '+val, fora:false});
+        });
+
+        var linhaH=Math.max(5, params.length*4+2);
+        if(y+linhaH>195){ doc.addPage('a4','landscape'); y=15; }
+
+        // Fundo alternado
+        if(reprovado){
+          doc.setFillColor(255,245,245); doc.rect(ML,y,W,linhaH,'F');
+          // Borda esquerda vermelha indicando reprovação
+          doc.setFillColor(192,57,43); doc.rect(ML,y,1,linhaH,'F');
+        }
+
+        doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(40,40,40);
+        var cy=y+4;
+        doc.text(insp.data?insp.data.split('-').reverse().join('/'):'—',cols[0],cy);
+        doc.text(insp.hora||'—',cols[1],cy);
+        doc.text(insp.analistaNome||insp.analista||'—',cols[2],cy);
+
+        // Badge de status
+        if(reprovado){
+          doc.setFillColor(192,57,43); doc.roundedRect(cols[3],y+1,17,3.5,1,1,'F');
+          doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(255,255,255);
+          doc.text('REPROVADO',cols[3]+1,y+3.4);
+        } else {
+          doc.setFillColor(2,79,43); doc.roundedRect(cols[3],y+1,15,3.5,1,1,'F');
+          doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(255,255,255);
+          doc.text('APROVADO',cols[3]+1,y+3.4);
+        }
+
+        // Parâmetros
+        doc.setFont('helvetica','normal'); doc.setFontSize(6.5);
+        var py=y+3.5;
+        params.forEach(function(p){
+          if(p.fora){
+            doc.setTextColor(192,57,43); doc.setFont('helvetica','bold');
+          } else {
+            doc.setTextColor(60,60,60); doc.setFont('helvetica','normal');
+          }
+          doc.text(p.txt,cols[4],py);
+          py+=3.8;
+        });
+
+        doc.setDrawColor(220,235,220);
+        doc.line(ML,y+linhaH,ML+W,y+linhaH);
+        y+=linhaH;
+      });
+    }
+
+    y+=4;
+
+    // ---- Seção de NCs ----
+    if(ncs.length){
+      doc.setFillColor(192,57,43); doc.rect(ML,y,W,5.5,'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+      doc.text('NÃO CONFORMIDADES ('+ncs.length+')',ML+3,y+3.8);
+      y+=6.5;
+
+      ncs.forEach(function(n){
+        var w=n.w2h||{};
+        var linhaH=14;
+        if(y+linhaH>195){ doc.addPage('a4','landscape'); y=15; }
+        doc.setFillColor(255,248,248); doc.rect(ML,y,W,linhaH,'F');
+        doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(192,57,43);
+        doc.text(n.status||'—',ML+3,y+4);
+        doc.setFont('helvetica','normal'); doc.setTextColor(40,40,40);
+        doc.text('Descrição: '+(n.descricao||'—'),ML+3,y+8);
+        doc.text('5W2H — O que: '+(w.what||'—').slice(0,60)+'   |   Quem: '+(w.who||'—')+'   |   Prazo: '+(w.whenFim||'—'),ML+3,y+12);
+        doc.setDrawColor(220,180,180); doc.line(ML,y+linhaH,ML+W,y+linhaH);
+        y+=linhaH+1;
+      });
+    }
+  });
+
+  var nomearq='Rastreabilidade_'+termo.replace(/[^a-zA-Z0-9]/g,'_')+'_'+hoje()+'.pdf';
+  doc.save(nomearq);
+  toast('PDF exportado!','ok');
+}
+
+
 function renderParamsLista(){
   var busca=(G('params-busca').value||'').toLowerCase();
   var corpo=G('params-corpo');
@@ -2111,7 +2260,7 @@ function renderParamsLista(){
 function abrirNovoParam(){
   G('param-titulo').textContent='Novo Produto';
   ['codigo','desc','umidMin','umidMax','awMin','awMax','densMin','densMax','corteMin','corteMax',
-   'diamMin','diamMax','pbMin','eeMin','mmMax','tempMax','fluMin','cozMin'].forEach(function(f){
+   'diamMin','diamMax','pbMin','eeMin','mmMax','tempMax'].forEach(function(f){
     var el=G('pp-'+f); if(el) el.value='';
   });
   G('pp-codigo').disabled=false;
@@ -2141,8 +2290,6 @@ function abrirEditarParam(cod){
   G('pp-corteMax').value=p.corteMax!=null?p.corteMax:'';
   G('pp-diamMin').value=p.diamMin!=null?p.diamMin:'';
   G('pp-diamMax').value=p.diamMax!=null?p.diamMax:'';
-  G('pp-fluMin').value=p.fluMin!=null?p.fluMin:'';
-  G('pp-cozMin').value=p.cozMin!=null?p.cozMin:'';
   aM('ov-param');
 }
 
@@ -2168,9 +2315,7 @@ function salvarParam(){
     corteMin:numOrNull(G('pp-corteMin').value),
     corteMax:numOrNull(G('pp-corteMax').value),
     diamMin:numOrNull(G('pp-diamMin').value),
-    diamMax:numOrNull(G('pp-diamMax').value),
-    fluMin:numOrNull(G('pp-fluMin').value),
-    cozMin:numOrNull(G('pp-cozMin').value)
+    diamMax:numOrNull(G('pp-diamMax').value)
   };
   DB.ref('qualidade_params/'+cod).set(p).then(function(){
     PARAMS_QUAL[cod]=p;
@@ -2343,9 +2488,7 @@ var COLUNAS_PARAMS = [
   ['Densidade_min_gL','densMin'],['Densidade_max_gL','densMax'],
   ['Corte_min_mm','corteMin'],['Corte_max_mm','corteMax'],
   ['Diametro_min_mm','diamMin'],['Diametro_max_mm','diamMax'],
-  ['Temp_max_C','tempMax'],
-  ['Flutuabilidade_min_%','fluMin'],
-  ['Cozimento_min_mL','cozMin']
+  ['Temp_max_C','tempMax']
 ];
 
 function exportarPlanilhaParams(){
