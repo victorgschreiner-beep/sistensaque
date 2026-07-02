@@ -535,6 +535,10 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="fg"><label class="fl">Diâmetro mín (mm)</label><input type="number" step="0.1" id="pp-diamMin"></div>
     <div class="fg"><label class="fl">Diâmetro máx (mm)</label><input type="number" step="0.1" id="pp-diamMax"></div>
   </div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Flutuabilidade mín (%) — vazio se não aplicável</label><input type="number" step="0.1" id="pp-fluMin"></div>
+    <div class="fg"><label class="fl">Cozimento mín (mL)</label><input type="number" step="1" id="pp-cozMin"></div>
+  </div>
   <div class="mfoot">
     <button class="btn" onclick="fM('ov-param')">Cancelar</button>
     <button class="btn bp" onclick="salvarParam()">💾 Salvar Parâmetros</button>
@@ -902,26 +906,35 @@ var CAMPOS_NUM = [
   {key:'dens', label:'Densidade (g/L)', unidade:'g/L', mode:'range', pMin:'densMin', pMax:'densMax'},
   {key:'corte',label:'Corte (mm)',  unidade:'mm', mode:'range', pMin:'corteMin', pMax:'corteMax'},
   {key:'diam', label:'Diâmetro (mm)', unidade:'mm', mode:'range', pMin:'diamMin', pMax:'diamMax'},
-  {key:'temp', label:'Temperatura (°C acima ambiente)', unidade:'°C', mode:'max', pMax:'tempMax'},
+  {key:'temp', label:'Temperatura (°C acima ambiente)', unidade:'°C', mode:'temp_delta', pMax:'tempMax'},
   {key:'pb',   label:'PB (%)', unidade:'%', mode:'min', pMin:'pbMin'},
   {key:'ee',   label:'EE (%)', unidade:'%', mode:'min', pMin:'eeMin'},
-  {key:'mm',   label:'MM (%)', unidade:'%', mode:'max', pMax:'mmMax'}
+  {key:'mm',   label:'MM (%)', unidade:'%', mode:'max', pMax:'mmMax'},
+  {key:'flu',  label:'Flutuabilidade (%)', unidade:'%', mode:'min', pMin:'fluMin'},
+  {key:'coz',  label:'Cozimento (mL)', unidade:'mL', mode:'min', pMin:'cozMin'},
+  {key:'finos',label:'Finos (%)', unidade:'%', mode:'finos_unidade'}
 ];
 // Campos textuais: avaliação manual do analista, sem faixa numérica de aprovação automática.
 var CAMPOS_TXT = [
-  {key:'flutuabilidade', label:'Flutuabilidade'},
-  {key:'finos', label:'Finos'},
   {key:'visual', label:'Visual'},
   {key:'resistencia', label:'Resistência'},
   {key:'embalagem', label:'Embalagem'},
-  {key:'caixa', label:'Caixa'},
-  {key:'cozimento', label:'Cozimento'}
+  {key:'caixa', label:'Caixa'}
 ];
 
+// Retorna o limite máximo de finos (%) baseado na unidade do produto
+function finosMaxPorUnidade(pq){
+  if(!pq||!pq.unidade) return null;
+  var u=pq.unidade.toUpperCase();
+  if(u==='KG') return 0.15;
+  if(u==='SC'||u==='BG') return 0.30;
+  return null;
+}
+
 function avaliarCampo(campo, valor, pq){
-  if(valor===''||valor===null||valor===undefined||isNaN(valor)) return null; // não preenchido
+  if(valor===''||valor===null||valor===undefined||isNaN(valor)) return null;
   valor=Number(valor);
-  if(!pq) return null; // sem parâmetro cadastrado -> não dá pra avaliar
+  if(!pq) return null;
   if(campo.mode==='range'){
     var min=pq[campo.pMin], max=pq[campo.pMax];
     if(min===undefined||min===null||max===undefined||max===null) return null;
@@ -932,10 +945,15 @@ function avaliarCampo(campo, valor, pq){
     if(pmin===undefined||pmin===null) return null;
     return valor>=pmin;
   }
-  if(campo.mode==='max'){
+  if(campo.mode==='max'||campo.mode==='temp_delta'){
     var pmax=pq[campo.pMax];
     if(pmax===undefined||pmax===null) return null;
     return valor<=pmax;
+  }
+  if(campo.mode==='finos_unidade'){
+    var maxFinos=finosMaxPorUnidade(pq);
+    if(maxFinos===null) return null;
+    return valor<=maxFinos;
   }
   return null;
 }
@@ -955,6 +973,15 @@ function faixaTexto(campo, pq){
     var pmax=pq[campo.pMax];
     return (pmax===undefined||pmax===null)?'—':('máx. '+fN(pmax,2)+' '+campo.unidade);
   }
+  if(campo.mode==='temp_delta'){
+    var pmax=pq[campo.pMax];
+    return (pmax===undefined||pmax===null)?'—':('máx. +'+fN(pmax,1)+'°C acima ambiente');
+  }
+  if(campo.mode==='finos_unidade'){
+    var maxFinos=finosMaxPorUnidade(pq);
+    if(maxFinos===null) return '—';
+    return 'máx. '+fN(maxFinos,2)+'% ('+((pq.unidade||'').toUpperCase()==='KG'?'granel':'sacaria')+')';
+  }
   return '—';
 }
 
@@ -968,6 +995,25 @@ function montarFormularioInspecao(dadosExistentes){
   var hNum='';
   CAMPOS_NUM.forEach(function(c){
     var val = res[c.key]!==undefined ? res[c.key] : '';
+
+    if(c.mode==='temp_delta'){
+      var valAmb = res['tempAmbiente']!==undefined ? res['tempAmbiente'] : '';
+      var valMed = res['tempMedida']!==undefined ? res['tempMedida'] : '';
+      hNum+='<div class="param-row" style="grid-template-columns:1.3fr 1.8fr 1fr">';
+      hNum+='<div><div class="param-nome">'+c.label+'</div><div class="param-faixa">Faixa: '+faixaTexto(c,pq)+'</div></div>';
+      hNum+='<div style="display:flex;gap:8px;align-items:flex-end">';
+      hNum+='<div><div style="font-size:10px;color:#739630;margin-bottom:2px">Amb. (°C)</div>';
+      hNum+='<input type="number" step="0.1" id="ip-tempAmbiente" value="'+valAmb+'" oninput="recalcCampo(\'temp\')" placeholder="Ex: 28" style="width:80px"></div>';
+      hNum+='<div style="font-size:14px;color:#999;padding-bottom:6px">→</div>';
+      hNum+='<div><div style="font-size:10px;color:#739630;margin-bottom:2px">Ração (°C)</div>';
+      hNum+='<input type="number" step="0.1" id="ip-tempMedida" value="'+valMed+'" oninput="recalcCampo(\'temp\')" placeholder="Ex: 35" style="width:80px"></div>';
+      hNum+='<div style="font-size:11px;color:#4a664a;padding-bottom:6px;min-width:54px" id="ip-temp-delta-label"></div>';
+      hNum+='</div>';
+      hNum+='<div class="param-status param-vazio" id="st-temp">—</div>';
+      hNum+='</div>';
+      return;
+    }
+
     hNum+='<div class="param-row">';
     hNum+='<div><div class="param-nome">'+c.label+'</div><div class="param-faixa">Faixa: '+faixaTexto(c,pq)+'</div></div>';
     hNum+='<div class="param-input"><input type="number" step="0.01" id="ip-'+c.key+'" value="'+val+'" oninput="recalcCampo(\''+c.key+'\')" placeholder="Valor"></div>';
@@ -990,12 +1036,29 @@ function montarFormularioInspecao(dadosExistentes){
 
 function recalcCampo(key){
   var campo=CAMPOS_NUM.find(function(c){return c.key===key;});
-  var input=G('ip-'+key);
+  if(!campo) return;
   var elStatus=G('st-'+key);
-  if(!input||!elStatus) return;
-  var valor=input.value;
+  if(!elStatus) return;
+
+  var valor;
+  if(campo.mode==='temp_delta'){
+    var elAmb=G('ip-tempAmbiente'), elMed=G('ip-tempMedida'), elLbl=G('ip-temp-delta-label');
+    var amb=elAmb?elAmb.value:'', med=elMed?elMed.value:'';
+    if(amb===''||med===''){
+      if(elLbl) elLbl.textContent='';
+      elStatus.className='param-status param-vazio'; elStatus.textContent='—'; return;
+    }
+    var delta=Number(med)-Number(amb);
+    if(elLbl) elLbl.textContent='Δ '+fN(delta,1)+'°C';
+    valor=String(delta);
+  } else {
+    var input=G('ip-'+key);
+    if(!input) return;
+    valor=input.value;
+  }
+
   var aprovado=avaliarCampo(campo, valor, INSP_CONTEXTO.pq);
-  if(valor===''){
+  if(valor===''||valor===undefined){
     elStatus.className='param-status param-vazio'; elStatus.textContent='—';
   } else if(aprovado===null){
     elStatus.className='param-status param-vazio'; elStatus.textContent='s/ faixa';
@@ -1009,15 +1072,24 @@ function recalcCampo(key){
 function coletarResultadosInspecao(){
   var resultados={}, aprovacoes={}, algumaReprova=false, algumaAvaliada=false;
   CAMPOS_NUM.forEach(function(c){
+    if(c.mode==='temp_delta'){
+      var elAmb=G('ip-tempAmbiente'), elMed=G('ip-tempMedida');
+      var amb=elAmb?elAmb.value:'', med=elMed?elMed.value:'';
+      if(amb!==''&&med!==''){
+        var delta=Number(med)-Number(amb);
+        resultados['tempAmbiente']=Number(amb);
+        resultados['tempMedida']=Number(med);
+        resultados['temp']=delta;
+        var ap=avaliarCampo(c, String(delta), INSP_CONTEXTO.pq);
+        if(ap!==null){ aprovacoes['temp']=ap; algumaAvaliada=true; if(!ap) algumaReprova=true; }
+      }
+      return;
+    }
     var v=G('ip-'+c.key).value;
     if(v!==''){
       resultados[c.key]=Number(v);
       var ap=avaliarCampo(c, v, INSP_CONTEXTO.pq);
-      if(ap!==null){
-        aprovacoes[c.key]=ap;
-        algumaAvaliada=true;
-        if(!ap) algumaReprova=true;
-      }
+      if(ap!==null){ aprovacoes[c.key]=ap; algumaAvaliada=true; if(!ap) algumaReprova=true; }
     }
   });
   CAMPOS_TXT.forEach(function(c){
@@ -2260,7 +2332,7 @@ function renderParamsLista(){
 function abrirNovoParam(){
   G('param-titulo').textContent='Novo Produto';
   ['codigo','desc','umidMin','umidMax','awMin','awMax','densMin','densMax','corteMin','corteMax',
-   'diamMin','diamMax','pbMin','eeMin','mmMax','tempMax'].forEach(function(f){
+   'diamMin','diamMax','pbMin','eeMin','mmMax','tempMax','fluMin','cozMin'].forEach(function(f){
     var el=G('pp-'+f); if(el) el.value='';
   });
   G('pp-codigo').disabled=false;
@@ -2290,6 +2362,8 @@ function abrirEditarParam(cod){
   G('pp-corteMax').value=p.corteMax!=null?p.corteMax:'';
   G('pp-diamMin').value=p.diamMin!=null?p.diamMin:'';
   G('pp-diamMax').value=p.diamMax!=null?p.diamMax:'';
+  G('pp-fluMin').value=p.fluMin!=null?p.fluMin:'';
+  G('pp-cozMin').value=p.cozMin!=null?p.cozMin:'';
   aM('ov-param');
 }
 
@@ -2315,7 +2389,9 @@ function salvarParam(){
     corteMin:numOrNull(G('pp-corteMin').value),
     corteMax:numOrNull(G('pp-corteMax').value),
     diamMin:numOrNull(G('pp-diamMin').value),
-    diamMax:numOrNull(G('pp-diamMax').value)
+    diamMax:numOrNull(G('pp-diamMax').value),
+    fluMin:numOrNull(G('pp-fluMin').value),
+    cozMin:numOrNull(G('pp-cozMin').value)
   };
   DB.ref('qualidade_params/'+cod).set(p).then(function(){
     PARAMS_QUAL[cod]=p;
@@ -2488,7 +2564,9 @@ var COLUNAS_PARAMS = [
   ['Densidade_min_gL','densMin'],['Densidade_max_gL','densMax'],
   ['Corte_min_mm','corteMin'],['Corte_max_mm','corteMax'],
   ['Diametro_min_mm','diamMin'],['Diametro_max_mm','diamMax'],
-  ['Temp_max_C','tempMax']
+  ['Temp_max_C','tempMax'],
+  ['Flutuabilidade_min_%','fluMin'],
+  ['Cozimento_min_mL','cozMin']
 ];
 
 function exportarPlanilhaParams(){
