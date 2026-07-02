@@ -311,14 +311,26 @@ tr:hover td{background:rgba(2,79,43,.03)}
 
 <!-- ============ TELA: RASTREABILIDADE ============ -->
 <div class="scr" id="scr-rastreio">
-  <div class="ch"><h2 style="font-size:16px;font-weight:700;color:#024f2b">Rastreabilidade por Lote</h2></div>
+  <div class="ch"><h2 style="font-size:16px;font-weight:700;color:#024f2b">Rastreabilidade</h2></div>
   <div class="card">
-    <div class="fr">
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="btn bsm bp" id="rast-tab-lote" style="flex:1" onclick="rastMudarAba('lote')">🔍 Por Lote/OP</button>
+      <button class="btn bsm" id="rast-tab-data" style="flex:1" onclick="rastMudarAba('data')">📅 Por Data de Inspeção</button>
+    </div>
+    <div id="rast-painel-lote" class="fr">
       <div class="fg"><label class="fl">Buscar por Lote ou OP</label><input type="text" id="rast-busca" placeholder="Digite o lote ou número da OP" onkeydown="if(event.key==='Enter')buscarRastreio()"></div>
       <div class="fg" style="align-self:flex-end;display:flex;gap:8px">
         <button class="btn bp" style="flex:1" onclick="buscarRastreio()">🔍 Buscar</button>
-        <button class="btn bsm" id="btn-rast-pdf" style="display:none" onclick="exportarRastreabilidadePDF()">⇣ Exportar PDF</button>
       </div>
+    </div>
+    <div id="rast-painel-data" class="fr" style="display:none">
+      <div class="fg"><label class="fl">Data em que a inspeção foi lançada</label><input type="date" id="rast-data" onkeydown="if(event.key==='Enter')buscarRastreioPorData()"></div>
+      <div class="fg" style="align-self:flex-end;display:flex;gap:8px">
+        <button class="btn bp" style="flex:1" onclick="buscarRastreioPorData()">🔍 Buscar</button>
+      </div>
+    </div>
+    <div style="text-align:right">
+      <button class="btn bsm" id="btn-rast-pdf" style="display:none" onclick="exportarRastreabilidadePDF()">⇣ Exportar PDF</button>
     </div>
   </div>
   <div id="rast-resultado"></div>
@@ -2029,6 +2041,17 @@ function exportarFichaSkuPDF(d){
 // ============================================================
 var RAST_CACHE=[]; // cache dos dados brutos da última busca para exportação PDF
 
+function rastMudarAba(aba){
+  var lote=aba==='lote';
+  G('rast-painel-lote').style.display=lote?'':'none';
+  G('rast-painel-data').style.display=lote?'none':'';
+  G('rast-tab-lote').className='btn bsm'+(lote?' bp':'');
+  G('rast-tab-data').className='btn bsm'+(lote?'':' bp');
+  G('rast-resultado').innerHTML='';
+  G('btn-rast-pdf').style.display='none';
+  RAST_CACHE=[];
+}
+
 function buscarRastreio(){
   var termo=G('rast-busca').value.trim();
   if(!termo){ toast('Digite um lote ou número de OP','err'); return; }
@@ -2044,21 +2067,51 @@ function buscarRastreio(){
       var matchOp=String(o.id||'').toLowerCase().indexOf(termo.toLowerCase())!==-1;
       if(matchLote||matchOp) ops.push(o);
     });
-    if(!ops.length){
-      G('rast-resultado').innerHTML='<div class="card" style="text-align:center;color:#999">Nenhuma OP encontrada para "'+termo+'"</div>';
+    renderizarRastreioResultados(ops, null, 'Nenhuma OP encontrada para "'+termo+'"');
+  }).catch(function(e){
+    G('rast-resultado').innerHTML='<div style="color:#c0392b;padding:20px">Erro: '+e.message+'</div>';
+  });
+}
+
+function buscarRastreioPorData(){
+  var data=G('rast-data').value;
+  if(!data){ toast('Selecione uma data','err'); return; }
+  G('rast-resultado').innerHTML='<div style="text-align:center;padding:30px;color:#739630">Buscando...</div>';
+  G('btn-rast-pdf').style.display='none';
+  RAST_CACHE=[];
+
+  DB.ref('qualidade_inspecoes').orderByChild('data').equalTo(data).once('value').then(function(s){
+    var mapaOps={};
+    if(s.exists()) s.forEach(function(c){ var v=c.val(); if(v.opFbKey) mapaOps[v.opFbKey]=true; });
+    var chaves=Object.keys(mapaOps);
+    if(!chaves.length){
+      G('rast-resultado').innerHTML='<div class="card" style="text-align:center;color:#999">Nenhuma inspeção lançada em '+data.split('-').reverse().join('/')+'</div>';
       return;
     }
-    Promise.all(ops.map(function(op){ return montarRastreioOP(op); })).then(function(resultados){
-      RAST_CACHE=resultados.map(function(r){return r.dados;});
-      G('rast-resultado').innerHTML=resultados.map(function(r){return r.html;}).join('');
-      G('btn-rast-pdf').style.display='';
+    Promise.all(chaves.map(function(k){ return DB.ref('ops/'+k).once('value'); })).then(function(snaps){
+      var ops=[];
+      snaps.forEach(function(sn){ if(sn.exists()){ var o=sn.val(); o.fbKey=sn.key; ops.push(o); } });
+      renderizarRastreioResultados(ops, data, 'As inspeções encontradas não correspondem a nenhuma OP válida (registro órfão)');
     });
   }).catch(function(e){
     G('rast-resultado').innerHTML='<div style="color:#c0392b;padding:20px">Erro: '+e.message+'</div>';
   });
 }
 
-function montarRastreioOP(op){
+function renderizarRastreioResultados(ops, destacarData, msgVazio){
+  if(!ops.length){
+    G('rast-resultado').innerHTML='<div class="card" style="text-align:center;color:#999">'+msgVazio+'</div>';
+    return;
+  }
+  Promise.all(ops.map(function(op){ return montarRastreioOP(op, destacarData); })).then(function(resultados){
+    RAST_CACHE=resultados.map(function(r){return r.dados;});
+    var resumo=destacarData?('<div style="font-size:12px;color:#4a664a;font-weight:600;margin-bottom:10px">'+ops.length+' OP(s) com inspeção lançada em '+destacarData.split('-').reverse().join('/')+'</div>'):'';
+    G('rast-resultado').innerHTML=resumo+resultados.map(function(r){return r.html;}).join('');
+    G('btn-rast-pdf').style.display='';
+  });
+}
+
+function montarRastreioOP(op, destacarData){
   return Promise.all([
     DB.ref('extrusao_apts').orderByChild('opFbKey').equalTo(op.fbKey).once('value'),
     DB.ref('extrusao_paradas').orderByChild('opFbKey').equalTo(op.fbKey).once('value'),
@@ -2101,8 +2154,9 @@ function montarRastreioOP(op){
       h+='<div class="tw"><table><thead><tr><th>Data</th><th>Hora</th><th>Analista</th><th>Status</th><th style="min-width:200px">Parâmetros Lançados</th></tr></thead><tbody>';
       insps.forEach(function(i){
         var stCls=i.statusGeral==='reprovado'?'brd':'bvd';
-        h+='<tr>';
-        h+='<td>'+(i.data?i.data.split('-').reverse().join('/'):'—')+'</td>';
+        var destaque=destacarData && i.data===destacarData;
+        h+='<tr'+(destaque?' style="background:#eaf3e8"':'')+'>';
+        h+='<td>'+(destaque?'📌 ':'')+(i.data?i.data.split('-').reverse().join('/'):'—')+'</td>';
         h+='<td>'+(i.hora||'—')+'</td>';
         h+='<td>'+(i.analistaNome||i.analista||'—')+'</td>';
         h+='<td><span class="badge '+stCls+'">'+(i.statusGeral||'—')+'</span></td>';
