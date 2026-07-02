@@ -3441,50 +3441,9 @@ function dashRender(apts, paradas, di, df){
     if(!aptsOP.length){
       corpOp.innerHTML='<div style="text-align:center;padding:16px;color:#c0392b">Nenhum apontamento encontrado para a ordem '+opFiltro+'</div>';
     } else {
-      // Agrupa por turno
-      var porTurnoOP={1:[],2:[],3:[]};
-      aptsOP.forEach(function(a){porTurnoOP[a.turno||1].push(a);});
-      var totalOP=aptsOP.reduce(function(a,x){return a+(Number(x.real)||0);},0);
-      var op=OPS.find(function(o){return o.id===opFiltro||o.id.includes(opFiltro);});
-
-      var h='<div style="background:#f5f9f2;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;gap:20px;align-items:center">';
-      h+='<div><div style="font-size:11px;color:#739630;font-weight:700">ORDEM</div><div style="font-size:16px;font-weight:800;color:#024f2b">'+opFiltro+'</div></div>';
-      if(op){h+='<div><div style="font-size:11px;color:#739630;font-weight:700">PRODUTO</div><div style="font-size:13px;font-weight:600">'+(op.desc||op.cod)+'</div></div>';}
-      h+='<div><div style="font-size:11px;color:#739630;font-weight:700">TOTAL EXTRUSADO</div><div style="font-size:18px;font-weight:800;color:#024f2b">'+fN(totalOP)+' kg</div></div>';
-      if(op&&op.prog){
-        var pctOP=Math.round(totalOP/Number(op.prog)*100);
-        var corOP=pctOP>=85?"#024f2b":pctOP>=70?"#d29922":"#c0392b";
-        h+='<div><div style="font-size:11px;color:#739630;font-weight:700">PROG / ADERÊNCIA</div><div style="font-size:16px;font-weight:800;color:'+corOP+'">'+fN(op.prog)+' kg · '+pctOP+'%</div></div>';
-      }
-      h+='</div>';
-
-      // Por turno
-      [1,2,3].forEach(function(t){
-        var aptsT=porTurnoOP[t];
-        if(!aptsT.length) return;
-        var totT=aptsT.reduce(function(a,x){return a+(Number(x.real)||0);},0);
-        h+='<div style="margin-bottom:10px">';
-        h+='<div style="background:#024f2b;color:#fff;padding:6px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;display:flex;justify-content:space-between">';
-        h+='<span>TURNO '+t+'</span><span>Total: '+fN(totT)+' kg</span></div>';
-        h+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
-        h+='<tr style="background:#f5f9f2"><th style="padding:6px 8px;text-align:left;color:#024f2b">Data</th><th style="padding:6px 8px;text-align:left;color:#024f2b">Linha</th><th style="padding:6px 8px;text-align:left;color:#024f2b">Hora</th><th style="padding:6px 8px;text-align:right;color:#024f2b">Real (kg)</th><th style="padding:6px 8px;text-align:right;color:#024f2b">Meta (kg/h)</th><th style="padding:6px 8px;text-align:right;color:#024f2b">%</th><th style="padding:6px 8px;text-align:left;color:#024f2b">Operador</th></tr>';
-        aptsT.sort(function(a,b){return (a.data+a.horaIni)>(b.data+b.horaIni)?1:-1;}).forEach(function(a,i){
-          var ef=a.metaH?Math.min(Math.round((Number(a.real)||0)/a.metaH*100),999):0;
-          var corEf=ef>=85?"#024f2b":ef>=70?"#d29922":"#c0392b";
-          var nL=(a.linha||"");
-          h+='<tr style="background:'+(i%2===0?"#fff":"#f9fbf9")+'">';
-          h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0">'+a.data+'</td>';
-          h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0">'+nL+'</td>';
-          h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0">'+a.horaIni+' → '+a.horaFim+'</td>';
-          h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700">'+fN(a.real)+'</td>';
-          h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;text-align:right">'+fN(a.metaH||0)+'</td>';
-          h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:'+corEf+'">'+ef+'%</td>';
-          h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;color:#666">'+a.operador+'</td>';
-          h+='</tr>';
-        });
-        h+='</table></div>';
-      });
-      // Seção de paradas que ocorreram durante esta OP
+      corpOp.innerHTML='<div style="text-align:center;padding:16px;color:#4a664a">Carregando cadeia de programação...</div>';
+      // Seção de paradas que ocorreram durante esta OP — calculada aqui pois usa o array `paradas`
+      // já carregado no período do dashboard (não disponível na busca rápida por OP)
       var paradasOP=paradas.filter(function(p){
         return aptsOP.some(function(a){
           return a.linha===p.linha && a.data===p.data && (
@@ -3493,30 +3452,31 @@ function dashRender(apts, paradas, di, df){
           );
         });
       });
+      var paradasHtml="";
       if(paradasOP.length){
         var totMin=paradasOP.reduce(function(s,p){return s+(Number(p.minutos)||0);},0);
-        h+='<div style="margin-top:12px">';
-        h+='<div style="background:#c0392b;color:#fff;padding:6px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;display:flex;justify-content:space-between">';
-        h+='<span>🔴 PARADAS DURANTE A ORDEM</span><span>Total: '+minH(totMin)+'</span></div>';
-        h+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
-        h+='<tr style="background:#fdf5f5"><th style="padding:6px 8px;text-align:left;color:#c0392b">Data</th><th style="padding:6px 8px;text-align:left;color:#c0392b">Linha</th><th style="padding:6px 8px;text-align:left;color:#c0392b">Turno</th><th style="padding:6px 8px;text-align:left;color:#c0392b">Hora</th><th style="padding:6px 8px;text-align:right;color:#c0392b">Duração</th><th style="padding:6px 8px;text-align:left;color:#c0392b">Motivo</th></tr>';
+        paradasHtml+='<div style="margin-top:12px">';
+        paradasHtml+='<div style="background:#c0392b;color:#fff;padding:6px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;display:flex;justify-content:space-between">';
+        paradasHtml+='<span>🔴 PARADAS DURANTE A ORDEM</span><span>Total: '+minH(totMin)+'</span></div>';
+        paradasHtml+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+        paradasHtml+='<tr style="background:#fdf5f5"><th style="padding:6px 8px;text-align:left;color:#c0392b">Data</th><th style="padding:6px 8px;text-align:left;color:#c0392b">Linha</th><th style="padding:6px 8px;text-align:left;color:#c0392b">Turno</th><th style="padding:6px 8px;text-align:left;color:#c0392b">Hora</th><th style="padding:6px 8px;text-align:right;color:#c0392b">Duração</th><th style="padding:6px 8px;text-align:left;color:#c0392b">Motivo</th></tr>';
         paradasOP.sort(function(a,b){return (a.data+a.horaIni)>(b.data+b.horaIni)?1:-1;}).forEach(function(p,i){
-          h+='<tr style="background:'+(i%2===0?"#fff":"#fff8f8")+';border-bottom:1px solid #f5e5e5">';
-          h+='<td style="padding:5px 8px">'+p.data+'</td>';
-          h+='<td style="padding:5px 8px">'+nomeCurto(p.linha||"")+'</td>';
-          h+='<td style="padding:5px 8px;font-weight:700">T'+(p.turno||"?")+'</td>';
-          h+='<td style="padding:5px 8px">'+p.horaIni+' → '+(p.horaFim||"aberta")+'</td>';
-          h+='<td style="padding:5px 8px;text-align:right;font-weight:700;color:#c0392b">'+minH(Number(p.minutos)||0)+'</td>';
-          h+='<td style="padding:5px 8px;color:#666">'+(p.descricao||"—")+(p.obs?' — '+p.obs:'')+'</td>';
-          h+='</tr>';
+          paradasHtml+='<tr style="background:'+(i%2===0?"#fff":"#fff8f8")+';border-bottom:1px solid #f5e5e5">';
+          paradasHtml+='<td style="padding:5px 8px">'+p.data+'</td>';
+          paradasHtml+='<td style="padding:5px 8px">'+nomeCurto(p.linha||"")+'</td>';
+          paradasHtml+='<td style="padding:5px 8px;font-weight:700">T'+(p.turno||"?")+'</td>';
+          paradasHtml+='<td style="padding:5px 8px">'+p.horaIni+' → '+(p.horaFim||"aberta")+'</td>';
+          paradasHtml+='<td style="padding:5px 8px;text-align:right;font-weight:700;color:#c0392b">'+minH(Number(p.minutos)||0)+'</td>';
+          paradasHtml+='<td style="padding:5px 8px;color:#666">'+(p.descricao||"—")+(p.obs?' — '+p.obs:'')+'</td>';
+          paradasHtml+='</tr>';
         });
-        h+='</table></div>';
+        paradasHtml+='</table></div>';
       }
-
-      corpOp.innerHTML=h;
-      // Mostra botao PDF quando ha dados
-      var btnPdf=G("btn-op-pdf");
-      if(btnPdf) btnPdf.style.display="block";
+      // Busca a cadeia completa de reprogramação (mesmo id, todos os registros ops/) e renderiza via dashRenderOP —
+      // única fonte de verdade para Programado (original) vs Realizado, evitando lógica duplicada e desalinhada
+      buscarCadeiaOP(opFiltro,function(cadeia){
+        dashRenderOP(aptsOP,cadeia,opFiltro,paradasHtml);
+      });
     }
   } else if(corpOp && !opFiltro){
     corpOp.innerHTML='<div style="text-align:center;padding:20px;color:#4a664a;font-size:13px">Busque uma OP pelo número para ver o histórico completo</div>';
@@ -3526,24 +3486,84 @@ function dashRender(apts, paradas, di, df){
   // Tabela de rastreabilidade removida
 }
 
+// Busca TODOS os registros ops/ que compartilham o mesmo número de OP (cadeia de reprogramação)
+// Elo [0] = programação original (mais antigo por criadoEm). Elos seguintes = reprogramações, em ordem.
+function buscarCadeiaOP(opNum, callback){
+  if(!DB || !opNum){ callback([]); return; }
+  DB.ref("ops").orderByChild("id").equalTo(opNum).once("value").then(function(s){
+    var cadeia=[];
+    if(s.exists()) s.forEach(function(c){ var v=c.val(); v.fbKey=c.key; cadeia.push(v); });
+    // Fallback: casamento parcial via cache local (id.includes), caso a OP não seja achada por igualdade exata
+    if(!cadeia.length){
+      OPS.filter(function(o){return o.id&&o.id.includes(opNum);}).forEach(function(o){cadeia.push(o);});
+    }
+    cadeia.sort(function(a,b){return (a.criadoEm||"")>(b.criadoEm||"")?1:-1;});
+    callback(cadeia);
+  }).catch(function(){ callback([]); });
+}
+
 // Renderiza histórico da OP com apts já carregados — reutilizável pela busca direta
-function dashRenderOP(apts, op, opFiltro){
+// cadeia = array de registros ops/ com o mesmo número de OP (original + reprogramações), ordenado por criadoEm.
+// extraHtml = HTML opcional anexado ao final (ex: seção de paradas), para não duplicar lógica entre chamadores.
+function dashRenderOP(apts, cadeia, opFiltro, extraHtml){
   var corpOp=G("dash-op-corpo");
   if(!corpOp) return;
+  if(cadeia && !Array.isArray(cadeia)) cadeia=[cadeia]; // compat com chamadas antigas (objeto único)
+  cadeia=cadeia||[];
+  var original=cadeia.length?cadeia[0]:null;
+  var op=original||cadeia[cadeia.length-1]||null; // para produto/desc, usa o original; fallback último elo
   var porTurnoOP={1:[],2:[],3:[]};
   apts.forEach(function(a){porTurnoOP[a.turno||1].push(a);});
   var totalOP=apts.reduce(function(a,x){return a+(Number(x.real)||0);},0);
+  var progOriginal=original?(Number(original.prog)||0):0;
 
-  var h='<div style="background:#f5f9f2;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;gap:20px;align-items:center">';
+  var h='<div style="background:#f5f9f2;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;gap:20px;align-items:center;flex-wrap:wrap">';
   h+='<div><div style="font-size:11px;color:#739630;font-weight:700">ORDEM</div><div style="font-size:16px;font-weight:800;color:#024f2b">'+opFiltro+'</div></div>';
   if(op){h+='<div><div style="font-size:11px;color:#739630;font-weight:700">PRODUTO</div><div style="font-size:13px;font-weight:600">'+(op.desc||op.cod)+'</div></div>';}
-  h+='<div><div style="font-size:11px;color:#739630;font-weight:700">TOTAL EXTRUSADO</div><div style="font-size:18px;font-weight:800;color:#024f2b">'+fN(totalOP)+' kg</div></div>';
-  if(op&&op.prog){
-    var pctOP=Math.round(totalOP/Number(op.prog)*100);
+  h+='<div><div style="font-size:11px;color:#739630;font-weight:700">REALIZADO (TOTAL)</div><div style="font-size:18px;font-weight:800;color:#024f2b">'+fN(totalOP)+' kg</div></div>';
+  if(progOriginal){
+    var pctOP=Math.round(totalOP/progOriginal*100);
     var corOP=pctOP>=85?"#024f2b":pctOP>=70?"#d29922":"#c0392b";
-    h+='<div><div style="font-size:11px;color:#739630;font-weight:700">PROG / ADERÊNCIA</div><div style="font-size:16px;font-weight:800;color:'+corOP+'">'+fN(op.prog)+' kg · '+pctOP+'%</div></div>';
+    h+='<div><div style="font-size:11px;color:#739630;font-weight:700">PROGRAMADO (ORIGINAL) / ADERÊNCIA</div><div style="font-size:16px;font-weight:800;color:'+corOP+'">'+fN(progOriginal)+' kg · '+pctOP+'%</div></div>';
   }
   h+='</div>';
+
+  // Seção "Programação da Ordem" — só aparece se houver mais de um elo na cadeia (ou seja, houve reprogramação)
+  if(cadeia.length>1){
+    var realizadoPorFbKey={};
+    apts.forEach(function(a){
+      var k=a.opFbKey||"__semvinculo__";
+      realizadoPorFbKey[k]=(realizadoPorFbKey[k]||0)+(Number(a.real)||0);
+    });
+    var somaVinculada=0;
+    h+='<div style="margin-bottom:12px">';
+    h+='<div style="background:#4a664a;color:#fff;padding:6px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700">🔄 PROGRAMAÇÃO DA ORDEM ('+cadeia.length+' registros)</div>';
+    h+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    h+='<tr style="background:#f5f9f2"><th style="padding:6px 8px;text-align:left;color:#024f2b">#</th><th style="padding:6px 8px;text-align:left;color:#024f2b">Evento</th><th style="padding:6px 8px;text-align:left;color:#024f2b">Data/Hora</th><th style="padding:6px 8px;text-align:right;color:#024f2b">Programado</th><th style="padding:6px 8px;text-align:right;color:#024f2b">Realizado</th><th style="padding:6px 8px;text-align:right;color:#024f2b">Aderência</th><th style="padding:6px 8px;text-align:left;color:#024f2b">Status</th></tr>';
+    cadeia.forEach(function(elo,i){
+      var progElo=Number(elo.prog)||0;
+      var realElo=realizadoPorFbKey[elo.fbKey]||0;
+      somaVinculada+=realElo;
+      var aderElo=progElo?Math.round(realElo/progElo*100):0;
+      var corAd=aderElo>=85?"#024f2b":aderElo>=70?"#d29922":"#c0392b";
+      var dtElo=elo.criadoEm?new Date(elo.criadoEm).toLocaleString("pt-BR"):(elo.data||"—");
+      var evento=i===0?"Nº1 · Original":"Nº"+(i+1)+" · Reprogramação";
+      h+='<tr style="background:'+(i%2===0?"#fff":"#f9fbf9")+'">';
+      h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;font-weight:700">'+(i+1)+'</td>';
+      h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;font-weight:700">'+evento+'</td>';
+      h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0">'+dtElo+'</td>';
+      h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700">'+fN(progElo)+' kg</td>';
+      h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;text-align:right">'+fN(realElo)+' kg</td>';
+      h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:'+corAd+'">'+aderElo+'%</td>';
+      h+='<td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;color:#666">'+(elo.status||"—")+'</td>';
+      h+='</tr>';
+    });
+    var naoVinculado=totalOP-somaVinculada;
+    if(Math.round(naoVinculado)!==0){
+      h+='<tr style="background:#fffaf0"><td colspan="4" style="padding:5px 8px;border-bottom:1px solid #f0f0f0;color:#999">Apontamentos antigos sem vínculo direto a um registro específico</td><td style="padding:5px 8px;border-bottom:1px solid #f0f0f0;text-align:right;color:#999">'+fN(naoVinculado)+' kg</td><td colspan="2" style="padding:5px 8px;border-bottom:1px solid #f0f0f0"></td></tr>';
+    }
+    h+='</table></div>';
+  }
 
   [1,2,3].forEach(function(t){
     var aptsT=porTurnoOP[t];
@@ -3569,6 +3589,8 @@ function dashRenderOP(apts, op, opFiltro){
     });
     h+='</table></div>';
   });
+
+  if(extraHtml) h+=extraHtml;
 
   corpOp.innerHTML=h;
   if(G("btn-op-pdf")) G("btn-op-pdf").style.display="block";
@@ -3991,47 +4013,42 @@ function buscarOpDireta(){
   // Sincroniza o campo do dashboard com o filtro de OP para o PDF funcionar
   if(G("dash-op-f")) G("dash-op-f").value=opNum;
 
-  // Busca OP no OPS[] ou diretamente no Firebase
-  var opRef=OPS.find(function(o){return o.id===opNum||o.id.includes(opNum);});
-
-  var buscas=[];
-  if(opRef&&opRef.fbKey){
-    buscas.push(DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(opRef.fbKey).once("value"));
-  }
-  buscas.push(DB.ref("extrusao_apts").orderByChild("opNum").equalTo(opNum).once("value"));
-
-  Promise.all(buscas).then(function(snaps){
-    var aptsMap={};
-    snaps.forEach(function(snap){
-      if(snap.exists()) snap.forEach(function(c){
-        var v=c.val();v.fbKey=c.key;aptsMap[c.key]=v;
-      });
+  // Busca TODA a cadeia de registros ops/ com esse número (original + reprogramações) —
+  // não pega mais um único elo arbitrário, para não misturar Programado de um elo com Realizado da cadeia inteira
+  buscarCadeiaOP(opNum,function(cadeia){
+    var buscas=[];
+    cadeia.forEach(function(elo){
+      if(elo.fbKey) buscas.push(DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(elo.fbKey).once("value"));
     });
-    var apts=Object.values(aptsMap);
-    if(!apts.length){
-      G("dash-op-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#c0392b">Nenhum apontamento encontrado para a OP '+opNum+'</div>';
-      return;
-    }
+    // Fallback por opNum — cobre apontamentos antigos sem opFbKey vinculado a um elo específico
+    buscas.push(DB.ref("extrusao_apts").orderByChild("opNum").equalTo(opNum).once("value"));
 
-    // Busca OP no Firebase se não encontrou em OPS[]
-    if(!opRef){
-      var fbKeyRef=apts[0].opFbKey;
-      opRef=fbKeyRef?OPS.find(function(o){return o.fbKey===fbKeyRef;}):null;
-    }
+    Promise.all(buscas).then(function(snaps){
+      var aptsMap={};
+      snaps.forEach(function(snap){
+        if(snap.exists()) snap.forEach(function(c){
+          var v=c.val();v.fbKey=c.key;aptsMap[c.key]=v;
+        });
+      });
+      var apts=Object.values(aptsMap);
+      if(!apts.length){
+        G("dash-op-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#c0392b">Nenhum apontamento encontrado para a OP '+opNum+'</div>';
+        return;
+      }
 
-    // Reutiliza a função do dashboard para renderizar o histórico
-    // Popula _DASH_CACHE com os apts encontrados
-    window._DASH_CACHE=window._DASH_CACHE||{apts:[],paradas:[]};
-    // Adiciona apts ao cache sem duplicar
-    var existKeys=(window._DASH_CACHE.apts||[]).map(function(a){return a.fbKey;});
-    apts.forEach(function(a){if(!existKeys.includes(a.fbKey)) window._DASH_CACHE.apts.push(a);});
+      // Popula _DASH_CACHE com os apts encontrados
+      window._DASH_CACHE=window._DASH_CACHE||{apts:[],paradas:[]};
+      var existKeys=(window._DASH_CACHE.apts||[]).map(function(a){return a.fbKey;});
+      apts.forEach(function(a){if(!existKeys.includes(a.fbKey)) window._DASH_CACHE.apts.push(a);});
 
-    // Renderiza usando a função existente do dashboard
-    dashRenderOP(apts, opRef, opNum);
+      // Renderiza com a cadeia completa — Programado = original (elo 1), Realizado = soma de tudo,
+      // com detalhamento por elo se houve reprogramação
+      dashRenderOP(apts, cadeia, opNum);
 
-    if(G("btn-op-pdf")) G("btn-op-pdf").style.display="inline-block";
-  }).catch(function(e){
-    G("dash-op-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#c0392b">Erro: '+e.message+'</div>';
+      if(G("btn-op-pdf")) G("btn-op-pdf").style.display="inline-block";
+    }).catch(function(e){
+      G("dash-op-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#c0392b">Erro: '+e.message+'</div>';
+    });
   });
 }
 
@@ -4040,29 +4057,22 @@ function exportarOpPDF(){
   var opFiltro=(G("dash-op-f")&&G("dash-op-f").value||"").trim();
   if(!opFiltro){toast("Nenhuma OP carregada","err");return;}
 
-  // Busca OP pelo número para obter o fbKey
-  var opRef=OPS.find(function(o){return o.id===opFiltro||o.id.includes(opFiltro);});
-  if(!opRef){
-    // Tenta buscar OP diretamente no Firebase por id
-    DB.ref("ops").orderByChild("id").equalTo(opFiltro).once("value",function(s){
-      if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;opRef=v;});
-      _buscarAptsEGerarPDF(opRef,opFiltro);
-    });
-    return;
-  }
-  _buscarAptsEGerarPDF(opRef,opFiltro);
+  // Busca a cadeia completa (original + reprogramações) para não gerar PDF com Programado errado
+  buscarCadeiaOP(opFiltro,function(cadeia){
+    _buscarAptsEGerarPDF(cadeia,opFiltro);
+  });
 }
 
-function _buscarAptsEGerarPDF(opRef,opFiltro){
+function _buscarAptsEGerarPDF(cadeia,opFiltro){
   // Busca TODOS os apontamentos no Firebase — varredura completa por opNum
   // Não depende de índice: filtra client-side após buscar por data range amplo
   toast("Buscando todos os apontamentos...","ok");
 
-  // Estratégia: busca por opFbKey E por opNum em paralelo e deduplica
+  // Estratégia: busca por opFbKey de cada elo da cadeia E por opNum em paralelo, e deduplica
   var buscas=[];
-  if(opRef&&opRef.fbKey){
-    buscas.push(DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(opRef.fbKey).once("value"));
-  }
+  cadeia.forEach(function(elo){
+    if(elo.fbKey) buscas.push(DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(elo.fbKey).once("value"));
+  });
   buscas.push(DB.ref("extrusao_apts").orderByChild("opNum").equalTo(opFiltro).once("value"));
 
   Promise.all(buscas).then(function(snaps){
@@ -4078,29 +4088,27 @@ function _buscarAptsEGerarPDF(opRef,opFiltro){
     if(!apts.length){
       DB.ref("extrusao_apts").once("value",function(s){
         var aptsAll=[];
+        var fbKeysCadeia=cadeia.map(function(e){return e.fbKey;});
         if(s.exists()) s.forEach(function(c){
           var v=c.val();v.fbKey=c.key;
-          if((v.opNum||"").includes(opFiltro)||(v.opFbKey&&opRef&&v.opFbKey===opRef.fbKey)){
+          if((v.opNum||"").includes(opFiltro)||(v.opFbKey&&fbKeysCadeia.indexOf(v.opFbKey)>=0)){
             aptsAll.push(v);
           }
         });
         if(!aptsAll.length){toast("Sem apontamentos para exportar","err");return;}
-        var opFkRef=aptsAll[0].opFbKey;
-        var op=opRef||(opFkRef?OPS.find(function(o){return o.fbKey===opFkRef;}):null);
-        _gerarPDFOpComDados(aptsAll,op,opFiltro);
+        _gerarPDFOpComDados(aptsAll,cadeia,opFiltro);
       });
       return;
     }
 
-    var opFkRef=apts[0]&&apts[0].opFbKey;
-    var op=opRef||(opFkRef
-      ?OPS.find(function(o){return o.fbKey===opFkRef;})
-      :OPS.find(function(o){return o.id===opFiltro||o.id.includes(opFiltro);}));
-    _gerarPDFOpComDados(apts,op,opFiltro);
+    _gerarPDFOpComDados(apts,cadeia,opFiltro);
   }).catch(function(e){toast("Erro ao buscar apontamentos: "+e.message,"err");});
 }
 
-function _gerarPDFOpComDados(apts,op,opFiltro){
+function _gerarPDFOpComDados(apts,cadeia,opFiltro){
+  if(cadeia && !Array.isArray(cadeia)) cadeia=[cadeia]; // compat
+  cadeia=cadeia||[];
+  var op=cadeia.length?cadeia[0]:null; // Programado = SEMPRE o elo original (primeiro por criadoEm)
 
   var jsPDF=jspdf.jsPDF;
   var doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
@@ -4191,7 +4199,7 @@ function _gerarPDFOpComDados(apts,op,opFiltro){
   doc.setTextColor(2,79,43);
   doc.text("Hora inicial:",colR,y+9);
   doc.text("Hora final:",colR,y+18);
-  doc.text("Programado:",colR,y+27);
+  doc.text("Programado (orig.):",colR,y+27);
   doc.text("Aderencia:",colR,y+36);
 
   // Valores — hora em duas linhas: data + hora
@@ -4235,7 +4243,7 @@ function _gerarPDFOpComDados(apts,op,opFiltro){
   doc.setFont("helvetica","bold");
   doc.setFontSize(7.5);
   doc.setTextColor(255,255,255);
-  doc.text("TOTAL EXTRUSADO",MR-40,y+7);
+  doc.text("TOTAL REALIZADO",MR-40,y+7);
   doc.setFontSize(17);
   doc.text(fN(totalReal),MR-40,y+20);
   doc.setFontSize(10);
@@ -4278,6 +4286,46 @@ function _gerarPDFOpComDados(apts,op,opFiltro){
       doc.text(fN(porTurno[t].real)+" kg  |  "+porTurno[t].apts+" apontamento(s)",x+2,y+10);
     });
     y+=16;
+  }
+
+  // ── PROGRAMAÇÃO DA ORDEM (só se houve reprogramação) ──────
+  if(cadeia.length>1){
+    var realizadoPorFbKeyPdf={};
+    apts.forEach(function(a){
+      var k=a.opFbKey||"__semvinculo__";
+      realizadoPorFbKeyPdf[k]=(realizadoPorFbKeyPdf[k]||0)+(Number(a.real)||0);
+    });
+    doc.setFillColor(74,102,74);
+    doc.rect(ML,y,MR-ML,6,"F");
+    doc.setFont("helvetica","bold");
+    doc.setFontSize(8);
+    doc.setTextColor(255,255,255);
+    doc.text("PROGRAMAÇÃO DA ORDEM ("+cadeia.length+" registros)",ML+2,y+4.5);
+    y+=7;
+    doc.setFontSize(7);
+    var colsCad=[ML+2,ML+18,ML+52,ML+95,ML+130,ML+165];
+    doc.setTextColor(2,79,43);
+    ["#","EVENTO","DATA/HORA","PROGRAMADO","REALIZADO","ADERÊNCIA"].forEach(function(hh,i){doc.text(hh,colsCad[i],y+3.5);});
+    y+=5;
+    doc.setFont("helvetica","normal");
+    cadeia.forEach(function(elo,i){
+      var progElo=Number(elo.prog)||0;
+      var realElo=realizadoPorFbKeyPdf[elo.fbKey]||0;
+      var aderElo=progElo?Math.round(realElo/progElo*100):0;
+      var dtElo=elo.criadoEm?new Date(elo.criadoEm).toLocaleDateString("pt-BR"):(elo.data||"—");
+      var evento=i===0?"Original":"Reprog. "+(i+1);
+      doc.setFillColor(i%2===0?250:245,i%2===0?255:252,i%2===0?250:245);
+      doc.rect(ML,y-3.5,MR-ML,5,"F");
+      doc.setTextColor(30,30,30);
+      doc.text(String(i+1),colsCad[0],y);
+      doc.text(evento,colsCad[1],y);
+      doc.text(dtElo,colsCad[2],y);
+      doc.text(fN(progElo)+" kg",colsCad[3],y);
+      doc.text(fN(realElo)+" kg",colsCad[4],y);
+      doc.text(aderElo+"%",colsCad[5],y);
+      y+=5;
+    });
+    y+=4;
   }
 
   // ── TABELA DE APONTAMENTOS ────────────────────────────────
