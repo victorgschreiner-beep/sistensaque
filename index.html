@@ -3282,16 +3282,19 @@ function classificarFamilia(cod){
 
 // Extrai granulometria da descrição (texto livre). Normaliza vírgula/ponto
 // e espaçamento para evitar grupos duplicados por diferença de formatação.
-// Retorna null se não encontrar padrão "N a NMM" — quem chama decide o bucket.
+// Prioridade: 1) faixa "N a N MM"  2) valor único "N MM" (ex: "2.0MM").
+// Retorna null se não encontrar nenhum padrão — quem chama decide o bucket.
+function fmtGranNum(n){
+  var f = parseFloat(n.toString().replace(',','.'));
+  return isNaN(f) ? n : f.toFixed(2);
+}
 function extrairGranulometria(desc){
   var d = (desc||'').toString();
-  var m = d.match(/(\d+(?:[.,]\d+)?)\s*a\s*(\d+(?:[.,]\d+)?)\s*mm/i);
-  if(!m) return null;
-  function fmt(n){
-    var f = parseFloat(n.replace(',','.'));
-    return isNaN(f) ? n : f.toFixed(2);
-  }
-  return fmt(m[1])+' a '+fmt(m[2])+'MM';
+  var mFaixa = d.match(/(\d+(?:[.,]\d+)?)\s*a\s*(\d+(?:[.,]\d+)?)\s*mm/i);
+  if(mFaixa) return fmtGranNum(mFaixa[1])+' a '+fmtGranNum(mFaixa[2])+'MM';
+  var mUnico = d.match(/(\d+(?:[.,]\d+)?)\s*mm/i);
+  if(mUnico) return fmtGranNum(mUnico[1])+'MM';
+  return null;
 }
 
 function gerarRelPeriodo(){
