@@ -3217,9 +3217,83 @@ function exportarComparativoExcel(){
   XLSX.writeFile(wb,'Comparativo_Ext_Ens_'+G('div-di').value+'_'+G('div-df').value+'.xlsx');
 }
 
+// Excel do relatório de Famílias (AQUA/PET/HORSE + granulometria AQUA)
+// gerado a partir do Relatório de Período já calculado.
+function exportarFamiliasExcel(){
+  var d=window._relPeriodoData;
+  if(!d||!d.famTotais){ toast('Gere o relatório primeiro','err'); return; }
+
+  var totalGeral=d.famTotais.AQUA+d.famTotais.PET+d.famTotais.HORSE;
+
+  // Aba 1 — Resumo por Família
+  var l1=[['Família','Total (kg)','Participação (%)']];
+  ['AQUA','PET','HORSE'].forEach(function(f){
+    var v=d.famTotais[f]||0;
+    var pct=totalGeral?(v/totalGeral*100).toFixed(1):'0.0';
+    l1.push([f,v,pct+'%']);
+  });
+  l1.push(['TOTAL',totalGeral,'100%']);
+
+  // Aba 2 — Detalhamento AQUA por Granulometria
+  var l2=[['Granulometria','Total (kg)','% da família AQUA']];
+  Object.keys(d.granTotais).sort().forEach(function(g){
+    var v=d.granTotais[g];
+    var pct=d.famTotais.AQUA?(v/d.famTotais.AQUA*100).toFixed(1):'0.0';
+    l2.push([g,v,pct+'%']);
+  });
+
+  // Aba 3 — Detalhe por OP (rastreabilidade/auditoria da classificação)
+  var l3=[['Código','Descrição','Linha','Família','Granulometria','KG']];
+  d.detalheFamilias.forEach(function(o){
+    l3.push([o.cod,o.desc,o.linha,o.familia,o.granulometria,o.kg]);
+  });
+
+  var wb=XLSX.utils.book_new();
+  var ws1=XLSX.utils.aoa_to_sheet(l1); ws1['!cols']=[{wch:14},{wch:16},{wch:18}];
+  var ws2=XLSX.utils.aoa_to_sheet(l2); ws2['!cols']=[{wch:22},{wch:16},{wch:18}];
+  var ws3=XLSX.utils.aoa_to_sheet(l3); ws3['!cols']=[{wch:14},{wch:34},{wch:14},{wch:10},{wch:22},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,ws1,'Resumo Familia');
+  XLSX.utils.book_append_sheet(wb,ws2,'Granulometria AQUA');
+  XLSX.utils.book_append_sheet(wb,ws3,'Detalhe OPs');
+  XLSX.writeFile(wb,'Familias_'+d.di+'_'+d.df+'.xlsx');
+}
+
 // ============================================================
 // RELATÓRIO DE PERÍODO
 // ============================================================
+// ============================================================
+// CLASSIFICAÇÃO POR FAMÍLIA (AQUA / PET / HORSE) — regra única
+// Usada pelo Relatório de Período (cards, gráficos e Excel).
+// Prefixos hardcoded por decisão do usuário — ajustar aqui se
+// surgir nova linha de produto com prefixo diferente.
+// ============================================================
+var FAMILIA_PREFIXOS = { PET: ['CAT','DOG','EX'], HORSE: ['HOR'] };
+
+function classificarFamilia(cod){
+  var c = (cod||'').toString().trim().toUpperCase();
+  for(var i=0;i<FAMILIA_PREFIXOS.PET.length;i++){
+    if(c.indexOf(FAMILIA_PREFIXOS.PET[i])===0) return 'PET';
+  }
+  for(var i=0;i<FAMILIA_PREFIXOS.HORSE.length;i++){
+    if(c.indexOf(FAMILIA_PREFIXOS.HORSE[i])===0) return 'HORSE';
+  }
+  return 'AQUA';
+}
+
+// Extrai granulometria da descrição (texto livre). Normaliza vírgula/ponto
+// e espaçamento para evitar grupos duplicados por diferença de formatação.
+// Retorna null se não encontrar padrão "N a NMM" — quem chama decide o bucket.
+function extrairGranulometria(desc){
+  var d = (desc||'').toString();
+  var m = d.match(/(\d+(?:[.,]\d+)?)\s*a\s*(\d+(?:[.,]\d+)?)\s*mm/i);
+  if(!m) return null;
+  function fmt(n){
+    var f = parseFloat(n.replace(',','.'));
+    return isNaN(f) ? n : f.toFixed(2);
+  }
+  return fmt(m[1])+' a '+fmt(m[2])+'MM';
+}
+
 function gerarRelPeriodo(){
   var di=G('rel-di').value, df=G('rel-df').value, ln=G('rel-ln').value;
   if(!di||!df){toast('Informe data inicial e final','err');return;}
@@ -3239,6 +3313,23 @@ function gerarRelPeriodo(){
     cont.innerHTML='<div style="text-align:center;padding:40px;color:#c0392b">Nenhuma OP encontrada para o período selecionado.</div>';
     return;
   }
+
+  // ── PRODUÇÃO POR FAMÍLIA (AQUA/PET/HORSE) E GRANULOMETRIA (AQUA) ──
+  var famTotais={AQUA:0,PET:0,HORSE:0};
+  var granTotais={};
+  var detalheFamilias=[];
+  ops.forEach(function(o){
+    var kg=Number(o.real)||0;
+    var fam=classificarFamilia(o.cod);
+    famTotais[fam]+=kg;
+    var gran='';
+    if(fam==='AQUA'){
+      gran=extrairGranulometria(o.desc)||'Sem granulometria identificada';
+      granTotais[gran]=(granTotais[gran]||0)+kg;
+    }
+    detalheFamilias.push({cod:o.cod||'',desc:o.desc||'',linha:o.linha||'',familia:fam,granulometria:gran,kg:kg});
+  });
+  var totalFamilias=famTotais.AQUA+famTotais.PET+famTotais.HORSE;
 
   // Agrupa por data
   var porData={};
@@ -3359,8 +3450,56 @@ function gerarRelPeriodo(){
 
   html+='</div>';
 
-  // Botão exportar PDF
+  // ── PRODUÇÃO POR FAMÍLIA ─────────────────────────────────
+  html+='<div style="margin-bottom:8px"><span style="font-weight:700;color:#024f2b;font-size:14px">🐾 Produção por Família</span></div>';
+  html+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">';
+  var famCards=[
+    {l:'AQUA',v:famTotais.AQUA,c:'#0077b6'},
+    {l:'PET',v:famTotais.PET,c:'#c0392b'},
+    {l:'HORSE',v:famTotais.HORSE,c:'#8a5a2b'}
+  ];
+  famCards.forEach(function(f){
+    var pct=totalFamilias?(f.v/totalFamilias*100).toFixed(1):'0.0';
+    html+='<div style="background:#f5f9f2;border:1px solid #d4e8d4;border-radius:8px;padding:12px;text-align:center">';
+    html+='<div style="font-size:10px;font-weight:700;color:#739630;margin-bottom:4px">'+f.l+'</div>';
+    html+='<div style="font-size:18px;font-weight:800;color:'+f.c+'">'+fN(f.v)+' kg</div>';
+    html+='<div style="font-size:11px;color:#4a664a;margin-top:2px">'+pct+'% do período</div>';
+    html+='</div>';
+  });
+  html+='</div>';
+
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
+  html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
+  html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Participação por Família</div>';
+  html+='<canvas id="rp-chart-fam" height="180"></canvas></div>';
+  html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
+  html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">AQUA — Produção por Granulometria</div>';
+  html+='<canvas id="rp-chart-gran" height="180"></canvas></div>';
+  html+='</div>';
+
+  // Tabela detalhamento AQUA por granulometria
+  var granKeys=Object.keys(granTotais).sort();
+  if(granKeys.length){
+    var kgSemGran=granTotais['Sem granulometria identificada']||0;
+    html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px;margin-bottom:20px">';
+    html+='<div style="font-weight:700;color:#024f2b;margin-bottom:10px;font-size:13px">Detalhamento AQUA por Granulometria</div>';
+    if(kgSemGran>0){
+      html+='<div style="font-size:11px;color:#c0392b;margin-bottom:8px">⚠️ '+fN(kgSemGran)+' kg sem granulometria identificada na descrição — verifique cadastro dos produtos.</div>';
+    }
+    html+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    html+='<tr style="border-bottom:2px solid #d4e8d4"><th style="text-align:left;padding:6px;color:#4a664a">Granulometria</th><th style="text-align:right;padding:6px;color:#4a664a">Total (kg)</th><th style="text-align:right;padding:6px;color:#4a664a">%</th></tr>';
+    granKeys.forEach(function(g){
+      var v=granTotais[g];
+      var pct=famTotais.AQUA?(v/famTotais.AQUA*100).toFixed(1):'0.0';
+      var estilo=g==='Sem granulometria identificada'?'color:#c0392b':'';
+      html+='<tr style="border-bottom:1px solid #eef4ea"><td style="padding:6px;'+estilo+'">'+g+'</td><td style="text-align:right;padding:6px;font-weight:700">'+fN(v)+'</td><td style="text-align:right;padding:6px;color:#739630">'+pct+'%</td></tr>';
+    });
+    html+='</table></div>';
+  }
+
+  // Botões exportar
   html+='<div style="text-align:right;margin-bottom:20px">';
+  html+='<button class="btn" onclick="exportarFamiliasExcel()" style="background:#217346;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;margin-right:8px">📥 Excel Famílias</button>';
   html+='<button class="btn bp" onclick="exportarRelPeriodoPDF()">↓ Exportar PDF</button>';
   html+='</div>';
 
@@ -3427,12 +3566,24 @@ function gerarRelPeriodo(){
     {label:'Perda (kg)',data:perdas,backgroundColor:'rgba(192,57,43,0.7)',borderColor:'#c0392b',borderWidth:1}
   ]);
 
-  // Guarda dados para exportar PDF
+  // G-FAM — Participação por família (pizza)
+  mkChart('rp-chart-fam','pie',['AQUA','PET','HORSE'],[
+    {data:[famTotais.AQUA,famTotais.PET,famTotais.HORSE],backgroundColor:['#0077b6','#c0392b','#8a5a2b']}
+  ]);
+
+  // G-GRAN — Produção AQUA por granulometria (barras)
+  var granKeysChart=Object.keys(granTotais).sort();
+  mkChart('rp-chart-gran','bar',granKeysChart,[
+    {label:'Produção (kg)',data:granKeysChart.map(function(g){return granTotais[g];}),backgroundColor:'rgba(0,119,182,0.7)',borderColor:'#0077b6',borderWidth:1}
+  ]);
+
+  // Guarda dados para exportar PDF/Excel
   window._relPeriodoData={di:di,df:df,ln:ln,datas:datas,porData:porData,
     totProg:totProg,totReal:totReal,totAdh:totAdh,totPerda:totPerda,
     totT1:totT1,totT2:totT2,totT3:totT3,adhT1:adhT1,adhT2:adhT2,adhT3:adhT3,
     totScT1:totScT1,totScT2:totScT2,totScT3:totScT3,
-    totKgT1:totKgT1,totKgT2:totKgT2,totKgT3:totKgT3,ops:ops};
+    totKgT1:totKgT1,totKgT2:totKgT2,totKgT3:totKgT3,ops:ops,
+    famTotais:famTotais,granTotais:granTotais,detalheFamilias:detalheFamilias};
 }
 
 function exportarRelPeriodoPDF(){
