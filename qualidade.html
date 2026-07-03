@@ -272,6 +272,12 @@ tr:hover td{background:rgba(2,79,43,.03)}
         <option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option>
         <option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option>
       </select>
+      <select id="dash-turno" style="width:auto" onchange="gerarDashboardQual()">
+        <option value="">Todos os turnos</option>
+        <option value="1">Turno 1 (21h-5h)</option>
+        <option value="2">Turno 2 (5h-13h)</option>
+        <option value="3">Turno 3 (13h-21h)</option>
+      </select>
       <select id="dash-analista" style="width:auto" onchange="gerarDashboardQual()">
         <option value="">Todos os analistas</option>
       </select>
@@ -309,6 +315,9 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div class="g2" id="dash-visao-geral-2">
     <div class="card"><div class="ch"><span class="ct">Produtos com Mais Desvios</span></div><div class="tw" id="dash-prod-desvios"></div></div>
     <div class="card"><div class="ch"><span class="ct">Umidade Média por Linha</span></div><div style="position:relative;height:190px"><canvas id="chUmidade"></canvas></div></div>
+  </div>
+  <div id="dash-visao-geral-3">
+    <div class="card"><div class="ch"><span class="ct">Umidade Média por Turno</span></div><div style="position:relative;height:190px"><canvas id="chUmidadeTurno"></canvas></div></div>
   </div>
 </div>
 
@@ -1540,7 +1549,7 @@ var DASH_DADOS_ATUAIS=null; // cache do último resultado, usado pela exportaç�
 function gerarDashboardQual(){
   var di=G('dash-di').value, df=G('dash-df').value;
   if(!di||!df){ toast('Informe o período','err'); return; }
-  var linhaF=G('dash-linha').value, analistaF=G('dash-analista').value, skuF=G('dash-sku').value;
+  var linhaF=G('dash-linha').value, analistaF=G('dash-analista').value, skuF=G('dash-sku').value, turnoF=G('dash-turno').value;
 
   G('dash-cards').innerHTML='<div style="grid-column:1/-1;text-align:center;padding:20px;color:#739630">Carregando...</div>';
 
@@ -1557,12 +1566,13 @@ function gerarDashboardQual(){
 
     if(linhaF) insp=insp.filter(function(i){return i.linha===linhaF;});
     if(analistaF) insp=insp.filter(function(i){return i.analista===analistaF;});
+    if(turnoF) insp=insp.filter(function(i){return String(i.turno)===turnoF;});
     var ncsNoPeriodo=ncs.filter(function(n){
       var dt=(n.aberturaTs||'').slice(0,10);
-      return dt>=di && dt<=df && (!linhaF || n.linha===linhaF);
+      return dt>=di && dt<=df && (!linhaF || n.linha===linhaF) && (!turnoF || String(n.turno)===turnoF);
     });
 
-    DASH_DADOS_ATUAIS={di:di, df:df, linhaF:linhaF, analistaF:analistaF, skuF:skuF, insp:insp, ncs:ncsNoPeriodo};
+    DASH_DADOS_ATUAIS={di:di, df:df, linhaF:linhaF, analistaF:analistaF, skuF:skuF, turnoF:turnoF, insp:insp, ncs:ncsNoPeriodo};
 
     renderDashCards(insp, ncsNoPeriodo);
 
@@ -1571,6 +1581,7 @@ function gerarDashboardQual(){
       G('dash-sku-evolucao').style.display='block';
       G('dash-visao-geral').style.display='none';
       G('dash-visao-geral-2').style.display='none';
+      G('dash-visao-geral-3').style.display='none';
       var inspSku=insp.filter(function(i){return i.cod===skuF;});
       renderEvolucaoSku(skuF, inspSku);
     } else {
@@ -1578,10 +1589,12 @@ function gerarDashboardQual(){
       G('dash-sku-evolucao').style.display='none';
       G('dash-visao-geral').style.display='grid';
       G('dash-visao-geral-2').style.display='grid';
+      G('dash-visao-geral-3').style.display='block';
       renderChartStatus(insp);
       renderChartLinha(insp);
       renderTabelaProdutosDesvio(insp);
       renderChartUmidade(insp);
+      renderChartUmidadeTurno(insp);
     }
   }).catch(function(e){
     G('dash-cards').innerHTML='<div style="color:#c0392b;padding:20px">Erro: '+e.message+'</div>';
@@ -1877,6 +1890,27 @@ function renderChartUmidade(insp){
   });
 }
 
+function renderChartUmidadeTurno(insp){
+  var porTurno={1:{soma:0,n:0},2:{soma:0,n:0},3:{soma:0,n:0}};
+  insp.forEach(function(i){
+    var u=i.resultados&&i.resultados.umid;
+    if(u===undefined||u===null) return;
+    var t=Number(i.turno);
+    if(!porTurno[t]) return;
+    porTurno[t].soma+=Number(u);
+    porTurno[t].n++;
+  });
+  var labels=['Turno 1 (21h-5h)','Turno 2 (5h-13h)','Turno 3 (13h-21h)'];
+  var data=[1,2,3].map(function(t){ return porTurno[t].n ? +(porTurno[t].soma/porTurno[t].n).toFixed(2) : 0; });
+  var qtd=[1,2,3].map(function(t){ return porTurno[t].n; });
+  if(DASH_CHARTS.umidTurno) DASH_CHARTS.umidTurno.destroy();
+  DASH_CHARTS.umidTurno=new Chart(G('chUmidadeTurno'),{
+    type:'bar',
+    data:{labels:labels,datasets:[{label:'Umidade média (%)',data:data,backgroundColor:'#0a7a44'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:function(ctx){return qtd[ctx.dataIndex]+' leitura(s)';}}}},scales:{y:{beginAtZero:true}}}
+  });
+}
+
 // ============================================================
 // EXPORTAÇÃO DO DASHBOARD EM PDF
 // ============================================================
@@ -1942,6 +1976,7 @@ function exportarRelatorioGeralPDF(d){
   pdfCabecalho(doc,'RELATÓRIO DE QUALIDADE — VISÃO GERAL',
     'Período: '+fDtBR(d.di)+' a '+fDtBR(d.df)+
     (d.linhaF?' | Linha: '+d.linhaF:'')+
+    (d.turnoF?' | Turno: '+d.turnoF:'')+
     (d.analistaF?' | Analista: '+d.analistaF:'')+
     '  |  Emitido: '+new Date().toLocaleString('pt-BR')+'  |  '+(SES?SES.nome:''));
 
@@ -1999,6 +2034,7 @@ function exportarFichaSkuPDF(d){
   pdfCabecalho(doc,'FICHA DE QUALIDADE — '+d.skuF,
     desc+'  |  Período: '+fDtBR(d.di)+' a '+fDtBR(d.df)+
     (d.linhaF?' | Linha: '+d.linhaF:'')+
+    (d.turnoF?' | Turno: '+d.turnoF:'')+
     '  |  Emitido: '+new Date().toLocaleString('pt-BR')+'  |  '+(SES?SES.nome:''));
 
   var total=inspSku.length;
