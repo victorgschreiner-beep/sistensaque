@@ -59,6 +59,9 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 /* CARDS */
 .card{background:#fff;border:1px solid var(--bd);border-radius:var(--r2);padding:16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(2,79,43,.06)}
 .ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+.rast-hdr{cursor:pointer;transition:.15s}
+.rast-hdr:hover{opacity:.8}
+.rast-chev{display:inline-block;width:14px;font-size:12px;color:#4a664a;transition:transform .15s}
 .ct{font-size:11px;font-weight:700;color:#739630;text-transform:uppercase;letter-spacing:.06em}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
@@ -2103,15 +2106,23 @@ function renderizarRastreioResultados(ops, destacarData, msgVazio){
     G('rast-resultado').innerHTML='<div class="card" style="text-align:center;color:#999">'+msgVazio+'</div>';
     return;
   }
-  Promise.all(ops.map(function(op){ return montarRastreioOP(op, destacarData); })).then(function(resultados){
+  var expandirPadrao = ops.length===1;
+  Promise.all(ops.map(function(op){ return montarRastreioOP(op, destacarData, expandirPadrao); })).then(function(resultados){
     RAST_CACHE=resultados.map(function(r){return r.dados;});
-    var resumo=destacarData?('<div style="font-size:12px;color:#4a664a;font-weight:600;margin-bottom:10px">'+ops.length+' OP(s) com inspeção lançada em '+destacarData.split('-').reverse().join('/')+'</div>'):'';
+    var resumo='';
+    if(destacarData) resumo+='<div style="font-size:12px;color:#4a664a;font-weight:600;margin-bottom:10px">'+ops.length+' OP(s) com inspeção lançada em '+destacarData.split('-').reverse().join('/')+'</div>';
+    if(ops.length>1){
+      resumo+='<div style="text-align:right;margin-bottom:10px">';
+      resumo+='<button class="btn bxs" onclick="rastExpandirTodos(true)">Expandir todos</button> ';
+      resumo+='<button class="btn bxs" onclick="rastExpandirTodos(false)">Recolher todos</button>';
+      resumo+='</div>';
+    }
     G('rast-resultado').innerHTML=resumo+resultados.map(function(r){return r.html;}).join('');
     G('btn-rast-pdf').style.display='';
   });
 }
 
-function montarRastreioOP(op, destacarData){
+function montarRastreioOP(op, destacarData, expandido){
   return Promise.all([
     DB.ref('extrusao_apts').orderByChild('opFbKey').equalTo(op.fbKey).once('value'),
     DB.ref('extrusao_paradas').orderByChild('opFbKey').equalTo(op.fbKey).once('value'),
@@ -2130,9 +2141,32 @@ function montarRastreioOP(op, destacarData){
     // Ordena inspeções por hora
     insps.sort(function(a,b){ return (a.data+a.hora)>(b.data+b.hora)?1:-1; });
 
+    var reprovacoes = insps.filter(function(i){return i.statusGeral==='reprovado';}).length;
+    var ncsAbertas = ncs.filter(function(n){return n.status!=='Concluída';}).length;
+    var domId = encId(op.fbKey);
+    var aberto = !!expandido;
+
     // ---- HTML ----
     var h='<div class="card">';
-    h+='<div class="ch"><span class="ct">OP '+op.id+' — '+(op.desc||op.cod)+'</span><span class="badge bvd">'+(op.status||'—')+'</span></div>';
+
+    // Cabeçalho compacto — sempre visível, clicável
+    h+='<div class="ch rast-hdr" onclick="rastToggleCard(\''+domId+'\')">';
+    h+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
+    h+='<span class="rast-chev" id="chev-'+domId+'">'+(aberto?'▾':'▸')+'</span>';
+    h+='<span class="ct">OP '+op.id+' — '+(op.desc||op.cod)+'</span>';
+    h+='<span class="badge bvd">'+(op.status||'—')+'</span>';
+    h+='<span style="font-size:11px;color:#4a664a">Lote: '+(op.lote||'—')+' · '+(op.linha||'—')+' · '+(op.data?op.data.split('-').reverse().join('/'):'—')+'</span>';
+    h+='</div>';
+    h+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">';
+    if(reprovacoes>0) h+='<span class="badge brd">⚠ '+reprovacoes+' reprovação(ões)</span>';
+    if(ncsAbertas>0) h+='<span class="badge bo">🔧 '+ncsAbertas+' NC aberta(s)</span>';
+    h+='<span style="font-size:11px;color:#4a664a">'+insps.length+' inspeção(ões)</span>';
+    h+='</div>';
+    h+='</div>';
+
+    // Corpo — recolhível
+    h+='<div class="rast-body" id="body-'+domId+'" style="'+(aberto?'':'display:none')+'">';
+
     h+='<div class="fr3" style="margin-bottom:14px">';
     h+='<div><div class="fl">Lote</div><div style="font-weight:700;color:#024f2b">'+(op.lote||'—')+'</div></div>';
     h+='<div><div class="fl">Linha / Máquina</div><div>'+(op.linha||'—')+'</div></div>';
@@ -2142,7 +2176,7 @@ function montarRastreioOP(op, destacarData){
     if(qualConcluida){
       h+='<div class="ali" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
       h+='<span>✔ Marcada como <strong>Concluída para Qualidade</strong> em '+(qualConcluida.ts?new Date(qualConcluida.ts).toLocaleString('pt-BR'):'—')+' por '+(qualConcluida.analistaNome||qualConcluida.analista||'—')+'</span>';
-      h+='<button class="btn bxs bo" onclick="reabrirParaQualidade(\''+esc(op.fbKey)+'\')">↺ Reabrir para Qualidade</button>';
+      h+='<button class="btn bxs bo" onclick="event.stopPropagation();reabrirParaQualidade(\''+esc(op.fbKey)+'\')">↺ Reabrir para Qualidade</button>';
       h+='</div>';
     }
 
@@ -2196,7 +2230,8 @@ function montarRastreioOP(op, destacarData){
     } else {
       h+='<div style="font-size:12px;color:#999">Nenhuma não conformidade registrada</div>';
     }
-    h+='</div>';
+    h+='</div>'; // fecha rast-body
+    h+='</div>'; // fecha card
 
     // Retorna HTML + dados brutos para o PDF
     return {
@@ -2204,6 +2239,19 @@ function montarRastreioOP(op, destacarData){
       dados: {op:op, apts:apts, paradas:paradas, insps:insps, ncs:ncs, totalReal:totalReal, pq:pq, qualConcluida:qualConcluida}
     };
   });
+}
+
+function rastToggleCard(domId){
+  var body=G('body-'+domId), chev=G('chev-'+domId);
+  if(!body) return;
+  var aberto = body.style.display!=='none';
+  body.style.display = aberto?'none':'';
+  chev.textContent = aberto?'▸':'▾';
+}
+
+function rastExpandirTodos(abrir){
+  document.querySelectorAll('.rast-body').forEach(function(el){ el.style.display=abrir?'':'none'; });
+  document.querySelectorAll('.rast-chev').forEach(function(el){ el.textContent=abrir?'▾':'▸'; });
 }
 
 // ============================================================
