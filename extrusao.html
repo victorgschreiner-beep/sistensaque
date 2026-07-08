@@ -513,6 +513,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       <button onclick="admAba('usuarios')" id="adm-tab-usuarios" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">👥 Usuários</button>
       <button onclick="admAba('logs')" id="adm-tab-logs" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📋 Logs</button>
       <button onclick="admAba('metas')" id="adm-tab-metas" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🎯 Metas</button>
+      <button onclick="admAba('motivos')" id="adm-tab-motivos" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">⚙️ Motivos</button>
     </div>
     <div id="adm-lista-corpo" style="max-height:400px;overflow-y:auto"></div>
 
@@ -587,6 +588,35 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
         <div style="display:flex;gap:8px;justify-content:flex-end">
           <button onclick="G('adm-meta-form').style.display='none'" class="btn-cancel" style="padding:7px 16px;font-size:12px">Cancelar</button>
           <button onclick="admMetasSalvar()" class="btn-ok" style="padding:7px 16px;font-size:12px">Salvar meta</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wrap Motivos de Parada -->
+    <div id="adm-motivos-wrap" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px">
+        <span style="font-size:12px;font-weight:700;color:#024f2b" id="adm-motivo-status">Carregando...</span>
+        <button onclick="admMotivosNovo()" style="background:#024f2b;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">+ Novo motivo</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+        <input class="fi" id="adm-motivo-busca" placeholder="Buscar por código, descrição ou grupo..." style="flex:1;font-size:12px" oninput="admMotivosFiltrar(this.value)">
+        <select class="fi" id="adm-motivo-grupo" style="width:200px;font-size:12px" onchange="admMotivosFiltrar(G('adm-motivo-busca').value)">
+          <option value="">Todos os grupos</option>
+        </select>
+      </div>
+      <div id="adm-motivos-corpo" style="max-height:340px;overflow-y:auto"></div>
+      <div id="adm-motivo-form" style="display:none;background:#f5f9f2;border-radius:8px;padding:12px;margin-top:10px;border:1px solid #d4e8d4">
+        <div style="font-weight:700;color:#024f2b;margin-bottom:10px;font-size:13px" id="adm-motivo-form-titulo">Novo Motivo de Parada</div>
+        <input type="hidden" id="am-fbkey">
+        <div style="display:grid;grid-template-columns:1fr 2fr;gap:8px;margin-bottom:8px">
+          <div><label style="font-size:11px;color:#4a664a;font-weight:700;display:block;margin-bottom:3px">CÓDIGO</label><input class="fi" type="number" id="am-cod" placeholder="ex: 251"></div>
+          <div><label style="font-size:11px;color:#4a664a;font-weight:700;display:block;margin-bottom:3px">GRUPO</label><input class="fi" id="am-grupo" list="am-grupos-lista" placeholder="ex: Operacional"><datalist id="am-grupos-lista"></datalist></div>
+        </div>
+        <div style="margin-bottom:8px"><label style="font-size:11px;color:#4a664a;font-weight:700;display:block;margin-bottom:3px">DESCRIÇÃO</label><input class="fi" id="am-desc" placeholder="Descrição do motivo de parada"></div>
+        <div style="font-size:10px;color:#c0392b;margin-bottom:8px;display:none" id="am-erro"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button onclick="admMotivosFecharForm()" class="btn-cancel" style="padding:7px 16px;font-size:12px">Cancelar</button>
+          <button onclick="admMotivosSalvar()" class="btn-ok" style="padding:7px 16px;font-size:12px">Salvar motivo</button>
         </div>
       </div>
     </div>
@@ -934,6 +964,43 @@ function metasCarregarFirebase(callback){
   });
 }
 
+// ── MOTIVOS DE PARADA (catálogo) ───────────────────────────
+// PARADAS começa com a lista hardcoded acima como fallback/seed.
+// Ao conectar, migra (1ª vez) para o Firebase e passa a escutar em tempo real.
+var PARADAS_FB_OK=false;
+function motivosCarregarFirebase(){
+  if(!DB) return;
+  DB.ref("extrusao_motivos_parada").once("value",function(s){
+    if(!s.exists()){
+      var ref=DB.ref("extrusao_motivos_parada");
+      var batch={};
+      PARADAS.forEach(function(p){
+        var key=ref.push().key;
+        batch[key]={cod:p.cod,desc:p.desc,grupo:p.grupo};
+      });
+      ref.set(batch).then(function(){
+        toast("Motivos de parada migrados para o Firebase ("+Object.keys(batch).length+")","ok");
+      });
+    }
+    // Escuta contínua — qualquer alteração feita pelo admin reflete em todos os clientes
+    DB.ref("extrusao_motivos_parada").on("value",function(s2){
+      if(!s2.exists()) return;
+      var lista=[];
+      s2.forEach(function(c){ var v=c.val(); v.fbKey=c.key; lista.push(v); });
+      lista.sort(function(a,b){return (a.grupo+"|"+a.desc)>(b.grupo+"|"+b.desc)?1:-1;});
+      PARADAS=lista;
+      PARADAS_FB_OK=true;
+      // Se o modal de seleção de parada do operador estiver aberto, re-renderiza com a lista atualizada
+      if(G("m-para")&&G("m-para").classList.contains("on")) renderParadas(G("para-busca")?G("para-busca").value:"");
+      // Se a aba de gestão de motivos estiver aberta no admin, re-renderiza
+      if(typeof ADM_ABA!=="undefined"&&ADM_ABA==="motivos"&&G("adm-motivos-wrap")&&G("adm-motivos-wrap").style.display==="block"){
+        admMotivosPopularGrupos();
+        admMotivosFiltrar(G("adm-motivo-busca")?G("adm-motivo-busca").value:"");
+      }
+    });
+  });
+}
+
 // ── LOGIN ─────────────────────────────────────────────────
 
 
@@ -1032,6 +1099,7 @@ function iniciarApp(){
   DT_FILA=hoje();
   atualizarDataFila();
   metasCarregarFirebase();
+  motivosCarregarFirebase();
   carregarOPs();
   carregarExtrusao();
   // Verifica e fecha paradas abertas do turno anterior
@@ -3755,13 +3823,14 @@ function admAba(aba){
     btn.style.borderColor=aba===a?"#024f2b":"#d4e8d4";
   });
   // Mostra/oculta os wraps corretos
-  var wraps=["adm-lista-corpo","adm-usuarios-wrap","adm-logs-wrap","adm-metas-wrap"];
+  var wraps=["adm-lista-corpo","adm-usuarios-wrap","adm-logs-wrap","adm-metas-wrap","adm-motivos-wrap"];
   wraps.forEach(function(w){var el=G(w);if(el)el.style.display="none";});
   if(aba==="ops") { G("adm-lista-corpo").style.display="block"; admBuscarOps(); }
   else if(aba==="ativas") { G("adm-lista-corpo").style.display="block"; admRenderAtivas(); }
   else if(aba==="usuarios") { G("adm-usuarios-wrap").style.display="block"; admRenderUsuarios(); }
   else if(aba==="logs") { G("adm-logs-wrap").style.display="block"; admRenderLogs(); }
   else if(aba==="metas") { G("adm-metas-wrap").style.display="block"; admMetasCarregar(); }
+  else if(aba==="motivos") { G("adm-motivos-wrap").style.display="block"; admMotivosCarregar(); }
   else { G("adm-lista-corpo").style.display="block"; admRenderLista(); }
 }
 
@@ -4942,6 +5011,140 @@ function admMetasSalvar(){
       var q=G("adm-meta-busca").value.toLowerCase();
       return !q||(x.cod||"").toLowerCase().includes(q)||(x.desc||"").toLowerCase().includes(q);
     }));
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+// ── ADMIN: GESTÃO DO CATÁLOGO DE MOTIVOS DE PARADA ────────
+function admMotivosCarregar(){
+  G("adm-motivo-status").textContent="Carregando...";
+  G("adm-motivos-corpo").innerHTML="";
+  G("adm-motivo-form").style.display="none";
+  if(!DB){toast("Firebase não conectado","err");return;}
+  // PARADAS já é alimentado por motivosCarregarFirebase() (listener em tempo real)
+  admMotivosPopularGrupos();
+  admMotivosRender(PARADAS);
+}
+
+function admMotivosPopularGrupos(){
+  var sel=G("adm-motivo-grupo");
+  if(!sel) return;
+  var atual=sel.value;
+  var grupos=Array.from(new Set(PARADAS.map(function(p){return p.grupo;}))).sort();
+  var h='<option value="">Todos os grupos</option>';
+  grupos.forEach(function(g){ h+='<option value="'+g+'"'+(g===atual?" selected":"")+'>'+g+'</option>'; });
+  sel.innerHTML=h;
+  var dl=G("am-grupos-lista");
+  if(dl) dl.innerHTML=grupos.map(function(g){return '<option value="'+g+'">';}).join("");
+}
+
+function admMotivosFiltrar(q){
+  var grupoFiltro=G("adm-motivo-grupo").value;
+  q=(q||"").toLowerCase().trim();
+  var filtrado=PARADAS.filter(function(p){
+    var textOk=!q||String(p.cod).toLowerCase().includes(q)||(p.desc||"").toLowerCase().includes(q)||(p.grupo||"").toLowerCase().includes(q);
+    var grupoOk=!grupoFiltro||p.grupo===grupoFiltro;
+    return textOk && grupoOk;
+  });
+  admMotivosRender(filtrado);
+}
+
+function admMotivosRender(lista){
+  G("adm-motivo-status").textContent=PARADAS.length+" motivos cadastrados"+(lista.length!==PARADAS.length?" — "+lista.length+" exibidos":"")+".";
+  if(!lista.length){
+    G("adm-motivos-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#4a664a;font-size:12px">Nenhum motivo encontrado</div>';
+    return;
+  }
+  var h='<table style="width:100%;border-collapse:collapse;font-size:11px">';
+  h+='<tr style="background:#f5f9f2;position:sticky;top:0">';
+  h+='<th style="padding:6px 8px;text-align:left;color:#024f2b;width:60px">Cód.</th>';
+  h+='<th style="padding:6px 8px;text-align:left;color:#024f2b">Descrição</th>';
+  h+='<th style="padding:6px 8px;text-align:left;color:#024f2b;width:170px">Grupo</th>';
+  h+='<th style="padding:6px 8px;width:80px"></th></tr>';
+  lista.slice(0,150).forEach(function(p,i){
+    var bg=i%2===0?"#fff":"#f9fbf9";
+    h+='<tr style="background:'+bg+';border-bottom:1px solid #f0f0f0">';
+    h+='<td style="padding:5px 8px;font-weight:700;color:#024f2b">'+p.cod+'</td>';
+    h+='<td style="padding:5px 8px">'+(p.desc||"—")+'</td>';
+    h+='<td style="padding:5px 8px;color:#739630">'+(p.grupo||"—")+'</td>';
+    h+='<td style="padding:5px 8px;white-space:nowrap">';
+    h+='<button data-fk="'+p.fbKey+'" onclick="admMotivosEditar(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:3px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer">✏️</button> ';
+    h+='<button data-fk="'+p.fbKey+'" onclick="admMotivosExcluir(this.dataset.fk)" style="background:#c0392b;color:#fff;border:none;padding:3px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer">🗑</button>';
+    h+='</td></tr>';
+  });
+  h+='</table>';
+  if(lista.length>150) h+='<div style="text-align:center;padding:8px;font-size:11px;color:#739630">Mostrando 150 de '+lista.length+' — refine a busca para ver mais</div>';
+  G("adm-motivos-corpo").innerHTML=h;
+}
+
+function admMotivosNovo(){
+  G("adm-motivo-form-titulo").textContent="Novo Motivo de Parada";
+  G("am-fbkey").value="";
+  G("am-cod").value="";
+  G("am-desc").value="";
+  G("am-grupo").value="";
+  G("am-erro").style.display="none";
+  admMotivosPopularGrupos();
+  G("adm-motivo-form").style.display="block";
+  G("adm-motivo-form").scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+
+function admMotivosEditar(fbKey){
+  var p=PARADAS.find(function(x){return x.fbKey===fbKey;});
+  if(!p){toast("Motivo não encontrado — pode ter sido alterado por outro usuário","err");return;}
+  G("adm-motivo-form-titulo").textContent="Editar Motivo — "+p.cod;
+  G("am-fbkey").value=fbKey;
+  G("am-cod").value=p.cod;
+  G("am-desc").value=p.desc||"";
+  G("am-grupo").value=p.grupo||"";
+  G("am-erro").style.display="none";
+  admMotivosPopularGrupos();
+  G("adm-motivo-form").style.display="block";
+  G("adm-motivo-form").scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+
+function admMotivosFecharForm(){
+  G("adm-motivo-form").style.display="none";
+}
+
+function admMotivosSalvar(){
+  if(!DB){toast("Firebase não conectado","err");return;}
+  var fbKey=G("am-fbkey").value;
+  var cod=parseInt(G("am-cod").value);
+  var desc=(G("am-desc").value||"").trim();
+  var grupo=(G("am-grupo").value||"").trim();
+  var erroEl=G("am-erro");
+  erroEl.style.display="none";
+  if(!cod&&cod!==0){ erroEl.textContent="Informe um código numérico."; erroEl.style.display="block"; return; }
+  if(!desc){ erroEl.textContent="A descrição é obrigatória."; erroEl.style.display="block"; return; }
+  if(!grupo){ erroEl.textContent="O grupo é obrigatório."; erroEl.style.display="block"; return; }
+  // Validação de duplicidade de código (ignorando o próprio registro em edição)
+  var duplicado=PARADAS.some(function(p){return Number(p.cod)===cod&&p.fbKey!==fbKey;});
+  if(duplicado){ erroEl.textContent="Já existe um motivo com o código "+cod+". Use um código diferente."; erroEl.style.display="block"; return; }
+  var dados={cod:cod,desc:desc,grupo:grupo};
+  var ref=DB.ref("extrusao_motivos_parada");
+  if(fbKey){
+    ref.child(fbKey).update(dados).then(function(){
+      toast("Motivo "+cod+" atualizado!","ok");
+      registrarLog("motivo_parada","Editou motivo de parada "+cod+" — "+desc+" ("+grupo+")","-");
+      admMotivosFecharForm();
+    }).catch(function(e){toast("Erro: "+e.message,"err");});
+  } else {
+    ref.push(dados).then(function(){
+      toast("Motivo "+cod+" cadastrado!","ok");
+      registrarLog("motivo_parada","Cadastrou novo motivo de parada "+cod+" — "+desc+" ("+grupo+")","-");
+      admMotivosFecharForm();
+    }).catch(function(e){toast("Erro: "+e.message,"err");});
+  }
+}
+
+function admMotivosExcluir(fbKey){
+  var p=PARADAS.find(function(x){return x.fbKey===fbKey;});
+  if(!p) return;
+  if(!confirm("Excluir o motivo \""+p.cod+" — "+p.desc+"\"?\n\nParadas já registradas com este motivo NÃO serão afetadas (o texto já fica gravado no histórico). Apenas deixará de aparecer para novas seleções.")) return;
+  if(!DB){toast("Firebase não conectado","err");return;}
+  DB.ref("extrusao_motivos_parada/"+fbKey).remove().then(function(){
+    toast("Motivo excluído!","ok");
+    registrarLog("motivo_parada","Excluiu motivo de parada "+p.cod+" — "+p.desc,"-");
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
