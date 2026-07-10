@@ -2508,16 +2508,27 @@ function textoDesvioRT(campo, direcao, valores){
   return '-'+qtd+' '+(qtd===1?'Desvio':'Desvios')+' de '+rotulo+' '+direcao+' '+faixaTxt+(campo.unidade?' '+campo.unidade:'');
 }
 
-// Monta o texto de um bloco (uma linha/OP) do resumo de turno
-function montarBlocoResumoTurno(grupo){
+// Se a MÉDIA de um campo está dentro da faixa de especificação (usado pra colorir verde/vermelho)
+function mediaDentroFaixaRT(campo, media, pq){
+  if(!campo) return true;
+  if(campo.mode==='range'){
+    var min=Number(pq[campo.pMin]), max=Number(pq[campo.pMax]);
+    if(!isNaN(min) && media<min) return false;
+    if(!isNaN(max) && media>max) return false;
+    return true;
+  }
+  if(campo.mode==='min'){ var mn=Number(pq[campo.pMin]); return isNaN(mn)||media>=mn; }
+  if(campo.mode==='max'){ var mx=Number(pq[campo.pMax]); return isNaN(mx)||media<=mx; }
+  return true;
+}
+
+// Análise compartilhada de um grupo (Linha+OP): desvios (com horário de cada leitura) e médias.
+// Usada tanto pelo texto para WhatsApp quanto pelo card interativo na tela.
+function analisarGrupoResumoTurno(grupo){
   var pq = PARAMS_QUAL[grupo.cod] || {};
   var insps = grupo.insps;
-  var linhas=[];
-
-  linhas.push('-'+grupo.linhaCurta+' '+(grupo.desc||grupo.cod));
-
-  // Buckets de desvio: outros parâmetros (tudo exceto corte/diâmetro) e corte/diâmetro à parte
   var outros={}, corteDesvios={}, diamDesvios={};
+
   CAMPOS_NUM.forEach(function(c){
     if(c.mode==='finos_unidade') return; // fora do escopo deste resumo por ora
     insps.forEach(function(i){
@@ -2529,44 +2540,109 @@ function montarBlocoResumoTurno(grupo){
       if(!dir) return;
       var alvo = c.key==='corte' ? corteDesvios : c.key==='diam' ? diamDesvios : outros;
       var bucketKey=c.key+'|'+dir;
-      if(!alvo[bucketKey]) alvo[bucketKey]={campo:c, direcao:dir, valores:[]};
-      alvo[bucketKey].valores.push(Number(val));
+      if(!alvo[bucketKey]) alvo[bucketKey]={campo:c, direcao:dir, leituras:[]};
+      alvo[bucketKey].leituras.push({valor:Number(val), hora:i.hora||'—'});
     });
   });
 
-  var outrosVazios = Object.keys(outros).length===0;
-  var corteLimpo = Object.keys(corteDesvios).length===0;
-  var diamLimpo = Object.keys(diamDesvios).length===0;
-
-  if(outrosVazios && corteLimpo && diamLimpo){
-    linhas.push('-Sem desvios.');
-    linhas.push('-Corte e diâmetro ok');
-  } else {
-    Object.keys(outros).forEach(function(k){ linhas.push(textoDesvioRT(outros[k].campo, outros[k].direcao, outros[k].valores)); });
-    if(corteLimpo && diamLimpo){
-      linhas.push('-Corte e diâmetro ok');
-    } else {
-      if(!corteLimpo) Object.keys(corteDesvios).forEach(function(k){ linhas.push(textoDesvioRT(corteDesvios[k].campo, corteDesvios[k].direcao, corteDesvios[k].valores)); });
-      else linhas.push('-Corte ok');
-      if(!diamLimpo) Object.keys(diamDesvios).forEach(function(k){ linhas.push(textoDesvioRT(diamDesvios[k].campo, diamDesvios[k].direcao, diamDesvios[k].valores)); });
-      else linhas.push('-Diâmetro ok');
-    }
-  }
-
-  // Médias fixas (umidade, densidade, proteína) — sobre todas as leituras, aprovadas ou não
+  var medias={};
   ['umid','dens','pb'].forEach(function(key){
     var campo=CAMPOS_NUM.find(function(c){return c.key===key;});
     var vals=insps.map(function(i){return i.resultados&&i.resultados[key];}).filter(function(v){return v!==undefined&&v!==null&&v!=='';}).map(Number);
     if(!vals.length) return;
     var media=vals.reduce(function(s,v){return s+v;},0)/vals.length;
+    medias[key]={campo:campo, valor:media, dentro:mediaDentroFaixaRT(campo, media, pq)};
+  });
+
+  return {
+    pq:pq, outros:outros, corteDesvios:corteDesvios, diamDesvios:diamDesvios, medias:medias,
+    outrosVazios: Object.keys(outros).length===0,
+    corteLimpo: Object.keys(corteDesvios).length===0,
+    diamLimpo: Object.keys(diamDesvios).length===0
+  };
+}
+
+// Monta o texto de um bloco (uma linha/OP) do resumo de turno — formato para colar no WhatsApp
+function montarBlocoResumoTurno(grupo){
+  var a = analisarGrupoResumoTurno(grupo);
+  var linhas=[];
+  linhas.push('-'+grupo.linhaCurta+' '+(grupo.desc||grupo.cod));
+
+  if(a.outrosVazios && a.corteLimpo && a.diamLimpo){
+    linhas.push('-Sem desvios.');
+    linhas.push('-Corte e diâmetro ok');
+  } else {
+    Object.keys(a.outros).forEach(function(k){ var b=a.outros[k]; linhas.push(textoDesvioRT(b.campo,b.direcao,b.leituras.map(function(l){return l.valor;}))); });
+    if(a.corteLimpo && a.diamLimpo){
+      linhas.push('-Corte e diâmetro ok');
+    } else {
+      if(!a.corteLimpo) Object.keys(a.corteDesvios).forEach(function(k){ var b=a.corteDesvios[k]; linhas.push(textoDesvioRT(b.campo,b.direcao,b.leituras.map(function(l){return l.valor;}))); });
+      else linhas.push('-Corte ok');
+      if(!a.diamLimpo) Object.keys(a.diamDesvios).forEach(function(k){ var b=a.diamDesvios[k]; linhas.push(textoDesvioRT(b.campo,b.direcao,b.leituras.map(function(l){return l.valor;}))); });
+      else linhas.push('-Diâmetro ok');
+    }
+  }
+
+  ['umid','dens','pb'].forEach(function(key){
+    var m=a.medias[key];
+    if(!m) return;
     var dec=DECIMAIS_RT[key];
     var rotulo = key==='pb' ? 'proteína' : ROTULO_CURTO_RT[key];
-    linhas.push('-Media '+rotulo+' '+fN(media,dec)+(campo.unidade?campo.unidade:''));
+    linhas.push('-Media '+rotulo+' '+fN(m.valor,dec)+(m.campo.unidade?m.campo.unidade:''));
   });
 
   linhas.push(grupo.bloqueado ? '-BLOQUEADO — retenção pendente (lote '+(grupo.lote||'—')+')' : '-Sem bloqueio...');
 
   return linhas.join('\n');
+}
+
+// Uma linha de desvio dentro do card interativo, em vermelho, com o horário de cada leitura fora da faixa
+function linhaDesvioCardRT(bucket){
+  var rotulo = ROTULO_CURTO_RT[bucket.campo.key] || bucket.campo.label;
+  var dec = DECIMAIS_RT[bucket.campo.key]!==undefined ? DECIMAIS_RT[bucket.campo.key] : 2;
+  var unidade = bucket.campo.unidade || '';
+  var detalhes = bucket.leituras.map(function(l){ return fN(l.valor,dec)+unidade+' às '+(l.hora||'—'); }).join(' · ');
+  return '<div style="color:#c0392b;font-weight:600;font-size:13px;margin-bottom:6px">⚠ '+bucket.leituras.length+'x '+rotulo+' '+bucket.direcao+' — '+detalhes+'</div>';
+}
+
+// Card interativo do resumo de turno (estilo card de produção): linha em destaque, desvios em
+// vermelho com horário da leitura, médias em verde quando dentro da faixa / vermelho quando fora.
+function montarCardResumoTurno(grupo){
+  var a = analisarGrupoResumoTurno(grupo);
+  var h = '<div class="card" style="border-left:4px solid #024f2b;margin-bottom:14px">';
+
+  h += '<div class="ch">';
+  h += '<span class="ct" style="font-size:15px;color:#024f2b;font-weight:800">'+grupo.linhaCurta+' — '+(grupo.desc||grupo.cod)+'</span>';
+  h += grupo.bloqueado ? '<span class="badge brd">🔒 BLOQUEADO</span>' : '<span class="badge bvd">🔓 Sem bloqueio</span>';
+  h += '</div>';
+  h += '<div style="font-size:12px;color:#4a664a;margin-bottom:12px">OP '+grupo.opId+(grupo.lote?' · Lote '+grupo.lote:'')+' · '+grupo.insps.length+' inspeção(ões)</div>';
+
+  if(a.outrosVazios && a.corteLimpo && a.diamLimpo){
+    h += '<div style="color:#0a7a44;font-weight:600;font-size:13px;margin-bottom:10px">✔ Sem desvios registrados</div>';
+  } else {
+    Object.keys(a.outros).forEach(function(k){ h+=linhaDesvioCardRT(a.outros[k]); });
+    if(a.corteLimpo && a.diamLimpo){
+      h += '<div style="color:#0a7a44;font-weight:600;font-size:13px;margin-bottom:6px">✔ Corte e diâmetro dentro da faixa</div>';
+    } else {
+      if(!a.corteLimpo) Object.keys(a.corteDesvios).forEach(function(k){ h+=linhaDesvioCardRT(a.corteDesvios[k]); });
+      else h += '<div style="color:#0a7a44;font-weight:600;font-size:13px;margin-bottom:6px">✔ Corte dentro da faixa</div>';
+      if(!a.diamLimpo) Object.keys(a.diamDesvios).forEach(function(k){ h+=linhaDesvioCardRT(a.diamDesvios[k]); });
+      else h += '<div style="color:#0a7a44;font-weight:600;font-size:13px;margin-bottom:6px">✔ Diâmetro dentro da faixa</div>';
+    }
+  }
+
+  h += '<div class="fr3" style="margin-top:10px">';
+  [['umid','Umidade média'],['dens','Densidade média'],['pb','Proteína média']].forEach(function(par){
+    var key=par[0], rotulo=par[1], m=a.medias[key];
+    if(!m){ h += '<div><div class="fl">'+rotulo+'</div><div style="color:#999">—</div></div>'; return; }
+    var dec=DECIMAIS_RT[key];
+    var cor = m.dentro ? '#0a7a44' : '#c0392b';
+    h += '<div><div class="fl">'+rotulo+'</div><div style="font-weight:700;font-size:15px;color:'+cor+'">'+fN(m.valor,dec)+(m.campo.unidade||'')+'</div></div>';
+  });
+  h += '</div>';
+
+  h += '</div>';
+  return h;
 }
 
 function gerarResumoTurno(){
@@ -2609,16 +2685,15 @@ function gerarResumoTurno(){
     }).filter(Boolean);
 
     var corpo = chavesOrdenadas.map(function(k){ return montarBlocoResumoTurno(grupos[k]); }).join('\n');
-
     var textoCompleto = 'RESUMO T'+turno+' DE '+data.split('-').reverse().join('/')+'\n'+corpo;
-
-    var textoHtml = textoCompleto.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     RESUMO_TURNO_ATUAL={texto:textoCompleto, data:data, turno:turno};
+
+    var cardsHtml = chavesOrdenadas.map(function(k){ return montarCardResumoTurno(grupos[k]); }).join('');
     G('rt-preview').innerHTML =
-      '<div class="card">'+
-      '<div class="ch"><span class="ct">Pré-visualização</span><button class="btn bsm" onclick="baixarResumoTurnoPDF()">⇣ Baixar PDF</button></div>'+
-      '<pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.6;background:#f4f6f4;border-radius:var(--r);padding:14px">'+textoHtml+'</pre>'+
-      '</div>';
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+      '<span style="font-size:13px;color:#4a664a;font-weight:600">'+chavesOrdenadas.length+' ordem(ns) lançada(s) no Turno '+turno+' — '+data.split('-').reverse().join('/')+'</span>'+
+      '<button class="btn bsm" onclick="baixarResumoTurnoPDF()">⇣ Baixar PDF p/ WhatsApp</button>'+
+      '</div>'+cardsHtml;
   }).catch(function(e){
     G('rt-preview').innerHTML='<div style="color:#c0392b;padding:20px">Erro: '+e.message+'</div>';
   });
