@@ -181,6 +181,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <button class="nb" id="nb-retencoes" onclick="go('retencoes',this)">Retenções <span class="nc-dot" id="ret-dot" style="display:none"></span></button>
     <button class="nb" id="nb-dash" onclick="go('dashboard',this)">Dashboard</button>
     <button class="nb" id="nb-rast" onclick="go('rastreio',this)">Rastreabilidade</button>
+    <button class="nb" id="nb-resumo" onclick="go('resumoturno',this)">Resumo de Turno</button>
     <button class="nb" id="nb-params" style="display:none" onclick="go('params',this)">Parâmetros</button>
   </div>
   <div class="ubar">
@@ -346,6 +347,28 @@ tr:hover td{background:rgba(2,79,43,.03)}
     </div>
   </div>
   <div id="rast-resultado"></div>
+</div>
+
+<!-- ============ TELA: RESUMO DE TURNO ============ -->
+<div class="scr" id="scr-resumoturno">
+  <div class="ch"><h2 style="font-size:16px;font-weight:700;color:#024f2b">Resumo de Turno</h2></div>
+  <div class="card">
+    <div class="fr3">
+      <div class="fg"><label class="fl">Data</label><input type="date" id="rt-data"></div>
+      <div class="fg"><label class="fl">Turno</label>
+        <select id="rt-turno">
+          <option value="1">Turno 1 (21h-5h)</option>
+          <option value="2">Turno 2 (5h-13h)</option>
+          <option value="3">Turno 3 (13h-21h)</option>
+        </select>
+      </div>
+      <div class="fg" style="align-self:flex-end;display:flex;gap:8px">
+        <button class="btn bp" style="flex:1" onclick="gerarResumoTurno()">📋 Gerar Resumo</button>
+      </div>
+    </div>
+    <div class="alw">Reúne as inspeções de qualidade lançadas na data e turno selecionados, agrupadas por linha, com desvios, médias e status de bloqueio (retenção pendente).</div>
+  </div>
+  <div id="rt-preview"></div>
 </div>
 
 <!-- ============ TELA: ADMIN (PARÂMETROS + USUÁRIOS) ============ -->
@@ -746,6 +769,9 @@ function go(s,btn){
     gerarDashboardQual();
   }
   else if(s==='params') adminTab(ADMIN_ABA_ATUAL);
+  else if(s==='resumoturno'){
+    if(!G('rt-data').value){ G('rt-data').value=hoje(); G('rt-turno').value=String(turnoAtual()); }
+  }
 }
 
 var ADMIN_ABA_ATUAL='prod';
@@ -2443,6 +2469,184 @@ function exportarRastreabilidadePDF(){
   toast('PDF exportado!','ok');
 }
 
+// ============================================================
+// RESUMO DE TURNO — texto padrão para envio ao grupo (PDF)
+// ============================================================
+var LINHA_CURTA = {
+  'Linha 1 (E-240)':'E-240',
+  'Linha 2 (E-200)':'E-200',
+  'Linha 4 (Andritz I)':'LINHA 4',
+  'Linha 5 (Andritz II)':'LINHA 5'
+};
+var ROTULO_CURTO_RT = {
+  umid:'umidade', aw:'AW', dens:'densidade', corte:'corte', diam:'diâmetro',
+  temp:'temperatura', pb:'proteína', ee:'EE', mm:'MM', flu:'flutuabilidade', coz:'cozimento'
+};
+var DECIMAIS_RT = {umid:1, dens:0, pb:2, aw:2, corte:1, diam:1, temp:1, ee:2, mm:2, flu:0, coz:0};
+
+// Determina a direção do desvio (alta/baixa para a maioria, acima/abaixo para corte e diâmetro)
+function direcaoDesvioRT(campo, valor, pq){
+  var dimensional = (campo.key==='corte'||campo.key==='diam');
+  if(campo.mode==='range'){
+    var min=Number(pq[campo.pMin]), max=Number(pq[campo.pMax]);
+    if(!isNaN(max) && valor>max) return dimensional?'acima':'alta';
+    if(!isNaN(min) && valor<min) return dimensional?'abaixo':'baixa';
+    return '';
+  }
+  if(campo.mode==='min') return 'baixa';
+  if(campo.mode==='max') return 'alta';
+  if(campo.mode==='temp_delta') return 'alta';
+  return '';
+}
+
+function textoDesvioRT(campo, direcao, valores){
+  var dec = DECIMAIS_RT[campo.key]!==undefined ? DECIMAIS_RT[campo.key] : 2;
+  var min=Math.min.apply(null,valores), max=Math.max.apply(null,valores);
+  var faixaTxt = (min===max) ? fN(min,dec) : ('entre '+fN(min,dec)+' a '+fN(max,dec));
+  var qtd=valores.length;
+  var rotulo = ROTULO_CURTO_RT[campo.key] || campo.label;
+  return '-'+qtd+' '+(qtd===1?'Desvio':'Desvios')+' de '+rotulo+' '+direcao+' '+faixaTxt+(campo.unidade?' '+campo.unidade:'');
+}
+
+// Monta o texto de um bloco (uma linha/OP) do resumo de turno
+function montarBlocoResumoTurno(grupo){
+  var pq = PARAMS_QUAL[grupo.cod] || {};
+  var insps = grupo.insps;
+  var linhas=[];
+
+  linhas.push('-'+grupo.linhaCurta+' '+(grupo.desc||grupo.cod));
+
+  // Buckets de desvio: outros parâmetros (tudo exceto corte/diâmetro) e corte/diâmetro à parte
+  var outros={}, corteDesvios={}, diamDesvios={};
+  CAMPOS_NUM.forEach(function(c){
+    if(c.mode==='finos_unidade') return; // fora do escopo deste resumo por ora
+    insps.forEach(function(i){
+      var val=i.resultados&&i.resultados[c.key];
+      if(val===undefined||val===null) return;
+      var fora=i.aprovacoes&&i.aprovacoes[c.key]===false;
+      if(!fora) return;
+      var dir=direcaoDesvioRT(c, Number(val), pq);
+      if(!dir) return;
+      var alvo = c.key==='corte' ? corteDesvios : c.key==='diam' ? diamDesvios : outros;
+      var bucketKey=c.key+'|'+dir;
+      if(!alvo[bucketKey]) alvo[bucketKey]={campo:c, direcao:dir, valores:[]};
+      alvo[bucketKey].valores.push(Number(val));
+    });
+  });
+
+  var outrosVazios = Object.keys(outros).length===0;
+  var corteLimpo = Object.keys(corteDesvios).length===0;
+  var diamLimpo = Object.keys(diamDesvios).length===0;
+
+  if(outrosVazios && corteLimpo && diamLimpo){
+    linhas.push('-Sem desvios.');
+    linhas.push('-Corte e diâmetro ok');
+  } else {
+    Object.keys(outros).forEach(function(k){ linhas.push(textoDesvioRT(outros[k].campo, outros[k].direcao, outros[k].valores)); });
+    if(corteLimpo && diamLimpo){
+      linhas.push('-Corte e diâmetro ok');
+    } else {
+      if(!corteLimpo) Object.keys(corteDesvios).forEach(function(k){ linhas.push(textoDesvioRT(corteDesvios[k].campo, corteDesvios[k].direcao, corteDesvios[k].valores)); });
+      else linhas.push('-Corte ok');
+      if(!diamLimpo) Object.keys(diamDesvios).forEach(function(k){ linhas.push(textoDesvioRT(diamDesvios[k].campo, diamDesvios[k].direcao, diamDesvios[k].valores)); });
+      else linhas.push('-Diâmetro ok');
+    }
+  }
+
+  // Médias fixas (umidade, densidade, proteína) — sobre todas as leituras, aprovadas ou não
+  ['umid','dens','pb'].forEach(function(key){
+    var campo=CAMPOS_NUM.find(function(c){return c.key===key;});
+    var vals=insps.map(function(i){return i.resultados&&i.resultados[key];}).filter(function(v){return v!==undefined&&v!==null&&v!=='';}).map(Number);
+    if(!vals.length) return;
+    var media=vals.reduce(function(s,v){return s+v;},0)/vals.length;
+    var dec=DECIMAIS_RT[key];
+    var rotulo = key==='pb' ? 'proteína' : ROTULO_CURTO_RT[key];
+    linhas.push('-Media '+rotulo+' '+fN(media,dec)+(campo.unidade?campo.unidade:''));
+  });
+
+  linhas.push(grupo.bloqueado ? '-BLOQUEADO — retenção pendente (lote '+(grupo.lote||'—')+')' : '-Sem bloqueio...');
+
+  return linhas.join('\n');
+}
+
+function gerarResumoTurno(){
+  var data=G('rt-data').value, turno=G('rt-turno').value;
+  if(!data){ toast('Selecione a data','err'); return; }
+  G('rt-preview').innerHTML='<div class="card" style="text-align:center;padding:30px;color:#739630">Gerando...</div>';
+
+  Promise.all([
+    DB.ref('qualidade_inspecoes').orderByChild('data').equalTo(data).once('value'),
+    DB.ref('qualidade_retencoes').orderByChild('status').equalTo('Pendente').once('value')
+  ]).then(function(r){
+    var todasInsp=[]; r[0].forEach(function(c){ var v=c.val(); v.fbKey=c.key; todasInsp.push(v); });
+    var insp=todasInsp.filter(function(i){ return String(i.turno)===turno; });
+
+    var retencoesPendentes=[]; r[1].forEach(function(c){ retencoesPendentes.push(c.val()); });
+    var opFbKeysBloqueados={};
+    retencoesPendentes.forEach(function(rt){
+      if(rt.opFbKey && rt.data===data && String(rt.turno)===turno) opFbKeysBloqueados[rt.opFbKey]=true;
+    });
+
+    // Agrupa apenas as OPs que tiveram inspeção lançada neste turno específico
+    var grupos={}, ordem=[];
+    insp.forEach(function(i){
+      var k=i.linha+'|'+i.opFbKey;
+      if(!grupos[k]){
+        grupos[k]={linha:i.linha, linhaCurta:LINHA_CURTA[i.linha]||i.linha, opFbKey:i.opFbKey, opId:i.opId, cod:i.cod, desc:i.desc, lote:i.lote, insps:[], bloqueado:!!opFbKeysBloqueados[i.opFbKey]};
+        ordem.push(k);
+      }
+      grupos[k].insps.push(i);
+    });
+
+    if(!ordem.length){
+      G('rt-preview').innerHTML='<div class="card" style="text-align:center;color:#999">Nenhuma inspeção lançada em '+data.split('-').reverse().join('/')+' — Turno '+turno+'</div>';
+      return;
+    }
+
+    // Ordena pela ordem natural do array LINHAS
+    var chavesOrdenadas = LINHAS.map(function(linha){
+      return ordem.find(function(k){ return grupos[k].linha===linha; });
+    }).filter(Boolean);
+
+    var corpo = chavesOrdenadas.map(function(k){ return montarBlocoResumoTurno(grupos[k]); }).join('\n');
+
+    var textoCompleto = 'RESUMO T'+turno+' DE '+data.split('-').reverse().join('/')+'\n'+corpo;
+
+    var textoHtml = textoCompleto.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    RESUMO_TURNO_ATUAL={texto:textoCompleto, data:data, turno:turno};
+    G('rt-preview').innerHTML =
+      '<div class="card">'+
+      '<div class="ch"><span class="ct">Pré-visualização</span><button class="btn bsm" onclick="baixarResumoTurnoPDF()">⇣ Baixar PDF</button></div>'+
+      '<pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.6;background:#f4f6f4;border-radius:var(--r);padding:14px">'+textoHtml+'</pre>'+
+      '</div>';
+  }).catch(function(e){
+    G('rt-preview').innerHTML='<div style="color:#c0392b;padding:20px">Erro: '+e.message+'</div>';
+  });
+}
+
+var RESUMO_TURNO_ATUAL=null;
+function baixarResumoTurnoPDF(){
+  if(typeof jspdf==='undefined'){ toast('jsPDF não disponível','err'); return; }
+  if(!RESUMO_TURNO_ATUAL){ toast('Gere o resumo antes de baixar','err'); return; }
+  var jsPDF=jspdf.jsPDF;
+  var doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  doc.setFillColor(2,79,43); doc.rect(0,0,210,16,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(255,255,255);
+  doc.text('RESUMO DE TURNO — QUALIDADE',10,10);
+
+  doc.setFont('courier','normal'); doc.setFontSize(10); doc.setTextColor(30,30,30);
+  var linhasTexto=doc.splitTextToSize(RESUMO_TURNO_ATUAL.texto, 190);
+  var y=26;
+  linhasTexto.forEach(function(linha){
+    if(y>285){ doc.addPage(); y=15; }
+    doc.text(linha,10,y);
+    y+=5.5;
+  });
+
+  var nomearq='Resumo_Turno'+RESUMO_TURNO_ATUAL.turno+'_'+RESUMO_TURNO_ATUAL.data+'.pdf';
+  doc.save(nomearq);
+  toast('PDF exportado!','ok');
+}
 
 function renderParamsLista(){
   var busca=(G('params-busca').value||'').toLowerCase();
