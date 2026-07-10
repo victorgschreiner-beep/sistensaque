@@ -2686,7 +2686,7 @@ function gerarResumoTurno(){
 
     var corpo = chavesOrdenadas.map(function(k){ return montarBlocoResumoTurno(grupos[k]); }).join('\n');
     var textoCompleto = 'RESUMO T'+turno+' DE '+data.split('-').reverse().join('/')+'\n'+corpo;
-    RESUMO_TURNO_ATUAL={texto:textoCompleto, data:data, turno:turno};
+    RESUMO_TURNO_ATUAL={texto:textoCompleto, data:data, turno:turno, grupos:chavesOrdenadas.map(function(k){return grupos[k];})};
 
     var cardsHtml = chavesOrdenadas.map(function(k){ return montarCardResumoTurno(grupos[k]); }).join('');
     G('rt-preview').innerHTML =
@@ -2700,22 +2700,100 @@ function gerarResumoTurno(){
 }
 
 var RESUMO_TURNO_ATUAL=null;
+
+// Mini-versão do helper de cards de indicador (pdfCards usa largura fixa de paisagem — aqui é retrato)
+function pdfCardsResumoRT(doc, y, cards, ML, W){
+  var cw=(W-4)/cards.length;
+  cards.forEach(function(card,i){
+    var cx=ML+i*cw+(i>0?1:0);
+    doc.setFillColor(245,250,245); doc.rect(cx,y,cw-1,13,'F');
+    doc.setDrawColor(200,220,200); doc.rect(cx,y,cw-1,13,'S');
+    doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(100,130,100);
+    doc.text(card.l,cx+(cw-1)/2,y+4,{align:'center'});
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(card.c[0],card.c[1],card.c[2]);
+    doc.text(String(card.v),cx+(cw-1)/2,y+10,{align:'center'});
+  });
+  return y+16;
+}
+
 function baixarResumoTurnoPDF(){
   if(typeof jspdf==='undefined'){ toast('jsPDF não disponível','err'); return; }
-  if(!RESUMO_TURNO_ATUAL){ toast('Gere o resumo antes de baixar','err'); return; }
+  if(!RESUMO_TURNO_ATUAL || !RESUMO_TURNO_ATUAL.grupos || !RESUMO_TURNO_ATUAL.grupos.length){ toast('Gere o resumo antes de baixar','err'); return; }
   var jsPDF=jspdf.jsPDF;
   var doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
-  doc.setFillColor(2,79,43); doc.rect(0,0,210,16,'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(255,255,255);
-  doc.text('RESUMO DE TURNO — QUALIDADE',10,10);
+  var ML=10, W=190;
 
-  doc.setFont('courier','normal'); doc.setFontSize(10); doc.setTextColor(30,30,30);
-  var linhasTexto=doc.splitTextToSize(RESUMO_TURNO_ATUAL.texto, 190);
+  pdfCabecalho(doc, 'RESUMO DE TURNO — QUALIDADE',
+    'Turno '+RESUMO_TURNO_ATUAL.turno+'  |  '+RESUMO_TURNO_ATUAL.data.split('-').reverse().join('/')+'  |  Emitido: '+new Date().toLocaleString('pt-BR')+'  |  '+(SES?SES.nome:''));
+
   var y=26;
-  linhasTexto.forEach(function(linha){
-    if(y>285){ doc.addPage(); y=15; }
-    doc.text(linha,10,y);
-    y+=5.5;
+
+  RESUMO_TURNO_ATUAL.grupos.forEach(function(grupo){
+    var a = analisarGrupoResumoTurno(grupo);
+    if(y>250){ doc.addPage(); y=15; }
+
+    // Cabeçalho colorido do bloco — linha + produto em destaque, badge de bloqueio à direita
+    doc.setFillColor(2,79,43); doc.rect(ML,y,W,7,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(255,255,255);
+    doc.text(grupo.linhaCurta+' — '+(grupo.desc||grupo.cod), ML+3, y+4.8);
+    var badgeTxt = grupo.bloqueado?'BLOQUEADO':'SEM BLOQUEIO';
+    doc.setFont('helvetica','bold'); doc.setFontSize(6);
+    var badgeW = doc.getTextWidth(badgeTxt)+4;
+    if(grupo.bloqueado){ doc.setFillColor(192,57,43); } else { doc.setFillColor(255,255,255); }
+    doc.roundedRect(ML+W-3-badgeW, y+1.5, badgeW, 4, 1, 1, 'F');
+    doc.setTextColor(grupo.bloqueado?255:2, grupo.bloqueado?255:79, grupo.bloqueado?255:43);
+    doc.text(badgeTxt, ML+W-3-badgeW/2, y+4.2, {align:'center'});
+    y+=9;
+
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(80,80,80);
+    doc.text('OP '+grupo.opId+(grupo.lote?' · Lote '+grupo.lote:'')+' · '+grupo.insps.length+' inspeção(ões)', ML, y+3);
+    y+=7;
+
+    function desenharDesvio(bucket){
+      var rotulo = ROTULO_CURTO_RT[bucket.campo.key] || bucket.campo.label;
+      var dec = DECIMAIS_RT[bucket.campo.key]!==undefined ? DECIMAIS_RT[bucket.campo.key] : 2;
+      var unidade = bucket.campo.unidade||'';
+      var detalhes = bucket.leituras.map(function(l){ return fN(l.valor,dec)+unidade+' ('+(l.hora||'—')+')'; }).join(', ');
+      var texto='⚠ '+bucket.leituras.length+'x '+rotulo+' '+bucket.direcao+' — '+detalhes;
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(192,57,43);
+      var quebradas=doc.splitTextToSize(texto, W-4);
+      quebradas.forEach(function(l){ if(y>280){ doc.addPage(); y=15; } doc.text(l,ML+2,y+3); y+=4.5; });
+    }
+    function desenharOk(texto){
+      if(y>280){ doc.addPage(); y=15; }
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(10,122,68);
+      doc.text('✔ '+texto, ML+2, y+3);
+      y+=5;
+    }
+
+    if(a.outrosVazios && a.corteLimpo && a.diamLimpo){
+      desenharOk('Sem desvios registrados');
+      desenharOk('Corte e diâmetro dentro da faixa');
+    } else {
+      Object.keys(a.outros).forEach(function(k){ desenharDesvio(a.outros[k]); });
+      if(a.corteLimpo && a.diamLimpo){
+        desenharOk('Corte e diâmetro dentro da faixa');
+      } else {
+        if(!a.corteLimpo) Object.keys(a.corteDesvios).forEach(function(k){ desenharDesvio(a.corteDesvios[k]); });
+        else desenharOk('Corte dentro da faixa');
+        if(!a.diamLimpo) Object.keys(a.diamDesvios).forEach(function(k){ desenharDesvio(a.diamDesvios[k]); });
+        else desenharOk('Diâmetro dentro da faixa');
+      }
+    }
+
+    // Médias — caixas coloridas verde/vermelho, igual ao card na tela
+    var cards=[];
+    [['umid','UMIDADE'],['dens','DENSIDADE'],['pb','PROTEÍNA']].forEach(function(par){
+      var m=a.medias[par[0]];
+      if(!m) return;
+      var dec=DECIMAIS_RT[par[0]];
+      cards.push({l:par[1], v:fN(m.valor,dec)+(m.campo.unidade||''), c: m.dentro?[10,122,68]:[192,57,43]});
+    });
+    if(y>270){ doc.addPage(); y=15; }
+    if(cards.length) y = pdfCardsResumoRT(doc, y+1, cards, ML, W);
+
+    y+=5;
+    doc.setDrawColor(220,220,220); doc.line(ML,y-3,ML+W,y-3);
   });
 
   var nomearq='Resumo_Turno'+RESUMO_TURNO_ATUAL.turno+'_'+RESUMO_TURNO_ATUAL.data+'.pdf';
