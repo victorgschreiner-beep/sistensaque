@@ -1131,45 +1131,80 @@ function recalcularRealExtrusao(opFbKey){
       });
       // Se essa OP faz parte de uma cadeia de reprogramação, recalcula o acumulado de todos os elos —
       // garante que produção de dias/elos anteriores não seja perdida nem contada de novo (regra só da Extrusão)
-      if(op&&op.id) refreshCadeiaExt(op.id, op.linha);
+      refreshCadeiaExt(opFbKey, op?op.linha:null);
     });
   });
 }
 
-// Soma a produção da Extrusão em TODOS os elos (registros ops/) que compartilham o mesmo número de OP,
-// independentemente da data em que cada elo foi produzido. Usado apenas pela Extrusão — nunca pelo Ensaque,
-// que deve continuar considerando somente o que foi efetivamente ensacado no elo atual.
-function refreshCadeiaExt(opNum, linha){
-  if(!DB||!opNum) return;
-  buscarCadeiaOP(opNum,function(cadeia){
+// Reconstrói a cadeia de reprogramação de uma OP a partir do elo atual, seguindo o vínculo real
+// gravado pelo reprogramarOP() do Ensaque: campo "reprogramadaDeFbKey" (aponta pro registro anterior).
+// IMPORTANTE: não usar o número da OP (o.id) para achar a cadeia — a cada reprogramação o id muda
+// (ex: "OP123" vira "OP123 #2"), então buscar por id nunca encontraria os elos anteriores.
+// Retorna array ordenado [elo mais antigo/original, ..., elo atual].
+function buscarCadeiaExtPorFbKey(fbKeyAtual, callback){
+  if(!DB||!fbKeyAtual){ callback([]); return; }
+  var cadeia=[];
+  function passo(fk){
+    DB.ref("ops/"+fk).once("value").then(function(s){
+      if(!s.exists()){ callback(cadeia); return; }
+      var v=s.val(); v.fbKey=fk;
+      cadeia.unshift(v);
+      if(v.reprogramadaDeFbKey) passo(v.reprogramadaDeFbKey);
+      else callback(cadeia);
+    }).catch(function(){ callback(cadeia); });
+  }
+  passo(fbKeyAtual);
+}
+
+// Soma a produção da Extrusão em TODOS os elos da cadeia (original + reprogramações), independentemente
+// da data em que cada elo foi produzido — usado apenas pela Extrusão, nunca pelo Ensaque.
+// Grava o acumulado SOMENTE no elo atual (mais recente) — elos antigos mantêm seu próprio valor histórico,
+// preservando a leitura correta de relatórios por data (ex: comparativo Ensacado x Extrusado por dia).
+function refreshCadeiaExt(opFbKeyAtual, linha){
+  if(!DB||!opFbKeyAtual) return;
+  buscarCadeiaExtPorFbKey(opFbKeyAtual,function(cadeia){
     if(!cadeia||cadeia.length<2){
-      // Sem reprogramação — não precisa de acumulado especial, usa o realExtrusao normal do elo único
-      delete CADEIA_EXT[opNum];
+      // Sem reprogramação (ou elo isolado) — não precisa de acumulado especial
+      delete CADEIA_EXT[opFbKeyAtual];
       if(linha) renderLinhaCard(linha);
       return;
     }
-    var progOriginal=Number(cadeia[0].prog)||0;
+    var original=cadeia[0];
+    // prog/progOriginal são armazenados na unidade de exibição (sc/bg/kg conforme tipo) — converte pra KG
+    // com o mesmo fator usado pelo reprogramarOP(), pra comparar com realExtrusao (sempre em KG)
+    var fator=original.tipo==="SC"?25:original.tipo==="BG"?750:1;
+    var progOriginalKG=(Number(original.prog)||0)*fator;
     var buscas=cadeia.map(function(elo){
       return elo.fbKey?DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(elo.fbKey).once("value"):Promise.resolve(null);
     });
     Promise.all(buscas).then(function(snaps){
       var total=0;
       snaps.forEach(function(s){ if(s&&s.exists()) s.forEach(function(c){ total+=Number(c.val().real)||0; }); });
-      CADEIA_EXT[opNum]={total:total,progOriginal:progOriginal};
-      if(linha) renderLinhaCard(linha);
+      CADEIA_EXT[opFbKeyAtual]={total:total,progOriginal:progOriginalKG};
+      // Grava só no elo atual — realExtrusao (acumulado, pro card/fila da Extrusão e pra barra "já extrusado"
+      // do Ensaque) e progExtOriginal (base correta em KG pro % de progresso, já que o prog do elo atual
+      // reflete o saldo do Ensaque, não o total original da Extrusão)
+      DB.ref("ops/"+opFbKeyAtual).update({realExtrusao:total, progExtOriginal:progOriginalKG}).then(function(){
+        var op=OPS.find(function(o){return o.fbKey===opFbKeyAtual;});
+        if(op){ op.realExtrusao=total; op.progExtOriginal=progOriginalKG; }
+        if(linha) renderLinhaCard(linha);
+      });
     }).catch(function(){});
   });
 }
 
 // Retorna {produzido, programado} para exibição na Extrusão:
-// - Se a OP já foi reprogramada (cadeia com 2+ elos), usa o acumulado de toda a cadeia e o programado ORIGINAL (1º elo).
+// - Se a OP já foi reprogramada (cadeia com 2+ elos), usa o acumulado de toda a cadeia e o programado
+//   ORIGINAL em KG (1º elo, convertido pelo fator) — nunca o prog do elo atual, que reflete o saldo do Ensaque.
 // - Caso contrário, usa os valores normais do elo único (comportamento inalterado).
 function getExtProgressoOP(o){
   if(!o) return {produzido:0,programado:0};
-  var cad=o.id&&CADEIA_EXT[o.id];
+  var cad=o.fbKey&&CADEIA_EXT[o.fbKey];
   if(cad) return {produzido:cad.total,programado:cad.progOriginal};
+  if(o.progExtOriginal) return {produzido:Number(o.realExtrusao)||0,programado:Number(o.progExtOriginal)};
   return {produzido:Number(o.realExtrusao)||0,programado:Number(o.prog)||0};
 }
+
 
 // Mantido para compatibilidade — agora usa realExtrusao da OP
 function carregarTotalOp(linha, opFbKey){
@@ -1312,7 +1347,7 @@ function _posCarregarOPs(){
   // Sem isso, o elo novo mostraria 0 kg produzidos mesmo que parte da quantidade já tenha sido extrudada
   // em um elo/dia anterior — regra aplicada somente aqui, nunca no Ensaque.
   OPS.filter(function(o){return o.status==="Reprogramada";}).forEach(function(o){
-    if(o.id) refreshCadeiaExt(o.id, o.linha);
+    if(o.fbKey) refreshCadeiaExt(o.fbKey, o.linha);
   });
   // Avisa OPs reprogramadas sem OP ativa na linha
   setTimeout(function(){

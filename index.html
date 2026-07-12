@@ -1541,7 +1541,8 @@ function renderOpCards(){
     // Barra da extrusão — só se tiver realExtrusao
     var realExt=Number(o.realExtrusao)||0;
     if(realExt>0){
-      var pExt=o.prog?Math.min(Math.round(realExt/Number(o.prog)*100),999):0;
+      var progBaseExt=Number(o.progExtOriginal)||Number(o.prog)||0;
+      var pExt=progBaseExt?Math.min(Math.round(realExt/progBaseExt*100),999):0;
       var corExt=pExt>=85?'#1a7a4a':pExt>=70?'#b8860b':'#a93226';
       h+='<div style="display:flex;justify-content:space-between;font-size:10px;color:#1a7a4a;font-weight:600;margin-top:8px;margin-bottom:2px">';
       h+='<span>🏭 Extrusão</span>';
@@ -4023,7 +4024,7 @@ function renderFila(){
         h+='<div style="font-size:12px;color:#4a664a;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(op.desc||op.cod)+'</div>';
         h+='<div style="display:flex;gap:10px;font-size:11px;margin-bottom:4px"><span><strong>'+op.tipo+'</strong></span><span style="color:#739630">Prog: '+fN(op.prog)+'</span><span style="color:#024f2b">Real: '+fN(op.real)+'</span></div>';
         var rExt1=Number(op.realExtrusao)||0;
-        if(rExt1>0){var pExt1=op.prog?Math.min(Math.round(rExt1/Number(op.prog)*100),999):0;var cExt1=pExt1>=85?'#1a7a4a':pExt1>=70?'#b8860b':'#a93226';h+='<div style="font-size:9px;color:#1a7a4a;font-weight:600;margin-bottom:1px">🏭 Ext: '+fN(rExt1)+' kg ('+pExt1+'%)</div><div style="background:#d4ede0;border-radius:3px;height:4px;overflow:hidden;margin-bottom:3px"><div style="height:100%;width:'+Math.min(pExt1,100)+'%;background:'+cExt1+';border-radius:3px"></div></div>';}
+        if(rExt1>0){var progBaseExt1=Number(op.progExtOriginal)||Number(op.prog)||0;var pExt1=progBaseExt1?Math.min(Math.round(rExt1/progBaseExt1*100),999):0;var cExt1=pExt1>=85?'#1a7a4a':pExt1>=70?'#b8860b':'#a93226';h+='<div style="font-size:9px;color:#1a7a4a;font-weight:600;margin-bottom:1px">🏭 Ext: '+fN(rExt1)+' kg ('+pExt1+'%)</div><div style="background:#d4ede0;border-radius:3px;height:4px;overflow:hidden;margin-bottom:3px"><div style="height:100%;width:'+Math.min(pExt1,100)+'%;background:'+cExt1+';border-radius:3px"></div></div>';}
         h+='<div style="font-size:9px;color:#024f2b;font-weight:600;margin-bottom:1px">📦 Ens: '+fN(Number(op.real)||0)+' kg · '+p2+'%</div>';
         h+='<div style="background:#eef2ee;border-radius:3px;height:5px;overflow:hidden"><div style="height:100%;width:'+Math.min(p2,100)+'%;background:'+(p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b')+';border-radius:3px"></div></div>';
         h+='</div>';
@@ -4089,7 +4090,7 @@ function renderFilaOp(){
         h+='<div style="flex:1"><div style="font-weight:700;font-size:13px">'+op.id+'</div><div style="font-size:11px">'+sbadge(op.status)+'</div></div></div>';
         h+='<div style="font-size:12px;color:#4a664a;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(op.desc||op.cod)+'</div>';
         var rExt2=Number(op.realExtrusao)||0;
-        if(rExt2>0){var pExt2=op.prog?Math.min(Math.round(rExt2/Number(op.prog)*100),999):0;var cExt2=pExt2>=85?'#1a7a4a':pExt2>=70?'#b8860b':'#a93226';h+='<div style="font-size:9px;color:#1a7a4a;font-weight:600;margin-bottom:1px">🏭 Ext: '+fN(rExt2)+' kg ('+pExt2+'%)</div><div style="background:#d4ede0;border-radius:3px;height:4px;overflow:hidden;margin-bottom:3px"><div style="height:100%;width:'+Math.min(pExt2,100)+'%;background:'+cExt2+';border-radius:3px"></div></div><div style="font-size:9px;color:#024f2b;font-weight:600;margin-bottom:1px">📦 Ens:</div>';}
+        if(rExt2>0){var progBaseExt2=Number(op.progExtOriginal)||Number(op.prog)||0;var pExt2=progBaseExt2?Math.min(Math.round(rExt2/progBaseExt2*100),999):0;var cExt2=pExt2>=85?'#1a7a4a':pExt2>=70?'#b8860b':'#a93226';h+='<div style="font-size:9px;color:#1a7a4a;font-weight:600;margin-bottom:1px">🏭 Ext: '+fN(rExt2)+' kg ('+pExt2+'%)</div><div style="background:#d4ede0;border-radius:3px;height:4px;overflow:hidden;margin-bottom:3px"><div style="height:100%;width:'+Math.min(pExt2,100)+'%;background:'+cExt2+';border-radius:3px"></div></div><div style="font-size:9px;color:#024f2b;font-weight:600;margin-bottom:1px">📦 Ens:</div>';}
         h+='<div style="background:#eef2ee;border-radius:3px;height:5px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:'+Math.min(p2,100)+'%;background:'+(p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b')+';border-radius:3px"></div></div>';
         h+='<div style="display:flex;align-items:center;gap:6px">';
         h+='<div style="flex:1;font-size:11px;color:#4a664a">'+fN(op.real)+' / '+fN(op.prog)+' kg &bull; '+p2+'%</div>';
