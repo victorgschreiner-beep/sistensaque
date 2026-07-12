@@ -179,6 +179,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <button class="nb on" id="nb-prod" onclick="go('producao',this)">Produção</button>
     <button class="nb" id="nb-nc" onclick="go('nc',this)">NC <span class="nc-dot" id="nc-dot" style="display:none"></span></button>
     <button class="nb" id="nb-retencoes" onclick="go('retencoes',this)">Retenções <span class="nc-dot" id="ret-dot" style="display:none"></span></button>
+    <button class="nb" id="nb-contraprova" onclick="go('contraprova',this)" style="display:none">Contraprova <span class="nc-dot" id="cp-dot" style="display:none"></span></button>
     <button class="nb" id="nb-dash" onclick="go('dashboard',this)">Dashboard</button>
     <button class="nb" id="nb-rast" onclick="go('rastreio',this)">Rastreabilidade</button>
     <button class="nb" id="nb-resumo" onclick="go('resumoturno',this)">Resumo de Turno</button>
@@ -369,6 +370,27 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="alw">Reúne as inspeções de qualidade lançadas na data e turno selecionados, agrupadas por linha, com desvios, médias e status de bloqueio (retenção pendente).</div>
   </div>
   <div id="rt-preview"></div>
+</div>
+
+<!-- ============ TELA: CONTRAPROVA DE BANCADA (ADMIN) ============ -->
+<div class="scr" id="scr-contraprova">
+  <div class="ch"><h2 style="font-size:16px;font-weight:700;color:#024f2b">Contraprova de Bancada</h2></div>
+  <div class="alw">PB, EE e MM que ficaram fora da faixa no NIR entram aqui aguardando o resultado da análise de bancada. Ao lançar a contraprova, o valor de bancada substitui o valor do NIR como oficial — o valor original fica preservado no histórico.</div>
+  <div id="cp-lista"></div>
+</div>
+
+<!-- Modal de lançamento da contraprova -->
+<div class="ov" id="ov-contraprova">
+<div class="modal">
+  <div class="mt" id="cp-titulo">Lançar Contraprova</div>
+  <div class="fg"><label class="fl">Parâmetro</label><div id="cp-info" style="font-size:13px;color:#4a664a"></div></div>
+  <div class="fg"><label class="fl">Valor obtido na bancada</label><input type="number" step="0.01" id="cp-valorBancada"></div>
+  <div class="fg"><label class="fl">Motivo da substituição (obrigatório)</label><textarea id="cp-motivo" rows="3" placeholder="Ex: NIR descalibrado, resultado confirmado por bancada..."></textarea></div>
+  <div class="mfoot">
+    <button class="btn" onclick="fM('ov-contraprova')">Cancelar</button>
+    <button class="btn bp" onclick="salvarContraprova()">💾 Salvar Contraprova</button>
+  </div>
+</div>
 </div>
 
 <!-- ============ TELA: ADMIN (PARÂMETROS + USUÁRIOS) ============ -->
@@ -730,6 +752,7 @@ function aplicarSessao(){
   G('uav').textContent=(SES.nome||SES.login).slice(0,2).toUpperCase();
   G('pfil').textContent=SES.perfil==='admin'?'Admin':SES.perfil==='supervisao'?'Supervisão':'Qualidade';
   G('nb-params').style.display=SES.perfil==='admin'?'':'none';
+  G('nb-contraprova').style.display=SES.perfil==='admin'?'':'none';
 }
 
 function iniciarApp(){
@@ -738,6 +761,118 @@ function iniciarApp(){
   });
   monitorarNCAbertas();
   monitorarRetencoesAbertas();
+  monitorarContraprovasPendentes();
+}
+
+function monitorarContraprovasPendentes(){
+  DB.ref('qualidade_contraprovas_pendentes').once('value').then(function(s){
+    G('cp-dot').style.display = (s.exists() && s.numChildren()>0) ? 'inline-block' : 'none';
+  });
+}
+
+var CP_CONTEXTO=null;
+
+function renderContraprovaPendentes(){
+  var container=G('cp-lista');
+  container.innerHTML='<div class="card" style="text-align:center;padding:30px;color:#739630">Carregando...</div>';
+  DB.ref('qualidade_contraprovas_pendentes').once('value').then(function(s){
+    var itens=[];
+    s.forEach(function(c){ var v=c.val(); v.chave=c.key; itens.push(v); });
+    if(!itens.length){
+      container.innerHTML='<div class="card" style="text-align:center;color:#999">Nenhuma contraprova pendente 🎉</div>';
+      return;
+    }
+    itens.sort(function(a,b){ return (a.data+a.hora) < (b.data+b.hora) ? 1 : -1; });
+    var h='';
+    itens.forEach(function(it){
+      h+='<div class="card" style="border-left:4px solid #d29922;margin-bottom:10px">';
+      h+='<div class="ch"><span class="ct">'+(LINHA_CURTA[it.linha]||it.linha)+' — '+it.desc+'</span>';
+      h+='<span class="badge" style="background:rgba(210,153,34,.15);color:#8a5700">⏳ Aguardando</span></div>';
+      h+='<div style="font-size:12px;color:#4a664a;margin-bottom:10px">OP '+it.opId+(it.lote?' · Lote '+it.lote:'')+' · '+fDtBR(it.data)+' '+it.hora+' · Turno '+it.turno+' · Analista: '+(it.analistaNome||it.analista||'—')+'</div>';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
+      h+='<div><strong>'+(it.campoLabel||it.campo)+'</strong>: valor NIR = <span style="color:#c0392b;font-weight:700">'+fN(it.nirValor,2)+'</span></div>';
+      h+='<button class="btn bsm bp" onclick="abrirContraprova(\''+esc(it.chave)+'\')">Lançar Contraprova</button>';
+      h+='</div></div>';
+    });
+    container.innerHTML=h;
+  }).catch(function(e){
+    container.innerHTML='<div style="color:#c0392b;padding:20px">Erro: '+e.message+'</div>';
+  });
+}
+
+function abrirContraprova(chave){
+  DB.ref('qualidade_contraprovas_pendentes/'+chave).once('value').then(function(s){
+    if(!s.exists()){ toast('Este item já foi resolvido por outro usuário','err'); renderContraprovaPendentes(); return; }
+    var it=s.val();
+    CP_CONTEXTO={chave:chave, item:it};
+    G('cp-titulo').textContent='Lançar Contraprova — '+(it.campoLabel||it.campo);
+    G('cp-info').textContent=(LINHA_CURTA[it.linha]||it.linha)+' — '+it.desc+' · OP '+it.opId+' · '+fDtBR(it.data)+' '+it.hora+' · Valor NIR: '+fN(it.nirValor,2);
+    G('cp-valorBancada').value='';
+    G('cp-motivo').value='';
+    aM('ov-contraprova');
+  });
+}
+
+function podeLancarContraprova(){
+  return SES && SES.perfil==='admin';
+}
+
+function salvarContraprova(){
+  if(!podeLancarContraprova()){ toast('Apenas administradores podem lançar contraprova','err'); return; }
+  var it=CP_CONTEXTO.item, chave=CP_CONTEXTO.chave;
+  var valorBancada=G('cp-valorBancada').value;
+  var motivo=G('cp-motivo').value.trim();
+  if(valorBancada===''){ toast('Informe o valor obtido na bancada','err'); return; }
+  if(!motivo){ toast('O motivo da substituição é obrigatório','err'); return; }
+
+  var campo=CAMPOS_NUM.find(function(c){return c.key===it.campo;});
+  var pq=PARAMS_QUAL[it.cod]||{};
+  var aprovadoBancada=avaliarCampo(campo, valorBancada, pq);
+
+  var registroHistorico={
+    inspFbKey:it.inspFbKey, campo:it.campo, campoLabel:it.campoLabel||it.campo,
+    opFbKey:it.opFbKey, opId:it.opId, cod:it.cod, desc:it.desc, lote:it.lote,
+    linha:it.linha, data:it.data, hora:it.hora,
+    nirValor:it.nirValor, bancadaValor:Number(valorBancada),
+    usuario:SES.login, usuarioNome:SES.nome||SES.login, ts:agora(), motivo:motivo
+  };
+
+  var updates={};
+  updates['qualidade_inspecoes/'+it.inspFbKey+'/resultados/'+it.campo]=Number(valorBancada);
+  updates['qualidade_inspecoes/'+it.inspFbKey+'/aprovacoes/'+it.campo]=aprovadoBancada;
+  updates['qualidade_inspecoes/'+it.inspFbKey+'/contraprova/'+it.campo]={
+    status:'substituido', nirValor:it.nirValor, bancadaValor:Number(valorBancada),
+    usuario:SES.login, usuarioNome:SES.nome||SES.login, ts:agora(), motivo:motivo
+  };
+  updates['qualidade_contraprovas_pendentes/'+chave]=null;
+
+  DB.ref().update(updates).then(function(){
+    return DB.ref('qualidade_contraprovas_historico').push(registroHistorico);
+  }).then(function(){
+    return recalcularStatusGeralInspecao(it.inspFbKey);
+  }).then(function(){
+    toast('Contraprova registrada!','ok');
+    fM('ov-contraprova');
+    renderContraprovaPendentes();
+    monitorarContraprovasPendentes();
+  }).catch(function(e){ toast('Erro: '+e.message,'err'); });
+}
+
+// Recalcula o statusGeral da inspeção após uma contraprova — se todos os parâmetros avaliados
+// passaram a estar aprovados, a inspeção deixa de ser 'reprovado'.
+function recalcularStatusGeralInspecao(inspFbKey){
+  return DB.ref('qualidade_inspecoes/'+inspFbKey).once('value').then(function(s){
+    if(!s.exists()) return;
+    var insp=s.val();
+    var aprovacoes=insp.aprovacoes||{};
+    var valores=Object.keys(aprovacoes).map(function(k){return aprovacoes[k];});
+    if(!valores.length) return;
+    var algumaReprova=valores.some(function(v){return v===false;});
+    var novoStatus=algumaReprova?'reprovado':'aprovado';
+    if(novoStatus!==insp.statusGeral){
+      return DB.ref('qualidade_inspecoes/'+inspFbKey+'/statusGeral').set(novoStatus);
+    }
+  });
 }
 
 function podeLiberarRetencao(){
@@ -746,7 +881,7 @@ function podeLiberarRetencao(){
 
 document.addEventListener('keydown',function(e){
   if(e.key==='Escape'){
-    ['ov-insp','ov-nc','ov-nc-detalhe','ov-param','ov-usuario','ov-excluir-usuario','ov-retencao','ov-retencao-decisao'].forEach(fM);
+    ['ov-insp','ov-nc','ov-nc-detalhe','ov-param','ov-usuario','ov-excluir-usuario','ov-retencao','ov-retencao-decisao','ov-contraprova'].forEach(fM);
   }
 });
 
@@ -772,6 +907,7 @@ function go(s,btn){
   else if(s==='resumoturno'){
     if(!G('rt-data').value){ G('rt-data').value=hoje(); G('rt-turno').value=String(turnoAtual()); }
   }
+  else if(s==='contraprova') renderContraprovaPendentes();
 }
 
 var ADMIN_ABA_ATUAL='prod';
@@ -1152,6 +1288,8 @@ function coletarResultadosInspecao(){
 // ============================================================
 // SALVAR INSPEÇÃO
 // ============================================================
+var CAMPOS_CONTRAPROVA = ['pb','ee','mm'];
+
 function salvarInspecao(){
   var hora=G('insp-hora').value, data=G('insp-data').value;
   if(!hora||!data){ toast('Informe hora e data','err'); return; }
@@ -1162,19 +1300,30 @@ function salvarInspecao(){
   var turno=turnoDeHora(hora);
   var statusGeral = coleta.algumaAvaliada ? (coleta.algumaReprova?'reprovado':'aprovado') : 'sem_avaliacao';
 
+  // Contraprova de bancada — só PB/EE/MM. Preserva o que já foi resolvido (edição não apaga histórico).
+  var contraprova = Object.assign({}, INSP_CONTEXTO.contraprovaExistente||{});
+  CAMPOS_CONTRAPROVA.forEach(function(key){
+    if(contraprova[key] && contraprova[key].status==='substituido') return; // já resolvido, mantém
+    if(coleta.aprovacoes[key]===false){
+      contraprova[key]={status:'aguardando', nirValor:coleta.resultados[key]};
+    } else {
+      delete contraprova[key]; // corrigido pelo analista antes de qualquer contraprova — remove pendência obsoleta
+    }
+  });
+
   var registro={
     opFbKey:op.fbKey, opId:op.id, cod:op.cod, desc:op.desc||op.cod,
     lote:op.lote||'', linha:linha, turno:turno, data:data, hora:hora,
     analista:SES.login, analistaNome:SES.nome||SES.login, ts:agora(),
     resultados:coleta.resultados, aprovacoes:coleta.aprovacoes,
-    statusGeral:statusGeral
+    statusGeral:statusGeral, contraprova:contraprova
   };
 
   var fbKeyExistente=INSP_CONTEXTO.editandoFbKey;
   var ref = fbKeyExistente ? DB.ref('qualidade_inspecoes/'+fbKeyExistente) : DB.ref('qualidade_inspecoes').push();
   var fbKey = fbKeyExistente || ref.key;
 
-  ref.set(registro).then(aposSalvar).catch(function(e){ toast('Erro ao salvar: '+e.message,'err'); });
+  ref.set(registro).then(function(){ return sincronizarPendenciasContraprova(fbKey, registro, contraprova); }).then(aposSalvar).catch(function(e){ toast('Erro ao salvar: '+e.message,'err'); });
 
   function aposSalvar(){
     toast(fbKeyExistente?'Inspeção atualizada!':'Inspeção salva!','ok');
@@ -1185,6 +1334,28 @@ function salvarInspecao(){
       carregarLinhasAtivas();
     }
   }
+}
+
+// Mantém a fila de pendências (qualidade_contraprovas_pendentes) sincronizada com o estado
+// atual do campo contraprova da inspeção — cria marcador para quem está 'aguardando' e remove
+// o marcador de quem não está mais pendente (resolvido ou corrigido pelo analista).
+function sincronizarPendenciasContraprova(inspFbKey, registro, contraprova){
+  var updates={};
+  CAMPOS_CONTRAPROVA.forEach(function(key){
+    var chave=encId(inspFbKey+'_'+key);
+    if(contraprova[key] && contraprova[key].status==='aguardando'){
+      var campo=CAMPOS_NUM.find(function(c){return c.key===key;});
+      updates['qualidade_contraprovas_pendentes/'+chave]={
+        inspFbKey:inspFbKey, campo:key, campoLabel:campo?campo.label:key,
+        opFbKey:registro.opFbKey, opId:registro.opId, cod:registro.cod, desc:registro.desc,
+        lote:registro.lote, linha:registro.linha, turno:registro.turno, data:registro.data, hora:registro.hora,
+        nirValor:contraprova[key].nirValor, analista:registro.analista, analistaNome:registro.analistaNome
+      };
+    } else {
+      updates['qualidade_contraprovas_pendentes/'+chave]=null;
+    }
+  });
+  return DB.ref().update(updates);
 }
 
 function abrirPerguntaNC(inspFbKey, registro){
@@ -2092,7 +2263,17 @@ function exportarFichaSkuPDF(d){
   if(inspSku.length){
     var linhasHist=inspSku.map(function(i){
       var fora=Object.keys(i.aprovacoes||{}).filter(function(k){return !i.aprovacoes[k];});
-      var foraLabels=fora.map(function(k){ var c=CAMPOS_NUM.find(function(x){return x.key===k;}); return c?c.label:k; });
+      var foraLabels=fora.map(function(k){
+        var c=CAMPOS_NUM.find(function(x){return x.key===k;});
+        var rotulo=c?c.label:k;
+        var cp=i.contraprova&&i.contraprova[k];
+        return (cp && cp.status==='aguardando') ? rotulo+' (aguard. bancada)' : rotulo;
+      });
+      Object.keys(i.contraprova||{}).forEach(function(k){
+        if(i.contraprova[k].status!=='substituido') return;
+        var c=CAMPOS_NUM.find(function(x){return x.key===k;});
+        foraLabels.push((c?c.label:k)+' (subst. bancada)');
+      });
       return [fDtBR(i.data), i.hora, i.linha, i.lote||'—', i.statusGeral||'—', foraLabels.join(', ')||'—', i.analistaNome||i.analista||'—'];
     });
     y=pdfTabela(doc,y,'HISTÓRICO DE INSPEÇÕES',['Data','Hora','Linha','Lote','Status','Parâm. Fora','Analista'],linhasHist,[20,16,40,25,25,80,40]);
@@ -2263,9 +2444,18 @@ function montarRastreioOP(op, destacarData, expandido){
           if(val===undefined||val===null) return;
           var fora=i.aprovacoes&&i.aprovacoes[c.key]===false;
           var faixa=faixaTexto(c,pq);
+          var cp=i.contraprova&&i.contraprova[c.key];
+          if(cp && cp.status==='aguardando'){
+            h+='<span style="color:#8a5700;font-weight:700">'+c.label+': ⏳ Aguardando análise de bancada (NIR: '+fN(cp.nirValor,2)+(c.unidade?' '+c.unidade:'')+')</span><br>';
+            return;
+          }
           h+='<span style="'+(fora?'color:#c0392b;font-weight:700':'')+'">';
           h+=c.label+': '+fN(val,2)+(c.unidade?' '+c.unidade:'');
           if(fora) h+=' ⚠ ('+faixa+')';
+          if(cp && cp.status==='substituido'){
+            var tituloCp='Valor original do NIR: '+fN(cp.nirValor,2)+'. Substituído por bancada em '+new Date(cp.ts).toLocaleString('pt-BR')+' por '+(cp.usuarioNome||cp.usuario)+'. Motivo: '+String(cp.motivo||'').replace(/"/g,"'");
+            h+=' <span title="'+tituloCp+'" style="color:#0a7a44">🔄 (bancada)</span>';
+          }
           h+='</span><br>';
         });
         CAMPOS_TXT.forEach(function(c){
@@ -2384,8 +2574,14 @@ function exportarRastreabilidadePDF(){
           var val=insp.resultados&&insp.resultados[c.key];
           if(val===undefined||val===null) return;
           var fora=insp.aprovacoes&&insp.aprovacoes[c.key]===false;
+          var cp=insp.contraprova&&insp.contraprova[c.key];
+          if(cp && cp.status==='aguardando'){
+            params.push({txt:c.label+': ⏳ Aguardando análise de bancada (NIR: '+fN(cp.nirValor,2)+')', fora:false});
+            return;
+          }
           var txt=c.label+': '+fN(val,2)+(c.unidade?' '+c.unidade:'');
           if(fora) txt+=' ⚠ ('+faixaTexto(c,pq)+')';
+          if(cp && cp.status==='substituido') txt+=' 🔄 (bancada, NIR: '+fN(cp.nirValor,2)+')';
           params.push({txt:txt, fora:fora});
         });
         CAMPOS_TXT.forEach(function(c){
@@ -2527,7 +2723,7 @@ function mediaDentroFaixaRT(campo, media, pq){
 function analisarGrupoResumoTurno(grupo){
   var pq = PARAMS_QUAL[grupo.cod] || {};
   var insps = grupo.insps;
-  var outros={}, corteDesvios={}, diamDesvios={};
+  var outros={}, corteDesvios={}, diamDesvios={}, aguardandoBancada={};
 
   CAMPOS_NUM.forEach(function(c){
     if(c.mode==='finos_unidade') return; // fora do escopo deste resumo por ora
@@ -2536,6 +2732,14 @@ function analisarGrupoResumoTurno(grupo){
       if(val===undefined||val===null) return;
       var fora=i.aprovacoes&&i.aprovacoes[c.key]===false;
       if(!fora) return;
+
+      // PB/EE/MM aguardando bancada não entram como desvio confirmado — contam à parte
+      var cp=i.contraprova&&i.contraprova[c.key];
+      if(cp && cp.status==='aguardando'){
+        aguardandoBancada[c.key]=(aguardandoBancada[c.key]||0)+1;
+        return;
+      }
+
       var dir=direcaoDesvioRT(c, Number(val), pq);
       if(!dir) return;
       var alvo = c.key==='corte' ? corteDesvios : c.key==='diam' ? diamDesvios : outros;
@@ -2555,7 +2759,7 @@ function analisarGrupoResumoTurno(grupo){
   });
 
   return {
-    pq:pq, outros:outros, corteDesvios:corteDesvios, diamDesvios:diamDesvios, medias:medias,
+    pq:pq, outros:outros, corteDesvios:corteDesvios, diamDesvios:diamDesvios, medias:medias, aguardandoBancada:aguardandoBancada,
     outrosVazios: Object.keys(outros).length===0,
     corteLimpo: Object.keys(corteDesvios).length===0,
     diamLimpo: Object.keys(diamDesvios).length===0
@@ -2589,6 +2793,11 @@ function montarBlocoResumoTurno(grupo){
     var dec=DECIMAIS_RT[key];
     var rotulo = key==='pb' ? 'proteína' : ROTULO_CURTO_RT[key];
     linhas.push('-Media '+rotulo+' '+fN(m.valor,dec)+(m.campo.unidade?m.campo.unidade:''));
+  });
+
+  Object.keys(a.aguardandoBancada).forEach(function(key){
+    var rotulo = key==='pb' ? 'proteína (PB)' : ROTULO_CURTO_RT[key];
+    linhas.push('-⏳ Aguardando análise de bancada: '+rotulo+' ('+a.aguardandoBancada[key]+' leitura(s))');
   });
 
   linhas.push(grupo.bloqueado ? '-BLOQUEADO — retenção pendente (lote '+(grupo.lote||'—')+')' : '-Sem bloqueio...');
@@ -2630,6 +2839,11 @@ function montarCardResumoTurno(grupo){
       else h += '<div style="color:#0a7a44;font-weight:600;font-size:13px;margin-bottom:6px">✔ Diâmetro dentro da faixa</div>';
     }
   }
+
+  Object.keys(a.aguardandoBancada).forEach(function(key){
+    var rotulo = key==='pb' ? 'Proteína (PB)' : ROTULO_CURTO_RT[key];
+    h += '<div style="color:#8a5700;font-weight:600;font-size:13px;margin-bottom:6px">⏳ Aguardando análise de bancada: '+rotulo+' ('+a.aguardandoBancada[key]+' leitura(s))</div>';
+  });
 
   h += '<div class="fr3" style="margin-top:10px">';
   [['umid','Umidade média'],['dens','Densidade média'],['pb','Proteína média']].forEach(function(par){
@@ -2780,6 +2994,14 @@ function baixarResumoTurnoPDF(){
         else desenharOk('Diâmetro dentro da faixa');
       }
     }
+
+    Object.keys(a.aguardandoBancada).forEach(function(key){
+      if(y>280){ doc.addPage(); y=15; }
+      var rotulo = key==='pb' ? 'Proteína (PB)' : ROTULO_CURTO_RT[key];
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(138,87,0);
+      doc.text('⏳ Aguardando análise de bancada: '+rotulo+' ('+a.aguardandoBancada[key]+' leitura(s))', ML+2, y+3);
+      y+=5;
+    });
 
     // Médias — caixas coloridas verde/vermelho, igual ao card na tela
     var cards=[];
@@ -3194,7 +3416,7 @@ function abrirInspecaoOP(linha, opFbKey){
   var dataIni=hoje();
 
   INSP_CONTEXTO={
-    linha:linha, op:op, pq:pq, editandoFbKey:null
+    linha:linha, op:op, pq:pq, editandoFbKey:null, contraprovaExistente:null
   };
 
   G('insp-titulo').textContent='Inspeção — '+linha;
@@ -3260,6 +3482,7 @@ function verificarDuplicidadeInspecao(linha, op, data){
       G('insp-aviso-dup').innerHTML='⚠ Já existe uma inspeção registrada para esta linha/OP nesta hora ('+(existente.dados.hora||'')+
         ' por '+(existente.dados.analista||'—')+'). Os campos abaixo foram carregados para edição.';
       INSP_CONTEXTO.editandoFbKey=existente.fbKey;
+      INSP_CONTEXTO.contraprovaExistente=existente.dados.contraprova||null;
       montarFormularioInspecao(existente.dados);
     }
   });
