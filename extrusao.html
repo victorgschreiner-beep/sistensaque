@@ -869,6 +869,9 @@ var LINHAS_PERFIL={"ext.ferraz":["Linha 1 (E-240)","Linha 2 (E-200)"],"ext.andri
 
 // ── ESTADO ────────────────────────────────────────────────
 var SES=null, OPS=[], LINHAS_USER=[];
+// Cache de produção acumulada por número de OP, somando TODOS os elos da cadeia de reprogramação.
+// Existe apenas para a Extrusão — o Ensaque continua usando somente o que foi efetivamente ensacado.
+var CADEIA_EXT={};
 var linhaAtiva=null;
 var DT_FILA=null;
 var METAS_FB={};     // metas carregadas do Firebase (sobrepõe METAS_IDX)
@@ -1126,8 +1129,46 @@ function recalcularRealExtrusao(opFbKey){
       LINHAS_USER.forEach(function(l){
         if(EST[l]&&EST[l].opAtiva===opFbKey) renderLinhaCard(l);
       });
+      // Se essa OP faz parte de uma cadeia de reprogramação, recalcula o acumulado de todos os elos —
+      // garante que produção de dias/elos anteriores não seja perdida nem contada de novo (regra só da Extrusão)
+      if(op&&op.id) refreshCadeiaExt(op.id, op.linha);
     });
   });
+}
+
+// Soma a produção da Extrusão em TODOS os elos (registros ops/) que compartilham o mesmo número de OP,
+// independentemente da data em que cada elo foi produzido. Usado apenas pela Extrusão — nunca pelo Ensaque,
+// que deve continuar considerando somente o que foi efetivamente ensacado no elo atual.
+function refreshCadeiaExt(opNum, linha){
+  if(!DB||!opNum) return;
+  buscarCadeiaOP(opNum,function(cadeia){
+    if(!cadeia||cadeia.length<2){
+      // Sem reprogramação — não precisa de acumulado especial, usa o realExtrusao normal do elo único
+      delete CADEIA_EXT[opNum];
+      if(linha) renderLinhaCard(linha);
+      return;
+    }
+    var progOriginal=Number(cadeia[0].prog)||0;
+    var buscas=cadeia.map(function(elo){
+      return elo.fbKey?DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(elo.fbKey).once("value"):Promise.resolve(null);
+    });
+    Promise.all(buscas).then(function(snaps){
+      var total=0;
+      snaps.forEach(function(s){ if(s&&s.exists()) s.forEach(function(c){ total+=Number(c.val().real)||0; }); });
+      CADEIA_EXT[opNum]={total:total,progOriginal:progOriginal};
+      if(linha) renderLinhaCard(linha);
+    }).catch(function(){});
+  });
+}
+
+// Retorna {produzido, programado} para exibição na Extrusão:
+// - Se a OP já foi reprogramada (cadeia com 2+ elos), usa o acumulado de toda a cadeia e o programado ORIGINAL (1º elo).
+// - Caso contrário, usa os valores normais do elo único (comportamento inalterado).
+function getExtProgressoOP(o){
+  if(!o) return {produzido:0,programado:0};
+  var cad=o.id&&CADEIA_EXT[o.id];
+  if(cad) return {produzido:cad.total,programado:cad.progOriginal};
+  return {produzido:Number(o.realExtrusao)||0,programado:Number(o.prog)||0};
 }
 
 // Mantido para compatibilidade — agora usa realExtrusao da OP
@@ -1267,6 +1308,12 @@ function _posCarregarOPs(){
     }
   });
   renderLinhas();
+  // Extrusão: para toda OP reprogramada (2+ elos), recalcula o acumulado real de produção de toda a cadeia.
+  // Sem isso, o elo novo mostraria 0 kg produzidos mesmo que parte da quantidade já tenha sido extrudada
+  // em um elo/dia anterior — regra aplicada somente aqui, nunca no Ensaque.
+  OPS.filter(function(o){return o.status==="Reprogramada";}).forEach(function(o){
+    if(o.id) refreshCadeiaExt(o.id, o.linha);
+  });
   // Avisa OPs reprogramadas sem OP ativa na linha
   setTimeout(function(){
     LINHAS_USER.forEach(function(l){
@@ -1578,8 +1625,12 @@ function renderLinhaCard(linha){
     :null;
   var metaH=opAtiva?getMetaHora(opAtiva.cod,linha):0;
   var totalTurno=e.apts.reduce(function(a,x){return a+(Number(x.real)||0);},0);
-  // Total da OP = realExtrusao salvo diretamente na OP (igual ensaque usa real)
-  var totalOpExt=opAtiva?(Number(opAtiva.realExtrusao)||0):0;
+  // Total da OP: se a OP foi reprogramada, usa o acumulado de TODA a cadeia (todos os elos/datas) e o
+  // programado ORIGINAL — evita que a Extrusão volte a exibir a quantidade já produzida como pendente.
+  // Se nunca foi reprogramada, comportamento inalterado (realExtrusao/prog do próprio registro).
+  var progInfoAtiva=opAtiva?getExtProgressoOP(opAtiva):{produzido:0,programado:0};
+  var totalOpExt=progInfoAtiva.produzido;
+  var progAtivaKg=opAtiva?(progInfoAtiva.programado||Number(opAtiva.prog)||0):0;
   var paradaAberta=e.paradas.some(function(p){return !p.horaFim;});
   var statusTxt=paradaAberta?"EM PARADA":opAtiva?"PRODUZINDO":"SEM OP ATIVA";
   var statusCls=paradaAberta?"st-para":opAtiva?"st-prod":"st-idle";
@@ -1593,15 +1644,16 @@ function renderLinhaCard(linha){
   h+='<div class="linha-body">';
 
   if(opAtiva){
-    var progExt=opAtiva.prog?Math.min(Math.round(totalOpExt/(Number(opAtiva.prog)||1)*100),100):0;
+    var progExt=progAtivaKg?Math.min(Math.round(totalOpExt/(progAtivaKg||1)*100),100):0;
     var corProg=progExt>=90?"prog-gr":progExt>=60?"prog-gr2":"prog-or";
+    var cadeiaAtivaFlag=CADEIA_EXT[opAtiva.id]?' <span title="Programado/produzido acumulam todos os elos de reprogramação desta OP" style="color:#d29922">🔄 acum.</span>':'';
     h+='<div class="op-ativa-box" onclick="abrirSelOp(this.dataset.l)" data-l="'+linha+'">';
-    h+='<div class="op-num">▶ EM EXTRUSÃO — OP: '+opAtiva.id+'</div>';
+    h+='<div class="op-num">▶ EM EXTRUSÃO — OP: '+opAtiva.id+cadeiaAtivaFlag+'</div>';
     h+='<div class="op-desc">'+(opAtiva.desc||opAtiva.cod)+'</div>';
-    h+='<div class="op-meta">'+(opAtiva.lote?'Lote: '+opAtiva.lote+' · ':'')+'Meta: '+fN(metaH)+' kg/h · Prog: '+fN(opAtiva.prog)+' kg</div>';
+    h+='<div class="op-meta">'+(opAtiva.lote?'Lote: '+opAtiva.lote+' · ':'')+'Meta: '+fN(metaH)+' kg/h · Prog: '+fN(progAtivaKg)+' kg</div>';
     h+='</div>';
     h+='<div class="prog-wrap">';
-    h+='<div class="prog-label"><span>Extrusão na OP</span><span>'+fN(totalOpExt)+' / '+fN(opAtiva.prog)+' kg ('+progExt+'%)</span></div>';
+    h+='<div class="prog-label"><span>Extrusão na OP</span><span>'+fN(totalOpExt)+' / '+fN(progAtivaKg)+' kg ('+progExt+'%)</span></div>';
     h+='<div class="prog-bar"><div class="prog-fill '+corProg+'" style="width:'+progExt+'%"></div></div>';
     h+='</div>';
     var metaTurno=metaH*8;
@@ -1641,8 +1693,10 @@ function renderLinhaCard(linha){
     opsLinha.forEach(function(o){
       var isAtiva=opAtiva&&o.fbKey===opAtiva.fbKey;
       var badgeCls=o.status==="Concluida"?"badge-con":o.status==="Em andamento"?"badge-and":o.status==="Reprogramada"?"badge-rep":"badge-lib";
-      var extTotal=Number(o.realExtrusao)||0;
-      var pct=o.prog?Math.min(Math.round(extTotal/(Number(o.prog)||1)*100),100):0;
+      var progInfoFila=getExtProgressoOP(o);
+      var extTotal=progInfoFila.produzido;
+      var progFilaKg=progInfoFila.programado||Number(o.prog)||0;
+      var pct=progFilaKg?Math.min(Math.round(extTotal/(progFilaKg||1)*100),100):0;
       var corPct=pct>=90?"#024f2b":pct>=60?"#d29922":"#4a664a";
       var isRep=o.status==="Reprogramada";
       var estiloRep=isRep?";border-left:3px solid #d29922;background:#fffbf0":"";
