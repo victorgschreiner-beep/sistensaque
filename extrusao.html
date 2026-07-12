@@ -1170,10 +1170,11 @@ function refreshCadeiaExt(opFbKeyAtual, linha){
       return;
     }
     var original=cadeia[0];
-    // prog/progOriginal são armazenados na unidade de exibição (sc/bg/kg conforme tipo) — converte pra KG
-    // com o mesmo fator usado pelo reprogramarOP(), pra comparar com realExtrusao (sempre em KG)
-    var fator=original.tipo==="SC"?25:original.tipo==="BG"?750:1;
-    var progOriginalKG=(Number(original.prog)||0)*fator;
+    // O prog do elo ORIGINAL (o #1, antes de qualquer reprogramação) já é tratado em KG em todo o
+    // restante do sistema — igual sempre foi feito aqui na Extrusão, sem conversão nenhuma.
+    // NÃO confundir com o progOriginal que o Ensaque grava a partir da 2ª reprogramação em diante
+    // (esse sim fica na unidade de exibição — sc/bg — mas só é usado internamente pelo reprogramarOP).
+    var progOriginalKG=Number(original.prog)||0;
     var buscas=cadeia.map(function(elo){
       return elo.fbKey?DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(elo.fbKey).once("value"):Promise.resolve(null);
     });
