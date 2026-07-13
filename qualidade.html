@@ -3137,10 +3137,18 @@ function gerarResumoTurno(){
       return;
     }
 
-    // Ordena pela ordem natural do array LINHAS
-    var chavesOrdenadas = LINHAS.map(function(linha){
-      return ordem.find(function(k){ return grupos[k].linha===linha; });
-    }).filter(Boolean);
+    // Ordena pela ordem natural do array LINHAS — e, dentro de cada linha, inclui TODAS as OPs
+    // que rodaram naquele turno (não só a primeira), ordenadas cronologicamente entre si.
+    var chavesOrdenadas = [];
+    LINHAS.forEach(function(linha){
+      var chavesDaLinha = ordem.filter(function(k){ return grupos[k].linha===linha; });
+      chavesDaLinha.sort(function(a,b){
+        var ha=(grupos[a].insps[0]&&grupos[a].insps[0].hora)||'';
+        var hb=(grupos[b].insps[0]&&grupos[b].insps[0].hora)||'';
+        return ha<hb?-1:(ha>hb?1:0);
+      });
+      chavesOrdenadas=chavesOrdenadas.concat(chavesDaLinha);
+    });
 
     var corpo = chavesOrdenadas.map(function(k){ return montarBlocoResumoTurno(grupos[k]); }).join('\n');
     var textoCompleto = 'RESUMO T'+turno+' DE '+data.split('-').reverse().join('/')+'\n'+corpo;
