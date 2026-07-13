@@ -218,20 +218,31 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <select id="nc-filtro-status" style="width:auto" onchange="renderNCFiltrado()">
         <option value="">Todos os status</option>
         <option value="Aberta">Aberta</option>
-        <option value="Em andamento">Em andamento</option>
+        <option value="Em Tratativa">Em Tratativa</option>
+        <option value="Aguardando Avaliação da Qualidade">Aguardando Avaliação</option>
+        <option value="Revisão Solicitada">Revisão Solicitada</option>
         <option value="Concluída">Concluída</option>
+        <option value="Vencida">Vencida</option>
       </select>
       <select id="nc-filtro-linha" style="width:auto" onchange="renderNCFiltrado()">
         <option value="">Todas as linhas</option>
         <option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option>
         <option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option>
       </select>
+      <select id="nc-filtro-criticidade" style="width:auto" onchange="renderNCFiltrado()">
+        <option value="">Toda criticidade</option>
+        <option value="Alta">Alta</option><option value="Média">Média</option><option value="Baixa">Baixa</option>
+      </select>
+      <select id="nc-filtro-responsavel" style="width:auto" onchange="renderNCFiltrado()">
+        <option value="">Todos os responsáveis</option>
+      </select>
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#4a664a"><input type="checkbox" id="nc-filtro-minhas" style="width:auto" onchange="renderNCFiltrado()">Minhas NCs</label>
     </div>
   </div>
   <div class="card">
     <div class="tw"><table>
-      <thead><tr><th>Abertura</th><th>OP</th><th>Produto</th><th>Lote</th><th>Linha</th><th>Parâmetro</th><th>Status</th><th>Prazo</th><th></th></tr></thead>
-      <tbody id="nc-corpo"><tr><td colspan="9" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr></tbody>
+      <thead><tr><th>Abertura</th><th>OP</th><th>Produto</th><th>Linha</th><th>Responsável</th><th>Criticidade</th><th>Status</th><th>Prazo</th><th>Dias Restantes</th><th></th></tr></thead>
+      <tbody id="nc-corpo"><tr><td colspan="10" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr></tbody>
     </table></div>
   </div>
 </div>
@@ -488,7 +499,18 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <select id="nc-qtd-unidade"><option value="KG">KG</option><option value="SC">SC</option><option value="BG">BG</option></select>
     </div>
   </div>
-  <div class="ali" style="font-size:11px">O plano de ação (5W2H) será definido pela supervisão após a abertura desta NC.</div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Responsável pela Resposta</label><select id="nc-responsavel"><option value="">Selecione...</option></select></div>
+    <div class="fg"><label class="fl">Criticidade</label>
+      <select id="nc-criticidade">
+        <option value="">Selecione...</option>
+        <option value="Alta">Alta (7 dias)</option>
+        <option value="Média">Média (12 dias)</option>
+        <option value="Baixa">Baixa (20 dias)</option>
+      </select>
+    </div>
+  </div>
+  <div class="ali" style="font-size:11px">O prazo de resposta é calculado automaticamente a partir da criticidade selecionada.</div>
   <div class="mfoot">
     <button class="btn" onclick="fM('ov-nc')">Cancelar</button>
     <button class="btn br" onclick="salvarNC()">⚠ Abrir NC</button>
@@ -496,41 +518,65 @@ tr:hover td{background:rgba(2,79,43,.03)}
 </div>
 </div>
 
-<!-- ============ MODAL: DETALHE / EDITAR NC ============ -->
+<!-- ============ MODAL: DETALHE DA NC ============ -->
 <div class="ov" id="ov-nc-detalhe">
 <div class="modal wide">
   <div class="mt">Detalhe da Não Conformidade</div>
   <div id="ncd-info" class="card"></div>
-  <div class="fg"><label class="fl">Descrição do que Ocorreu (registrado pela Qualidade)</label><textarea id="ncd-desc" disabled style="background:#eef2ee;color:#4a664a"></textarea></div>
 
-  <div class="ch" style="margin-top:6px">
-    <span class="ct">Plano de Ação — 5W2H</span>
-    <span id="ncd-5w2h-readonly-aviso" style="display:none;font-size:11px;color:#999">Somente supervisão ou administrador podem editar o plano de ação</span>
+  <div id="ncd-resposta-bloco" class="card" style="display:none">
+    <div class="ct" style="margin-bottom:8px">Resposta do Responsável</div>
+    <div id="ncd-resposta-conteudo" style="font-size:13px;line-height:1.7"></div>
   </div>
-  <div class="fg"><label class="fl">What — O que será feito?</label><textarea id="ncd-what" placeholder="Ex: Revisar procedimento de limpeza do secador"></textarea></div>
-  <div class="fg"><label class="fl">Why — Por que será feito?</label><textarea id="ncd-why" placeholder="Motivo da ação e benefício esperado"></textarea></div>
-  <div class="fr">
-    <div class="fg"><label class="fl">Where — Onde será feito?</label><input type="text" id="ncd-where" placeholder="Linha, setor, máquina ou processo"></div>
-    <div class="fg"><label class="fl">Who — Quem será responsável?</label><input type="text" id="ncd-who" placeholder="Responsável principal"></div>
-  </div>
-  <div class="fr">
-    <div class="fg"><label class="fl">When — Início</label><input type="date" id="ncd-when-ini"></div>
-    <div class="fg"><label class="fl">When — Conclusão</label><input type="date" id="ncd-when-fim"></div>
-  </div>
-  <div class="fg"><label class="fl">How — Como será feito?</label><textarea id="ncd-how" placeholder="Etapas da execução: elaborar, treinar, validar, registrar evidências..."></textarea></div>
 
-  <div class="fr" style="margin-top:6px">
-    <div class="fg"><label class="fl">Status da Não Conformidade</label>
-      <select id="ncd-status">
-        <option value="Aberta">Aberta</option>
-        <option value="Em andamento">Em andamento</option>
-        <option value="Concluída">Concluída</option>
-      </select>
+  <div id="ncd-avaliacoes-bloco" style="display:none">
+    <div class="ct" style="margin:10px 0 8px">Histórico de Avaliações</div>
+    <div id="ncd-avaliacoes-lista"></div>
+  </div>
+
+  <div class="mfoot" style="justify-content:space-between">
+    <div style="display:flex;gap:8px">
+      <button class="btn bp" id="ncd-btn-responder" style="display:none" onclick="abrirResponderNC()">✍ Responder NC</button>
+      <button class="btn bo" id="ncd-btn-avaliar" style="display:none" onclick="abrirAvaliarNC()">🔎 Avaliar Resposta</button>
     </div>
+    <button class="btn" onclick="fM('ov-nc-detalhe')">Fechar</button>
+  </div>
+</div>
+</div>
+
+<!-- ============ MODAL: RESPONDER NC ============ -->
+<div class="ov" id="ov-nc-resposta">
+<div class="modal wide">
+  <div class="mt">Responder Não Conformidade</div>
+  <div class="fg"><label class="fl">Causa da Não Conformidade</label><textarea id="ncr-causa" placeholder="Qual foi a causa raiz identificada?"></textarea></div>
+  <div class="fg"><label class="fl">Correção Imediata</label><textarea id="ncr-correcao" placeholder="O que foi feito imediatamente para conter o problema?"></textarea></div>
+  <div class="fg"><label class="fl">Plano de Ação</label><textarea id="ncr-plano" placeholder="Quais ações serão tomadas para evitar recorrência?"></textarea></div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Responsável pela Ação</label><select id="ncr-responsavel-acao"><option value="">Selecione...</option></select></div>
+    <div class="fg"><label class="fl">Data Prevista para Conclusão</label><input type="date" id="ncr-data-prevista"></div>
   </div>
   <div class="mfoot">
-    <button class="btn" onclick="fM('ov-nc-detalhe')">Fechar</button>
-    <button class="btn bp" onclick="salvarEdicaoNC()" id="btn-salvar-edicao-nc">💾 Salvar Alterações</button>
+    <button class="btn" onclick="fM('ov-nc-resposta')">Cancelar</button>
+    <button class="btn bp" onclick="salvarRespostaNC()">💾 Salvar Resposta</button>
+  </div>
+</div>
+</div>
+
+<!-- ============ MODAL: AVALIAR RESPOSTA DA NC ============ -->
+<div class="ov" id="ov-nc-avaliacao">
+<div class="modal">
+  <div class="mt">Avaliar Resposta</div>
+  <div class="fg"><label class="fl">Status da Avaliação</label>
+    <select id="nca-status">
+      <option value="Aprovado">Aprovado (Ação eficaz)</option>
+      <option value="Reprovado">Reprovado (Ação ineficaz)</option>
+      <option value="Necessita Revisão">Necessita Revisão</option>
+    </select>
+  </div>
+  <div class="fg"><label class="fl">Comentários da Qualidade (obrigatório)</label><textarea id="nca-comentarios" placeholder="Justifique a decisão..."></textarea></div>
+  <div class="mfoot">
+    <button class="btn" onclick="fM('ov-nc-avaliacao')">Cancelar</button>
+    <button class="btn bp" onclick="salvarAvaliacaoNC()">💾 Salvar Avaliação</button>
   </div>
 </div>
 </div>
@@ -881,7 +927,7 @@ function podeLiberarRetencao(){
 
 document.addEventListener('keydown',function(e){
   if(e.key==='Escape'){
-    ['ov-insp','ov-nc','ov-nc-detalhe','ov-param','ov-usuario','ov-excluir-usuario','ov-retencao','ov-retencao-decisao','ov-contraprova'].forEach(fM);
+    ['ov-insp','ov-nc','ov-nc-detalhe','ov-nc-resposta','ov-nc-avaliacao','ov-param','ov-usuario','ov-excluir-usuario','ov-retencao','ov-retencao-decisao','ov-contraprova'].forEach(fM);
   }
 });
 
@@ -1375,6 +1421,72 @@ function abrirPerguntaNC(inspFbKey, registro){
 // NÃO CONFORMIDADES
 // ============================================================
 var NC_CONTEXTO=null;
+var CRITICIDADE_DIAS={Alta:7,'Média':12,Baixa:20};
+var RESPONSAVEIS_CACHE=null;
+
+function carregarResponsaveisNC(callback){
+  if(RESPONSAVEIS_CACHE){ callback(RESPONSAVEIS_CACHE); return; }
+  DB.ref('usuarios').once('value').then(function(s){
+    var lista=[];
+    s.forEach(function(c){
+      var u=c.val();
+      if(!u.inativo && ['qualidade','supervisao','admin'].indexOf(u.perfil)!==-1) lista.push({login:u.login, nome:u.nome||u.login});
+    });
+    lista.sort(function(a,b){ return a.nome.localeCompare(b.nome); });
+    RESPONSAVEIS_CACHE=lista;
+    callback(lista);
+  }).catch(function(){ callback([]); });
+}
+
+function popularDropdownResponsavel(selectId, valorAtual){
+  carregarResponsaveisNC(function(lista){
+    var sel=G(selectId);
+    if(!sel) return;
+    var opts='<option value="">Selecione...</option>';
+    lista.forEach(function(u){ opts+='<option value="'+u.login+'">'+u.nome+'</option>'; });
+    sel.innerHTML=opts;
+    if(valorAtual) sel.value=valorAtual;
+  });
+}
+
+// Soma dias corridos a uma data YYYY-MM-DD e devolve YYYY-MM-DD
+function somarDiasData(dataISO, dias){
+  var d=new Date(dataISO+'T00:00:00');
+  d.setDate(d.getDate()+dias);
+  return d.toISOString().slice(0,10);
+}
+
+// Dias restantes até o prazo (negativo = vencido)
+function diasRestantesNC(prazoLimite){
+  if(!prazoLimite) return null;
+  var hojeD=new Date(hoje()+'T00:00:00'), prazoD=new Date(prazoLimite+'T00:00:00');
+  return Math.round((prazoD-hojeD)/86400000);
+}
+
+// Status "efetivo" pra exibição — vira Vencida automaticamente se passou do prazo e não foi concluída,
+// sem sobrescrever o status real gravado (que continua controlando o fluxo internamente)
+function statusEfetivoNC(n){
+  if(n.status==='Concluída') return 'Concluída';
+  var dias=diasRestantesNC(n.prazoLimite);
+  if(dias!==null && dias<0) return 'Vencida';
+  return n.status||'Aberta';
+}
+
+function corStatusNC(statusEfetivo){
+  if(statusEfetivo==='Concluída') return 'bcz';
+  if(statusEfetivo==='Vencida') return 'brd';
+  if(statusEfetivo==='Revisão Solicitada') return 'bam';
+  return 'bam';
+}
+
+function podeResponderNC(n){
+  return SES && (SES.login===n.responsavel || SES.perfil==='admin');
+}
+function podeAvaliarNC(n){
+  if(!SES) return false;
+  if(SES.login===n.responsavel) return false; // ninguém avalia a própria resposta
+  return SES.perfil==='qualidade' || SES.perfil==='admin';
+}
 
 function abrirModalNC(inspFbKey, registro, camposReprovados){
   var detalhesParam = camposReprovados.map(function(k){
@@ -1394,6 +1506,8 @@ function abrirModalNC(inspFbKey, registro, camposReprovados){
 
   G('nc-desc').value='';
   G('nc-qtd').value=''; G('nc-qtd-unidade').value=(registro.unidade||'KG');
+  G('nc-criticidade').value='';
+  popularDropdownResponsavel('nc-responsavel');
   aM('ov-nc');
 }
 
@@ -1403,6 +1517,8 @@ function abrirNCManual(){
   G('nc-origem-info').innerHTML='Não conformidade avulsa (sem inspeção de origem).';
   G('nc-desc').value='';
   G('nc-qtd').value=''; G('nc-qtd-unidade').value='KG';
+  G('nc-criticidade').value='';
+  popularDropdownResponsavel('nc-responsavel');
   aM('ov-nc');
 }
 
@@ -1421,14 +1537,24 @@ function abrirNCDaInspecao(){
     (op.lote?' — Lote: '+op.lote:'')+'<br>Linha: '+linha+' — aberta manualmente durante a inspeção (sem reprovação automática de parâmetro).';
   G('nc-desc').value='';
   G('nc-qtd').value=''; G('nc-qtd-unidade').value=(op.tipo||'KG');
+  G('nc-criticidade').value='';
+  popularDropdownResponsavel('nc-responsavel');
   aM('ov-nc');
 }
 
 function salvarNC(){
   var desc=G('nc-desc').value.trim();
   if(!desc){ toast('Descreva a não conformidade','err'); return; }
+  var responsavel=G('nc-responsavel').value;
+  var criticidade=G('nc-criticidade').value;
+  if(!responsavel){ toast('Selecione o responsável pela resposta','err'); return; }
+  if(!criticidade){ toast('Selecione a criticidade','err'); return; }
+
+  var responsavelNome=(RESPONSAVEIS_CACHE||[]).find(function(u){return u.login===responsavel;});
   var r=NC_CONTEXTO.registro;
   var qtd=G('nc-qtd').value;
+  var dataAbertura=hoje();
+  var prazoLimite=somarDiasData(dataAbertura, CRITICIDADE_DIAS[criticidade]);
   var nc={
     inspecaoFbKey: NC_CONTEXTO.inspFbKey,
     opFbKey: r?r.opFbKey:null, opId: r?r.opId:null, cod: r?r.cod:null,
@@ -1438,9 +1564,12 @@ function salvarNC(){
     descricao: desc,
     quantidadeAfetada: qtd!==''?Number(qtd):null,
     unidadeAfetada: G('nc-qtd-unidade').value,
+    responsavel: responsavel, responsavelNome: responsavelNome?responsavelNome.nome:responsavel,
+    criticidade: criticidade,
+    dataAbertura: dataAbertura, prazoLimite: prazoLimite,
     status:'Aberta',
     aberturaTs: agora(), aberturaAnalista: SES.login,
-    // Plano de ação (5W2H) — preenchido posteriormente pela supervisão
+    // Plano de ação antigo (5W2H) — mantido só por compatibilidade com NCs criadas antes desta versão
     w2h:{what:'',why:'',where:'',who:'',whenIni:'',whenFim:'',how:''}
   };
   var ref=DB.ref('qualidade_nc').push();
@@ -1458,45 +1587,70 @@ function salvarNC(){
 
 function renderNC(){
   var corpo=G('nc-corpo');
-  corpo.innerHTML='<tr><td colspan="9" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr>';
+  corpo.innerHTML='<tr><td colspan="10" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr>';
   DB.ref('qualidade_nc').once('value').then(function(s){
     NC_LISTA=[];
     if(s.exists()) s.forEach(function(c){ var v=c.val(); v.fbKey=c.key; NC_LISTA.push(v); });
     NC_LISTA.sort(function(a,b){ return (b.aberturaTs||'')>(a.aberturaTs||'')?1:-1; });
+    popularFiltroResponsavelNC();
     renderNCFiltrado();
   }).catch(function(e){
-    corpo.innerHTML='<tr><td colspan="9" style="text-align:center;padding:20px;color:#c0392b">Erro: '+e.message+'</td></tr>';
+    corpo.innerHTML='<tr><td colspan="10" style="text-align:center;padding:20px;color:#c0392b">Erro: '+e.message+'</td></tr>';
   });
+}
+
+function popularFiltroResponsavelNC(){
+  var sel=G('nc-filtro-responsavel');
+  var atual=sel.value;
+  var nomes={};
+  NC_LISTA.forEach(function(n){ if(n.responsavel) nomes[n.responsavel]=n.responsavelNome||n.responsavel; });
+  var opts='<option value="">Todos os responsáveis</option>';
+  Object.keys(nomes).sort(function(a,b){return nomes[a].localeCompare(nomes[b]);}).forEach(function(login){
+    opts+='<option value="'+login+'">'+nomes[login]+'</option>';
+  });
+  sel.innerHTML=opts;
+  sel.value=atual;
 }
 
 function renderNCFiltrado(){
   var fStatus=G('nc-filtro-status').value, fLinha=G('nc-filtro-linha').value;
+  var fCriticidade=G('nc-filtro-criticidade').value, fResponsavel=G('nc-filtro-responsavel').value;
+  var fMinhas=G('nc-filtro-minhas').checked;
   var lista=NC_LISTA.filter(function(n){
-    if(fStatus && n.status!==fStatus) return false;
+    if(fStatus && statusEfetivoNC(n)!==fStatus) return false;
     if(fLinha && n.linha!==fLinha) return false;
+    if(fCriticidade && n.criticidade!==fCriticidade) return false;
+    if(fResponsavel && n.responsavel!==fResponsavel) return false;
+    if(fMinhas && n.responsavel!==(SES&&SES.login)) return false;
     return true;
   });
   var corpo=G('nc-corpo');
   if(!lista.length){
-    corpo.innerHTML='<tr><td colspan="9" style="text-align:center;padding:20px;color:#999">Nenhuma não conformidade encontrada</td></tr>';
+    corpo.innerHTML='<tr><td colspan="10" style="text-align:center;padding:20px;color:#999">Nenhuma não conformidade encontrada</td></tr>';
     return;
   }
   var h='';
   lista.forEach(function(n){
-    var stCls = n.status==='Concluída'?'bvd':n.status==='Em andamento'?'bam':'brd';
-    var w=n.w2h||{};
-    var prazo=w.whenFim||'';
-    var prazoVencido = prazo && n.status!=='Concluída' && prazo<hoje();
-    var planoVazio = !w.what && !w.who && !w.whenFim;
+    var stEfetivo=statusEfetivoNC(n);
+    var stCls=corStatusNC(stEfetivo);
+    var dias=diasRestantesNC(n.prazoLimite);
+    var diasTxt='—', diasCor='';
+    if(dias!==null && n.status!=='Concluída'){
+      diasTxt = dias<0 ? Math.abs(dias)+' dia(s) em atraso' : dias+' dia(s)';
+      diasCor = dias<0 ? '#c0392b' : dias<=3 ? '#8a5700' : '#0a7a44';
+    } else if(n.status==='Concluída'){
+      diasTxt='Concluída';
+    }
     h+='<tr style="cursor:pointer" onclick="abrirDetalheNC(\''+n.fbKey+'\')">';
     h+='<td>'+(n.aberturaTs?n.aberturaTs.slice(0,10).split('-').reverse().join('/'):'—')+'</td>';
     h+='<td>'+(n.opId||'—')+'</td>';
     h+='<td>'+(n.desc||'—')+'</td>';
-    h+='<td>'+(n.lote||'—')+'</td>';
     h+='<td>'+(n.linha||'—')+'</td>';
-    h+='<td>'+((n.parametrosReprovados||[]).join(', ')||'—')+(n.quantidadeAfetada?' · '+fN(n.quantidadeAfetada,2)+' '+(n.unidadeAfetada||''):'')+'</td>';
-    h+='<td><span class="badge '+stCls+'">'+n.status+'</span>'+(planoVazio?' <span class="badge bcz" style="margin-left:3px">5W2H pendente</span>':'')+'</td>';
-    h+='<td'+(prazoVencido?' style="color:#c0392b;font-weight:700"':'')+'>'+(prazo?prazo.split('-').reverse().join('/'):'—')+(prazoVencido?' ⚠':'')+'</td>';
+    h+='<td>'+(n.responsavelNome||n.responsavel||'—')+'</td>';
+    h+='<td>'+(n.criticidade||'—')+'</td>';
+    h+='<td><span class="badge '+stCls+'">'+stEfetivo+'</span></td>';
+    h+='<td>'+(n.prazoLimite?n.prazoLimite.split('-').reverse().join('/'):'—')+'</td>';
+    h+='<td'+(diasCor?' style="color:'+diasCor+';font-weight:700"':'')+'>'+diasTxt+'</td>';
     h+='<td><button class="btn bxs">Ver</button></td>';
     h+='</tr>';
   });
@@ -1508,55 +1662,136 @@ function abrirDetalheNC(fbKey){
   var n=NC_LISTA.find(function(x){return x.fbKey===fbKey;});
   if(!n) return;
   NCD_FBKEY=fbKey;
-  var w=n.w2h||{};
+  var stEfetivo=statusEfetivoNC(n);
+  var dias=diasRestantesNC(n.prazoLimite);
 
   G('ncd-info').innerHTML='<strong>OP '+(n.opId||'—')+'</strong> — '+(n.desc||'')+
     (n.lote?' — Lote: '+n.lote:'')+'<br>Linha: '+(n.linha||'—')+' — Turno: '+(n.turno||'—')+
     '<br>Parâmetro(s): '+((n.parametrosReprovados||[]).join(', ')||'—')+
     (n.quantidadeAfetada?'<br>Quantidade não conforme: <strong>'+fN(n.quantidadeAfetada,2)+' '+(n.unidadeAfetada||'')+'</strong>':'')+
-    '<br>Aberta em '+(n.aberturaTs?n.aberturaTs.slice(0,10).split('-').reverse().join('/'):'—')+' por '+(n.aberturaAnalista||'—');
-  G('ncd-desc').value=n.descricao||'';
+    '<br>Aberta em '+(n.aberturaTs?n.aberturaTs.slice(0,10).split('-').reverse().join('/'):'—')+' por '+(n.aberturaAnalista||'—')+
+    '<br><br><strong>Descrição:</strong> '+(n.descricao||'—')+
+    '<br><br>Responsável: <strong>'+(n.responsavelNome||n.responsavel||'—')+'</strong> · Criticidade: <strong>'+(n.criticidade||'—')+'</strong>'+
+    '<br>Status: <span class="badge '+corStatusNC(stEfetivo)+'">'+stEfetivo+'</span> · Prazo: '+(n.prazoLimite?n.prazoLimite.split('-').reverse().join('/'):'—')+
+    (n.status!=='Concluída' && dias!==null ? ' ('+(dias<0?Math.abs(dias)+' dia(s) em atraso':dias+' dia(s) restante(s)')+')' : '');
 
-  G('ncd-what').value=w.what||'';
-  G('ncd-why').value=w.why||'';
-  G('ncd-where').value=w.where||'';
-  G('ncd-who').value=w.who||'';
-  G('ncd-when-ini').value=w.whenIni||'';
-  G('ncd-when-fim').value=w.whenFim||'';
-  G('ncd-how').value=w.how||'';
-  G('ncd-status').value=n.status||'Aberta';
+  var resp=n.resposta;
+  if(resp && (resp.causa||resp.planoAcao)){
+    G('ncd-resposta-bloco').style.display='';
+    G('ncd-resposta-conteudo').innerHTML=
+      '<strong>Causa:</strong> '+(resp.causa||'—')+'<br>'+
+      '<strong>Correção Imediata:</strong> '+(resp.correcaoImediata||'—')+'<br>'+
+      '<strong>Plano de Ação:</strong> '+(resp.planoAcao||'—')+'<br>'+
+      '<strong>Responsável pela Ação:</strong> '+(resp.responsavelAcaoNome||resp.responsavelAcao||'—')+'<br>'+
+      '<strong>Data Prevista para Conclusão:</strong> '+(resp.dataPrevistaConclusao?resp.dataPrevistaConclusao.split('-').reverse().join('/'):'—')+
+      '<br><span style="font-size:11px;color:#999">Respondido por '+(resp.respondidoNome||resp.respondidoPor||'—')+' em '+(resp.respondidoTs?new Date(resp.respondidoTs).toLocaleString('pt-BR'):'—')+'</span>';
+  } else {
+    G('ncd-resposta-bloco').style.display='none';
+  }
 
-  // Só supervisão/admin podem editar o plano de ação (5W2H) e o status — analista de qualidade só visualiza
-  var podeEditar=podeLiberarRetencao();
-  ['ncd-what','ncd-why','ncd-where','ncd-who','ncd-when-ini','ncd-when-fim','ncd-how','ncd-status'].forEach(function(id){
-    G(id).disabled=!podeEditar;
-  });
-  G('ncd-5w2h-readonly-aviso').style.display=podeEditar?'none':'inline';
-  G('btn-salvar-edicao-nc').style.display=podeEditar?'':'none';
+  var avals=n.avaliacoes?Object.keys(n.avaliacoes).map(function(k){return n.avaliacoes[k];}):[];
+  if(avals.length){
+    avals.sort(function(a,b){return (a.dataAvaliacao||'')<(b.dataAvaliacao||'')?-1:1;});
+    G('ncd-avaliacoes-bloco').style.display='';
+    G('ncd-avaliacoes-lista').innerHTML=avals.map(function(a){
+      var cor=a.statusAvaliacao==='Aprovado'?'bvd':'brd';
+      return '<div class="card" style="margin-bottom:8px"><span class="badge '+cor+'">'+a.statusAvaliacao+'</span> '+
+        '<span style="font-size:11px;color:#999">'+(a.avaliadorNome||a.avaliador||'—')+' em '+(a.dataAvaliacao?new Date(a.dataAvaliacao).toLocaleString('pt-BR'):'—')+'</span>'+
+        '<div style="font-size:13px;margin-top:6px">'+(a.comentarios||'—')+'</div></div>';
+    }).join('');
+  } else {
+    G('ncd-avaliacoes-bloco').style.display='none';
+  }
+
+  G('ncd-btn-responder').style.display = (podeResponderNC(n) && n.status!=='Concluída') ? '' : 'none';
+  G('ncd-btn-avaliar').style.display = (podeAvaliarNC(n) && n.status==='Aguardando Avaliação da Qualidade') ? '' : 'none';
 
   aM('ov-nc-detalhe');
 }
 
-function salvarEdicaoNC(){
-  if(!NCD_FBKEY) return;
-  if(!podeLiberarRetencao()){ toast('Apenas supervisão ou admin podem editar o plano de ação','err'); return; }
-  var statusNovo=G('ncd-status').value;
-  var upd={
-    status:statusNovo,
-    w2h:{
-      what:G('ncd-what').value.trim(),
-      why:G('ncd-why').value.trim(),
-      where:G('ncd-where').value.trim(),
-      who:G('ncd-who').value.trim(),
-      whenIni:G('ncd-when-ini').value,
-      whenFim:G('ncd-when-fim').value,
-      how:G('ncd-how').value.trim()
-    },
-    w2hAtualizadoPor:SES.nome||SES.login, w2hAtualizadoTs:agora()
+function abrirResponderNC(){
+  var n=NC_LISTA.find(function(x){return x.fbKey===NCD_FBKEY;});
+  if(!n) return;
+  if(!podeResponderNC(n)){ toast('Apenas o responsável designado (ou admin) pode responder esta NC','err'); return; }
+  var resp=n.resposta||{};
+  G('ncr-causa').value=resp.causa||'';
+  G('ncr-correcao').value=resp.correcaoImediata||'';
+  G('ncr-plano').value=resp.planoAcao||'';
+  G('ncr-data-prevista').value=resp.dataPrevistaConclusao||'';
+  popularDropdownResponsavel('ncr-responsavel-acao', resp.responsavelAcao||'');
+
+  // Primeira vez que o responsável acessa: sai de "Aberta" para "Em Tratativa"
+  if(n.status==='Aberta'){
+    DB.ref('qualidade_nc/'+n.fbKey+'/status').set('Em Tratativa').then(function(){
+      n.status='Em Tratativa';
+      var idx=NC_LISTA.findIndex(function(x){return x.fbKey===n.fbKey;});
+      if(idx>-1) NC_LISTA[idx].status='Em Tratativa';
+    });
+  }
+  aM('ov-nc-resposta');
+}
+
+function salvarRespostaNC(){
+  var n=NC_LISTA.find(function(x){return x.fbKey===NCD_FBKEY;});
+  if(!n) return;
+  if(!podeResponderNC(n)){ toast('Apenas o responsável designado (ou admin) pode responder esta NC','err'); return; }
+  var causa=G('ncr-causa').value.trim(), plano=G('ncr-plano').value.trim();
+  if(!causa || !plano){ toast('Preencha ao menos a causa e o plano de ação','err'); return; }
+  var respAcaoLogin=G('ncr-responsavel-acao').value;
+  var respAcaoNome=(RESPONSAVEIS_CACHE||[]).find(function(u){return u.login===respAcaoLogin;});
+
+  var resposta={
+    causa:causa, correcaoImediata:G('ncr-correcao').value.trim(), planoAcao:plano,
+    responsavelAcao:respAcaoLogin, responsavelAcaoNome:respAcaoNome?respAcaoNome.nome:respAcaoLogin,
+    dataPrevistaConclusao:G('ncr-data-prevista').value,
+    respondidoPor:SES.login, respondidoNome:SES.nome||SES.login, respondidoTs:agora()
   };
-  if(statusNovo==='Concluída') upd.conclusaoTs=agora();
-  DB.ref('qualidade_nc/'+NCD_FBKEY).update(upd).then(function(){
-    toast('Não Conformidade atualizada!','ok');
+
+  DB.ref('qualidade_nc/'+n.fbKey).update({resposta:resposta, status:'Aguardando Avaliação da Qualidade'}).then(function(){
+    toast('Resposta registrada! Aguardando avaliação da Qualidade.','ok');
+    fM('ov-nc-resposta');
+    fM('ov-nc-detalhe');
+    renderNC();
+    monitorarNCAbertas();
+  }).catch(function(e){ toast('Erro: '+e.message,'err'); });
+}
+
+function abrirAvaliarNC(){
+  var n=NC_LISTA.find(function(x){return x.fbKey===NCD_FBKEY;});
+  if(!n) return;
+  if(!podeAvaliarNC(n)){ toast('Apenas Qualidade ou Admin podem avaliar (e não a própria resposta)','err'); return; }
+  G('nca-status').value='Aprovado';
+  G('nca-comentarios').value='';
+  aM('ov-nc-avaliacao');
+}
+
+function salvarAvaliacaoNC(){
+  var n=NC_LISTA.find(function(x){return x.fbKey===NCD_FBKEY;});
+  if(!n) return;
+  if(!podeAvaliarNC(n)){ toast('Apenas Qualidade ou Admin podem avaliar (e não a própria resposta)','err'); return; }
+  var statusAval=G('nca-status').value;
+  var comentarios=G('nca-comentarios').value.trim();
+  if(!comentarios){ toast('Os comentários da avaliação são obrigatórios','err'); return; }
+
+  var avaliacao={
+    statusAvaliacao:statusAval, avaliador:SES.login, avaliadorNome:SES.nome||SES.login,
+    dataAvaliacao:agora(), comentarios:comentarios
+  };
+
+  var upd={};
+  var refAval=DB.ref('qualidade_nc/'+n.fbKey+'/avaliacoes').push();
+  upd['status'] = statusAval==='Aprovado' ? 'Concluída' : 'Revisão Solicitada';
+  if(statusAval==='Aprovado'){
+    upd['conclusaoTs']=agora();
+    upd['avaliadorFinal']=SES.nome||SES.login;
+    if(n.aberturaTs) upd['tempoTotalDias']=Math.round((new Date()-new Date(n.aberturaTs))/86400000);
+  }
+
+  refAval.set(avaliacao).then(function(){
+    return DB.ref('qualidade_nc/'+n.fbKey).update(upd);
+  }).then(function(){
+    toast('Avaliação registrada!','ok');
+    fM('ov-nc-avaliacao');
     fM('ov-nc-detalhe');
     renderNC();
     monitorarNCAbertas();
@@ -1564,8 +1799,10 @@ function salvarEdicaoNC(){
 }
 
 function monitorarNCAbertas(){
-  DB.ref('qualidade_nc').orderByChild('status').equalTo('Aberta').once('value').then(function(s){
-    G('nc-dot').style.display = (s.exists() && s.numChildren()>0) ? 'inline-block' : 'none';
+  DB.ref('qualidade_nc').once('value').then(function(s){
+    var pendentes=0;
+    if(s.exists()) s.forEach(function(c){ if(c.val().status!=='Concluída') pendentes++; });
+    G('nc-dot').style.display = pendentes>0 ? 'inline-block' : 'none';
   });
 }
 
@@ -1724,6 +1961,8 @@ function abrirNCDaRetencao(){
       (r.lote?' — Lote: '+r.lote:'')+'<br>Linha: '+r.linha+'<br>Originada de retenção para reanálise — motivo: '+r.motivo;
     G('nc-desc').value=r.motivo||'';
     G('nc-qtd').value=r.quantidade; G('nc-qtd-unidade').value=r.unidade||'KG';
+    G('nc-criticidade').value='';
+    popularDropdownResponsavel('nc-responsavel');
     aM('ov-nc');
     renderRetencoes();
     monitorarRetencoesAbertas();
@@ -2001,7 +2240,7 @@ function renderDashCards(insp, ncs){
   var total=insp.length;
   var aprovadas=insp.filter(function(i){return i.statusGeral==='aprovado';}).length;
   var reprovadas=insp.filter(function(i){return i.statusGeral==='reprovado';}).length;
-  var ncAbertas=ncs.filter(function(n){return n.status==='Aberta'||n.status==='Em andamento';}).length;
+  var ncAbertas=ncs.filter(function(n){return n.status!=='Concluída';}).length;
   var ncConcluidas=ncs.filter(function(n){return n.status==='Concluída';}).length;
 
   var h='';
@@ -2180,7 +2419,7 @@ function exportarRelatorioGeralPDF(d){
   var total=d.insp.length;
   var aprovadas=d.insp.filter(function(i){return i.statusGeral==='aprovado';}).length;
   var reprovadas=d.insp.filter(function(i){return i.statusGeral==='reprovado';}).length;
-  var ncAbertas=d.ncs.filter(function(n){return n.status==='Aberta'||n.status==='Em andamento';}).length;
+  var ncAbertas=d.ncs.filter(function(n){return n.status!=='Concluída';}).length;
   var ncConcluidas=d.ncs.filter(function(n){return n.status==='Concluída';}).length;
 
   var y=26;
@@ -2210,9 +2449,9 @@ function exportarRelatorioGeralPDF(d){
   if(d.ncs.length){
     var linhasNc=d.ncs.map(function(n){
       var w=n.w2h||{};
-      return [n.opId||'—', n.lote||'—', n.linha||'—', n.descricao||'—', n.status, w.who||'—'];
+      return [n.opId||'—', n.lote||'—', n.linha||'—', n.descricao||'—', statusEfetivoNC(n), n.responsavelNome||w.who||'—'];
     });
-    y=pdfTabela(doc,y,'NÃO CONFORMIDADES DO PERÍODO',['OP','Lote','Linha','Descrição','Status','Responsável (5W2H)'],linhasNc,[20,25,40,90,25,50]);
+    y=pdfTabela(doc,y,'NÃO CONFORMIDADES DO PERÍODO',['OP','Lote','Linha','Descrição','Status','Responsável'],linhasNc,[20,25,40,90,25,50]);
   }
 
   doc.save('Qualidade_Geral_'+d.di+'_a_'+d.df+'.pdf');
@@ -2473,10 +2712,11 @@ function montarRastreioOP(op, destacarData, expandido){
 
     h+='<div class="ct" style="margin-top:14px;margin-bottom:6px">Não Conformidades ('+ncs.length+')</div>';
     if(ncs.length){
-      h+='<div class="tw"><table><thead><tr><th>Descrição</th><th>Status</th><th>Responsável (5W2H)</th></tr></thead><tbody>';
+      h+='<div class="tw"><table><thead><tr><th>Descrição</th><th>Status</th><th>Responsável</th></tr></thead><tbody>';
       ncs.forEach(function(n){
         var w=n.w2h||{};
-        h+='<tr><td>'+(n.descricao||'—')+'</td><td><span class="badge '+(n.status==='Concluída'?'bvd':'brd')+'">'+n.status+'</span></td><td>'+(w.who||'—')+'</td></tr>';
+        var stEfetivo=statusEfetivoNC(n);
+        h+='<tr><td>'+(n.descricao||'—')+'</td><td><span class="badge '+corStatusNC(stEfetivo)+'">'+stEfetivo+'</span></td><td>'+(n.responsavelNome||w.who||'—')+'</td></tr>';
       });
       h+='</tbody></table></div>';
     } else {
@@ -2650,10 +2890,14 @@ function exportarRastreabilidadePDF(){
         if(y+linhaH>195){ doc.addPage('a4','landscape'); y=15; }
         doc.setFillColor(255,248,248); doc.rect(ML,y,W,linhaH,'F');
         doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(192,57,43);
-        doc.text(n.status||'—',ML+3,y+4);
+        doc.text(statusEfetivoNC(n),ML+3,y+4);
         doc.setFont('helvetica','normal'); doc.setTextColor(40,40,40);
         doc.text('Descrição: '+(n.descricao||'—'),ML+3,y+8);
-        doc.text('5W2H — O que: '+(w.what||'—').slice(0,60)+'   |   Quem: '+(w.who||'—')+'   |   Prazo: '+(w.whenFim||'—'),ML+3,y+12);
+        if(n.responsavel){
+          doc.text('Responsável: '+(n.responsavelNome||n.responsavel)+'   |   Criticidade: '+(n.criticidade||'—')+'   |   Prazo: '+(n.prazoLimite?fDtBR(n.prazoLimite):'—'),ML+3,y+12);
+        } else {
+          doc.text('5W2H — O que: '+(w.what||'—').slice(0,60)+'   |   Quem: '+(w.who||'—')+'   |   Prazo: '+(w.whenFim||'—'),ML+3,y+12);
+        }
         doc.setDrawColor(220,180,180); doc.line(ML,y+linhaH,ML+W,y+linhaH);
         y+=linhaH+1;
       });
@@ -3229,6 +3473,7 @@ function salvarUsuario(){
       DB.ref('usuarios/'+USR_EDITANDO_FBKEY).update(upd).then(function(){
         toast('Usuário atualizado!','ok');
         fM('ov-usuario');
+        RESPONSAVEIS_CACHE=null;
         carregarUsuarios();
       }).catch(function(e){ toast('Erro: '+e.message,'err'); });
     } else {
@@ -3236,6 +3481,7 @@ function salvarUsuario(){
       DB.ref('usuarios').push(novo).then(function(){
         toast('Usuário criado!','ok');
         fM('ov-usuario');
+        RESPONSAVEIS_CACHE=null;
         carregarUsuarios();
       }).catch(function(e){ toast('Erro: '+e.message,'err'); });
     }
@@ -3245,6 +3491,7 @@ function salvarUsuario(){
 function toggleAtivoUsuario(fbKey, estavaAtivo){
   DB.ref('usuarios/'+fbKey).update({inativo: estavaAtivo}).then(function(){
     toast(estavaAtivo?'Usuário desativado':'Usuário ativado','ok');
+    RESPONSAVEIS_CACHE=null;
     carregarUsuarios();
   }).catch(function(e){ toast('Erro: '+e.message,'err'); });
 }
