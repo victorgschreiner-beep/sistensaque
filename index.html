@@ -348,6 +348,12 @@ tr:hover td{background:rgba(2,79,43,.03)}
             <option value="crit">🔴 Crítico (>10%)</option>
           </select>
         </div>
+        <div class="fg" style="align-self:flex-end">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#024f2b;font-weight:600;padding-bottom:8px;cursor:pointer">
+            <input type="checkbox" id="div-so-concluidas" style="width:15px;height:15px;cursor:pointer">
+            Somente OPs concluídas
+          </label>
+        </div>
         <button class="btn bp" onclick="gerarComparativo()" style="margin-bottom:2px">🔍 Analisar</button>
         <button class="btn" onclick="exportarComparativoExcel()" id="btn-exp-comp" style="display:none;margin-bottom:2px;background:#217346;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">📥 Excel</button>
       </div>
@@ -3099,6 +3105,7 @@ var COMP_DADOS=[];
 function gerarComparativo(){
   var di=G('div-di').value, df=G('div-df').value;
   var ln=G('div-ln').value, st=G('div-st').value;
+  var soConcluidas=G('div-so-concluidas')&&G('div-so-concluidas').checked;
   if(!di||!df){alert('Informe o período');return;}
   if(!DB){alert('Sem conexão');return;}
   G('div-corpo').innerHTML='<div style="text-align:center;padding:30px;color:#4a664a">Buscando dados...</div>';
@@ -3131,7 +3138,28 @@ function gerarComparativo(){
       if(!grupos[baseId]) grupos[baseId]=[];
       grupos[baseId].push(o);
     });
+
+    // Filtro "somente OPs concluídas": uma cadeia é considerada concluída quando
+    // a rodada MAIS RECENTE está com status 'Concluida' — as rodadas anteriores
+    // de uma reprogramação já ficam 'Concluida' por construção (reprogramarOP
+    // sempre conclui a rodada antiga), entao so a ultima importa pra saber se a
+    // OP inteira terminou. Evita falso "Crítico" em OP ainda em producao, onde
+    // a extrusao naturalmente esta a frente do ensaque.
+    if(soConcluidas){
+      Object.keys(grupos).forEach(function(baseId){
+        var rodadas=grupos[baseId];
+        var maisRecente=rodadas.slice().sort(function(a,b){return (a.data||'')<(b.data||'')?-1:(a.data||'')>(b.data||'')?1:0;}).pop();
+        if(!maisRecente || maisRecente.status!=='Concluida') delete grupos[baseId];
+      });
+    }
     var baseIds=Object.keys(grupos);
+
+    if(!baseIds.length){
+      G('div-corpo').innerHTML='<div style="text-align:center;padding:30px;color:#4a664a">Nenhuma OP '+(soConcluidas?'concluída ':'')+'encontrada no período</div>';
+      G('div-resumo').style.display='none';
+      G('btn-exp-comp').style.display='none';
+      return;
+    }
 
     // IMPORTANTE: op.realExtrusao e um contador incremental (via transaction()),
     // atualizado a cada apontamento — mas se o opFbKey ativo na tela da Extrusao
@@ -3168,6 +3196,7 @@ function gerarComparativo(){
       COMP_DADOS=baseIds.map(function(baseId){
         var rodadas=grupos[baseId].slice().sort(function(a,b){return (a.data||'')<(b.data||'')?-1:(a.data||'')>(b.data||'')?1:0;});
         var ensacado=rodadas.reduce(function(a,o){return a+(Number(o.real)||0);},0);
+        var perda=rodadas.reduce(function(a,o){return a+(Number(o.perda)||0);},0);
         var extrusado=extPorBase[baseId]||0;
         var extPorRodada=extPorRodadaPorBase[baseId]||{};
         // Programado da cadeia inteira: usa progOriginal se alguma rodada tiver
@@ -3175,13 +3204,16 @@ function gerarComparativo(){
         var progOrig=null;
         rodadas.forEach(function(o){ if(o.progOriginal) progOrig=Number(o.progOriginal); });
         var prog=progOrig!==null?progOrig:(Number(rodadas[0].prog)||0);
-        var diff=ensacado-extrusado;
+        // Diferença Total considera a perda de ensaque como material ja contabilizado
+        // (nao "sumido") — so o que sobra depois de somar bom+perda e comparar com o
+        // que a Extrusao realmente produziu e que conta como divergencia de verdade.
+        var diff=extrusado-(ensacado+perda);
         var pct=extrusado>0?Math.round(diff/extrusado*100):null;
         var status=pct===null?'sem-ext':Math.abs(pct)<=5?'ok':Math.abs(pct)<=10?'warn':'crit';
         var op0=rodadas[0], opN=rodadas[rodadas.length-1];
         return {
           op:{id:baseId,desc:op0.desc,cod:op0.cod,linha:op0.linha,data:op0.data,dataFim:opN.data,prog:prog},
-          ensacado:ensacado,extrusado:extrusado,diff:diff,pct:pct,status:status,
+          ensacado:ensacado,perda:perda,extrusado:extrusado,diff:diff,pct:pct,status:status,
           rodadas:rodadas,extPorRodada:extPorRodada
         };
       });
@@ -3230,7 +3262,8 @@ function renderComparativo(st){
     h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">Programado</th>';
     h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">🏭 Extrusado</th>';
     h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">📦 Ensacado</th>';
-    h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">Diferença</th>';
+    h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#c0392b">Perda</th>';
+    h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">Diferença Total</th>';
     h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">%</th>';
     h+='<th style="padding:8px;text-align:center;border-bottom:2px solid #d4e8d4;color:#024f2b">Status</th>';
     h+='</tr></thead><tbody>';
@@ -3256,6 +3289,7 @@ function renderComparativo(st){
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right">'+fN(op.prog)+'</td>';
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#1a7a4a">'+fN(r.extrusado)+'</td>';
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#024f2b">'+fN(r.ensacado)+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;color:#c0392b">'+(r.perda>0?fN(r.perda):'—')+'</td>';
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:'+corDiff+'">'+(r.diff>0?'+':'')+fN(r.diff)+'</td>';
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:'+corDiff+'">'+(r.pct!==null?(r.pct>0?'+':'')+r.pct+'%':'—')+'</td>';
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:center">'+(stBadge[r.status]||'')+'</td>';
@@ -3269,7 +3303,7 @@ function exportarComparativoExcel(){
   if(!COMP_DADOS.length){alert('Gere a análise primeiro');return;}
   if(typeof XLSX==='undefined'){alert('Biblioteca Excel não disponível');return;}
 
-  var linhas=[['Nº OP','Produto','Linha','Período','Programado (kg)','Extrusado (kg)','Ensacado (kg)','Diferença (kg)','Diferença (%)','Status','Rodadas']];
+  var linhas=[['Nº OP','Produto','Linha','Período','Programado (kg)','Extrusado (kg)','Ensacado (kg)','Perda (kg)','Diferença Total (kg)','Diferença (%)','Status','Rodadas']];
   COMP_DADOS.forEach(function(r){
     var op=r.op;
     var stTxt={ok:'OK (≤5%)','warn':'Atenção (5-10%)','crit':'Crítico (>10%)','sem-ext':'Sem extrusão'}[r.status]||'';
@@ -3281,6 +3315,7 @@ function exportarComparativoExcel(){
       Number(op.prog)||0,
       r.extrusado,
       r.ensacado,
+      r.perda,
       r.diff,
       r.pct!==null?r.pct+'%':'—',
       stTxt,
@@ -3292,7 +3327,7 @@ function exportarComparativoExcel(){
   // a aba "Comparativo" soma tudo, essa aba mostra de onde veio cada número.
   // Extrusado aqui vem da mesma fonte confiável do comparativo (extrusao_apts
   // por opNum exato da rodada), nao de op.realExtrusao.
-  var linhasDetalhe=[['OP base','Nº OP (rodada)','Data da rodada','Programado da rodada (kg)','Extrusado (kg)','Ensacado (kg)','Status da OP']];
+  var linhasDetalhe=[['OP base','Nº OP (rodada)','Data da rodada','Programado da rodada (kg)','Extrusado (kg)','Ensacado (kg)','Perda (kg)','Status da OP']];
   COMP_DADOS.forEach(function(r){
     r.rodadas.forEach(function(o){
       linhasDetalhe.push([
@@ -3302,6 +3337,7 @@ function exportarComparativoExcel(){
         Number(o.prog)||0,
         (r.extPorRodada&&r.extPorRodada[o.id])||0,
         Number(o.real)||0,
+        Number(o.perda)||0,
         o.status||''
       ]);
     });
@@ -3309,11 +3345,11 @@ function exportarComparativoExcel(){
 
   var wb=XLSX.utils.book_new();
   var ws=XLSX.utils.aoa_to_sheet(linhas);
-  ws['!cols']=[{wch:16},{wch:30},{wch:12},{wch:18},{wch:14},{wch:14},{wch:14},{wch:14},{wch:12},{wch:16},{wch:10}];
+  ws['!cols']=[{wch:16},{wch:30},{wch:12},{wch:18},{wch:14},{wch:14},{wch:14},{wch:12},{wch:16},{wch:12},{wch:16},{wch:10}];
   XLSX.utils.book_append_sheet(wb,ws,'Comparativo');
 
   var wsD=XLSX.utils.aoa_to_sheet(linhasDetalhe);
-  wsD['!cols']=[{wch:16},{wch:18},{wch:14},{wch:20},{wch:14},{wch:14},{wch:14}];
+  wsD['!cols']=[{wch:16},{wch:18},{wch:14},{wch:20},{wch:14},{wch:14},{wch:12},{wch:14}];
   XLSX.utils.book_append_sheet(wb,wsD,'Detalhe por Rodada');
 
   XLSX.writeFile(wb,'Comparativo_Ext_Ens_'+G('div-di').value+'_'+G('div-df').value+'.xlsx');
