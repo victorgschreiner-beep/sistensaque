@@ -733,6 +733,13 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       </div>
     </div>
 
+    <!-- Corrida por Máquina -->
+    <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px;margin-bottom:14px">
+      <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">⚙️ Corrida por Máquina (kg produzidos por Setup)</div>
+      <canvas id="dash-g10" height="150"></canvas>
+      <div id="dash-corrida-legenda" style="margin-top:6px;font-size:10px;color:#739630">Corrida = kg produzidos ÷ nº de setups (Troca de Formato + Limpeza de Linha) no período. Barra clara = sem setup registrado no período (corrida mínima, sem interrupção).</div>
+    </div>
+
     <!-- Filtro por Ordem -->
     <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px;margin-bottom:14px" id="dash-op-section">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
@@ -3659,6 +3666,42 @@ function dashRender(apts, paradas, di, df){
     {label:"Produt. Efetiva (kg/h)",data:prodEfetiva,backgroundColor:"rgba(2,79,43,.8)"},
     {label:"Produt. Real (kg/h)",data:prodReal,backgroundColor:"rgba(115,150,48,.6)"}
   ]);
+
+  // ── G10 — CORRIDA POR MÁQUINA (kg produzidos ÷ nº de setups) ─────
+  // Setup = paradas cujo motivo pertence ao grupo "Setup" no cadastro de PARADAS
+  // (cód 1 "Troca de Formato (SETUP)" + cód 2 "Limpeza de Linha(PET)")
+  var setupDescs=PARADAS.filter(function(p){return p.grupo==="Setup";}).map(function(p){return p.desc;});
+  var setupsPorLinha={};
+  paradas.forEach(function(p){
+    if(setupDescs.indexOf(p.descricao)>=0){
+      var l=p.linha||"";
+      setupsPorLinha[l]=(setupsPorLinha[l]||0)+1;
+    }
+  });
+  // Usa o mesmo universo de linhas de porLinha (todas as linhas com produção no período)
+  var linhasCorrida=Object.keys(porLinha);
+  var corridaVals=linhasCorrida.map(function(l){
+    var n=setupsPorLinha[l]||0;
+    // Sem setup no período: a corrida real é pelo menos toda a produção do período (sem interrupção)
+    return Math.round(n>0?porLinha[l].real/n:porLinha[l].real);
+  });
+  var corridaCores=linhasCorrida.map(function(l){
+    return (setupsPorLinha[l]||0)>0?"rgba(2,79,43,.8)":"rgba(115,150,48,.45)";
+  });
+  mkChart("dash-g10","bar",linhasCorrida,[
+    {label:"Corrida (kg/setup)",data:corridaVals,backgroundColor:corridaCores}
+  ],{
+    plugins:{
+      legend:{display:false},
+      tooltip:{callbacks:{label:function(ctx){
+        var l=linhasCorrida[ctx.dataIndex];
+        var n=setupsPorLinha[l]||0;
+        if(n===0) return "Sem setup no período — corrida ≥ "+fN(ctx.parsed.y)+" kg";
+        return "Corrida: "+fN(ctx.parsed.y)+" kg/setup ("+n+" setup"+(n===1?"":"s")+")";
+      }}}
+    },
+    scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:9}}}}
+  });
 
   // ── SKU x Maquina — Produtividade media (kg/h) por SKU e linha
   var skuMaq={};
