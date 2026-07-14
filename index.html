@@ -3131,29 +3131,69 @@ function gerarComparativo(){
       if(!grupos[baseId]) grupos[baseId]=[];
       grupos[baseId].push(o);
     });
+    var baseIds=Object.keys(grupos);
 
-    // Monta comparativo consolidado
-    COMP_DADOS=Object.keys(grupos).map(function(baseId){
-      var rodadas=grupos[baseId].slice().sort(function(a,b){return (a.data||'')<(b.data||'')?-1:(a.data||'')>(b.data||'')?1:0;});
-      var ensacado=rodadas.reduce(function(a,o){return a+(Number(o.real)||0);},0);
-      var extrusado=rodadas.reduce(function(a,o){return a+(Number(o.realExtrusao)||0);},0);
-      // Programado da cadeia inteira: usa progOriginal se alguma rodada tiver
-      // (cadeia reprogramada), senao o prog normal (rodada unica, sem reprogramacao)
-      var progOrig=null;
-      rodadas.forEach(function(o){ if(o.progOriginal) progOrig=Number(o.progOriginal); });
-      var prog=progOrig!==null?progOrig:(Number(rodadas[0].prog)||0);
-      var diff=ensacado-extrusado;
-      var pct=extrusado>0?Math.round(diff/extrusado*100):null;
-      var status=pct===null?'sem-ext':Math.abs(pct)<=5?'ok':Math.abs(pct)<=10?'warn':'crit';
-      var op0=rodadas[0], opN=rodadas[rodadas.length-1];
-      return {
-        op:{id:baseId,desc:op0.desc,cod:op0.cod,linha:op0.linha,data:op0.data,dataFim:opN.data,prog:prog},
-        ensacado:ensacado,extrusado:extrusado,diff:diff,pct:pct,status:status,
-        rodadas:rodadas
-      };
+    // IMPORTANTE: op.realExtrusao e um contador incremental (via transaction()),
+    // atualizado a cada apontamento — mas se o opFbKey ativo na tela da Extrusao
+    // nao corresponder exatamente a OP, o incremento cai no lugar errado e o
+    // campo fica permanentemente fora de sincronia (confirmado com dado real:
+    // realExtrusao somado deu 247.089, mas os apontamentos de extrusao_apts
+    // filtrados por opNum da OP somaram 163.805 — o valor que bate com a tela
+    // da Extrusao). Por isso, so para este relatorio, buscamos direto em
+    // extrusao_apts por opNum (prefixo da OP-base), que e a fonte confiavel.
+    var buscasExt=baseIds.map(function(baseId){
+      return DB.ref('extrusao_apts').orderByChild('opNum').startAt(baseId).endAt(baseId+'\uf8ff').once('value')
+        .then(function(snapApt){
+          var porRodada={}; // opNum exato -> soma
+          var re=new RegExp('^'+baseId.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(\\s#\\d+)*$');
+          if(snapApt.exists()) snapApt.forEach(function(c){
+            var a=c.val();
+            if(!a.opNum || !re.test(a.opNum)) return; // evita falso-positivo de prefixo
+            if(a.data<di || a.data>df) return; // mantem coerencia com o periodo filtrado
+            porRodada[a.opNum]=(porRodada[a.opNum]||0)+(Number(a.real)||0);
+          });
+          var total=0;
+          Object.keys(porRodada).forEach(function(k){ total+=porRodada[k]; });
+          return {baseId:baseId, total:total, porRodada:porRodada};
+        }).catch(function(){
+          return {baseId:baseId, total:0, porRodada:{}};
+        });
     });
 
-    // Filtra por status se necessário
+    Promise.all(buscasExt).then(function(resultadosExt){
+      var extPorBase={}, extPorRodadaPorBase={};
+      resultadosExt.forEach(function(r){ extPorBase[r.baseId]=r.total; extPorRodadaPorBase[r.baseId]=r.porRodada; });
+
+      // Monta comparativo consolidado
+      COMP_DADOS=baseIds.map(function(baseId){
+        var rodadas=grupos[baseId].slice().sort(function(a,b){return (a.data||'')<(b.data||'')?-1:(a.data||'')>(b.data||'')?1:0;});
+        var ensacado=rodadas.reduce(function(a,o){return a+(Number(o.real)||0);},0);
+        var extrusado=extPorBase[baseId]||0;
+        var extPorRodada=extPorRodadaPorBase[baseId]||{};
+        // Programado da cadeia inteira: usa progOriginal se alguma rodada tiver
+        // (cadeia reprogramada), senao o prog normal (rodada unica, sem reprogramacao)
+        var progOrig=null;
+        rodadas.forEach(function(o){ if(o.progOriginal) progOrig=Number(o.progOriginal); });
+        var prog=progOrig!==null?progOrig:(Number(rodadas[0].prog)||0);
+        var diff=ensacado-extrusado;
+        var pct=extrusado>0?Math.round(diff/extrusado*100):null;
+        var status=pct===null?'sem-ext':Math.abs(pct)<=5?'ok':Math.abs(pct)<=10?'warn':'crit';
+        var op0=rodadas[0], opN=rodadas[rodadas.length-1];
+        return {
+          op:{id:baseId,desc:op0.desc,cod:op0.cod,linha:op0.linha,data:op0.data,dataFim:opN.data,prog:prog},
+          ensacado:ensacado,extrusado:extrusado,diff:diff,pct:pct,status:status,
+          rodadas:rodadas,extPorRodada:extPorRodada
+        };
+      });
+
+      renderComparativo(st);
+    }).catch(function(e){
+      G('div-corpo').innerHTML='<div style="text-align:center;padding:30px;color:#c0392b">Erro ao buscar dados de extrusão: '+e.message+'</div>';
+    });
+  });
+}
+
+function renderComparativo(st){
     var filtrados=st?COMP_DADOS.filter(function(r){return r.status===st;}):COMP_DADOS;
 
     // Contadores
@@ -3223,7 +3263,6 @@ function gerarComparativo(){
     });
     h+='</tbody></table></div>';
     G('div-corpo').innerHTML=h;
-  });
 }
 
 function exportarComparativoExcel(){
@@ -3251,6 +3290,8 @@ function exportarComparativoExcel(){
 
   // Aba de detalhe: uma linha por rodada, pra auditoria/rastreabilidade —
   // a aba "Comparativo" soma tudo, essa aba mostra de onde veio cada número.
+  // Extrusado aqui vem da mesma fonte confiável do comparativo (extrusao_apts
+  // por opNum exato da rodada), nao de op.realExtrusao.
   var linhasDetalhe=[['OP base','Nº OP (rodada)','Data da rodada','Programado da rodada (kg)','Extrusado (kg)','Ensacado (kg)','Status da OP']];
   COMP_DADOS.forEach(function(r){
     r.rodadas.forEach(function(o){
@@ -3259,7 +3300,7 @@ function exportarComparativoExcel(){
         o.id,
         o.data,
         Number(o.prog)||0,
-        Number(o.realExtrusao)||0,
+        (r.extPorRodada&&r.extPorRodada[o.id])||0,
         Number(o.real)||0,
         o.status||''
       ]);
