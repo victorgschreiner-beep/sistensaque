@@ -3107,26 +3107,50 @@ function gerarComparativo(){
 
   // Busca todas as OPs do período
   DB.ref('ops').orderByChild('data').startAt(di).endAt(df).once('value',function(s){
-    var ops=[];
+    var opsRaw=[];
     if(s.exists()) s.forEach(function(c){
       var o=c.val(); o.fbKey=c.key;
       if(ln && o.linha!==ln) return;
-      ops.push(o);
+      opsRaw.push(o);
     });
 
-    if(!ops.length){
+    if(!opsRaw.length){
       G('div-corpo').innerHTML='<div style="text-align:center;padding:30px;color:#4a664a">Nenhuma OP encontrada no período</div>';
       return;
     }
 
-    // Monta comparativo
-    COMP_DADOS=ops.map(function(op){
-      var ensacado=Number(op.real)||0;
-      var extrusado=Number(op.realExtrusao)||0;
+    // Agrupa por OP-base: cadeias de reprogramação (ex: "X", "X #2", "X #2 #1")
+    // viram 1 grupo só. Isso é necessário porque a Extrusão nao tem noção de
+    // reprogramação do Ensaque — ela grava realExtrusao no fbKey que estava
+    // "ativo" na linha dela (normalmente o da 1ª rodada), enquanto o Ensaque
+    // distribui a producao entre varias OPs/fbKeys ao reprogramar. Comparar
+    // rodada a rodada nao faz sentido; a comparacao correta e por OP-base.
+    var grupos={};
+    opsRaw.forEach(function(o){
+      var baseId=(o.id||'').replace(/(\s#\d+)+$/,'');
+      if(!grupos[baseId]) grupos[baseId]=[];
+      grupos[baseId].push(o);
+    });
+
+    // Monta comparativo consolidado
+    COMP_DADOS=Object.keys(grupos).map(function(baseId){
+      var rodadas=grupos[baseId].slice().sort(function(a,b){return (a.data||'')<(b.data||'')?-1:(a.data||'')>(b.data||'')?1:0;});
+      var ensacado=rodadas.reduce(function(a,o){return a+(Number(o.real)||0);},0);
+      var extrusado=rodadas.reduce(function(a,o){return a+(Number(o.realExtrusao)||0);},0);
+      // Programado da cadeia inteira: usa progOriginal se alguma rodada tiver
+      // (cadeia reprogramada), senao o prog normal (rodada unica, sem reprogramacao)
+      var progOrig=null;
+      rodadas.forEach(function(o){ if(o.progOriginal) progOrig=Number(o.progOriginal); });
+      var prog=progOrig!==null?progOrig:(Number(rodadas[0].prog)||0);
       var diff=ensacado-extrusado;
       var pct=extrusado>0?Math.round(diff/extrusado*100):null;
       var status=pct===null?'sem-ext':Math.abs(pct)<=5?'ok':Math.abs(pct)<=10?'warn':'crit';
-      return {op:op,ensacado:ensacado,extrusado:extrusado,diff:diff,pct:pct,status:status};
+      var op0=rodadas[0], opN=rodadas[rodadas.length-1];
+      return {
+        op:{id:baseId,desc:op0.desc,cod:op0.cod,linha:op0.linha,data:op0.data,dataFim:opN.data,prog:prog},
+        ensacado:ensacado,extrusado:extrusado,diff:diff,pct:pct,status:status,
+        rodadas:rodadas
+      };
     });
 
     // Filtra por status se necessário
@@ -3154,7 +3178,10 @@ function gerarComparativo(){
       return (ord[a.status]||9)-(ord[b.status]||9);
     });
 
-    var h='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
+    var temCadeia=filtrados.some(function(r){return r.rodadas.length>1;});
+    var h='';
+    if(temCadeia) h+='<div style="font-size:11px;color:#739630;margin-bottom:8px">🔁 OPs reprogramadas aparecem consolidadas (soma de todas as rodadas dentro do período selecionado).</div>';
+    h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
     h+='<thead><tr style="background:#f5f9f2">';
     h+='<th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b;white-space:nowrap">Nº OP</th>';
     h+='<th style="padding:8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">Produto</th>';
@@ -3173,6 +3200,8 @@ function gerarComparativo(){
       var bg=i%2===0?'#fff':'#f9fbf9';
       var corDiff=r.diff>0?'#024f2b':r.diff<0?'#c0392b':'#666';
       var nomeL=(op.linha||'').replace(' (E-240)','').replace(' (E-200)','').replace(' (Andritz I)','').replace(' (Andritz II)','');
+      var dataDisp=op.data===op.dataFim?op.data:(op.data+' → '+op.dataFim);
+      var rodBadge=r.rodadas.length>1?'<span style="font-size:9px;background:#eaf5ea;color:#739630;padding:1px 6px;border-radius:8px;margin-left:6px;font-weight:600">🔁 '+r.rodadas.length+' rodadas</span>':'';
       var stBadge={
         'ok':'<span style="background:#d4f0e4;color:#024f2b;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">✅ OK</span>',
         'warn':'<span style="background:#fff3cd;color:#856404;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">⚠️ Atenção</span>',
@@ -3180,10 +3209,10 @@ function gerarComparativo(){
         'sem-ext':'<span style="background:#f0f0f0;color:#888;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">Sem ext.</span>'
       };
       h+='<tr style="background:'+bg+'">';
-      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;font-weight:700;color:#024f2b">'+op.id+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;font-weight:700;color:#024f2b">'+op.id+rodBadge+'</td>';
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0">'+(op.desc||op.cod||'').slice(0,28)+'</td>';
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;color:#4a664a">'+nomeL+'</td>';
-      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;color:#666">'+op.data+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;color:#666">'+dataDisp+'</td>';
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right">'+fN(op.prog)+'</td>';
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#1a7a4a">'+fN(r.extrusado)+'</td>';
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#024f2b">'+fN(r.ensacado)+'</td>';
@@ -3201,7 +3230,7 @@ function exportarComparativoExcel(){
   if(!COMP_DADOS.length){alert('Gere a análise primeiro');return;}
   if(typeof XLSX==='undefined'){alert('Biblioteca Excel não disponível');return;}
 
-  var linhas=[['Nº OP','Produto','Linha','Data','Programado (kg)','Extrusado (kg)','Ensacado (kg)','Diferença (kg)','Diferença (%)','Status']];
+  var linhas=[['Nº OP','Produto','Linha','Período','Programado (kg)','Extrusado (kg)','Ensacado (kg)','Diferença (kg)','Diferença (%)','Status','Rodadas']];
   COMP_DADOS.forEach(function(r){
     var op=r.op;
     var stTxt={ok:'OK (≤5%)','warn':'Atenção (5-10%)','crit':'Crítico (>10%)','sem-ext':'Sem extrusão'}[r.status]||'';
@@ -3209,20 +3238,43 @@ function exportarComparativoExcel(){
       op.id,
       op.desc||op.cod||'',
       (op.linha||'').replace(' (E-240)','').replace(' (E-200)','').replace(' (Andritz I)','').replace(' (Andritz II)',''),
-      op.data,
+      op.data===op.dataFim?op.data:(op.data+' a '+op.dataFim),
       Number(op.prog)||0,
       r.extrusado,
       r.ensacado,
       r.diff,
       r.pct!==null?r.pct+'%':'—',
-      stTxt
+      stTxt,
+      r.rodadas.length
     ]);
+  });
+
+  // Aba de detalhe: uma linha por rodada, pra auditoria/rastreabilidade —
+  // a aba "Comparativo" soma tudo, essa aba mostra de onde veio cada número.
+  var linhasDetalhe=[['OP base','Nº OP (rodada)','Data da rodada','Programado da rodada (kg)','Extrusado (kg)','Ensacado (kg)','Status da OP']];
+  COMP_DADOS.forEach(function(r){
+    r.rodadas.forEach(function(o){
+      linhasDetalhe.push([
+        r.op.id,
+        o.id,
+        o.data,
+        Number(o.prog)||0,
+        Number(o.realExtrusao)||0,
+        Number(o.real)||0,
+        o.status||''
+      ]);
+    });
   });
 
   var wb=XLSX.utils.book_new();
   var ws=XLSX.utils.aoa_to_sheet(linhas);
-  ws['!cols']=[{wch:14},{wch:30},{wch:12},{wch:12},{wch:14},{wch:14},{wch:14},{wch:14},{wch:12},{wch:16}];
+  ws['!cols']=[{wch:16},{wch:30},{wch:12},{wch:18},{wch:14},{wch:14},{wch:14},{wch:14},{wch:12},{wch:16},{wch:10}];
   XLSX.utils.book_append_sheet(wb,ws,'Comparativo');
+
+  var wsD=XLSX.utils.aoa_to_sheet(linhasDetalhe);
+  wsD['!cols']=[{wch:16},{wch:18},{wch:14},{wch:20},{wch:14},{wch:14},{wch:14}];
+  XLSX.utils.book_append_sheet(wb,wsD,'Detalhe por Rodada');
+
   XLSX.writeFile(wb,'Comparativo_Ext_Ens_'+G('div-di').value+'_'+G('div-df').value+'.xlsx');
 }
 
