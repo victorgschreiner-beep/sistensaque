@@ -737,7 +737,8 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px;margin-bottom:14px">
       <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">⚙️ Corrida por Máquina (kg produzidos por Setup)</div>
       <canvas id="dash-g10" height="150"></canvas>
-      <div id="dash-corrida-legenda" style="margin-top:6px;font-size:10px;color:#739630">Corrida = kg produzidos ÷ nº de setups (Troca de Formato + Limpeza de Linha) no período. Barra clara = sem setup registrado no período (corrida mínima, sem interrupção).</div>
+      <div id="dash-corrida-legenda" style="margin-top:6px;font-size:10px;color:#739630">Corrida = kg produzidos ÷ nº de setups (Troca de Formato + Limpeza de Linha) no período. Barra clara = sem setup registrado no período (corrida mínima, sem interrupção). Clique na barra para ver os itens produzidos na linha.</div>
+      <div id="dash-corrida-detalhe" style="display:none"></div>
     </div>
 
     <!-- Filtro por Ordem -->
@@ -3700,8 +3701,68 @@ function dashRender(apts, paradas, di, df){
         return "Corrida: "+fN(ctx.parsed.y)+" kg/setup ("+n+" setup"+(n===1?"":"s")+")";
       }}}
     },
-    scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:9}}}}
+    scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:9}}}},
+    onClick:function(evt,elements){
+      if(!elements||!elements.length) return;
+      mostrarDetalheCorrida(linhasCorrida[elements[0].index]);
+    },
+    onHover:function(evt,elements){
+      if(evt.native&&evt.native.target) evt.native.target.style.cursor=(elements&&elements.length)?"pointer":"default";
+    }
   });
+
+  // Detalhamento por SKU ao clicar na barra de uma linha no gráfico de Corrida
+  function mostrarDetalheCorrida(linha){
+    var cache=window._DASH_CACHE;
+    if(!cache){toast("Gere o dashboard primeiro","err");return;}
+    var aptsLinha=cache.apts.filter(function(a){return a.linha===linha;});
+    var porSKUl={}, total=0;
+    aptsLinha.forEach(function(a){
+      var k=(a.cod||"")+"||"+(a.desc||a.cod||"");
+      if(!porSKUl[k]) porSKUl[k]={cod:a.cod||"",desc:a.desc||a.cod||"Sem descrição",real:0};
+      porSKUl[k].real+=(Number(a.real)||0);
+      total+=(Number(a.real)||0);
+    });
+    var itens=Object.values(porSKUl).sort(function(a,b){return b.real-a.real;});
+    var det=G("dash-corrida-detalhe");
+    if(!det) return;
+    if(!itens.length){
+      det.innerHTML='<div style="text-align:center;padding:16px;color:#4a664a;font-size:12px;border:1px solid #d4e8d4;border-radius:10px;margin-top:10px">Sem apontamentos para '+linha+' no período filtrado</div>';
+      det.style.display="block";
+      det.scrollIntoView({behavior:"smooth",block:"nearest"});
+      return;
+    }
+    var rows=itens.map(function(it,i){
+      var pct=total?Math.round(it.real/total*100):0;
+      var bg=i%2===0?"#fff":"#f9fbf9";
+      return '<tr>'+
+        '<td style="padding:6px 8px;background:'+bg+';font-size:11px;font-weight:600">'+(it.desc||it.cod)+'</td>'+
+        '<td style="padding:6px 8px;background:'+bg+';font-size:11px;text-align:right;white-space:nowrap">'+fN(it.real)+' kg</td>'+
+        '<td style="padding:6px 8px;background:'+bg+';font-size:11px;text-align:right;color:#739630;white-space:nowrap">'+pct+'%</td>'+
+      '</tr>';
+    }).join("");
+    det.innerHTML=
+      '<div style="border:1px solid #d4e8d4;border-radius:10px;overflow:hidden;margin-top:10px">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;background:#f5f9f2;padding:8px 12px">'+
+          '<div style="font-weight:700;color:#024f2b;font-size:12px">📦 '+linha+' — Itens produzidos no período</div>'+
+          '<button onclick="G(\'dash-corrida-detalhe\').style.display=\'none\'" style="background:none;border:none;color:#c0392b;font-weight:700;cursor:pointer;font-size:12px">✕ Fechar</button>'+
+        '</div>'+
+        '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+
+          '<thead><tr>'+
+            '<th style="padding:6px 8px;background:#024f2b;color:#fff;font-size:10px;text-align:left">PRODUTO</th>'+
+            '<th style="padding:6px 8px;background:#024f2b;color:#fff;font-size:10px;text-align:right">QUANTIDADE</th>'+
+            '<th style="padding:6px 8px;background:#024f2b;color:#fff;font-size:10px;text-align:right">% DA LINHA</th>'+
+          '</tr></thead>'+
+          '<tbody>'+rows+
+            '<tr><td style="padding:7px 8px;font-size:11px;font-weight:800;color:#024f2b;border-top:2px solid #d4e8d4">TOTAL</td>'+
+            '<td style="padding:7px 8px;font-size:11px;font-weight:800;color:#024f2b;text-align:right;border-top:2px solid #d4e8d4;white-space:nowrap">'+fN(total)+' kg</td>'+
+            '<td style="padding:7px 8px;font-size:11px;font-weight:800;color:#024f2b;text-align:right;border-top:2px solid #d4e8d4">100%</td></tr>'+
+          '</tbody>'+
+        '</table></div>'+
+      '</div>';
+    det.style.display="block";
+    det.scrollIntoView({behavior:"smooth",block:"nearest"});
+  }
 
   // ── SKU x Maquina — Produtividade media (kg/h) por SKU e linha
   var skuMaq={};
