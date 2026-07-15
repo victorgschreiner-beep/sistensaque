@@ -985,6 +985,7 @@ function renderDash(){
       snapPerda.forEach(function(c){
         var p=c.val();
         if(p.data!==dt) return;
+        if(p.substituido) return; // corrigido/substituido - nao conta mais no dashboard
         if(ln){
           var opRef=OPS.filter(function(o){return o.fbKey===p.opId;})[0];
           if(!opRef||opRef.linha!==ln) return;
@@ -1952,6 +1953,20 @@ function abrirEditarApt(fbKey){
   G('meditapt').classList.add('on');
 }
 
+// Marca registros antigos de perdas_diarias de uma OP como substituidos.
+// NAO apaga nada - so deixa de contar no Dashboard, mantendo rastreabilidade total
+// (quem lancou, quando, e o que foi corrigido depois).
+function arquivarPerdasAntigas(fbKey){
+  return DB.ref('perdas_diarias').orderByChild('opId').equalTo(fbKey).once('value').then(function(snap){
+    var promises=[];
+    snap.forEach(function(c){
+      var p=c.val();
+      if(!p.substituido) promises.push(DB.ref('perdas_diarias/'+c.key).update({substituido:true}));
+    });
+    return Promise.all(promises);
+  });
+}
+
 function salvarEdicaoApt(){
   var fbKey=G('eafbkey').value;
   var tipo=G('eatipo').value;
@@ -1968,15 +1983,23 @@ function salvarEdicaoApt(){
     var op=null;
     for(var i=0;i<OPS.length;i++){if(OPS[i].fbKey===fbKey){op=OPS[i];break;}}
     var perdaAnt=op?Number(op.perda)||0:0;
+    var dtPerdaCorr=op?(op.data||hoje()):hoje();
     ld(true,'Salvando correcao de perda...');
-    Promise.all([
-      DB.ref('ops/'+fbKey).update({perda:novaPerda}),
-      DB.ref('correcoes/'+fbKey).push({
-        ts:agora(), usuario:SES.login, perfil:SES.perfil,
-        tipo:'correcao_perda', motivo:motivo,
-        perdaAnterior:perdaAnt, perdaNova:novaPerda
-      })
-    ]).then(function(){
+    arquivarPerdasAntigas(fbKey).then(function(){
+      var writes=[
+        DB.ref('ops/'+fbKey).update({perda:novaPerda}),
+        DB.ref('correcoes/'+fbKey).push({
+          ts:agora(), usuario:SES.login, perfil:SES.perfil,
+          tipo:'correcao_perda', motivo:motivo,
+          perdaAnterior:perdaAnt, perdaNova:novaPerda
+        })
+      ];
+      if(novaPerda>0) writes.push(DB.ref('perdas_diarias').push({
+        opId:fbKey, data:dtPerdaCorr, turno:0, perdaKG:novaPerda,
+        operador:SES.login, tipo:'correcao_perda', motivo:motivo, ts:agora()
+      }));
+      return Promise.all(writes);
+    }).then(function(){
       ld(false);
       toast('Perda corrigida: '+fN(perdaAnt)+' kg → '+fN(novaPerda)+' kg','ok');
       fM('meditapt');
@@ -2031,15 +2054,21 @@ function salvarEdicaoApt(){
 
   var dtCtx=G('eadtctx')&&G('eadtctx').value?G('eadtctx').value:hoje();
 
+  // Perda so muda quando e o PCP editando (operador preserva origPerda) - so nesse caso
+  // precisa arquivar os registros antigos de perdas_diarias para o Dashboard nao duplicar/manter valor velho
+  var perdaMudou=perdaKG!==origPerda;
+
   ld(true,'Salvando edicao...');
 
-  DB.ref('ops/'+fbKey).child('realPorData').once('value').then(function(snapRPD){
+  (perdaMudou?arquivarPerdasAntigas(fbKey):Promise.resolve()).then(function(){
+    return DB.ref('ops/'+fbKey).child('realPorData').once('value');
+  }).then(function(snapRPD){
     var rpd=snapRPD.val()||{};
     if(deltaReal!==0){
       rpd[dtCtx]=Math.max((Number(rpd[dtCtx])||0)+deltaReal,0);
       if(rpd[dtCtx]===0) delete rpd[dtCtx]; // limpa entrada zerada
     }
-    return Promise.all([
+    var writes=[
       DB.ref('ops/'+fbKey).update({
         t1:t1, t2:t2, t3:t3, real:real,
         t1sc:t1sc, t2sc:t2sc, t3sc:t3sc,
@@ -2052,7 +2081,12 @@ function salvarEdicaoApt(){
         t1:t1, t2:t2, t3:t3, real:real, perda:perdaKG,
         dataContexto:dtCtx, deltaReal:deltaReal
       })
-    ]);
+    ];
+    if(perdaMudou && perdaKG>0) writes.push(DB.ref('perdas_diarias').push({
+      opId:fbKey, data:dtCtx, turno:0, perdaKG:perdaKG,
+      operador:SES.login, tipo:'correcao_apontamento', motivo:motivo, ts:agora()
+    }));
+    return Promise.all(writes);
   }).then(function(){
     ld(false);
     toast('Apontamento do '+(turno>0?'Turno '+turno:'turno')+' editado!','ok');
@@ -2380,8 +2414,14 @@ function salvarCorrecao(){
 
   // Primeiro: marca todos apontamentos originais da OP como substituídos
   // Assim a query por data não os conta mais — só conta os novos correcao_pcp
+  // Em paralelo: arquiva (nao apaga) os registros antigos de perdas_diarias, para
+  // o Dashboard nao continuar somando a perda anterior a correcao
   // Passo 1: marca apontamentos originais como substituídos
-  DB.ref('apontamentos').orderByChild('opId').equalTo(fbKey).once('value').then(function(snapApts){
+  Promise.all([
+    DB.ref('apontamentos').orderByChild('opId').equalTo(fbKey).once('value'),
+    arquivarPerdasAntigas(fbKey)
+  ]).then(function(res){
+    var snapApts=res[0];
     var promisesSubst=[];
     snapApts.forEach(function(c){
       var a=c.val();
