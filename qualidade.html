@@ -989,9 +989,10 @@ function labelStatusInsp(status){
 
 var EXCECAO_CONTEXTO={inspFbKey:null, registro:null, camposElegiveis:[]};
 
-function abrirModalExcecao(inspFbKey, registro){
+function abrirModalExcecao(inspFbKey, registro, somenteChave){
   if(!podeAprovarExcecao()){ toast('Apenas Qualidade, Supervisão ou Admin podem aprovar exceção','err'); return; }
   var camposElegiveis = CAMPOS_NUM.filter(function(c){
+    if(somenteChave && c.key!==somenteChave) return false;
     return registro.aprovacoes && registro.aprovacoes[c.key]===false
       && PARAMS_EXCECAO_PERMITIDOS.indexOf(c.key)>-1
       && !(registro.excecoes && registro.excecoes[c.key]); // já aprovado por exceção não aparece de novo
@@ -2714,10 +2715,10 @@ function exportarFichaSkuPDF(d){
 var RAST_CACHE=[]; // cache dos dados brutos da última busca para exportação PDF
 var RAST_INSP_CACHE={}; // cache de inspeções (por fbKey) renderizadas na Rastreabilidade, usado pelo botão Aprovar Exceção
 
-function abrirModalExcecaoDoRastreio(inspFbKey){
+function abrirModalExcecaoDoRastreio(inspFbKey, somenteChave){
   var registro=RAST_INSP_CACHE[inspFbKey];
   if(!registro){ toast('Não foi possível localizar esta inspeção — atualize a busca','err'); return; }
-  abrirModalExcecao(inspFbKey, registro);
+  abrirModalExcecao(inspFbKey, registro, somenteChave);
 }
 
 function rastMudarAba(aba){
@@ -2864,20 +2865,18 @@ function montarRastreioOP(op, destacarData, expandido){
 
     h+='<div class="ct" style="margin-bottom:6px">Resultados de Qualidade ('+insps.length+')</div>';
     if(insps.length){
-      h+='<div class="tw"><table><thead><tr><th>Data</th><th>Hora</th><th>Analista</th><th>Status</th><th style="min-width:200px">Parâmetros Lançados</th><th></th></tr></thead><tbody>';
+      h+='<div class="tw"><table><thead><tr><th>Data</th><th>Hora</th><th>Analista</th><th>Status</th><th style="min-width:220px">Parâmetros Lançados</th></tr></thead><tbody>';
       insps.forEach(function(i){
         var stCls=classeStatusInsp(i.statusGeral);
         var destaque=destacarData && i.data===destacarData;
-        var elegivelExcecao = i.statusGeral==='reprovado' && podeAprovarExcecao() && CAMPOS_NUM.some(function(c){
-          return i.aprovacoes && i.aprovacoes[c.key]===false && PARAMS_EXCECAO_PERMITIDOS.indexOf(c.key)>-1 && !(i.excecoes && i.excecoes[c.key]);
-        });
         h+='<tr'+(destaque?' style="background:#eaf3e8"':'')+'>';
         h+='<td>'+(destaque?'📌 ':'')+(i.data?i.data.split('-').reverse().join('/'):'—')+'</td>';
         h+='<td>'+(i.hora||'—')+'</td>';
         h+='<td>'+(i.analistaNome||i.analista||'—')+'</td>';
         h+='<td><span class="badge '+stCls+'">'+labelStatusInsp(i.statusGeral)+'</span></td>';
         h+='<td><div style="font-size:11px;line-height:1.7">';
-        // Mostra todos os parâmetros lançados com destaque nos fora da faixa
+        // Mostra todos os parâmetros lançados com destaque nos fora da faixa; parâmetro reprovado
+        // e elegível ganha botão próprio de Aprovar Exceção, ao lado do valor.
         CAMPOS_NUM.forEach(function(c){
           var val=i.resultados&&i.resultados[c.key];
           if(val===undefined||val===null) return;
@@ -2886,9 +2885,13 @@ function montarRastreioOP(op, destacarData, expandido){
           var cp=i.contraprova&&i.contraprova[c.key];
           var exc=i.excecoes&&i.excecoes[c.key];
           if(cp && cp.status==='aguardando'){
-            h+='<span style="color:#8a5700;font-weight:700">'+c.label+': ⏳ Aguardando análise de bancada (NIR: '+fN(cp.nirValor,2)+(c.unidade?' '+c.unidade:'')+')</span><br>';
+            h+='<div style="color:#8a5700;font-weight:700">'+c.label+': ⏳ Aguardando análise de bancada (NIR: '+fN(cp.nirValor,2)+(c.unidade?' '+c.unidade:'')+')</div>';
             return;
           }
+          var elegivelParam = fora && !exc && podeAprovarExcecao() && PARAMS_EXCECAO_PERMITIDOS.indexOf(c.key)>-1;
+          if(elegivelParam) RAST_INSP_CACHE[i.fbKey]=i;
+
+          h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;'+(elegivelParam?'padding:2px 0':'')+'">';
           h+='<span style="'+(fora&&!exc?'color:#c0392b;font-weight:700':'')+'">';
           h+=c.label+': '+fN(val,2)+(c.unidade?' '+c.unidade:'');
           if(fora) h+=' ⚠ ('+faixa+')';
@@ -2900,7 +2903,11 @@ function montarRastreioOP(op, destacarData, expandido){
             var tituloCp='Valor original do NIR: '+fN(cp.nirValor,2)+'. Substituído por bancada em '+new Date(cp.ts).toLocaleString('pt-BR')+' por '+(cp.usuarioNome||cp.usuario)+'. Motivo: '+String(cp.motivo||'').replace(/"/g,"'");
             h+=' <span title="'+tituloCp+'" style="color:#0a7a44">🔄 (bancada)</span>';
           }
-          h+='</span><br>';
+          h+='</span>';
+          if(elegivelParam){
+            h+='<button class="btn bxs bo" style="flex-shrink:0" onclick="event.stopPropagation();abrirModalExcecaoDoRastreio(\''+esc(i.fbKey)+'\',\''+c.key+'\')">🟡 Aprovar Exceção</button>';
+          }
+          h+='</div>';
         });
         CAMPOS_TXT.forEach(function(c){
           var val=i.resultados&&i.resultados[c.key];
@@ -2908,12 +2915,6 @@ function montarRastreioOP(op, destacarData, expandido){
           h+='<span>'+c.label+': '+val+'</span><br>';
         });
         h+='</div></td>';
-        h+='<td>';
-        if(elegivelExcecao){
-          RAST_INSP_CACHE[i.fbKey]=i;
-          h+='<button class="btn bxs bo" onclick="event.stopPropagation();abrirModalExcecaoDoRastreio(\''+esc(i.fbKey)+'\')">🟡 Aprovar Exceção</button>';
-        }
-        h+='</td>';
         h+='</tr>';
       });
       h+='</tbody></table></div>';
