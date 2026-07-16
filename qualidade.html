@@ -322,7 +322,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
 
   <div class="g2" id="dash-visao-geral">
-    <div class="card"><div class="ch"><span class="ct">Aprovadas x Reprovadas</span></div><div style="position:relative;height:190px"><canvas id="chQualStatus"></canvas></div></div>
+    <div class="card"><div class="ch"><span class="ct">Status das Análises</span></div><div style="position:relative;height:190px"><canvas id="chQualStatus"></canvas></div></div>
     <div class="card"><div class="ch"><span class="ct">Desvios por Linha</span></div><div style="position:relative;height:190px"><canvas id="chQualLinha"></canvas></div></div>
   </div>
   <div class="g2" id="dash-visao-geral-2">
@@ -400,6 +400,22 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div class="mfoot">
     <button class="btn" onclick="fM('ov-contraprova')">Cancelar</button>
     <button class="btn bp" onclick="salvarContraprova()">💾 Salvar Contraprova</button>
+  </div>
+</div>
+</div>
+
+<!-- ============ MODAL: APROVAR EXCEÇÃO ============ -->
+<div class="ov" id="ov-excecao">
+<div class="modal">
+  <div class="mt">Aprovar Exceção</div>
+  <div class="alw" style="margin-bottom:10px">A ordem sai de Reprovada e passa a Aprovado por Exceção (Ponto de Atenção). Os valores medidos não são alterados — apenas o status.</div>
+  <div id="exc-lista-campos" style="margin-bottom:8px"></div>
+  <div id="exc-aviso-nao-elegiveis" class="alw" style="display:none;margin-bottom:10px"></div>
+  <div class="fg"><label class="fl">Motivo da aprovação (obrigatório)</label><textarea id="exc-motivo" rows="3" placeholder="Justificativa técnica da liberação..."></textarea></div>
+  <div class="fg"><label class="fl">Observações (opcional)</label><textarea id="exc-obs" rows="2" placeholder="Informações adicionais..."></textarea></div>
+  <div class="mfoot">
+    <button class="btn" onclick="fM('ov-excecao')">Cancelar</button>
+    <button class="btn bo" onclick="salvarExcecao()">🟡 Aprovar Exceção</button>
   </div>
 </div>
 </div>
@@ -716,6 +732,7 @@ var DB = firebase.database();
 var SES = null;
 var LINHAS = ["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
 var PARAMS_QUAL = {};          // cache de qualidade_params
+var PARAMS_EXCECAO_PERMITIDOS = ['umid','aw','dens','corte','diam','temp']; // fallback — sobrescrito por qualidade_config/parametrosExcecao
 var OPS_ATIVAS = {};           // cache linha -> OP ativa
 var INSP_CONTEXTO = null;      // contexto da inspeção sendo editada
 var NC_LISTA = [];
@@ -805,6 +822,7 @@ function iniciarApp(){
   carregarParamsQual(function(){
     carregarLinhasAtivas();
   });
+  carregarConfigExcecao();
   monitorarNCAbertas();
   monitorarRetencoesAbertas();
   monitorarContraprovasPendentes();
@@ -910,11 +928,8 @@ function recalcularStatusGeralInspecao(inspFbKey){
   return DB.ref('qualidade_inspecoes/'+inspFbKey).once('value').then(function(s){
     if(!s.exists()) return;
     var insp=s.val();
-    var aprovacoes=insp.aprovacoes||{};
-    var valores=Object.keys(aprovacoes).map(function(k){return aprovacoes[k];});
-    if(!valores.length) return;
-    var algumaReprova=valores.some(function(v){return v===false;});
-    var novoStatus=algumaReprova?'reprovado':'aprovado';
+    if(!insp.aprovacoes || !Object.keys(insp.aprovacoes).length) return;
+    var novoStatus=computeStatusGeral(insp.aprovacoes, insp.excecoes);
     if(novoStatus!==insp.statusGeral){
       return DB.ref('qualidade_inspecoes/'+inspFbKey+'/statusGeral').set(novoStatus);
     }
@@ -925,9 +940,147 @@ function podeLiberarRetencao(){
   return SES && (SES.perfil==='supervisao' || SES.perfil==='admin');
 }
 
+function podeAprovarExcecao(){
+  return SES && (SES.perfil==='qualidade' || SES.perfil==='supervisao' || SES.perfil==='admin');
+}
+
+// ============================================================
+// APROVAÇÃO POR EXCEÇÃO — parâmetro fora da faixa, liberado tecnicamente pela Qualidade
+// ============================================================
+// statusGeral possíveis: 'sem_avaliacao' | 'aprovado' | 'aprovado_excecao' | 'reprovado'
+// 'aprovado_excecao' só é atingido quando NENHUM parâmetro reprovado remanescente ficar de
+// fora de uma exceção ativa — ou seja, parâmetros reprovados não elegíveis (ex: PB/EE/MM)
+// continuam bloqueando a ordem como 'reprovado' mesmo que outros já tenham sido liberados.
+function computeStatusGeral(aprovacoes, excecoes){
+  aprovacoes = aprovacoes || {};
+  excecoes = excecoes || {};
+  var chaves = Object.keys(aprovacoes);
+  if(!chaves.length) return 'sem_avaliacao';
+  var reprovadosSemExcecao = chaves.filter(function(k){ return aprovacoes[k]===false && !excecoes[k]; });
+  if(reprovadosSemExcecao.length) return 'reprovado';
+  var temExcecaoAtiva = chaves.some(function(k){ return aprovacoes[k]===false && excecoes[k]; });
+  return temExcecaoAtiva ? 'aprovado_excecao' : 'aprovado';
+}
+
+// Remove exceções que ficaram obsoletas após uma edição de inspeção: se o parâmetro passou a
+// aprovar normalmente, ou se o valor lançado mudou em relação ao que foi aprovado por exceção,
+// a exceção anterior não cobre mais o novo resultado e precisa ser reavaliada pela Qualidade.
+function reconciliarExcecoes(excecoesAtuais, novosResultados, novasAprovacoes){
+  var out = Object.assign({}, excecoesAtuais||{});
+  Object.keys(out).forEach(function(k){
+    if(novasAprovacoes[k]!==false){ delete out[k]; return; } // corrigido — não precisa mais de exceção
+    if(Number(novosResultados[k])!==Number(out[k].valorObtido)){ delete out[k]; } // valor mudou — exceção antiga não se aplica
+  });
+  return out;
+}
+
+function classeStatusInsp(status){
+  if(status==='reprovado') return 'brd';
+  if(status==='aprovado_excecao') return 'bam';
+  if(status==='aprovado') return 'bvd';
+  return 'bcz';
+}
+function labelStatusInsp(status){
+  if(status==='reprovado') return '🔴 Reprovado';
+  if(status==='aprovado_excecao') return '🟡 Aprovado por Exceção';
+  if(status==='aprovado') return '✅ Aprovado';
+  return 'Sem avaliação';
+}
+
+var EXCECAO_CONTEXTO={inspFbKey:null, registro:null, camposElegiveis:[]};
+
+function abrirModalExcecao(inspFbKey, registro){
+  if(!podeAprovarExcecao()){ toast('Apenas Qualidade, Supervisão ou Admin podem aprovar exceção','err'); return; }
+  var camposElegiveis = CAMPOS_NUM.filter(function(c){
+    return registro.aprovacoes && registro.aprovacoes[c.key]===false
+      && PARAMS_EXCECAO_PERMITIDOS.indexOf(c.key)>-1
+      && !(registro.excecoes && registro.excecoes[c.key]); // já aprovado por exceção não aparece de novo
+  });
+  if(!camposElegiveis.length){ toast('Nenhum parâmetro reprovado desta análise é elegível para exceção','err'); return; }
+
+  var naoElegiveis = CAMPOS_NUM.filter(function(c){
+    return registro.aprovacoes && registro.aprovacoes[c.key]===false
+      && PARAMS_EXCECAO_PERMITIDOS.indexOf(c.key)===-1;
+  });
+
+  EXCECAO_CONTEXTO={inspFbKey:inspFbKey, registro:registro, camposElegiveis:camposElegiveis};
+  var pq = PARAMS_QUAL[registro.cod] || {};
+
+  var h='';
+  camposElegiveis.forEach(function(c){
+    var val=registro.resultados[c.key];
+    h+='<label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:10px;font-weight:400">';
+    h+='<input type="checkbox" class="exc-chk" value="'+c.key+'" checked style="margin-top:3px">';
+    h+='<span><strong>'+c.label+'</strong>: valor obtido '+fN(val,2)+(c.unidade?' '+c.unidade:'')+' — faixa especificada '+faixaTexto(c,pq)+'</span>';
+    h+='</label>';
+  });
+  G('exc-lista-campos').innerHTML=h;
+
+  var avisoEl=G('exc-aviso-nao-elegiveis');
+  if(naoElegiveis.length){
+    avisoEl.style.display='';
+    avisoEl.textContent='⚠ '+naoElegiveis.map(function(c){return c.label;}).join(', ')+' também está(ão) reprovado(s) mas não é elegível para exceção — a ordem continuará Reprovada até esse(s) parâmetro(s) ser(em) tratado(s).';
+  } else {
+    avisoEl.style.display='none';
+  }
+
+  G('exc-motivo').value='';
+  G('exc-obs').value='';
+  aM('ov-excecao');
+}
+
+function salvarExcecao(){
+  if(!podeAprovarExcecao()){ toast('Apenas Qualidade, Supervisão ou Admin podem aprovar exceção','err'); return; }
+  var motivo=G('exc-motivo').value.trim();
+  if(!motivo){ toast('Informe o motivo da aprovação por exceção','err'); return; }
+  var obs=G('exc-obs').value.trim();
+
+  var chks=document.querySelectorAll('#exc-lista-campos .exc-chk:checked');
+  if(!chks.length){ toast('Selecione ao menos um parâmetro para aprovar por exceção','err'); return; }
+
+  var inspFbKey=EXCECAO_CONTEXTO.inspFbKey, registro=EXCECAO_CONTEXTO.registro;
+  var pq = PARAMS_QUAL[registro.cod] || {};
+  var ts=agora();
+  var updates={};
+  var historicos=[];
+
+  Array.prototype.forEach.call(chks, function(chk){
+    var key=chk.value;
+    var campo=CAMPOS_NUM.find(function(c){return c.key===key;});
+    var entrada={
+      usuario:SES.login, usuarioNome:SES.nome||SES.login, ts:ts,
+      motivo:motivo, observacoes:obs||'',
+      valorObtido:registro.resultados[key], valorEspecificado:faixaTexto(campo,pq)
+    };
+    updates['qualidade_inspecoes/'+inspFbKey+'/excecoes/'+key]=entrada;
+    historicos.push(Object.assign({
+      inspFbKey:inspFbKey, opFbKey:registro.opFbKey, opId:registro.opId, cod:registro.cod,
+      desc:registro.desc, lote:registro.lote, linha:registro.linha, data:registro.data, hora:registro.hora,
+      campo:key, campoLabel:campo?campo.label:key
+    }, entrada));
+  });
+
+  DB.ref().update(updates).then(function(){
+    // grava o histórico permanente de auditoria — nunca é removido, mesmo se a inspeção for editada depois
+    return Promise.all(historicos.map(function(hreg){ return DB.ref('qualidade_excecoes_historico').push(hreg); }));
+  }).then(function(){
+    return DB.ref('qualidade_inspecoes/'+inspFbKey).once('value');
+  }).then(function(s){
+    var insp=s.val();
+    var novoStatus=computeStatusGeral(insp.aprovacoes, insp.excecoes);
+    return DB.ref('qualidade_inspecoes/'+inspFbKey+'/statusGeral').set(novoStatus);
+  }).then(function(){
+    toast('Exceção aprovada!','ok');
+    fM('ov-excecao');
+    if(typeof renderizarRastreioResultados==='function' && RAST_CACHE && RAST_CACHE.length){
+      renderizarRastreioResultados(RAST_CACHE.map(function(d){return d.op;}), null, '');
+    }
+  }).catch(function(e){ toast('Erro: '+e.message,'err'); });
+}
+
 document.addEventListener('keydown',function(e){
   if(e.key==='Escape'){
-    ['ov-insp','ov-nc','ov-nc-detalhe','ov-nc-resposta','ov-nc-avaliacao','ov-param','ov-usuario','ov-excluir-usuario','ov-retencao','ov-retencao-decisao','ov-contraprova'].forEach(fM);
+    ['ov-insp','ov-nc','ov-nc-detalhe','ov-nc-resposta','ov-nc-avaliacao','ov-param','ov-usuario','ov-excluir-usuario','ov-retencao','ov-retencao-decisao','ov-contraprova','ov-excecao'].forEach(fM);
   }
 });
 
@@ -975,6 +1128,28 @@ function carregarParamsQual(cb){
     PARAMS_QUAL = s.exists()? s.val() : {};
     if(cb) cb();
   }).catch(function(e){ toast('Erro ao carregar parâmetros: '+e.message,'err'); });
+}
+
+// Lista de parâmetros elegíveis para "Aprovação por Exceção" — configurável sem alterar código,
+// editando o array em qualidade_config/parametrosExcecao (ex: ["umid","aw","dens","corte","diam","temp"]).
+// Se o nó ainda não existir no Firebase, o próprio sistema o cria com o valor padrão na primeira
+// carga — assim a config fica visível e editável no console do Firebase desde o primeiro acesso,
+// em vez de depender silenciosamente do fallback embutido no código.
+function carregarConfigExcecao(cb){
+  var ref=DB.ref('qualidade_config/parametrosExcecao');
+  ref.once('value').then(function(s){
+    if(s.exists() && Array.isArray(s.val()) && s.val().length){
+      PARAMS_EXCECAO_PERMITIDOS = s.val();
+      if(cb) cb();
+      return;
+    }
+    // Nó ausente — grava o padrão no Firebase para tornar a config explícita e auditável.
+    console.warn('[qualidade_config/parametrosExcecao] não encontrado — criando com valor padrão:', PARAMS_EXCECAO_PERMITIDOS);
+    ref.set(PARAMS_EXCECAO_PERMITIDOS).then(function(){
+      if(SES && SES.perfil==='admin') toast('Config de parâmetros de exceção criada no Firebase com valor padrão','ok');
+    }).catch(function(e){ console.warn('Não foi possível gravar config padrão de exceção:', e.message); });
+    if(cb) cb();
+  }).catch(function(e){ toast('Erro ao carregar config de exceção: '+e.message,'err'); if(cb) cb(); });
 }
 
 // ============================================================
@@ -1344,7 +1519,12 @@ function salvarInspecao(){
 
   var op=INSP_CONTEXTO.op, linha=INSP_CONTEXTO.linha;
   var turno=turnoDeHora(hora);
-  var statusGeral = coleta.algumaAvaliada ? (coleta.algumaReprova?'reprovado':'aprovado') : 'sem_avaliacao';
+
+  // Preserva exceções já concedidas, mas invalida as que ficaram obsoletas (parâmetro corrigido
+  // ou valor alterado na edição) — nesse caso a Qualidade precisa reavaliar e aprovar de novo.
+  var excecoesExistentes = INSP_CONTEXTO.excecoesExistentes || {};
+  var excecoes = reconciliarExcecoes(excecoesExistentes, coleta.resultados, coleta.aprovacoes);
+  var statusGeral = computeStatusGeral(coleta.aprovacoes, excecoes);
 
   // Contraprova de bancada — só PB/EE/MM. Preserva o que já foi resolvido (edição não apaga histórico).
   var contraprova = Object.assign({}, INSP_CONTEXTO.contraprovaExistente||{});
@@ -1362,7 +1542,7 @@ function salvarInspecao(){
     lote:op.lote||'', linha:linha, turno:turno, data:data, hora:hora,
     analista:SES.login, analistaNome:SES.nome||SES.login, ts:agora(),
     resultados:coleta.resultados, aprovacoes:coleta.aprovacoes,
-    statusGeral:statusGeral, contraprova:contraprova
+    statusGeral:statusGeral, contraprova:contraprova, excecoes:excecoes
   };
 
   var fbKeyExistente=INSP_CONTEXTO.editandoFbKey;
@@ -2149,9 +2329,9 @@ function renderEvolucaoSku(cod, inspSku){
   // Histórico tabular
   var h='<table><thead><tr><th>Data</th><th>Hora</th><th>Linha</th><th>Lote</th><th>Status</th><th>Analista</th></tr></thead><tbody>';
   inspSku.slice().reverse().forEach(function(i){
-    var stCls = i.statusGeral==='reprovado'?'brd':i.statusGeral==='aprovado'?'bvd':'bcz';
+    var stCls = classeStatusInsp(i.statusGeral);
     h+='<tr><td>'+i.data.split('-').reverse().join('/')+'</td><td>'+i.hora+'</td><td>'+i.linha+'</td><td>'+(i.lote||'—')+'</td>';
-    h+='<td><span class="badge '+stCls+'">'+(i.statusGeral||'—')+'</span></td><td>'+(i.analistaNome||i.analista||'—')+'</td></tr>';
+    h+='<td><span class="badge '+stCls+'">'+labelStatusInsp(i.statusGeral)+'</span></td><td>'+(i.analistaNome||i.analista||'—')+'</td></tr>';
   });
   h+='</tbody></table>';
   G('dash-sku-historico').innerHTML=h;
@@ -2239,14 +2419,16 @@ function renderCEP(inspSku){
 function renderDashCards(insp, ncs){
   var total=insp.length;
   var aprovadas=insp.filter(function(i){return i.statusGeral==='aprovado';}).length;
+  var atencao=insp.filter(function(i){return i.statusGeral==='aprovado_excecao';}).length;
   var reprovadas=insp.filter(function(i){return i.statusGeral==='reprovado';}).length;
   var ncAbertas=ncs.filter(function(n){return n.status!=='Concluída';}).length;
   var ncConcluidas=ncs.filter(function(n){return n.status==='Concluída';}).length;
 
   var h='';
   h+='<div class="mc"><div class="ml">Total de Análises</div><div class="mv cg">'+total+'</div></div>';
-  h+='<div class="mc"><div class="ml">Aprovadas</div><div class="mv cg">'+aprovadas+'</div><div class="ms">'+(total?Math.round(aprovadas/total*100):0)+'%</div></div>';
-  h+='<div class="mc"><div class="ml">Reprovadas</div><div class="mv cr">'+reprovadas+'</div><div class="ms">'+(total?Math.round(reprovadas/total*100):0)+'%</div></div>';
+  h+='<div class="mc"><div class="ml">✅ Aprovadas</div><div class="mv cg">'+aprovadas+'</div><div class="ms">'+(total?Math.round(aprovadas/total*100):0)+'%</div></div>';
+  h+='<div class="mc"><div class="ml">🟡 Pontos de Atenção</div><div class="mv co">'+atencao+'</div><div class="ms">'+(total?Math.round(atencao/total*100):0)+'%</div></div>';
+  h+='<div class="mc"><div class="ml">🔴 Reprovadas</div><div class="mv cr">'+reprovadas+'</div><div class="ms">'+(total?Math.round(reprovadas/total*100):0)+'%</div></div>';
   h+='<div class="mc"><div class="ml">NC Abertas</div><div class="mv co">'+ncAbertas+'</div></div>';
   h+='<div class="mc"><div class="ml">NC Concluídas</div><div class="mv cg">'+ncConcluidas+'</div></div>';
   G('dash-cards').innerHTML=h;
@@ -2254,12 +2436,13 @@ function renderDashCards(insp, ncs){
 
 function renderChartStatus(insp){
   var aprovadas=insp.filter(function(i){return i.statusGeral==='aprovado';}).length;
+  var atencao=insp.filter(function(i){return i.statusGeral==='aprovado_excecao';}).length;
   var reprovadas=insp.filter(function(i){return i.statusGeral==='reprovado';}).length;
-  var semAval=insp.length-aprovadas-reprovadas;
+  var semAval=insp.length-aprovadas-atencao-reprovadas;
   if(DASH_CHARTS.status) DASH_CHARTS.status.destroy();
   DASH_CHARTS.status=new Chart(G('chQualStatus'),{
     type:'doughnut',
-    data:{labels:['Aprovadas','Reprovadas','Sem avaliação'],datasets:[{data:[aprovadas,reprovadas,semAval],backgroundColor:['#024f2b','#c0392b','#dde6dd']}]},
+    data:{labels:['Aprovadas','Pontos de Atenção','Reprovadas','Sem avaliação'],datasets:[{data:[aprovadas,atencao,reprovadas,semAval],backgroundColor:['#024f2b','#d29922','#c0392b','#dde6dd']}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:11}}}}}
   });
 }
@@ -2418,6 +2601,7 @@ function exportarRelatorioGeralPDF(d){
 
   var total=d.insp.length;
   var aprovadas=d.insp.filter(function(i){return i.statusGeral==='aprovado';}).length;
+  var atencao=d.insp.filter(function(i){return i.statusGeral==='aprovado_excecao';}).length;
   var reprovadas=d.insp.filter(function(i){return i.statusGeral==='reprovado';}).length;
   var ncAbertas=d.ncs.filter(function(n){return n.status!=='Concluída';}).length;
   var ncConcluidas=d.ncs.filter(function(n){return n.status==='Concluída';}).length;
@@ -2426,6 +2610,7 @@ function exportarRelatorioGeralPDF(d){
   y=pdfCards(doc,y,[
     {l:'TOTAL ANÁLISES',v:total,c:[2,79,43]},
     {l:'APROVADAS',v:aprovadas+' ('+(total?Math.round(aprovadas/total*100):0)+'%)',c:[2,79,43]},
+    {l:'PONTOS DE ATENÇÃO',v:atencao+' ('+(total?Math.round(atencao/total*100):0)+'%)',c:[210,153,34]},
     {l:'REPROVADAS',v:reprovadas+' ('+(total?Math.round(reprovadas/total*100):0)+'%)',c:[192,57,43]},
     {l:'NC ABERTAS',v:ncAbertas,c:[210,153,34]},
     {l:'NC CONCLUÍDAS',v:ncConcluidas,c:[2,79,43]}
@@ -2475,12 +2660,14 @@ function exportarFichaSkuPDF(d){
 
   var total=inspSku.length;
   var aprovadas=inspSku.filter(function(i){return i.statusGeral==='aprovado';}).length;
+  var atencao=inspSku.filter(function(i){return i.statusGeral==='aprovado_excecao';}).length;
   var reprovadas=inspSku.filter(function(i){return i.statusGeral==='reprovado';}).length;
 
   var y=26;
   y=pdfCards(doc,y,[
     {l:'INSPEÇÕES NO PERÍODO',v:total,c:[2,79,43]},
     {l:'APROVADAS',v:aprovadas,c:[2,79,43]},
+    {l:'PONTOS DE ATENÇÃO',v:atencao,c:[210,153,34]},
     {l:'REPROVADAS',v:reprovadas,c:[192,57,43]},
     {l:'TAXA DE APROVAÇÃO',v:(total?Math.round(aprovadas/total*100):0)+'%',c:total&&aprovadas/total>=.9?[2,79,43]:[210,153,34]}
   ]);
@@ -2525,6 +2712,13 @@ function exportarFichaSkuPDF(d){
 // RASTREABILIDADE POR LOTE
 // ============================================================
 var RAST_CACHE=[]; // cache dos dados brutos da última busca para exportação PDF
+var RAST_INSP_CACHE={}; // cache de inspeções (por fbKey) renderizadas na Rastreabilidade, usado pelo botão Aprovar Exceção
+
+function abrirModalExcecaoDoRastreio(inspFbKey){
+  var registro=RAST_INSP_CACHE[inspFbKey];
+  if(!registro){ toast('Não foi possível localizar esta inspeção — atualize a busca','err'); return; }
+  abrirModalExcecao(inspFbKey, registro);
+}
 
 function rastMudarAba(aba){
   var lote=aba==='lote';
@@ -2584,6 +2778,7 @@ function buscarRastreioPorData(){
 }
 
 function renderizarRastreioResultados(ops, destacarData, msgVazio){
+  RAST_INSP_CACHE={};
   if(!ops.length){
     G('rast-resultado').innerHTML='<div class="card" style="text-align:center;color:#999">'+msgVazio+'</div>';
     return;
@@ -2624,6 +2819,7 @@ function montarRastreioOP(op, destacarData, expandido){
     insps.sort(function(a,b){ return (a.data+a.hora)>(b.data+b.hora)?1:-1; });
 
     var reprovacoes = insps.filter(function(i){return i.statusGeral==='reprovado';}).length;
+    var atencoes = insps.filter(function(i){return i.statusGeral==='aprovado_excecao';}).length;
     var ncsAbertas = ncs.filter(function(n){return n.status!=='Concluída';}).length;
     var domId = encId(op.fbKey);
     var aberto = !!expandido;
@@ -2640,7 +2836,8 @@ function montarRastreioOP(op, destacarData, expandido){
     h+='<span style="font-size:11px;color:#4a664a">Lote: '+(op.lote||'—')+' · '+(op.linha||'—')+' · '+(op.data?op.data.split('-').reverse().join('/'):'—')+'</span>';
     h+='</div>';
     h+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">';
-    if(reprovacoes>0) h+='<span class="badge brd">⚠ '+reprovacoes+' reprovação(ões)</span>';
+    if(reprovacoes>0) h+='<span class="badge brd">🔴 '+reprovacoes+' reprovação(ões)</span>';
+    if(atencoes>0) h+='<span class="badge bam">🟡 '+atencoes+' ponto(s) de atenção</span>';
     if(ncsAbertas>0) h+='<span class="badge bo">🔧 '+ncsAbertas+' NC aberta(s)</span>';
     h+='<span style="font-size:11px;color:#4a664a">'+insps.length+' inspeção(ões)</span>';
     h+='</div>';
@@ -2667,15 +2864,18 @@ function montarRastreioOP(op, destacarData, expandido){
 
     h+='<div class="ct" style="margin-bottom:6px">Resultados de Qualidade ('+insps.length+')</div>';
     if(insps.length){
-      h+='<div class="tw"><table><thead><tr><th>Data</th><th>Hora</th><th>Analista</th><th>Status</th><th style="min-width:200px">Parâmetros Lançados</th></tr></thead><tbody>';
+      h+='<div class="tw"><table><thead><tr><th>Data</th><th>Hora</th><th>Analista</th><th>Status</th><th style="min-width:200px">Parâmetros Lançados</th><th></th></tr></thead><tbody>';
       insps.forEach(function(i){
-        var stCls=i.statusGeral==='reprovado'?'brd':'bvd';
+        var stCls=classeStatusInsp(i.statusGeral);
         var destaque=destacarData && i.data===destacarData;
+        var elegivelExcecao = i.statusGeral==='reprovado' && podeAprovarExcecao() && CAMPOS_NUM.some(function(c){
+          return i.aprovacoes && i.aprovacoes[c.key]===false && PARAMS_EXCECAO_PERMITIDOS.indexOf(c.key)>-1 && !(i.excecoes && i.excecoes[c.key]);
+        });
         h+='<tr'+(destaque?' style="background:#eaf3e8"':'')+'>';
         h+='<td>'+(destaque?'📌 ':'')+(i.data?i.data.split('-').reverse().join('/'):'—')+'</td>';
         h+='<td>'+(i.hora||'—')+'</td>';
         h+='<td>'+(i.analistaNome||i.analista||'—')+'</td>';
-        h+='<td><span class="badge '+stCls+'">'+(i.statusGeral||'—')+'</span></td>';
+        h+='<td><span class="badge '+stCls+'">'+labelStatusInsp(i.statusGeral)+'</span></td>';
         h+='<td><div style="font-size:11px;line-height:1.7">';
         // Mostra todos os parâmetros lançados com destaque nos fora da faixa
         CAMPOS_NUM.forEach(function(c){
@@ -2684,13 +2884,18 @@ function montarRastreioOP(op, destacarData, expandido){
           var fora=i.aprovacoes&&i.aprovacoes[c.key]===false;
           var faixa=faixaTexto(c,pq);
           var cp=i.contraprova&&i.contraprova[c.key];
+          var exc=i.excecoes&&i.excecoes[c.key];
           if(cp && cp.status==='aguardando'){
             h+='<span style="color:#8a5700;font-weight:700">'+c.label+': ⏳ Aguardando análise de bancada (NIR: '+fN(cp.nirValor,2)+(c.unidade?' '+c.unidade:'')+')</span><br>';
             return;
           }
-          h+='<span style="'+(fora?'color:#c0392b;font-weight:700':'')+'">';
+          h+='<span style="'+(fora&&!exc?'color:#c0392b;font-weight:700':'')+'">';
           h+=c.label+': '+fN(val,2)+(c.unidade?' '+c.unidade:'');
           if(fora) h+=' ⚠ ('+faixa+')';
+          if(exc){
+            var tituloExc='Aprovado por exceção em '+new Date(exc.ts).toLocaleString('pt-BR')+' por '+(exc.usuarioNome||exc.usuario)+'. Motivo: '+String(exc.motivo||'').replace(/"/g,"'");
+            h+=' <span title="'+tituloExc+'" style="color:#8a5700;font-weight:700">🟡 (exceção)</span>';
+          }
           if(cp && cp.status==='substituido'){
             var tituloCp='Valor original do NIR: '+fN(cp.nirValor,2)+'. Substituído por bancada em '+new Date(cp.ts).toLocaleString('pt-BR')+' por '+(cp.usuarioNome||cp.usuario)+'. Motivo: '+String(cp.motivo||'').replace(/"/g,"'");
             h+=' <span title="'+tituloCp+'" style="color:#0a7a44">🔄 (bancada)</span>';
@@ -2703,6 +2908,12 @@ function montarRastreioOP(op, destacarData, expandido){
           h+='<span>'+c.label+': '+val+'</span><br>';
         });
         h+='</div></td>';
+        h+='<td>';
+        if(elegivelExcecao){
+          RAST_INSP_CACHE[i.fbKey]=i;
+          h+='<button class="btn bxs bo" onclick="event.stopPropagation();abrirModalExcecaoDoRastreio(\''+esc(i.fbKey)+'\')">🟡 Aprovar Exceção</button>';
+        }
+        h+='</td>';
         h+='</tr>';
       });
       h+='</tbody></table></div>';
@@ -2808,12 +3019,14 @@ function exportarRastreabilidadePDF(){
 
       insps.forEach(function(insp){
         var reprovado=insp.statusGeral==='reprovado';
+        var atencao=insp.statusGeral==='aprovado_excecao';
         // Monta lista de parâmetros com alertas
         var params=[];
         CAMPOS_NUM.forEach(function(c){
           var val=insp.resultados&&insp.resultados[c.key];
           if(val===undefined||val===null) return;
           var fora=insp.aprovacoes&&insp.aprovacoes[c.key]===false;
+          var exc=insp.excecoes&&insp.excecoes[c.key];
           var cp=insp.contraprova&&insp.contraprova[c.key];
           if(cp && cp.status==='aguardando'){
             params.push({txt:c.label+': ⏳ Aguardando análise de bancada (NIR: '+fN(cp.nirValor,2)+')', fora:false});
@@ -2821,8 +3034,9 @@ function exportarRastreabilidadePDF(){
           }
           var txt=c.label+': '+fN(val,2)+(c.unidade?' '+c.unidade:'');
           if(fora) txt+=' ⚠ ('+faixaTexto(c,pq)+')';
+          if(exc) txt+=' (exceção: '+(exc.usuarioNome||exc.usuario)+')';
           if(cp && cp.status==='substituido') txt+=' 🔄 (bancada, NIR: '+fN(cp.nirValor,2)+')';
-          params.push({txt:txt, fora:fora});
+          params.push({txt:txt, fora:fora&&!exc});
         });
         CAMPOS_TXT.forEach(function(c){
           var val=insp.resultados&&insp.resultados[c.key];
@@ -2837,6 +3051,10 @@ function exportarRastreabilidadePDF(){
           doc.setFillColor(255,245,245); doc.rect(ML,y,W,linhaH,'F');
           // Borda esquerda vermelha indicando reprovação
           doc.setFillColor(192,57,43); doc.rect(ML,y,1,linhaH,'F');
+        } else if(atencao){
+          doc.setFillColor(255,251,235); doc.rect(ML,y,W,linhaH,'F');
+          // Borda esquerda amarela indicando ponto de atenção (aprovado por exceção)
+          doc.setFillColor(210,153,34); doc.rect(ML,y,1,linhaH,'F');
         }
 
         doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(40,40,40);
@@ -2850,6 +3068,10 @@ function exportarRastreabilidadePDF(){
           doc.setFillColor(192,57,43); doc.roundedRect(cols[3],y+1,17,3.5,1,1,'F');
           doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(255,255,255);
           doc.text('REPROVADO',cols[3]+1,y+3.4);
+        } else if(atencao){
+          doc.setFillColor(210,153,34); doc.roundedRect(cols[3],y+1,22,3.5,1,1,'F');
+          doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(255,255,255);
+          doc.text('P/ ATENÇÃO',cols[3]+1,y+3.4);
         } else {
           doc.setFillColor(2,79,43); doc.roundedRect(cols[3],y+1,15,3.5,1,1,'F');
           doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(255,255,255);
@@ -3671,7 +3893,7 @@ function abrirInspecaoOP(linha, opFbKey){
   var dataIni=hoje();
 
   INSP_CONTEXTO={
-    linha:linha, op:op, pq:pq, editandoFbKey:null, contraprovaExistente:null
+    linha:linha, op:op, pq:pq, editandoFbKey:null, contraprovaExistente:null, excecoesExistentes:null
   };
 
   G('insp-titulo').textContent='Inspeção — '+linha;
@@ -3738,6 +3960,7 @@ function verificarDuplicidadeInspecao(linha, op, data){
         ' por '+(existente.dados.analista||'—')+'). Os campos abaixo foram carregados para edição.';
       INSP_CONTEXTO.editandoFbKey=existente.fbKey;
       INSP_CONTEXTO.contraprovaExistente=existente.dados.contraprova||null;
+      INSP_CONTEXTO.excecoesExistentes=existente.dados.excecoes||null;
       montarFormularioInspecao(existente.dados);
     }
   });
