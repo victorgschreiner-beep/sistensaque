@@ -402,16 +402,11 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="ch"><span class="ct">Produtos</span><div style="display:flex;gap:8px"><button class="btn bsm" style="background:#739630;border-color:#739630;color:#fff" onclick="importarProdutos()">&#8659; Importar (432)</button><button class="btn bp bsm" onclick="abrirNovoProd()">+ Novo</button></div></div>
     <div class="tw"><table><thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th></tr></thead><tbody id="prodbody"></tbody></table></div>
   </div>
-  <div class="card" style="border-left:4px solid #d29922">
-    <div class="ch">
-      <span class="ct" style="color:#d29922">🔧 Manutencao — Corrigir OPs Reprogramadas</span>
-      <button class="btn bsm" style="background:#d29922;border-color:#d29922;color:#fff" onclick="corrigirOpsReprogramadas()">Verificar e Corrigir</button>
-    </div>
-    <div style="font-size:12px;color:#4a664a;margin-bottom:10px">
-      Corrige OPs que foram reprogramadas antes da versao atual e ainda tem os contadores de turno (T1/T2/T3) com valores do dia anterior. O sistema recalcula esses contadores com base apenas nos apontamentos da data nova da OP.
-    </div>
-    <div id="corr-reprog-resultado" style="font-size:12px;color:#024f2b"></div>
-  </div>
+  <!-- Card "Manutencao — Corrigir OPs Reprogramadas" removido por decisao do usuario:
+       o botao escrevia no Firebase sem nenhuma confirmacao, varrendo TODAS as OPs
+       reprogramadas do sistema de uma vez, com uma formula de calculo com bug
+       (mesma familia do bug corrigido em reprogramarOP()) e resetava a perda pra
+       zero em toda OP corrigida. Risco de sobrescrever dados nao intencionalmente. -->
 </div>
 
 </div>
@@ -690,6 +685,13 @@ function dataTurno(turno){
   return hoje();
 }
 
+// Dia operacional para CRIAÇÃO/REPROGRAMAÇÃO de OP — aplica a regra das 21h
+// (a partir das 21h, uma OP nova/reprogramada já pertence ao dia operacional seguinte,
+// igual à Extrusão). Reaproveita dataTurno(1), que já trata o fuso BR (UTC-3) corretamente.
+// Usado SÓ nos pontos de criação/reprogramação de OP — não altera hoje() nem nenhuma
+// outra tela (filtros, dashboard, exportações continuam em data de calendário puro).
+function diaOperacionalOP(){ return dataTurno(1); }
+
 // Retorna label legível da data do turno
 function labelDataTurno(turno){
   var dt=dataTurno(turno);
@@ -830,7 +832,7 @@ function go(s,btn){
 // ============================================================
 function iniciarApp(){
   G('ddt').value=hoje();
-  G('nopdt').value=hoje();
+  G('nopdt').value=diaOperacionalOP();
   ld(true,'Carregando dados...');
 
   // Carrega produtos
@@ -1378,7 +1380,7 @@ function preencherCamposPDF(texto, status){
 
 function abrirNovaOP(){
   if(SES&&(SES.perfil==='operador'||SES.perfil==='supervisor')) return;
-  G('nopc').value='';G('nopd').value='';G('nopl').value='';G('nopq').value='';G('nopo').value='';G('nopdt').value=hoje();
+  G('nopc').value='';G('nopd').value='';G('nopl').value='';G('nopq').value='';G('nopo').value='';G('nopdt').value=diaOperacionalOP();
   if(G('nopid')) G('nopid').value='';
   if(G('pdf-status')){G('pdf-status').style.display='none';G('pdf-status').textContent='';}
   G('mop').classList.add('on');
@@ -2121,14 +2123,21 @@ function reprogramarOP(fbKey){
   if(!op) return;
   if(op.status==='Concluida'){toast('OP ja concluida','err');return;}
 
-  var dtAtual=op.data||hoje();
+  var dtAtual=op.data||diaOperacionalOP();
   var dtProx=new Date(dtAtual+'T12:00:00');
   dtProx.setDate(dtProx.getDate()+1);
   var dtNova=dtProx.toISOString().slice(0,10);
   var fator=op.tipo==='SC'?25:op.tipo==='BG'?750:1;
 
-  // Real do dia atual — fonte confiavel: realPorData[dtAtual] (sempre em KG)
-  var realDoDia=Number((op.realPorData||{})[dtAtual])||0;
+  // Real produzido POR ESTE ELO — usa op.real (total acumulado desde a criação deste
+  // registro, somando todos os turnos/dias em que produziu), NUNCA realPorData[dtAtual].
+  // Bug anterior: realPorData[dtAtual] só pegava a fatia gravada na data de NASCIMENTO
+  // do elo — se o elo ficou ativo produzindo por mais de um dia antes de ser reprogramado
+  // de novo, a produção dos dias seguintes (gravada sob outras chaves de data dentro do
+  // mesmo realPorData) era descartada da conta, inflando o saldo reprogramado.
+  // op.real já é seguro pra isso: cada elo novo sempre nasce com real:0, então nunca
+  // soma produção de elos anteriores — é só o total genuíno deste elo específico.
+  var realDoDia=Number(op.real)||0;
 
   // IMPORTANTE: op.prog / op.progOriginal sao SEMPRE guardados em KG puro,
   // igual a qualquer outra OP do sistema (ver salvarOP, linha ~934, ~1034 etc,
@@ -2141,14 +2150,24 @@ function reprogramarOP(fbKey){
 
   var realAcumAnterior=Number(op.realAcumulado)||0; // ja em KG
   var novoRealAcum=realAcumAnterior+realDoDia; // KG
-  var saldoKG=Math.max(progOrigKG-novoRealAcum,0); // saldo sempre em KG
+
+  // Perda tambem precisa ser descontada do saldo — perda ja virou refugo, nao
+  // deve voltar pra fila como se ainda pudesse ser produzida. Segue o mesmo padrao
+  // de acumulo em cadeia que realAcumulado ja usa (perdaAcumulado e novo campo).
+  var perdaAcumAnterior=Number(op.perdaAcumulado)||0; // ja em KG
+  var perdaDoElo=Number(op.perda)||0; // perda registrada so neste elo, ja em KG
+  var novoPerdaAcum=perdaAcumAnterior+perdaDoElo;
+
+  var saldoKG=Math.max(progOrigKG-novoRealAcum-novoPerdaAcum,0); // saldo sempre em KG, ja descontando perda
   var saldoStr=op.tipo!=='KG'?fN(Math.round(saldoKG/fator))+' '+(op.tipo==='SC'?'sc':'bg')+' ('+fN(saldoKG)+' kg)':fN(saldoKG)+' kg';
 
   if(!confirm(
     'Reprogramar OP '+op.id+' para '+dtNova+'?\n\n'+
     'Prog. original:     '+fN(progOrigKG)+' kg\n'+
-    'Realizado '+dtAtual.split('-').reverse().join('/')+': '+fN(realDoDia)+' kg\n'+
+    'Produzido nesta OP (todos os dias): '+fN(realDoDia)+' kg\n'+
     'Acumulado anterior: '+fN(realAcumAnterior)+' kg\n'+
+    'Perda (esta OP): '+fN(perdaDoElo)+' kg\n'+
+    'Perda acumulada: '+fN(perdaAcumAnterior)+' kg\n'+
     'Saldo (novo prog):  '+saldoStr+'\n\n'+
     'A OP atual sera CONCLUIDA no dia '+dtAtual.split('-').reverse().join('/')+'.\n'+
     'Uma nova OP sera criada para '+dtNova+' como 1a da fila.'
@@ -2206,6 +2225,7 @@ function reprogramarOP(fbKey){
     reprogramadaDeFbKey:fbKey,
     progOriginal:progOrigKG,
     realAcumulado:novoRealAcum,
+    perdaAcumulado:novoPerdaAcum,
     filaPosicao:0,
     criadoPor:SES.login,
     criadoEm:agora()
@@ -2219,7 +2239,7 @@ function reprogramarOP(fbKey){
   }).then(function(ref){
     ld(false);
     toast('OP '+op.id+' concluida — nova OP '+novoId+' criada para '+dtNova,'ok');
-    addLog('REPROGRAMAR',op.id+' → '+novoId+' | '+dtAtual+' → '+dtNova+' | saldo: '+fN(saldoKG)+' kg');
+    addLog('REPROGRAMAR',op.id+' → '+novoId+' | '+dtAtual+' → '+dtNova+' | saldo: '+fN(saldoKG)+' kg | perda acum: '+fN(novoPerdaAcum)+' kg');
   }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
 }
 
@@ -4049,6 +4069,14 @@ function salvarProd(){
 // ============================================================
 // == MANUTENCAO: corrigir OPs reprogramadas ==
 function corrigirOpsReprogramadas(){
+  // Desativada por decisao do usuario — tinha bug de calculo (mesma familia do
+  // problema corrigido em reprogramarOP()) e escrevia no Firebase sem confirmacao,
+  // varrendo todas as OPs reprogramadas do sistema de uma vez. Botao removido da
+  // tela; funcao mantida so como registro, sem executar nada.
+  toast('Funcionalidade desativada','err');
+  return;
+
+  /* eslint-disable no-unreachable */
   if(!DB){toast('Firebase nao conectado','err');return;}
   var res=G('corr-reprog-resultado');
   if(res) res.innerHTML='<span style="color:#d29922">Verificando...</span>';
