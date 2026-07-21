@@ -105,6 +105,22 @@ tr:hover td{background:rgba(2,79,43,.03)}
 .tab.on{background:#024f2b;color:#fff}
 .ali{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:12px;background:rgba(2,79,43,.08);border:1px solid rgba(2,79,43,.2);color:#024f2b}
 
+/* DASHBOARD */
+.dash-filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end}
+.dash-filters .fg{margin-bottom:0;min-width:150px;flex:1}
+.mc.click{cursor:pointer;transition:.15s}
+.mc.click:hover{border-color:#024f2b;box-shadow:0 2px 10px rgba(2,79,43,.12)}
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:980px){.dash-grid{grid-template-columns:1fr}}
+.chart-wrap{position:relative;height:260px}
+.chart-toggle{display:flex;gap:4px;flex-wrap:wrap}
+.chart-toggle button{padding:3px 10px;font-size:11px;border-radius:20px;border:1px solid var(--bd);background:#f4f6f4;color:#4a664a;cursor:pointer;font-family:inherit}
+.chart-toggle button.on{background:#024f2b;color:#fff;border-color:#024f2b}
+.rank-table th{cursor:pointer;user-select:none}
+.rank-table th:hover{color:#739630}
+.rank-table td.clk{cursor:pointer}
+.rank-table tr:hover td{background:rgba(2,79,43,.04)}
+
 #loader{position:fixed;inset:0;background:rgba(1,40,22,.7);z-index:1000;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px}
 #loader.on{display:flex}
 .spin{width:34px;height:34px;border:3px solid rgba(115,150,48,.3);border-top-color:#739630;border-radius:50%;animation:sp .7s linear infinite}
@@ -138,9 +154,10 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <span class="pill" id="pfil">—</span>
   </div>
   <div class="nav">
+    <button class="nb" id="nb-dash" onclick="go('dash',this)">Dashboard</button>
     <button class="nb" id="nb-fila" onclick="go('fila',this)">Fila de Chamados <span class="nc-dot" id="fila-dot" style="display:none"></span></button>
     <button class="nb" id="nb-abrir" onclick="go('abrir',this)">Abrir Chamado</button>
-    <button class="nb" id="nb-usr" style="display:none" onclick="go('usr',this)">Usuários</button>
+    <button class="nb" id="nb-usr" style="display:none" onclick="go('usr',this)">Administrador</button>
   </div>
   <div class="ubar">
     <span class="rtdot"></span>
@@ -151,6 +168,101 @@ tr:hover td{background:rgba(2,79,43,.03)}
 </div>
 
 <div class="content">
+
+<!-- ============ TELA: DASHBOARD ============ -->
+<div class="scr" id="scr-dash">
+  <div class="ch">
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Dashboard <span style="font-size:11px;color:#739630;font-weight:500">&#9679; ao vivo</span></h2>
+    <button class="btn bsm" onclick="renderDashboard()">↻ Atualizar</button>
+  </div>
+
+  <div class="card">
+    <div class="dash-filters">
+      <div class="fg"><label class="fl">Período</label>
+        <select id="dash-periodo" onchange="renderDashboard()">
+          <option value="hoje">Hoje</option>
+          <option value="7d">Últimos 7 dias</option>
+          <option value="30d" selected>Últimos 30 dias</option>
+          <option value="90d">Últimos 90 dias</option>
+          <option value="tudo">Todo o histórico</option>
+        </select>
+      </div>
+      <div class="fg"><label class="fl">Setor / Máquina</label>
+        <select id="dash-setor" onchange="renderDashboard()"><option value="">Todos</option></select>
+      </div>
+      <div class="fg"><label class="fl">Responsável</label>
+        <select id="dash-resp" onchange="renderDashboard()"><option value="">Todos</option></select>
+      </div>
+    </div>
+  </div>
+
+  <div class="mrow" id="dash-kpis"></div>
+
+  <div class="dash-grid">
+
+    <div class="card">
+      <div class="ch"><span class="ct">Tempo Médio de Espera</span>
+        <div class="chart-toggle" id="tg-espera">
+          <button class="on" data-v="dia" onclick="dashToggle('espera','dia',this)">Dia</button>
+          <button data-v="semana" onclick="dashToggle('espera','semana',this)">Semana</button>
+          <button data-v="mes" onclick="dashToggle('espera','mes',this)">Mês</button>
+          <button data-v="colab" onclick="dashToggle('espera','colab',this)">Colaborador</button>
+          <button data-v="setor" onclick="dashToggle('espera','setor',this)">Setor/Máquina</button>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="ch-espera"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><span class="ct">Tempo Médio de Serviço por Setor/Máquina</span></div>
+      <div class="chart-wrap"><canvas id="ch-servico"></canvas></div>
+    </div>
+
+    <div class="card" style="grid-column:1/-1">
+      <div class="ch"><span class="ct">Ranking por Colaborador</span>
+        <div class="chart-toggle">
+          <button class="on" id="rk-melhor" onclick="dashOrdenarRanking('melhor')">Melhor → Pior</button>
+          <button id="rk-pior" onclick="dashOrdenarRanking('pior')">Pior → Melhor</button>
+        </div>
+      </div>
+      <div class="tw"><table class="rank-table">
+        <thead><tr>
+          <th>Colaborador</th>
+          <th onclick="dashOrdenarRankingCol('qtd')">OS Executadas</th>
+          <th onclick="dashOrdenarRankingCol('espera')">Tempo Médio Espera</th>
+          <th onclick="dashOrdenarRankingCol('exec')">Tempo Médio Execução</th>
+          <th onclick="dashOrdenarRankingCol('total')">Tempo Total Trabalhado</th>
+        </tr></thead>
+        <tbody id="dash-ranking-corpo"></tbody>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><span class="ct">Chamados por Motivo</span></div>
+      <div class="chart-wrap"><canvas id="ch-motivo"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><span class="ct">Chamados por Setor/Máquina</span></div>
+      <div class="chart-wrap"><canvas id="ch-setor"></canvas></div>
+    </div>
+
+    <div class="card" style="grid-column:1/-1">
+      <div class="ch"><span class="ct">Evolução Mensal</span></div>
+      <div class="chart-wrap"><canvas id="ch-evolucao"></canvas></div>
+    </div>
+
+    <div class="card" style="grid-column:1/-1">
+      <div class="ch"><span class="ct">Tempo Parado por Setor/Máquina</span></div>
+      <div class="chart-wrap"><canvas id="ch-parado"></canvas></div>
+      <div class="tw" style="margin-top:10px"><table>
+        <thead><tr><th>Setor/Máquina</th><th>Qtd. Paradas</th><th>Tempo Médio por Parada</th></tr></thead>
+        <tbody id="dash-parado-corpo"></tbody>
+      </table></div>
+    </div>
+
+  </div>
+</div>
 
 <!-- ============ TELA: FILA DE CHAMADOS ============ -->
 <div class="scr" id="scr-fila">
@@ -213,15 +325,41 @@ tr:hover td{background:rgba(2,79,43,.03)}
 
 <!-- ============ TELA: USUÁRIOS (admin) ============ -->
 <div class="scr" id="scr-usr">
-  <div class="ch">
-    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Usuários</h2>
-    <button class="btn bp" onclick="abrirNovoUsuario()">+ Novo Usuário</button>
+  <div class="ch"><h2 style="font-size:16px;font-weight:700;color:#024f2b">Administrador</h2></div>
+  <div class="tabs">
+    <button class="tab on" id="atab-usuarios" onclick="adminTab('usuarios')">Usuários</button>
+    <button class="tab" id="atab-setores" onclick="adminTab('setores')">Setores Solicitantes</button>
+    <button class="tab" id="atab-motivos" onclick="adminTab('motivos')">Motivos de Chamado</button>
   </div>
-  <div class="card">
-    <div class="tw"><table>
-      <thead><tr><th>Login</th><th>Nome</th><th>Perfil</th><th>Status</th><th>Ações</th></tr></thead>
-      <tbody id="usuarios-corpo"><tr><td colspan="5" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr></tbody>
-    </table></div>
+
+  <div id="admin-usuarios">
+    <div class="ch"><div></div><button class="btn bp" onclick="abrirNovoUsuario()">+ Novo Usuário</button></div>
+    <div class="card">
+      <div class="tw"><table>
+        <thead><tr><th>Login</th><th>Nome</th><th>Perfil</th><th>Status</th><th>Ações</th></tr></thead>
+        <tbody id="usuarios-corpo"><tr><td colspan="5" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <div id="admin-setores" style="display:none">
+    <div class="ch"><div></div><button class="btn bp" onclick="abrirNovoSetor()">+ Novo Setor</button></div>
+    <div class="card">
+      <div class="tw"><table>
+        <thead><tr><th>Setor</th><th>Identificador (perfil)</th><th>Ações</th></tr></thead>
+        <tbody id="setores-corpo"></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <div id="admin-motivos" style="display:none">
+    <div class="ch"><div></div><button class="btn bp" onclick="abrirNovoMotivo()">+ Novo Motivo</button></div>
+    <div class="card">
+      <div class="tw"><table>
+        <thead><tr><th>Motivo</th><th>Ações</th></tr></thead>
+        <tbody id="motivos-corpo"></tbody>
+      </table></div>
+    </div>
   </div>
 </div>
 
@@ -287,8 +425,51 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
 </div>
 
+<!-- MODAL: LISTA DETALHADA (drill-down do dashboard) -->
+<div class="ov" id="ov-lista-detalhada">
+  <div class="modal" style="width:680px">
+    <div class="mt" id="ld-titulo">Chamados</div>
+    <div class="tw" style="max-height:60vh;overflow-y:auto"><table>
+      <thead><tr><th>Abertura</th><th>Setor/Máquina</th><th>Motivo</th><th>Solicitante</th><th>Status</th><th>Técnico</th></tr></thead>
+      <tbody id="ld-corpo"></tbody>
+    </table></div>
+    <div class="mfoot"><button class="btn bsm" onclick="fM('ov-lista-detalhada')">Fechar</button></div>
+  </div>
+</div>
+
+<!-- MODAL: SETOR SOLICITANTE (admin) -->
+<div class="ov" id="ov-setor">
+  <div class="modal">
+    <div class="mt" id="setor-titulo">Novo Setor Solicitante</div>
+    <div class="fg"><label class="fl">Nome do setor</label><input type="text" id="setor-label" placeholder="ex: Expedição"></div>
+    <div class="fg" id="setor-valor-wrap" style="display:none">
+      <label class="fl">Identificador interno (perfil) — não pode ser alterado</label>
+      <input type="text" id="setor-valor" disabled>
+    </div>
+    <input type="hidden" id="setor-fbkey">
+    <div class="mfoot">
+      <button class="btn bsm" onclick="fM('ov-setor')">Cancelar</button>
+      <button class="btn bsm bp" id="btn-salvar-setor" onclick="salvarSetorConfig()">Criar Setor</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: MOTIVO DE CHAMADO (admin) -->
+<div class="ov" id="ov-motivo">
+  <div class="modal">
+    <div class="mt" id="motivo-titulo">Novo Motivo</div>
+    <div class="fg"><label class="fl">Descrição do motivo</label><input type="text" id="motivo-texto" placeholder="ex: Elétrica"></div>
+    <input type="hidden" id="motivo-fbkey">
+    <div class="mfoot">
+      <button class="btn bsm" onclick="fM('ov-motivo')">Cancelar</button>
+      <button class="btn bsm bp" id="btn-salvar-motivo" onclick="salvarMotivoConfig()">Criar Motivo</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 // ============================================================
 // FIREBASE CONFIG — mesmo banco do ensaque/extrusão/qualidade
@@ -303,10 +484,11 @@ firebase.initializeApp(firebaseConfig);
 var DB = firebase.database();
 
 // ============================================================
-// PLACEHOLDERS — EDITAR AQUI (Victor vai enviar as listas finais)
+// PADRÕES INICIAIS — usados só na primeira vez, pra semear o Firebase.
+// Depois disso, a lista real vive em manutencao_config/ e é editável
+// pela tela Administrador → Setores / Motivos. Editar aqui não muda
+// nada depois que o Firebase já tiver dados.
 // ============================================================
-// Setores que podem abrir chamado manual. "value" vira o perfil no cadastro
-// de usuário (au-perfil / usr-perfil). "label" é o texto exibido.
 var SETORES_CHAMADO = [
   {value:"expedicao",     label:"Expedição"},
   {value:"almoxarifado",  label:"Almoxarifado"},
@@ -314,11 +496,51 @@ var SETORES_CHAMADO = [
   {value:"ti",            label:"TI"}
 ];
 
-// Motivos padronizados dos chamados manuais.
-var MOTIVOS_MANUAL = [
-  "Elétrica","Hidráulica","Predial","TI / Informática",
-  "Equipamento","Refrigeração","Outros"
+var MOTIVOS_CHAMADO = [
+  {texto:"Elétrica"},{texto:"Hidráulica"},{texto:"Predial"},
+  {texto:"TI / Informática"},{texto:"Equipamento"},{texto:"Refrigeração"},{texto:"Outros"}
 ];
+
+function slugify(txt){
+  return txt.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().trim().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+}
+
+// Carrega a config real do Firebase. Se ainda não existir (primeira vez),
+// semeia com os padrões acima — cada um ganha um fbKey de verdade e passa
+// a ser editável/excluível pela tela. Roda uma única vez ao carregar a página.
+function carregarConfigInicial(){
+  var p1=DB.ref('manutencao_config/setores').once('value').then(function(snap){
+    if(snap.exists()){
+      var arr=[];
+      snap.forEach(function(c){var v=c.val();arr.push({value:v.value,label:v.label,fbKey:c.key});});
+      SETORES_CHAMADO=arr;
+    } else {
+      var novos=[];
+      SETORES_CHAMADO.forEach(function(s){
+        var ref=DB.ref('manutencao_config/setores').push({value:s.value,label:s.label});
+        novos.push({value:s.value,label:s.label,fbKey:ref.key});
+      });
+      SETORES_CHAMADO=novos;
+    }
+  });
+  var p2=DB.ref('manutencao_config/motivos').once('value').then(function(snap){
+    if(snap.exists()){
+      var arr=[];
+      snap.forEach(function(c){arr.push({texto:c.val().texto,fbKey:c.key});});
+      MOTIVOS_CHAMADO=arr;
+    } else {
+      var novos=[];
+      MOTIVOS_CHAMADO.forEach(function(m){
+        var ref=DB.ref('manutencao_config/motivos').push({texto:m.texto});
+        novos.push({texto:m.texto,fbKey:ref.key});
+      });
+      MOTIVOS_CHAMADO=novos;
+    }
+  });
+  return Promise.all([p1,p2]);
+}
+var CONFIG_PRONTA=carregarConfigInicial();
 
 // ============================================================
 // GLOBAIS
@@ -377,7 +599,9 @@ function doLogin(){
   var u=G('lu').value.trim(), p=G('lp').value;
   if(!u||!p) return;
   ld(true,'Autenticando...');
-  DB.ref('usuarios').orderByChild('login').equalTo(u).once('value').then(function(snap){
+  CONFIG_PRONTA.then(function(){
+    return DB.ref('usuarios').orderByChild('login').equalTo(u).once('value');
+  }).then(function(snap){
     ld(false);
     if(!snap.exists()){ G('lerr').style.display='block'; return; }
     var found=null;
@@ -415,6 +639,7 @@ function aplicarSessao(){
   G('uav').textContent=(SES.nome||SES.login).slice(0,2).toUpperCase();
   G('pfil').textContent=setorLabel(SES.perfil);
   G('nb-fila').style.display=podeVerFila()?'':'none';
+  G('nb-dash').style.display=podeVerFila()?'':'none';
   G('nb-usr').style.display=podeAdmin()?'':'none';
 }
 
@@ -494,18 +719,23 @@ function go(tela,btn){
   document.querySelectorAll('.nb').forEach(function(b){b.classList.remove('on');});
   G('scr-'+tela).classList.add('on');
   if(btn) btn.classList.add('on');
-  if(tela==='usr') carregarUsuarios();
+  if(tela==='usr') adminTab('usuarios');
+  if(tela==='dash'){ monitorarFila(); renderDashboard(); }
 }
 
 // ============================================================
 // FILA DE CHAMADOS (Firebase realtime)
 // ============================================================
+var FILA_LISTENER_ATIVO=false;
 function monitorarFila(){
+  if(FILA_LISTENER_ATIVO) return;
+  FILA_LISTENER_ATIVO=true;
   DB.ref('manutencao_os').on('value',function(snap){
     FILA_CACHE=[];
     if(snap.exists()) snap.forEach(function(c){var v=c.val();v.fbKey=c.key;FILA_CACHE.push(v);});
     FILA_CACHE.sort(function(a,b){return (b.aberturaTs||'')>(a.aberturaTs||'')?1:-1;});
     renderFila();
+    if(G('scr-dash').classList.contains('on')) renderDashboard();
   });
 }
 
@@ -628,7 +858,7 @@ function montarSelectSetor(){
 
 function montarSelectMotivo(){
   var h='';
-  MOTIVOS_MANUAL.forEach(function(m){h+='<option value="'+m+'">'+m+'</option>';});
+  MOTIVOS_CHAMADO.forEach(function(m){h+='<option value="'+m.texto+'">'+m.texto+'</option>';});
   G('ab-motivo').innerHTML=h;
 }
 
@@ -824,6 +1054,501 @@ function excluirChamado(fbKey){
   DB.ref('manutencao_os/'+fbKey).remove().then(function(){
     toast('Chamado excluído!','ok');
   }).catch(function(e){toast('Erro: '+e.message,'err');});
+}
+
+// ============================================================
+// ABA ADMINISTRADOR — alterna entre Usuários / Setores / Motivos
+// ============================================================
+function adminTab(nome){
+  ['usuarios','setores','motivos'].forEach(function(n){
+    G('atab-'+n).classList.toggle('on',n===nome);
+    G('admin-'+n).style.display=(n===nome)?'':'none';
+  });
+  if(nome==='usuarios') carregarUsuarios();
+  else if(nome==='setores') renderSetoresAdmin();
+  else if(nome==='motivos') renderMotivosAdmin();
+}
+
+// ============================================================
+// SETORES SOLICITANTES (admin)
+// ============================================================
+function renderSetoresAdmin(){
+  var corpo=G('setores-corpo');
+  if(!SETORES_CHAMADO.length){
+    corpo.innerHTML='<tr><td colspan="3" style="text-align:center;padding:20px;color:#739630">Nenhum setor cadastrado</td></tr>';
+    return;
+  }
+  var h='';
+  SETORES_CHAMADO.forEach(function(s){
+    h+='<tr>';
+    h+='<td style="font-weight:600">'+s.label+'</td>';
+    h+='<td><span class="badge bcz">'+s.value+'</span></td>';
+    h+='<td style="display:flex;gap:4px">';
+    h+='<button class="btn bxs" data-fk="'+(s.fbKey||'')+'" onclick="abrirEditarSetor(this.dataset.fk)">Editar</button>';
+    h+='<button class="btn bxs" style="color:#c0392b;border-color:#c0392b" data-fk="'+(s.fbKey||'')+'" onclick="excluirSetor(this.dataset.fk)">Excluir</button>';
+    h+='</td></tr>';
+  });
+  corpo.innerHTML=h;
+}
+
+function abrirNovoSetor(){
+  G('setor-titulo').textContent='Novo Setor Solicitante';
+  G('setor-label').value='';
+  G('setor-valor-wrap').style.display='none';
+  G('setor-fbkey').value='';
+  G('btn-salvar-setor').textContent='Criar Setor';
+  aM('ov-setor');
+}
+
+function abrirEditarSetor(fbKey){
+  var s=SETORES_CHAMADO.find(function(x){return x.fbKey===fbKey;});
+  if(!s){toast('Este setor ainda não foi salvo no Firebase — recarregue a página','err');return;}
+  G('setor-titulo').textContent='Editar Setor';
+  G('setor-label').value=s.label;
+  G('setor-valor-wrap').style.display='block';
+  G('setor-valor').value=s.value;
+  G('setor-fbkey').value=fbKey;
+  G('btn-salvar-setor').textContent='Salvar Alterações';
+  aM('ov-setor');
+}
+
+function salvarSetorConfig(){
+  var label=G('setor-label').value.trim();
+  var fbKey=G('setor-fbkey').value;
+  if(!label){toast('Informe o nome do setor','err');return;}
+  if(fbKey){
+    DB.ref('manutencao_config/setores/'+fbKey).update({label:label}).then(function(){
+      var s=SETORES_CHAMADO.find(function(x){return x.fbKey===fbKey;});
+      if(s) s.label=label;
+      toast('Setor atualizado!','ok');
+      fM('ov-setor');
+      renderSetoresAdmin();
+      montarSelectPerfil();
+    }).catch(function(e){toast('Erro: '+e.message,'err');});
+  } else {
+    var value=slugify(label);
+    if(!value){toast('Nome inválido','err');return;}
+    if(SETORES_CHAMADO.some(function(x){return x.value===value;})){
+      toast('Já existe um setor equivalente cadastrado','err');return;
+    }
+    var ref=DB.ref('manutencao_config/setores').push({value:value,label:label});
+    SETORES_CHAMADO.push({value:value,label:label,fbKey:ref.key});
+    toast('Setor criado!','ok');
+    fM('ov-setor');
+    renderSetoresAdmin();
+    montarSelectSetor();
+  }
+}
+
+function excluirSetor(fbKey){
+  var s=SETORES_CHAMADO.find(function(x){return x.fbKey===fbKey;});
+  if(!s){toast('Este setor ainda não foi salvo no Firebase — recarregue a página','err');return;}
+  DB.ref('usuarios').orderByChild('perfil').equalTo(s.value).once('value').then(function(snap){
+    if(snap.exists()){
+      toast('Existem usuários com este perfil — troque o perfil deles antes de excluir o setor','err');
+      return;
+    }
+    if(!confirm('Excluir o setor "'+s.label+'"? Chamados já abertos não são afetados, só impede escolher esse setor em novos chamados/usuários.')) return;
+    DB.ref('manutencao_config/setores/'+fbKey).remove().then(function(){
+      SETORES_CHAMADO=SETORES_CHAMADO.filter(function(x){return x.fbKey!==fbKey;});
+      toast('Setor excluído!','ok');
+      renderSetoresAdmin();
+      montarSelectSetor();
+    }).catch(function(e){toast('Erro: '+e.message,'err');});
+  }).catch(function(e){toast('Erro: '+e.message,'err');});
+}
+
+// ============================================================
+// MOTIVOS DE CHAMADO (admin)
+// ============================================================
+function renderMotivosAdmin(){
+  var corpo=G('motivos-corpo');
+  if(!MOTIVOS_CHAMADO.length){
+    corpo.innerHTML='<tr><td colspan="2" style="text-align:center;padding:20px;color:#739630">Nenhum motivo cadastrado</td></tr>';
+    return;
+  }
+  var h='';
+  MOTIVOS_CHAMADO.forEach(function(m){
+    h+='<tr><td>'+m.texto+'</td><td style="display:flex;gap:4px">';
+    h+='<button class="btn bxs" data-fk="'+(m.fbKey||'')+'" onclick="abrirEditarMotivo(this.dataset.fk)">Editar</button>';
+    h+='<button class="btn bxs" style="color:#c0392b;border-color:#c0392b" data-fk="'+(m.fbKey||'')+'" onclick="excluirMotivo(this.dataset.fk)">Excluir</button>';
+    h+='</td></tr>';
+  });
+  corpo.innerHTML=h;
+}
+
+function abrirNovoMotivo(){
+  G('motivo-titulo').textContent='Novo Motivo';
+  G('motivo-texto').value='';
+  G('motivo-fbkey').value='';
+  G('btn-salvar-motivo').textContent='Criar Motivo';
+  aM('ov-motivo');
+}
+
+function abrirEditarMotivo(fbKey){
+  var m=MOTIVOS_CHAMADO.find(function(x){return x.fbKey===fbKey;});
+  if(!m){toast('Este motivo ainda não foi salvo no Firebase — recarregue a página','err');return;}
+  G('motivo-titulo').textContent='Editar Motivo';
+  G('motivo-texto').value=m.texto;
+  G('motivo-fbkey').value=fbKey;
+  G('btn-salvar-motivo').textContent='Salvar Alterações';
+  aM('ov-motivo');
+}
+
+function salvarMotivoConfig(){
+  var texto=G('motivo-texto').value.trim();
+  var fbKey=G('motivo-fbkey').value;
+  if(!texto){toast('Informe a descrição do motivo','err');return;}
+  if(fbKey){
+    DB.ref('manutencao_config/motivos/'+fbKey).update({texto:texto}).then(function(){
+      var m=MOTIVOS_CHAMADO.find(function(x){return x.fbKey===fbKey;});
+      if(m) m.texto=texto;
+      toast('Motivo atualizado!','ok');
+      fM('ov-motivo');
+      renderMotivosAdmin();
+      montarSelectMotivo();
+    }).catch(function(e){toast('Erro: '+e.message,'err');});
+  } else {
+    var ref=DB.ref('manutencao_config/motivos').push({texto:texto});
+    MOTIVOS_CHAMADO.push({texto:texto,fbKey:ref.key});
+    toast('Motivo criado!','ok');
+    fM('ov-motivo');
+    renderMotivosAdmin();
+    montarSelectMotivo();
+  }
+}
+
+function excluirMotivo(fbKey){
+  if(!confirm('Excluir este motivo da lista? Chamados já abertos com esse motivo não são afetados.')) return;
+  DB.ref('manutencao_config/motivos/'+fbKey).remove().then(function(){
+    MOTIVOS_CHAMADO=MOTIVOS_CHAMADO.filter(function(x){return x.fbKey!==fbKey;});
+    toast('Motivo excluído!','ok');
+    renderMotivosAdmin();
+    montarSelectMotivo();
+  }).catch(function(e){toast('Erro: '+e.message,'err');});
+}
+
+// ============================================================
+// DASHBOARD
+// ============================================================
+var DASH_CHARTS={};
+var DASH_KPI_LISTAS=[];
+var DASH_ESPERA_DIM='dia';
+var DASH_RANK_ORDEM='melhor';
+var DASH_RANK_COL=null;
+var DASH_RANK_DATA=[];
+
+function dashGetSetorLabel(o){ return o.linha?o.linha:setorLabel(o.setor); }
+
+function dashCutoffData(periodo){
+  if(periodo==='tudo') return null;
+  var dias=periodo==='hoje'?0:periodo==='7d'?7:periodo==='30d'?30:90;
+  var d=new Date(); d.setDate(d.getDate()-dias);
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+}
+
+function montarFiltrosDash(){
+  var selSetor=G('dash-setor'), selResp=G('dash-resp');
+  var valSetorAtual=selSetor.value, valRespAtual=selResp.value;
+  var setores={}, resps={};
+  FILA_CACHE.forEach(function(o){
+    var s=dashGetSetorLabel(o); if(s) setores[s]=true;
+    var r=o.tecnicoNome||o.tecnicoLogin; if(r) resps[r]=true;
+  });
+  var hs='<option value="">Todos</option>';
+  Object.keys(setores).sort().forEach(function(s){hs+='<option value="'+s+'">'+s+'</option>';});
+  selSetor.innerHTML=hs; selSetor.value=valSetorAtual;
+  var hr='<option value="">Todos</option>';
+  Object.keys(resps).sort().forEach(function(r){hr+='<option value="'+r+'">'+r+'</option>';});
+  selResp.innerHTML=hr; selResp.value=valRespAtual;
+}
+
+function dashFiltrarBase(){
+  var periodo=G('dash-periodo').value;
+  var setor=G('dash-setor').value;
+  var resp=G('dash-resp').value;
+  var cutoff=dashCutoffData(periodo);
+  return FILA_CACHE.filter(function(o){
+    if(cutoff && (!o.dataAbertura || o.dataAbertura<cutoff)) return false;
+    if(setor && dashGetSetorLabel(o)!==setor) return false;
+    if(resp && (o.tecnicoNome||o.tecnicoLogin)!==resp) return false;
+    return true;
+  });
+}
+
+function renderDashboard(){
+  if(!podeVerFila()) return;
+  montarFiltrosDash();
+  var lista=dashFiltrarBase();
+  renderKPIsDash(lista);
+  renderChartEspera(lista);
+  renderChartServico(lista);
+  renderRankingColaborador(lista);
+  renderChartMotivo(lista);
+  renderChartSetor(lista);
+  renderChartEvolucao(lista);
+  renderChartParado(lista);
+}
+
+// ---- KPIs ----
+function renderKPIsDash(lista){
+  var abertos=lista.filter(function(o){return o.status==='aberta';});
+  var atendendo=lista.filter(function(o){return o.status==='atendendo';});
+  var concluidos=lista.filter(function(o){return o.status==='finalizada';});
+  var esperaItens=lista.filter(function(o){return o.aberturaTs&&o.atendimentoTs;});
+  var atendItens=lista.filter(function(o){return o.atendimentoTs&&o.fimTs;});
+  var conclItens=lista.filter(function(o){return o.aberturaTs&&o.fimTs;});
+  var media=function(itens,i,f){return itens.length?Math.round(itens.reduce(function(a,o){return a+minutosEntre(o[i],o[f]);},0)/itens.length):null;};
+
+  var cards=[
+    {label:'Total de Chamados',valor:lista.length,lista:lista},
+    {label:'Em Aberto',valor:abertos.length,lista:abertos,cor:'cr'},
+    {label:'Em Atendimento',valor:atendendo.length,lista:atendendo,cor:'co'},
+    {label:'Concluídos',valor:concluidos.length,lista:concluidos,cor:'cg'},
+    {label:'Tempo Médio de Espera',valor:fmtMin(media(esperaItens,'aberturaTs','atendimentoTs')),lista:esperaItens},
+    {label:'Tempo Médio de Atendimento',valor:fmtMin(media(atendItens,'atendimentoTs','fimTs')),lista:atendItens},
+    {label:'Tempo Médio de Conclusão',valor:fmtMin(media(conclItens,'aberturaTs','fimTs')),lista:conclItens}
+  ];
+  var h='';
+  cards.forEach(function(c,i){
+    h+='<div class="mc click" onclick="abrirListaDetalhadaIdx('+i+')"><div class="ml">'+c.label+'</div><div class="mv '+(c.cor||'')+'">'+c.valor+'</div></div>';
+  });
+  G('dash-kpis').innerHTML=h;
+  DASH_KPI_LISTAS=cards.map(function(c){return {titulo:c.label,lista:c.lista};});
+}
+function abrirListaDetalhadaIdx(i){ var k=DASH_KPI_LISTAS[i]; if(k) abrirListaDetalhada(k.titulo,k.lista); }
+
+// ---- Agregações genéricas ----
+function agruparMedia(lista,tsIni,tsFim,dimFn){
+  var grupos={};
+  lista.forEach(function(o){
+    if(!o[tsIni]||!o[tsFim]) return;
+    var d=dimFn(o); if(!d) return;
+    if(!grupos[d]) grupos[d]={soma:0,qtd:0,itens:[]};
+    grupos[d].soma+=minutosEntre(o[tsIni],o[tsFim]);
+    grupos[d].qtd++;
+    grupos[d].itens.push(o);
+  });
+  return Object.keys(grupos).map(function(k){return {label:k,valor:Math.round(grupos[k].soma/grupos[k].qtd),itens:grupos[k].itens};});
+}
+function contarPorDimensao(lista,dimFn){
+  var grupos={};
+  lista.forEach(function(o){
+    var d=dimFn(o)||'—';
+    if(!grupos[d]) grupos[d]={qtd:0,itens:[]};
+    grupos[d].qtd++;
+    grupos[d].itens.push(o);
+  });
+  return Object.keys(grupos).map(function(k){return {label:k,valor:grupos[k].qtd,itens:grupos[k].itens};});
+}
+function dimDia(o){return o.dataAbertura;}
+function dimSemana(o){
+  if(!o.dataAbertura) return null;
+  var d=new Date(o.dataAbertura+'T00:00:00');
+  var diaSemana=(d.getDay()+6)%7;
+  d.setDate(d.getDate()-diaSemana);
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+}
+function dimMes(o){return o.dataAbertura?o.dataAbertura.slice(0,7):null;}
+function dimColab(o){return o.tecnicoNome||o.tecnicoLogin||null;}
+function dimSetorF(o){return dashGetSetorLabel(o);}
+function dimMotivoF(o){return o.motivo||null;}
+
+// ---- Gráficos (Chart.js) ----
+function renderBarChart(canvasId,agrupado,ordenarPorValor,corHex,unidade){
+  var arr=agrupado.slice();
+  if(ordenarPorValor) arr.sort(function(a,b){return b.valor-a.valor;});
+  else arr.sort(function(a,b){return a.label<b.label?-1:1;});
+  arr=arr.slice(0,15);
+  var ctx=G(canvasId).getContext('2d');
+  if(DASH_CHARTS[canvasId]) DASH_CHARTS[canvasId].destroy();
+  DASH_CHARTS[canvasId]=new Chart(ctx,{
+    type:'bar',
+    data:{labels:arr.map(function(a){return a.label;}),datasets:[{data:arr.map(function(a){return a.valor;}),backgroundColor:corHex,borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.parsed.y+(unidade||'');}}}},
+      scales:{y:{beginAtZero:true}},
+      onClick:function(evt,elems){ if(!elems.length) return; abrirListaDetalhada(arr[elems[0].index].label,arr[elems[0].index].itens); }
+    }
+  });
+}
+function renderBarChartH(canvasId,agrupado,corHex){
+  var arr=agrupado.slice().sort(function(a,b){return b.valor-a.valor;}).slice(0,10);
+  var ctx=G(canvasId).getContext('2d');
+  if(DASH_CHARTS[canvasId]) DASH_CHARTS[canvasId].destroy();
+  DASH_CHARTS[canvasId]=new Chart(ctx,{
+    type:'bar',
+    data:{labels:arr.map(function(a){return a.label;}),datasets:[{data:arr.map(function(a){return a.valor;}),backgroundColor:corHex,borderRadius:4}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}},
+      onClick:function(evt,elems){ if(!elems.length) return; abrirListaDetalhada(arr[elems[0].index].label,arr[elems[0].index].itens); }
+    }
+  });
+}
+
+function dashToggle(chart,valor,btn){
+  if(chart==='espera'){
+    DASH_ESPERA_DIM=valor;
+    document.querySelectorAll('#tg-espera button').forEach(function(b){b.classList.remove('on');});
+    btn.classList.add('on');
+    renderChartEspera(dashFiltrarBase());
+  }
+}
+
+function renderChartEspera(lista){
+  var dimFn=DASH_ESPERA_DIM==='dia'?dimDia:DASH_ESPERA_DIM==='semana'?dimSemana:DASH_ESPERA_DIM==='mes'?dimMes:DASH_ESPERA_DIM==='colab'?dimColab:dimSetorF;
+  var agrupado=agruparMedia(lista,'aberturaTs','atendimentoTs',dimFn);
+  var ordenarPorValor=(DASH_ESPERA_DIM==='colab'||DASH_ESPERA_DIM==='setor');
+  renderBarChart('ch-espera',agrupado,ordenarPorValor,'#d29922',' min');
+}
+function renderChartServico(lista){
+  renderBarChart('ch-servico',agruparMedia(lista,'atendimentoTs','fimTs',dimSetorF),true,'#739630',' min');
+}
+function renderChartMotivo(lista){
+  renderBarChartH('ch-motivo',contarPorDimensao(lista,dimMotivoF),'#024f2b');
+}
+function renderChartSetor(lista){
+  renderBarChart('ch-setor',contarPorDimensao(lista,dimSetorF),true,'#024f2b','');
+}
+
+function renderChartEvolucao(lista){
+  var meses={};
+  lista.forEach(function(o){
+    if(!o.dataAbertura) return;
+    var m=o.dataAbertura.slice(0,7);
+    if(!meses[m]) meses[m]={abertos:0,concluidos:0};
+    meses[m].abertos++;
+    if(o.status==='finalizada') meses[m].concluidos++;
+  });
+  var labels=Object.keys(meses).sort();
+  var abertos=labels.map(function(m){return meses[m].abertos;});
+  var concluidos=labels.map(function(m){return meses[m].concluidos;});
+  var pendentes=labels.map(function(m){return meses[m].abertos-meses[m].concluidos;});
+  var ctx=G('ch-evolucao').getContext('2d');
+  if(DASH_CHARTS['ch-evolucao']) DASH_CHARTS['ch-evolucao'].destroy();
+  DASH_CHARTS['ch-evolucao']=new Chart(ctx,{
+    type:'line',
+    data:{labels:labels,datasets:[
+      {label:'Abertos no mês',data:abertos,borderColor:'#d29922',backgroundColor:'#d29922',tension:.3},
+      {label:'Concluídos no mês',data:concluidos,borderColor:'#024f2b',backgroundColor:'#024f2b',tension:.3},
+      {label:'Pendentes (situação atual)',data:pendentes,borderColor:'#c0392b',backgroundColor:'#c0392b',tension:.3}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}},scales:{y:{beginAtZero:true}}}
+  });
+}
+
+function renderChartParado(lista){
+  var grupos={};
+  lista.forEach(function(o){
+    if(!o.aberturaTs||!o.fimTs) return;
+    var s=dashGetSetorLabel(o);
+    if(!grupos[s]) grupos[s]={min:0,qtd:0,itens:[]};
+    grupos[s].min+=minutosEntre(o.aberturaTs,o.fimTs);
+    grupos[s].qtd++;
+    grupos[s].itens.push(o);
+  });
+  var arr=Object.keys(grupos).map(function(k){return {label:k,horas:Math.round(grupos[k].min/60*10)/10,qtd:grupos[k].qtd,media:Math.round(grupos[k].min/grupos[k].qtd),itens:grupos[k].itens};});
+  arr.sort(function(a,b){return b.horas-a.horas;});
+  var ctx=G('ch-parado').getContext('2d');
+  if(DASH_CHARTS['ch-parado']) DASH_CHARTS['ch-parado'].destroy();
+  DASH_CHARTS['ch-parado']=new Chart(ctx,{
+    type:'bar',
+    data:{labels:arr.map(function(a){return a.label;}),datasets:[{data:arr.map(function(a){return a.horas;}),backgroundColor:'#c0392b',borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.parsed.y+' h';}}}},
+      scales:{y:{beginAtZero:true}},
+      onClick:function(evt,elems){ if(!elems.length) return; abrirListaDetalhada(arr[elems[0].index].label,arr[elems[0].index].itens); }
+    }
+  });
+  var h='';
+  arr.forEach(function(a){ h+='<tr><td>'+a.label+'</td><td>'+a.qtd+'</td><td>'+fmtMin(a.media)+'</td></tr>'; });
+  G('dash-parado-corpo').innerHTML=h||'<tr><td colspan="3" style="text-align:center;padding:14px;color:#739630">Sem dados no período</td></tr>';
+}
+
+// ---- Ranking por colaborador ----
+function renderRankingColaborador(lista){
+  var grupos={};
+  lista.forEach(function(o){
+    var nome=o.tecnicoNome||o.tecnicoLogin;
+    if(!nome) return;
+    if(!grupos[nome]) grupos[nome]={qtd:0,esperaSoma:0,esperaQtd:0,execSoma:0,execQtd:0,itens:[]};
+    grupos[nome].qtd++;
+    grupos[nome].itens.push(o);
+    if(o.aberturaTs&&o.atendimentoTs){grupos[nome].esperaSoma+=minutosEntre(o.aberturaTs,o.atendimentoTs);grupos[nome].esperaQtd++;}
+    if(o.atendimentoTs&&o.fimTs){grupos[nome].execSoma+=minutosEntre(o.atendimentoTs,o.fimTs);grupos[nome].execQtd++;}
+  });
+  DASH_RANK_DATA=Object.keys(grupos).map(function(nome){
+    var g=grupos[nome];
+    return {nome:nome,qtd:g.qtd,
+      espera:g.esperaQtd?Math.round(g.esperaSoma/g.esperaQtd):null,
+      exec:g.execQtd?Math.round(g.execSoma/g.execQtd):null,
+      total:g.execSoma,itens:g.itens};
+  });
+  renderRankingTabela();
+}
+function renderRankingTabela(){
+  var arr=DASH_RANK_DATA.slice();
+  if(DASH_RANK_COL){
+    arr.sort(function(a,b){
+      var av=a[DASH_RANK_COL]==null?Infinity:a[DASH_RANK_COL];
+      var bv=b[DASH_RANK_COL]==null?Infinity:b[DASH_RANK_COL];
+      return bv-av;
+    });
+  } else {
+    arr.sort(function(a,b){
+      var av=a.exec==null?Infinity:a.exec, bv=b.exec==null?Infinity:b.exec;
+      return DASH_RANK_ORDEM==='melhor'?av-bv:bv-av;
+    });
+  }
+  var h='';
+  arr.forEach(function(a){
+    var nomeEsc=a.nome.replace(/'/g,"\\'");
+    h+='<tr>';
+    h+='<td class="clk" onclick=\'abrirListaDetalhadaColab("'+nomeEsc+'")\'>'+a.nome+'</td>';
+    h+='<td>'+a.qtd+'</td>';
+    h+='<td>'+fmtMin(a.espera)+'</td>';
+    h+='<td>'+fmtMin(a.exec)+'</td>';
+    h+='<td>'+fmtMin(a.total)+'</td>';
+    h+='</tr>';
+  });
+  G('dash-ranking-corpo').innerHTML=h||'<tr><td colspan="5" style="text-align:center;padding:14px;color:#739630">Sem dados no período</td></tr>';
+}
+function dashOrdenarRanking(ordem){
+  DASH_RANK_ORDEM=ordem; DASH_RANK_COL=null;
+  G('rk-melhor').classList.toggle('on',ordem==='melhor');
+  G('rk-pior').classList.toggle('on',ordem==='pior');
+  renderRankingTabela();
+}
+function dashOrdenarRankingCol(col){ DASH_RANK_COL=col; renderRankingTabela(); }
+function abrirListaDetalhadaColab(nome){
+  var d=DASH_RANK_DATA.find(function(x){return x.nome===nome;});
+  if(d) abrirListaDetalhada(nome,d.itens);
+}
+
+// ---- Drill-down: lista detalhada + abrir chamado específico ----
+function abrirListaDetalhada(titulo,lista){
+  G('ld-titulo').textContent=titulo+' ('+lista.length+')';
+  var h='';
+  lista.forEach(function(o){
+    var badge=o.status==='aberta'?'<span class="badge brd">Aberta</span>':o.status==='atendendo'?'<span class="badge bam">Em atendimento</span>':'<span class="badge bvd">Finalizada</span>';
+    h+='<tr style="cursor:pointer" onclick="abrirDetalheInterno(\''+o.fbKey+'\')">';
+    h+='<td>'+(o.dataAbertura||'—')+' '+(o.horaAbertura||'')+'</td>';
+    h+='<td>'+dashGetSetorLabel(o)+'</td>';
+    h+='<td>'+(o.motivo||'—')+'</td>';
+    h+='<td>'+(o.solicitanteNome||o.solicitanteLogin||'—')+'</td>';
+    h+='<td>'+badge+'</td>';
+    h+='<td>'+(o.tecnicoNome||'—')+'</td>';
+    h+='</tr>';
+  });
+  G('ld-corpo').innerHTML=h||'<tr><td colspan="6" style="text-align:center;padding:14px;color:#739630">Nenhum chamado</td></tr>';
+  aM('ov-lista-detalhada');
+}
+function abrirDetalheInterno(fbKey){
+  fM('ov-lista-detalhada');
+  if(DEEP_LINK_OS && DEEP_LINK_OS!==fbKey) DB.ref('manutencao_os/'+DEEP_LINK_OS).off();
+  DEEP_LINK_OS=fbKey;
+  monitorarChamadoUnico(fbKey);
+  go('detalhe');
 }
 </script>
 </body>
