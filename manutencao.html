@@ -263,6 +263,30 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
 </div>
 
+<!-- MODAL: EDITAR CHAMADO (admin) -->
+<div class="ov" id="ov-editar-chamado">
+  <div class="modal">
+    <div class="mt">Editar chamado</div>
+    <div class="fg"><label class="fl">Setor / Linha</label><input type="text" id="ec-linha"></div>
+    <div class="fg"><label class="fl">Motivo</label><input type="text" id="ec-motivo"></div>
+    <div class="fg"><label class="fl">Descrição</label><textarea id="ec-descricao"></textarea></div>
+    <div class="fg">
+      <label class="fl">Status</label>
+      <select id="ec-status">
+        <option value="aberta">Aberta</option>
+        <option value="atendendo">Em atendimento</option>
+        <option value="finalizada">Finalizada</option>
+      </select>
+    </div>
+    <input type="hidden" id="ec-fbkey">
+    <input type="hidden" id="ec-setor">
+    <div class="mfoot">
+      <button class="btn bsm" onclick="fM('ov-editar-chamado')">Cancelar</button>
+      <button class="btn bsm bp" onclick="salvarEdicaoChamado()">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script>
@@ -456,6 +480,12 @@ function renderDetalhe(o){
     h+='<div style="text-align:center;color:#4a664a;font-size:13px">Em atendimento por '+(o.tecnicoNome||o.tecnicoLogin)+'</div>';
   }
   h+='</div>';
+  if(podeAdmin()){
+    h+='<div style="display:flex;gap:8px;margin-top:10px">';
+    h+='<button class="btn bsm" style="flex:1" onclick="abrirEditarChamado(\''+o.fbKey+'\')">Editar</button>';
+    h+='<button class="btn bsm" style="flex:1;color:#c0392b;border-color:#c0392b" onclick="excluirChamado(\''+o.fbKey+'\')">Excluir</button>';
+    h+='</div>';
+  }
   G('detalhe-conteudo').innerHTML=h;
 }
 
@@ -520,6 +550,10 @@ function renderFila(){
     if(o.status==='aberta') acao='<button class="btn bxs bo" data-fk="'+o.fbKey+'" onclick="atenderChamado(this.dataset.fk)">Atender</button>';
     else if(o.status==='atendendo'&&o.tecnicoLogin===SES.login) acao='<button class="btn bxs bp" data-fk="'+o.fbKey+'" onclick="abrirFinalizar(this.dataset.fk)">Finalizar</button>';
     else if(o.status==='atendendo') acao='<span style="font-size:11px;color:#4a664a">com '+(o.tecnicoNome||o.tecnicoLogin)+'</span>';
+    if(podeAdmin()){
+      acao+=' <button class="btn bxs" data-fk="'+o.fbKey+'" onclick="abrirEditarChamado(this.dataset.fk)">Editar</button>';
+      acao+=' <button class="btn bxs" data-fk="'+o.fbKey+'" style="color:#c0392b;border-color:#c0392b" onclick="excluirChamado(this.dataset.fk)">Excluir</button>';
+    }
     h+='<tr id="os-'+o.fbKey+'">';
     h+='<td>'+(o.dataAbertura||'—')+' '+(o.horaAbertura||'')+'</td>';
     h+='<td>'+origem+'</td>';
@@ -738,6 +772,57 @@ function toggleAtivoUsuario(fbKey,ativoStr){
   DB.ref('usuarios/'+fbKey).update({inativo:ativo}).then(function(){
     toast('Usuário '+(ativo?'desativado':'ativado')+'!','ok');
     carregarUsuarios();
+  }).catch(function(e){toast('Erro: '+e.message,'err');});
+}
+
+// ============================================================
+// EDITAR / EXCLUIR CHAMADO (somente admin)
+// ============================================================
+function abrirEditarChamado(fbKey){
+  if(!podeAdmin()) return;
+  var o=FILA_CACHE.find(function(x){return x.fbKey===fbKey;});
+  if(!o){
+    // caso a tela de detalhe tenha carregado um chamado que não está no cache da fila
+    DB.ref('manutencao_os/'+fbKey).once('value').then(function(snap){
+      if(!snap.exists()){toast('Chamado não encontrado','err');return;}
+      var v=snap.val(); v.fbKey=fbKey;
+      preencherEdicaoChamado(v);
+    });
+    return;
+  }
+  preencherEdicaoChamado(o);
+}
+
+function preencherEdicaoChamado(o){
+  G('ec-fbkey').value=o.fbKey;
+  G('ec-linha').value=o.linha?o.linha:setorLabel(o.setor);
+  G('ec-motivo').value=o.motivo||'';
+  G('ec-descricao').value=o.descricao||'';
+  G('ec-status').value=o.status||'aberta';
+  aM('ov-editar-chamado');
+}
+
+function salvarEdicaoChamado(){
+  var fbKey=G('ec-fbkey').value;
+  var motivo=G('ec-motivo').value.trim();
+  if(!motivo){toast('Informe o motivo','err');return;}
+  var dados={
+    linha:G('ec-linha').value.trim()||null,
+    motivo:motivo,
+    descricao:G('ec-descricao').value.trim()||null,
+    status:G('ec-status').value
+  };
+  DB.ref('manutencao_os/'+fbKey).update(dados).then(function(){
+    toast('Chamado atualizado!','ok');
+    fM('ov-editar-chamado');
+  }).catch(function(e){toast('Erro: '+e.message,'err');});
+}
+
+function excluirChamado(fbKey){
+  if(!podeAdmin()) return;
+  if(!confirm('Excluir este chamado definitivamente? Esta ação não pode ser desfeita — use para limpar chamados órfãos (ex: parada de origem apagada na extrusão).')) return;
+  DB.ref('manutencao_os/'+fbKey).remove().then(function(){
+    toast('Chamado excluído!','ok');
   }).catch(function(e){toast('Erro: '+e.message,'err');});
 }
 </script>
