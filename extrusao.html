@@ -2388,8 +2388,30 @@ function salvarParada(){
   if(!DB){toast("Firebase não conectado","err");return;}
   var turnoPara=turnoDeHora(hi);
   var dataPara=DT_FILA||hoje();
-  DB.ref("extrusao_paradas").push({id:uid(),linha:linhaAtiva,turno:turnoPara,data:dataPara,horaIni:hi,horaFim:hf,codMotivo:cod,descricao:desc,obs:G("para-obs")?G("para-obs").value||"":"",minutos:min,operador:SES.login,ts:agora()})
-    .then(function(){fM("m-para");toast("Parada registrada!","ok");})
+  var novaParadaRef=DB.ref("extrusao_paradas").push({id:uid(),linha:linhaAtiva,turno:turnoPara,data:dataPara,horaIni:hi,horaFim:hf,codMotivo:cod,descricao:desc,obs:G("para-obs")?G("para-obs").value||"":"",minutos:min,operador:SES.login,ts:agora()});
+  novaParadaRef.then(function(){
+    fM("m-para");toast("Parada registrada!","ok");
+    // Efeito colateral aditivo — não interfere no fluxo acima nem impede o toast de sucesso
+    try{
+      var motivoObj=PARADAS.find(function(p){return Number(p.cod)===Number(cod);});
+      if(motivoObj&&motivoObj.grupo==="Manutenção"){
+        DB.ref("manutencao_os").push({
+          origem:"auto_extrusao",
+          paradaFbKey:novaParadaRef.key,
+          linha:linhaAtiva,
+          setor:"extrusao",
+          motivo:desc,
+          descricao:G("para-obs")?G("para-obs").value||"":"",
+          solicitanteLogin:SES.login,
+          solicitanteNome:SES.nome||SES.login,
+          dataAbertura:dataPara,
+          horaAbertura:hi,
+          aberturaTs:agora(),
+          status:"aberta"
+        });
+      }
+    }catch(eChamado){/* nunca deve travar o registro da parada por causa disso */}
+  })
     .catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
