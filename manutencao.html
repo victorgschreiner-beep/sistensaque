@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Raguife — Manutenção</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f4f6f4;--bg2:#ffffff;--bg3:#eef2ee;--bg4:#dde6dd;
+  --bd:#c8d8c8;--bd2:#b0c8b0;
+  --tx:#1a2e1a;--tx2:#4a664a;--tx3:#739630;
+  --ac:#024f2b;--ac2:#036b3a;--acbg:rgba(2,79,43,.10);
+  --gr:#024f2b;--or:#d29922;--rd:#c0392b;
+  --orbg:rgba(210,153,34,.15);--rdbg:rgba(192,57,43,.12);
+  --r:8px;--r2:12px;
+}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--tx);font-size:14px;min-height:100vh}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg3)}::-webkit-scrollbar-thumb{background:#024f2b;border-radius:3px}
+input,select,textarea{width:100%;padding:9px 12px;background:#f7faf7;border:1px solid #c8d8c8;border-radius:var(--r);color:#1a2e1a;font-size:13px;outline:none;font-family:inherit;transition:.15s}
+input:focus,select:focus,textarea:focus{border-color:#024f2b;box-shadow:0 0 0 3px rgba(2,79,43,.15)}
+textarea{resize:vertical;min-height:64px}
+select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%23739630' d='M5 7L0 2h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+input:disabled,select:disabled{opacity:.7;background:#eef2ee}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 16px;border-radius:var(--r);border:1px solid #c8d8c8;background:#f4f6f4;color:#1a2e1a;cursor:pointer;font-size:13px;font-weight:500;transition:.15s;font-family:inherit;white-space:nowrap}
+.btn:hover{background:#dde6dd}
+.bp{background:#024f2b;border-color:#024f2b;color:#fff}.bp:hover{background:#036b3a}
+.bg2{background:#739630;border-color:#739630;color:#fff}.bg2:hover{opacity:.85}
+.br{background:#c0392b;border-color:#c0392b;color:#fff}.br:hover{opacity:.85}
+.bo{background:#d29922;border-color:#d29922;color:#fff}.bo:hover{opacity:.85}
+.bsm{padding:5px 11px;font-size:12px}.bxs{padding:3px 8px;font-size:11px}.bfw{width:100%}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.lerr{color:#c0392b;font-size:12px;margin-top:8px;display:none;text-align:center}
+
+/* LOGIN */
+#pg-login{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#024f2b 0%,#036b3a 60%,#739630 100%)}
+.lbox{background:#fff;border-radius:var(--r2);padding:36px 32px;width:380px;box-shadow:0 8px 40px rgba(0,0,0,.25)}
+.logo{text-align:center;margin-bottom:28px}
+.logo-t{font-size:18px;font-weight:700;color:#024f2b;margin-top:8px}
+.logo-s{font-size:12px;color:#739630;margin-top:3px;font-weight:500}
+.fld{margin-bottom:14px}
+.fld label{display:block;font-size:12px;color:#4a664a;margin-bottom:5px;font-weight:500}
+
+/* APP */
+#pg-app{display:none;min-height:100vh;flex-direction:column}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:8px 18px;background:#024f2b;border-bottom:2px solid #739630;position:sticky;top:0;z-index:50;flex-wrap:wrap;gap:8px;box-shadow:0 2px 12px rgba(2,79,43,.25)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;color:#fff}
+.pill{font-size:11px;padding:2px 9px;border-radius:20px;background:rgba(115,150,48,.25);color:#b6d46a;border:1px solid rgba(115,150,48,.4)}
+.nav{display:flex;gap:2px;flex-wrap:wrap}
+.nb{padding:6px 13px;border:none;background:transparent;color:rgba(255,255,255,.75);border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;transition:.1s;font-family:inherit}
+.nb:hover{background:rgba(255,255,255,.12);color:#fff}.nb.on{background:#739630;color:#fff}
+.nb .nc-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#c0392b;margin-left:5px;vertical-align:middle}
+.ubar{display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.85)}
+.av{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:#739630;color:#fff}
+.rtdot{width:8px;height:8px;border-radius:50%;background:#b6d46a;display:inline-block;margin-right:4px;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.content{flex:1;padding:16px;overflow-y:auto;max-height:calc(100vh - 58px)}
+.scr{display:none}.scr.on{display:block}
+
+/* CARDS */
+.card{background:#fff;border:1px solid var(--bd);border-radius:var(--r2);padding:16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(2,79,43,.06)}
+.ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+.ct{font-size:11px;font-weight:700;color:#739630;text-transform:uppercase;letter-spacing:.06em}
+.mrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.mc{background:#fff;border:1px solid var(--bd);border-radius:var(--r);padding:13px 15px;box-shadow:0 1px 4px rgba(2,79,43,.05)}
+.ml{font-size:10px;color:#739630;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;font-weight:600}
+.mv{font-size:22px;font-weight:700}
+.ms{font-size:11px;color:#4a664a;margin-top:2px}
+.cg{color:#024f2b}.co{color:#d29922}.cr{color:#c0392b}
+@media (max-width:980px){.g2{grid-template-columns:1fr}}
+
+/* TABLE */
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:#024f2b;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #024f2b;white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--bd);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(2,79,43,.03)}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+.bvd{background:rgba(2,79,43,.1);color:#024f2b}
+.bam{background:rgba(210,153,34,.15);color:#8a5700}
+.brd{background:rgba(192,57,43,.12);color:#c0392b}
+.bcz{background:#eef2ee;color:#4a664a}
+
+/* MODAL */
+.ov{position:fixed;inset:0;background:rgba(1,40,22,.65);z-index:200;display:none;align-items:center;justify-content:center;padding:12px}
+.ov.on{display:flex}
+.modal{background:#fff;border:1px solid #c8d8c8;border-radius:var(--r2);padding:22px 24px;width:520px;max-width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 8px 32px rgba(2,79,43,.15)}
+.mt{font-size:16px;font-weight:700;margin-bottom:16px;color:#024f2b}
+.mfoot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--bd)}
+.fr{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.fg{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.fl{font-size:12px;color:#4a664a;font-weight:500}
+@media (max-width:640px){.fr{grid-template-columns:1fr}}
+
+/* TOAST */
+#twrap{position:fixed;bottom:18px;right:18px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.tos{padding:11px 16px;border-radius:var(--r);font-size:13px;font-weight:500;animation:tin .2s ease;max-width:320px}
+.tok{background:#024f2b;color:#fff}.terr{background:#c0392b;color:#fff}.tinf{background:#739630;color:#fff}
+@keyframes tin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* MISC */
+.tabs{display:flex;border:1px solid var(--bd);border-radius:var(--r);overflow:hidden;width:fit-content;margin-bottom:16px;flex-wrap:wrap}
+.tab{padding:6px 16px;border:none;background:#eef2ee;color:#4a664a;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;transition:.1s}
+.tab.on{background:#024f2b;color:#fff}
+.ali{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:12px;background:rgba(2,79,43,.08);border:1px solid rgba(2,79,43,.2);color:#024f2b}
+
+#loader{position:fixed;inset:0;background:rgba(1,40,22,.7);z-index:1000;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+#loader.on{display:flex}
+.spin{width:34px;height:34px;border:3px solid rgba(115,150,48,.3);border-top-color:#739630;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="twrap"></div>
+<div id="loader"><div class="spin"></div><div style="color:rgba(255,255,255,.8);font-size:13px" id="lmsg">Aguarde...</div></div>
+
+<!-- LOGIN -->
+<div id="pg-login">
+<div class="lbox">
+  <div class="logo">
+    <div class="logo-t">🔧 Raguife — Manutenção</div>
+    <div class="logo-s">Chamados e ordens de serviço</div>
+  </div>
+  <div style="text-align:center;font-size:12px;color:#739630;margin-bottom:16px;font-weight:500"><span class="rtdot"></span>Firebase conectado</div>
+  <div class="fld"><label>Usuário</label><input type="text" id="lu" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()"></div>
+  <div class="fld"><label>Senha</label><input type="password" id="lp" onkeydown="if(event.key==='Enter')doLogin()"></div>
+  <div class="lerr" id="lerr">Usuário ou senha incorretos.</div>
+  <button class="btn bp bfw" style="margin-top:18px;padding:11px" onclick="doLogin()">Entrar</button>
+</div>
+</div>
+
+<!-- APP -->
+<div id="pg-app">
+<div class="topbar">
+  <div class="brand">
+    <span>🔧 Raguife — Manutenção</span>
+    <span class="pill" id="pfil">—</span>
+  </div>
+  <div class="nav">
+    <button class="nb" id="nb-fila" onclick="go('fila',this)">Fila de Chamados <span class="nc-dot" id="fila-dot" style="display:none"></span></button>
+    <button class="nb" id="nb-abrir" onclick="go('abrir',this)">Abrir Chamado</button>
+    <button class="nb" id="nb-usr" style="display:none" onclick="go('usr',this)">Usuários</button>
+  </div>
+  <div class="ubar">
+    <span class="rtdot"></span>
+    <span id="unm"></span>
+    <div class="av" id="uav">?</div>
+    <button class="btn bsm" style="background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.3)" onclick="doLogout()">Sair</button>
+  </div>
+</div>
+
+<div class="content">
+
+<!-- ============ TELA: FILA DE CHAMADOS ============ -->
+<div class="scr" id="scr-fila">
+  <div class="ch">
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Fila de Chamados <span style="font-size:11px;color:#739630;font-weight:500">&#9679; ao vivo</span></h2>
+    <button class="btn bsm" onclick="renderFila()">↻ Atualizar</button>
+  </div>
+
+  <div class="mrow" id="fila-metrics"></div>
+
+  <div class="tabs">
+    <button class="tab on" id="tab-todas" onclick="filtrarFila('todas')">Todas</button>
+    <button class="tab" id="tab-aberta" onclick="filtrarFila('aberta')">Abertas <span class="nc-dot" id="aberta-dot" style="display:none"></span></button>
+    <button class="tab" id="tab-atendendo" onclick="filtrarFila('atendendo')">Em Atendimento</button>
+    <button class="tab" id="tab-finalizada" onclick="filtrarFila('finalizada')">Finalizadas</button>
+  </div>
+
+  <div class="card">
+    <div class="tw"><table>
+      <thead><tr><th>Abertura</th><th>Origem</th><th>Setor / Linha</th><th>Motivo</th><th>Solicitante</th><th>Status</th><th>Técnico</th><th>Tempo</th><th></th></tr></thead>
+      <tbody id="fila-corpo"><tr><td colspan="9" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr></tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- ============ TELA: ABRIR CHAMADO ============ -->
+<div class="scr" id="scr-abrir">
+  <div class="ch"><h2 style="font-size:16px;font-weight:700;color:#024f2b">Abrir Chamado de Manutenção</h2></div>
+  <div class="card" style="max-width:560px">
+    <div class="fg">
+      <label class="fl">Setor solicitante</label>
+      <select id="ab-setor"></select>
+    </div>
+    <div class="fg">
+      <label class="fl">Local / Linha (opcional)</label>
+      <input type="text" id="ab-local" placeholder="ex: Linha 2, Doca 3, Sala do gerador...">
+    </div>
+    <div class="fg">
+      <label class="fl">Motivo</label>
+      <select id="ab-motivo"></select>
+    </div>
+    <div class="fg">
+      <label class="fl">Descrição do problema</label>
+      <textarea id="ab-descricao" placeholder="Descreva o que está acontecendo..."></textarea>
+    </div>
+    <button class="btn bp bfw" onclick="abrirChamadoManual()">Abrir Chamado</button>
+  </div>
+</div>
+
+<!-- ============ TELA: USUÁRIOS (admin) ============ -->
+<div class="scr" id="scr-usr">
+  <div class="ch">
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Usuários</h2>
+    <button class="btn bp" onclick="abrirNovoUsuario()">+ Novo Usuário</button>
+  </div>
+  <div class="card">
+    <div class="tw"><table>
+      <thead><tr><th>Login</th><th>Nome</th><th>Perfil</th><th>Status</th><th>Ações</th></tr></thead>
+      <tbody id="usuarios-corpo"><tr><td colspan="5" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr></tbody>
+    </table></div>
+  </div>
+</div>
+
+</div>
+</div>
+
+<!-- MODAL: FINALIZAR CHAMADO -->
+<div class="ov" id="ov-finalizar">
+  <div class="modal">
+    <div class="mt">Finalizar chamado</div>
+    <div class="fg">
+      <label class="fl">Observação / solução aplicada (opcional)</label>
+      <textarea id="fin-obs" placeholder="O que foi feito para resolver..."></textarea>
+    </div>
+    <input type="hidden" id="fin-fbkey">
+    <div class="mfoot">
+      <button class="btn bsm" onclick="fM('ov-finalizar')">Cancelar</button>
+      <button class="btn bsm bp" onclick="confirmarFinalizar()">Finalizar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: USUÁRIO -->
+<div class="ov" id="ov-usuario">
+  <div class="modal">
+    <div class="mt" id="usr-titulo">Novo Usuário</div>
+    <div class="fg"><label class="fl">Login</label><input type="text" id="usr-login" placeholder="ex: manut.joao"></div>
+    <div class="fg"><label class="fl">Nome</label><input type="text" id="usr-nome" placeholder="Nome completo"></div>
+    <div class="fg"><label class="fl">Senha</label><input type="password" id="usr-senha" placeholder="Mínimo 4 caracteres"></div>
+    <div class="fg">
+      <label class="fl">Perfil</label>
+      <select id="usr-perfil"></select>
+    </div>
+    <input type="hidden" id="usr-fbkey">
+    <div class="mfoot">
+      <button class="btn bsm" onclick="fM('ov-usuario')">Cancelar</button>
+      <button class="btn bsm bp" id="btn-salvar-usuario" onclick="salvarUsuario()">Criar Usuário</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script>
+// ============================================================
+// FIREBASE CONFIG — mesmo banco do ensaque/extrusão/qualidade
+// ============================================================
+var firebaseConfig = {
+  apiKey: "AIzaSyB52cXfvtmY2xXu9vMkMPhCWU-rp6NXhxc",
+  authDomain: "sistema-ensaque.firebaseapp.com",
+  databaseURL: "https://sistema-ensaque-default-rtdb.firebaseio.com",
+  projectId: "sistema-ensaque"
+};
+firebase.initializeApp(firebaseConfig);
+var DB = firebase.database();
+
+// ============================================================
+// PLACEHOLDERS — EDITAR AQUI (Victor vai enviar as listas finais)
+// ============================================================
+// Setores que podem abrir chamado manual. "value" vira o perfil no cadastro
+// de usuário (au-perfil / usr-perfil). "label" é o texto exibido.
+var SETORES_CHAMADO = [
+  {value:"expedicao",     label:"Expedição"},
+  {value:"almoxarifado",  label:"Almoxarifado"},
+  {value:"administrativo",label:"Administrativo"},
+  {value:"ti",            label:"TI"}
+];
+
+// Motivos padronizados dos chamados manuais.
+var MOTIVOS_MANUAL = [
+  "Elétrica","Hidráulica","Predial","TI / Informática",
+  "Equipamento","Refrigeração","Outros"
+];
+
+// ============================================================
+// GLOBAIS
+// ============================================================
+var SES=null;
+var FILA_CACHE=[];
+var FILTRO_FILA="todas";
+
+// ============================================================
+// UTILS
+// ============================================================
+function G(id){return document.getElementById(id);}
+function hoje(){
+  // Data operacional: a partir das 21h pertence ao próximo dia (regra do sistema)
+  var now=new Date();
+  if(now.getHours()>=21) now=new Date(now.getTime()+24*60*60*1000);
+  return now.toISOString().slice(0,10);
+}
+function agora(){return new Date().toISOString();}
+function horaAtual(){var d=new Date();return pad(d.getHours())+":"+pad(d.getMinutes());}
+function pad(n){return String(n).padStart(2,"0");}
+function aM(id){G(id).classList.add('on');}
+function fM(id){G(id).classList.remove('on');}
+function ld(on,msg){G('loader').classList.toggle('on',!!on);if(msg)G('lmsg').textContent=msg;}
+function toast(msg,tipo){
+  var t=document.createElement('div');
+  t.className='tos '+(tipo==='err'?'terr':tipo==='info'?'tinf':'tok');
+  t.textContent=msg;
+  G('twrap').appendChild(t);
+  setTimeout(function(){t.remove();},3200);
+}
+function minutosEntre(tsIni,tsFim){
+  if(!tsIni||!tsFim) return null;
+  return Math.round((new Date(tsFim)-new Date(tsIni))/60000);
+}
+function fmtMin(min){
+  if(min===null||min===undefined) return '—';
+  if(min<60) return min+' min';
+  return Math.floor(min/60)+'h '+pad(min%60)+'min';
+}
+function setorLabel(value){
+  if(value==='manutencao') return 'Manutenção';
+  if(value==='admin') return 'Administrador';
+  var s=SETORES_CHAMADO.find(function(x){return x.value===value;});
+  return s?s.label:value;
+}
+function podeVerFila(){return SES&&(SES.perfil==='manutencao'||SES.perfil==='admin');}
+function podeAdmin(){return SES&&SES.perfil==='admin';}
+
+// ============================================================
+// LOGIN / LOGOUT
+// ============================================================
+function doLogin(){
+  var u=G('lu').value.trim(), p=G('lp').value;
+  if(!u||!p) return;
+  ld(true,'Autenticando...');
+  DB.ref('usuarios').orderByChild('login').equalTo(u).once('value').then(function(snap){
+    ld(false);
+    if(!snap.exists()){ G('lerr').style.display='block'; return; }
+    var found=null;
+    snap.forEach(function(c){ var v=c.val(); if(v.senha===p && v.inativo!==true && v.ativo!==false) found=v; });
+    if(!found){ G('lerr').style.display='block'; return; }
+    var perfisValidos=['manutencao','admin'].concat(SETORES_CHAMADO.map(function(s){return s.value;}));
+    if(perfisValidos.indexOf(found.perfil)===-1){
+      G('lerr').textContent='Sem acesso ao módulo de Manutenção';
+      G('lerr').style.display='block';
+      return;
+    }
+    SES=found;
+    G('lerr').style.display='none';
+    G('lp').value='';
+    G('pg-login').style.display='none';
+    G('pg-app').style.display='flex';
+    aplicarSessao();
+    iniciarApp();
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
+function doLogout(){
+  SES=null;
+  if(DB) DB.ref('manutencao_os').off();
+  G('pg-app').style.display='none';
+  G('pg-login').style.display='flex';
+  G('lu').value=''; G('lp').value='';
+}
+
+function aplicarSessao(){
+  G('unm').textContent=SES.nome||SES.login;
+  G('uav').textContent=(SES.nome||SES.login).slice(0,2).toUpperCase();
+  G('pfil').textContent=setorLabel(SES.perfil);
+  G('nb-fila').style.display=podeVerFila()?'':'none';
+  G('nb-usr').style.display=podeAdmin()?'':'none';
+}
+
+function iniciarApp(){
+  montarSelectSetor();
+  montarSelectMotivo();
+  if(podeVerFila()){
+    monitorarFila();
+    go('fila',G('nb-fila'));
+  } else {
+    go('abrir',G('nb-abrir'));
+  }
+}
+
+function go(tela,btn){
+  document.querySelectorAll('.scr').forEach(function(s){s.classList.remove('on');});
+  document.querySelectorAll('.nb').forEach(function(b){b.classList.remove('on');});
+  G('scr-'+tela).classList.add('on');
+  if(btn) btn.classList.add('on');
+  if(tela==='usr') carregarUsuarios();
+}
+
+// ============================================================
+// FILA DE CHAMADOS (Firebase realtime)
+// ============================================================
+function monitorarFila(){
+  DB.ref('manutencao_os').on('value',function(snap){
+    FILA_CACHE=[];
+    if(snap.exists()) snap.forEach(function(c){var v=c.val();v.fbKey=c.key;FILA_CACHE.push(v);});
+    FILA_CACHE.sort(function(a,b){return (b.aberturaTs||'')>(a.aberturaTs||'')?1:-1;});
+    renderFila();
+  });
+}
+
+function filtrarFila(f){
+  FILTRO_FILA=f;
+  document.querySelectorAll('.tabs .tab').forEach(function(t){t.classList.remove('on');});
+  G('tab-'+f).classList.add('on');
+  renderFila();
+}
+
+function renderFila(){
+  // Métricas
+  var abertas=FILA_CACHE.filter(function(o){return o.status==='aberta';});
+  var atendendo=FILA_CACHE.filter(function(o){return o.status==='atendendo';});
+  var finalizadasHoje=FILA_CACHE.filter(function(o){return o.status==='finalizada'&&o.dataAbertura===hoje();});
+  var temposParada=finalizadasHoje.map(function(o){return minutosEntre(o.aberturaTs,o.fimTs);}).filter(function(m){return m!==null;});
+  var mediaParada=temposParada.length?Math.round(temposParada.reduce(function(a,b){return a+b;},0)/temposParada.length):null;
+  G('fila-metrics').innerHTML=
+    '<div class="mc"><div class="ml">Abertas</div><div class="mv cr">'+abertas.length+'</div></div>'+
+    '<div class="mc"><div class="ml">Em atendimento</div><div class="mv co">'+atendendo.length+'</div></div>'+
+    '<div class="mc"><div class="ml">Finalizadas hoje</div><div class="mv cg">'+finalizadasHoje.length+'</div></div>'+
+    '<div class="mc"><div class="ml">Tempo médio de parada (hoje)</div><div class="mv">'+fmtMin(mediaParada)+'</div></div>';
+  G('aberta-dot').style.display=abertas.length?'inline-block':'none';
+  G('fila-dot').style.display=abertas.length?'inline-block':'none';
+
+  var lista=FILA_CACHE;
+  if(FILTRO_FILA!=='todas') lista=lista.filter(function(o){return o.status===FILTRO_FILA;});
+
+  if(!lista.length){
+    G('fila-corpo').innerHTML='<tr><td colspan="9" style="text-align:center;padding:20px;color:#739630">Nenhum chamado encontrado</td></tr>';
+    return;
+  }
+  var h='';
+  lista.forEach(function(o){
+    var badge=o.status==='aberta'?'<span class="badge brd">Aberta</span>':
+              o.status==='atendendo'?'<span class="badge bam">Em atendimento</span>':
+              '<span class="badge bvd">Finalizada</span>';
+    var origem=o.origem==='auto_extrusao'?'<span class="badge bcz">Automático</span>':'<span class="badge bcz">Manual</span>';
+    var tempo=o.status==='finalizada'?fmtMin(minutosEntre(o.aberturaTs,o.fimTs)):
+              o.status==='atendendo'?fmtMin(minutosEntre(o.aberturaTs,agora())):'—';
+    var acao='';
+    if(o.status==='aberta') acao='<button class="btn bxs bo" data-fk="'+o.fbKey+'" onclick="atenderChamado(this.dataset.fk)">Atender</button>';
+    else if(o.status==='atendendo'&&o.tecnicoLogin===SES.login) acao='<button class="btn bxs bp" data-fk="'+o.fbKey+'" onclick="abrirFinalizar(this.dataset.fk)">Finalizar</button>';
+    else if(o.status==='atendendo') acao='<span style="font-size:11px;color:#4a664a">com '+(o.tecnicoNome||o.tecnicoLogin)+'</span>';
+    h+='<tr>';
+    h+='<td>'+(o.dataAbertura||'—')+' '+(o.horaAbertura||'')+'</td>';
+    h+='<td>'+origem+'</td>';
+    h+='<td>'+(o.linha?o.linha:setorLabel(o.setor))+'</td>';
+    h+='<td>'+(o.motivo||'—')+'</td>';
+    h+='<td>'+(o.solicitanteNome||o.solicitanteLogin||'—')+'</td>';
+    h+='<td>'+badge+'</td>';
+    h+='<td>'+(o.tecnicoNome||'—')+'</td>';
+    h+='<td>'+tempo+'</td>';
+    h+='<td>'+acao+'</td>';
+    h+='</tr>';
+  });
+  G('fila-corpo').innerHTML=h;
+}
+
+// Trava de concorrência: só o primeiro clique vence
+function atenderChamado(fbKey){
+  DB.ref('manutencao_os/'+fbKey).transaction(function(atual){
+    if(!atual) return atual;
+    if(atual.status!=='aberta') return; // aborta — já foi assumido por outro técnico
+    atual.status='atendendo';
+    atual.tecnicoLogin=SES.login;
+    atual.tecnicoNome=SES.nome||SES.login;
+    atual.atendimentoTs=agora();
+    return atual;
+  }).then(function(res){
+    if(!res.committed){ toast('Este chamado já foi assumido por outro técnico','err'); return; }
+    toast('Chamado assumido','ok');
+  }).catch(function(e){toast('Erro: '+e.message,'err');});
+}
+
+function abrirFinalizar(fbKey){
+  G('fin-fbkey').value=fbKey;
+  G('fin-obs').value='';
+  aM('ov-finalizar');
+}
+
+function confirmarFinalizar(){
+  var fbKey=G('fin-fbkey').value;
+  var obs=G('fin-obs').value.trim();
+  DB.ref('manutencao_os/'+fbKey).transaction(function(atual){
+    if(!atual) return atual;
+    if(atual.status!=='atendendo') return; // já finalizado por outra aba/pessoa
+    atual.status='finalizada';
+    atual.fimTs=agora();
+    atual.horaFim=horaAtual();
+    if(obs) atual.observacaoFechamento=obs;
+    return atual;
+  }).then(function(res){
+    fM('ov-finalizar');
+    if(!res.committed){ toast('Este chamado já estava finalizado','err'); return; }
+    toast('Chamado finalizado','ok');
+  }).catch(function(e){toast('Erro: '+e.message,'err');});
+}
+
+// ============================================================
+// ABRIR CHAMADO MANUAL
+// ============================================================
+function montarSelectSetor(){
+  var sel=G('ab-setor');
+  var ehSetorFixo=SES.perfil!=='manutencao'&&SES.perfil!=='admin';
+  if(ehSetorFixo){
+    sel.innerHTML='<option value="'+SES.perfil+'">'+setorLabel(SES.perfil)+'</option>';
+    sel.disabled=true;
+  } else {
+    sel.disabled=false;
+    var h='';
+    SETORES_CHAMADO.forEach(function(s){h+='<option value="'+s.value+'">'+s.label+'</option>';});
+    sel.innerHTML=h;
+  }
+}
+
+function montarSelectMotivo(){
+  var h='';
+  MOTIVOS_MANUAL.forEach(function(m){h+='<option value="'+m+'">'+m+'</option>';});
+  G('ab-motivo').innerHTML=h;
+}
+
+function abrirChamadoManual(){
+  var setor=G('ab-setor').value;
+  var local=G('ab-local').value.trim();
+  var motivo=G('ab-motivo').value;
+  var descricao=G('ab-descricao').value.trim();
+  if(!setor){toast('Selecione o setor','err');return;}
+  if(!motivo){toast('Selecione o motivo','err');return;}
+  var dados={
+    origem:'manual',
+    setor:setor,
+    linha:local||null,
+    motivo:motivo,
+    descricao:descricao||null,
+    solicitanteLogin:SES.login,
+    solicitanteNome:SES.nome||SES.login,
+    dataAbertura:hoje(),
+    horaAbertura:horaAtual(),
+    aberturaTs:agora(),
+    status:'aberta'
+  };
+  ld(true,'Abrindo chamado...');
+  DB.ref('manutencao_os').push(dados).then(function(){
+    ld(false);
+    toast('Chamado aberto! A manutenção foi notificada.','ok');
+    G('ab-local').value=''; G('ab-descricao').value='';
+  }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
+}
+
+// ============================================================
+// USUÁRIOS (somente admin)
+// ============================================================
+var USUARIOS_CACHE=[];
+
+function montarSelectPerfil(){
+  var h='<option value="manutencao">Manutenção</option>';
+  SETORES_CHAMADO.forEach(function(s){h+='<option value="'+s.value+'">'+s.label+'</option>';});
+  h+='<option value="admin">Administrador</option>';
+  G('usr-perfil').innerHTML=h;
+}
+
+function carregarUsuarios(){
+  var corpo=G('usuarios-corpo');
+  corpo.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr>';
+  DB.ref('usuarios').once('value').then(function(s){
+    USUARIOS_CACHE=[];
+    if(s.exists()) s.forEach(function(c){
+      var u=c.val(); u.fbKey=c.key;
+      var perfisValidos=['manutencao','admin'].concat(SETORES_CHAMADO.map(function(x){return x.value;}));
+      if(perfisValidos.indexOf(u.perfil)!==-1) USUARIOS_CACHE.push(u);
+    });
+    renderUsuariosLista();
+  }).catch(function(e){toast('Erro: '+e.message,'err');});
+}
+
+function renderUsuariosLista(){
+  var corpo=G('usuarios-corpo');
+  if(!USUARIOS_CACHE.length){
+    corpo.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#739630">Nenhum usuário cadastrado</td></tr>';
+    return;
+  }
+  var h='';
+  USUARIOS_CACHE.forEach(function(u){
+    var ativo=u.inativo!==true;
+    h+='<tr>';
+    h+='<td style="font-weight:600">'+u.login+'</td>';
+    h+='<td>'+(u.nome||'—')+'</td>';
+    h+='<td><span class="badge bcz">'+setorLabel(u.perfil)+'</span></td>';
+    h+='<td><span class="badge '+(ativo?'bvd':'bcz')+'">'+(ativo?'Ativo':'Inativo')+'</span></td>';
+    h+='<td style="display:flex;gap:4px">';
+    h+='<button class="btn bxs" data-fk="'+u.fbKey+'" onclick="abrirEditarUsuario(this.dataset.fk)">Editar</button>';
+    h+='<button class="btn bxs" data-fk="'+u.fbKey+'" data-ativo="'+(ativo?1:0)+'" onclick="toggleAtivoUsuario(this.dataset.fk,this.dataset.ativo)" style="'+(ativo?'color:#d29922;border-color:#d29922':'color:#024f2b;border-color:#024f2b')+'">'+(ativo?'Desativar':'Ativar')+'</button>';
+    h+='</td></tr>';
+  });
+  corpo.innerHTML=h;
+}
+
+function abrirNovoUsuario(){
+  montarSelectPerfil();
+  G('usr-titulo').textContent='Novo Usuário';
+  G('usr-login').value=''; G('usr-login').disabled=false;
+  G('usr-nome').value='';
+  G('usr-senha').value=''; G('usr-senha').placeholder='Mínimo 4 caracteres';
+  G('usr-perfil').value='manutencao';
+  G('usr-fbkey').value='';
+  G('btn-salvar-usuario').textContent='Criar Usuário';
+  aM('ov-usuario');
+}
+
+function abrirEditarUsuario(fbKey){
+  var u=USUARIOS_CACHE.find(function(x){return x.fbKey===fbKey;});
+  if(!u) return;
+  montarSelectPerfil();
+  G('usr-titulo').textContent='Editar Usuário — '+u.login;
+  G('usr-login').value=u.login; G('usr-login').disabled=true;
+  G('usr-nome').value=u.nome||'';
+  G('usr-senha').value=''; G('usr-senha').placeholder='Deixe em branco para não alterar';
+  G('usr-perfil').value=u.perfil;
+  G('usr-fbkey').value=fbKey;
+  G('btn-salvar-usuario').textContent='Salvar Alterações';
+  aM('ov-usuario');
+}
+
+function salvarUsuario(){
+  var login=G('usr-login').value.trim();
+  var nome=G('usr-nome').value.trim();
+  var senha=G('usr-senha').value.trim();
+  var perfil=G('usr-perfil').value;
+  var fbKey=G('usr-fbkey').value;
+  if(!login){toast('Informe o login','err');return;}
+  if(!nome){toast('Informe o nome','err');return;}
+  if(!fbKey&&(!senha||senha.length<4)){toast('Senha mínimo 4 caracteres','err');return;}
+  var dados={login:login,nome:nome,perfil:perfil};
+  if(senha) dados.senha=senha;
+  if(fbKey){
+    DB.ref('usuarios/'+fbKey).update(dados).then(function(){
+      toast('Usuário atualizado!','ok');
+      fM('ov-usuario');
+      carregarUsuarios();
+    }).catch(function(e){toast('Erro: '+e.message,'err');});
+  } else {
+    DB.ref('usuarios').orderByChild('login').equalTo(login).once('value').then(function(s){
+      if(s.exists()){toast('Login já existe','err');return;}
+      dados.senha=senha;
+      DB.ref('usuarios').push(dados).then(function(){
+        toast('Usuário criado!','ok');
+        fM('ov-usuario');
+        carregarUsuarios();
+      }).catch(function(e){toast('Erro: '+e.message,'err');});
+    });
+  }
+}
+
+function toggleAtivoUsuario(fbKey,ativoStr){
+  var ativo=ativoStr==='1';
+  var u=USUARIOS_CACHE.find(function(x){return x.fbKey===fbKey;});
+  if(!u) return;
+  if(!confirm((ativo?'Desativar':'Ativar')+' o usuário '+u.login+'?')) return;
+  DB.ref('usuarios/'+fbKey).update({inativo:ativo}).then(function(){
+    toast('Usuário '+(ativo?'desativado':'ativado')+'!','ok');
+    carregarUsuarios();
+  }).catch(function(e){toast('Erro: '+e.message,'err');});
+}
+</script>
+</body>
+</html>
