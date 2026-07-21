@@ -176,6 +176,17 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
 </div>
 
+<!-- ============ TELA: DETALHE DE UM CHAMADO (via link do Telegram) ============ -->
+<div class="scr" id="scr-detalhe">
+  <div class="ch">
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Chamado de Manutenção</h2>
+    <button class="btn bsm" onclick="sairDoDetalhe()">← Ver fila completa</button>
+  </div>
+  <div class="card" id="detalhe-conteudo" style="max-width:520px">
+    <div style="text-align:center;padding:20px;color:#739630">Carregando chamado...</div>
+  </div>
+</div>
+
 <!-- ============ TELA: ABRIR CHAMADO ============ -->
 <div class="scr" id="scr-abrir">
   <div class="ch"><h2 style="font-size:16px;font-weight:700;color:#024f2b">Abrir Chamado de Manutenção</h2></div>
@@ -291,6 +302,8 @@ var MOTIVOS_MANUAL = [
 var SES=null;
 var FILA_CACHE=[];
 var FILTRO_FILA="todas";
+// Deep link vindo do Telegram: manutencao.html?os=<fbKey> abre direto no chamado
+var DEEP_LINK_OS=new URLSearchParams(window.location.search).get('os');
 
 // ============================================================
 // UTILS
@@ -364,7 +377,10 @@ function doLogin(){
 
 function doLogout(){
   SES=null;
-  if(DB) DB.ref('manutencao_os').off();
+  if(DB){
+    DB.ref('manutencao_os').off();
+    if(DEEP_LINK_OS) DB.ref('manutencao_os/'+DEEP_LINK_OS).off();
+  }
   G('pg-app').style.display='none';
   G('pg-login').style.display='flex';
   G('lu').value=''; G('lp').value='';
@@ -381,12 +397,66 @@ function aplicarSessao(){
 function iniciarApp(){
   montarSelectSetor();
   montarSelectMotivo();
-  if(podeVerFila()){
+  if(DEEP_LINK_OS && podeVerFila()){
+    monitorarChamadoUnico(DEEP_LINK_OS);
+    go('detalhe');
+  } else if(podeVerFila()){
     monitorarFila();
     go('fila',G('nb-fila'));
   } else {
     go('abrir',G('nb-abrir'));
   }
+}
+
+function sairDoDetalhe(){
+  if(DEEP_LINK_OS){ DB.ref('manutencao_os/'+DEEP_LINK_OS).off(); DEEP_LINK_OS=null; }
+  if(!FILA_CACHE.length) monitorarFila();
+  go('fila',G('nb-fila'));
+}
+
+// ============================================================
+// TELA DE DETALHE (chamado único, aberto via link do Telegram)
+// ============================================================
+function monitorarChamadoUnico(fbKey){
+  DB.ref('manutencao_os/'+fbKey).on('value',function(snap){
+    if(!snap.exists()){
+      G('detalhe-conteudo').innerHTML='<div style="text-align:center;padding:20px;color:#c0392b">Chamado não encontrado — pode ter sido removido.</div>';
+      return;
+    }
+    var o=snap.val(); o.fbKey=fbKey;
+    renderDetalhe(o);
+  });
+}
+
+function renderDetalhe(o){
+  var badge=o.status==='aberta'?'<span class="badge brd">Aberta</span>':
+            o.status==='atendendo'?'<span class="badge bam">Em atendimento</span>':
+            '<span class="badge bvd">Finalizada</span>';
+  var origemTxt=o.origem==='auto_extrusao'?'Automático (extrusão)':'Manual';
+  var h='';
+  h+='<div class="fg"><span class="fl">Status</span><div style="margin-top:2px">'+badge+'</div></div>';
+  h+='<div class="fg"><span class="fl">Origem</span><div>'+origemTxt+'</div></div>';
+  h+='<div class="fg"><span class="fl">Setor / Local</span><div>'+(o.linha?o.linha:setorLabel(o.setor))+'</div></div>';
+  h+='<div class="fg"><span class="fl">Motivo</span><div>'+(o.motivo||'—')+'</div></div>';
+  if(o.descricao) h+='<div class="fg"><span class="fl">Descrição</span><div>'+o.descricao+'</div></div>';
+  h+='<div class="fg"><span class="fl">Solicitante</span><div>'+(o.solicitanteNome||o.solicitanteLogin||'—')+'</div></div>';
+  h+='<div class="fg"><span class="fl">Abertura</span><div>'+(o.dataAbertura||'—')+' '+(o.horaAbertura||'')+'</div></div>';
+  if(o.status!=='aberta') h+='<div class="fg"><span class="fl">Técnico</span><div>'+(o.tecnicoNome||o.tecnicoLogin||'—')+'</div></div>';
+  if(o.status==='finalizada'){
+    h+='<div class="fg"><span class="fl">Parada total</span><div>'+fmtMin(minutosEntre(o.aberturaTs,o.fimTs))+'</div></div>';
+    h+='<div class="fg"><span class="fl">Atendimento</span><div>'+fmtMin(minutosEntre(o.atendimentoTs,o.fimTs))+'</div></div>';
+    if(o.observacaoFechamento) h+='<div class="fg"><span class="fl">Observação</span><div>'+o.observacaoFechamento+'</div></div>';
+  }
+  h+='<div style="margin-top:16px">';
+  if(o.status==='aberta'){
+    h+='<button class="btn bp bfw" onclick="atenderChamado(\''+o.fbKey+'\')">Atender chamado</button>';
+  } else if(o.status==='atendendo'&&o.tecnicoLogin===SES.login){
+    h+='<button class="btn bp bfw" onclick="abrirFinalizar(\''+o.fbKey+'\')">Finalizar chamado</button>';
+  } else if(o.status==='atendendo'){
+    h+='<div style="text-align:center;color:#4a664a;font-size:13px">Em atendimento por '+(o.tecnicoNome||o.tecnicoLogin)+'</div>';
+  }
+  h+='</div>';
+  G('detalhe-conteudo').innerHTML=h;
 }
 
 function go(tela,btn){
@@ -450,7 +520,7 @@ function renderFila(){
     if(o.status==='aberta') acao='<button class="btn bxs bo" data-fk="'+o.fbKey+'" onclick="atenderChamado(this.dataset.fk)">Atender</button>';
     else if(o.status==='atendendo'&&o.tecnicoLogin===SES.login) acao='<button class="btn bxs bp" data-fk="'+o.fbKey+'" onclick="abrirFinalizar(this.dataset.fk)">Finalizar</button>';
     else if(o.status==='atendendo') acao='<span style="font-size:11px;color:#4a664a">com '+(o.tecnicoNome||o.tecnicoLogin)+'</span>';
-    h+='<tr>';
+    h+='<tr id="os-'+o.fbKey+'">';
     h+='<td>'+(o.dataAbertura||'—')+' '+(o.horaAbertura||'')+'</td>';
     h+='<td>'+origem+'</td>';
     h+='<td>'+(o.linha?o.linha:setorLabel(o.setor))+'</td>';
