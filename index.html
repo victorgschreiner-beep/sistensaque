@@ -400,7 +400,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
   <div class="card">
     <div class="ch"><span class="ct">Produtos</span><div style="display:flex;gap:8px"><button class="btn bsm" style="background:#739630;border-color:#739630;color:#fff" onclick="importarProdutos()">&#8659; Importar (432)</button><button class="btn bp bsm" onclick="abrirNovoProd()">+ Novo</button></div></div>
-    <div class="tw"><table><thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th></tr></thead><tbody id="prodbody"></tbody></table></div>
+    <div class="tw"><table><thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th><th>Acoes</th></tr></thead><tbody id="prodbody"></tbody></table></div>
   </div>
   <!-- Card "Manutencao — Corrigir OPs Reprogramadas" removido por decisao do usuario:
        o botao escrevia no Firebase sem nenhuma confirmacao, varrendo TODAS as OPs
@@ -421,7 +421,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     </label>
   </div>
   <div id="pdf-status" style="display:none;padding:6px 10px;border-radius:4px;font-size:12px;margin-bottom:8px"></div>
-  <div class="fr"><div class="fg"><label class="fl">No da OP <span style="color:#739630;font-size:11px">(do TOTVS)</span></label><input type="text" id="nopid" placeholder="ex: 06296101001"></div><div class="fg"><label class="fl">Produto</label><select id="nopc" onchange="fillDesc()"></select></div><div class="fg"><label class="fl">Descricao</label><input type="text" id="nopd" readonly style="opacity:.6"></div></div>
+  <div class="fr"><div class="fg"><label class="fl">No da OP <span style="color:#739630;font-size:11px">(do TOTVS)</span></label><input type="text" id="nopid" placeholder="ex: 06296101001"></div><div class="fg"><label class="fl">Produto <span style="color:#739630;font-size:11px">(digite codigo ou descricao)</span></label><input type="text" id="nopc" list="prodlist_dl" autocomplete="off" placeholder="Digite para buscar..." oninput="fillDesc()"><datalist id="prodlist_dl"></datalist></div><div class="fg"><label class="fl">Descricao</label><input type="text" id="nopd" readonly style="opacity:.6"></div></div>
   <div class="fr fr3"><div class="fg"><label class="fl">Lote</label><input type="text" id="nopl" placeholder="LOT-2026-XXX"></div><div class="fg"><label class="fl">Tipo</label><select id="nopt"><option value="SC">Sacaria (SC)</option><option value="BG">Big Bag (BG)</option><option value="KG">KG Granel</option></select></div><div class="fg"><label class="fl">Linha</label><select id="nopln"><option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option><option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option></select></div></div>
   <div class="fr"><div class="fg"><label class="fl">Quantidade Programada</label><input type="number" id="nopq" min="0"></div><div class="fg"><label class="fl">Data</label><input type="date" id="nopdt"></div></div>
   <div class="fg"><label class="fl">Observacoes</label><input type="text" id="nopo" placeholder="Instrucoes para o operador..."></div>
@@ -563,11 +563,21 @@ tr:hover td{background:rgba(2,79,43,.03)}
 </div></div>
 
 <div class="ov" id="mprod"><div class="modal" style="max-width:420px">
-  <div class="mt">Novo Produto</div>
+  <div class="mt" id="mprod-titulo">Novo Produto</div>
+  <input type="hidden" id="npfbkey">
   <div class="fg"><label class="fl">Codigo</label><input type="text" id="npc" placeholder="ex: RGF0432COKG"></div>
   <div class="fg"><label class="fl">Descricao</label><input type="text" id="npd"></div>
   <div class="fg"><label class="fl">Unidade</label><select id="npu"><option value="KG">KG</option><option value="SC">SC</option><option value="BG">BG</option></select></div>
   <div class="mfoot"><button class="btn bsm" onclick="fM('mprod')">Cancelar</button><button class="btn bsm bp" onclick="salvarProd()">Salvar</button></div>
+</div></div>
+
+<div class="ov" id="mexcluirprod"><div class="modal" style="max-width:420px">
+  <div class="mt" style="color:#c0392b">&#9888; Excluir Produto</div>
+  <div class="aler">Esta acao nao pode ser desfeita. OPs ja criadas com este produto nao serao afetadas (o codigo e a descricao ficam gravados na propria OP).</div>
+  <p style="font-size:13px;color:#4a664a;margin-bottom:14px" id="excluirprod-msg"></p>
+  <div class="fg"><label class="fl">Digite o codigo do produto para confirmar</label><input type="text" id="excluirprod-confirm" placeholder="ex: RGF0432COKG"></div>
+  <input type="hidden" id="excluirprod-fbkey"><input type="hidden" id="excluirprod-cod">
+  <div class="mfoot"><button class="btn bsm" onclick="fM('mexcluirprod')">Cancelar</button><button class="btn bsm br" onclick="confirmarExcluirProd()">Excluir Produto</button></div>
 </div></div>
 
 <!-- MODAL EDITAR APONTAMENTO -->
@@ -838,7 +848,7 @@ function iniciarApp(){
   // Carrega produtos
   DB.ref('produtos').once('value').then(function(snap){
     PRODS=[];
-    if(snap.exists()) snap.forEach(function(c){ PRODS.push(c.val()); });
+    if(snap.exists()) snap.forEach(function(c){ var pv=c.val(); pv.fbKey=c.key; PRODS.push(pv); });
     PRODS.sort(function(a,b){return (a.cod||'').localeCompare(b.cod||'');});
     popProdSel();
   });
@@ -904,15 +914,28 @@ function carregarDados(){
 }
 
 function popProdSel(){
-  var s=G('nopc'); if(!s) return;
-  var h='<option value="">Selecione...</option>';
-  for(var i=0;i<PRODS.length;i++) h+='<option value="'+PRODS[i].cod+'">'+PRODS[i].cod+' - '+PRODS[i].desc.slice(0,40)+'</option>';
-  s.innerHTML=h;
+  var dl=G('prodlist_dl'); if(!dl) return;
+  var h='';
+  for(var i=0;i<PRODS.length;i++) h+='<option value="'+PRODS[i].cod+' - '+PRODS[i].desc+'">';
+  dl.innerHTML=h;
+}
+
+// Resolve o produto a partir do texto digitado no campo de busca (id="nopc").
+// Aceita: codigo exato, ou o formato "COD - DESCRICAO" gerado ao selecionar da lista.
+function resolveProdutoDigitado(){
+  var raw=(G('nopc').value||'').trim();
+  if(!raw) return null;
+  for(var i=0;i<PRODS.length;i++){ if(PRODS[i].cod===raw) return PRODS[i]; }
+  var idx=raw.indexOf(' - ');
+  if(idx>0){
+    var cod=raw.slice(0,idx);
+    for(var i=0;i<PRODS.length;i++){ if(PRODS[i].cod===cod) return PRODS[i]; }
+  }
+  return null;
 }
 
 function fillDesc(){
-  var cod=G('nopc').value, p=null;
-  for(var i=0;i<PRODS.length;i++){if(PRODS[i].cod===cod){p=PRODS[i];break;}}
+  var p=resolveProdutoDigitado();
   G('nopd').value=p?p.desc:'';
   if(p) G('nopt').value=(p.unid==='KG'?'KG':p.unid==='BG'?'BG':'SC');
 }
@@ -1351,15 +1374,13 @@ function preencherCamposPDF(texto, status){
 
   // Produto — tenta encontrar pelo código
   if(codProd){
-    var nopc=G('nopc');
-    if(nopc){
-      for(var i=0;i<nopc.options.length;i++){
-        if(nopc.options[i].value===codProd||nopc.options[i].text.indexOf(codProd)>=0){
-          nopc.selectedIndex=i;
-          if(typeof fillDesc==='function') fillDesc();
-          break;
-        }
-      }
+    var prodPdf=null;
+    for(var i=0;i<PRODS.length;i++){
+      if(PRODS[i].cod===codProd||(PRODS[i].desc||'').indexOf(codProd)>=0){ prodPdf=PRODS[i]; break; }
+    }
+    if(prodPdf){
+      G('nopc').value=prodPdf.cod+' - '+prodPdf.desc;
+      if(typeof fillDesc==='function') fillDesc();
     }
   }
 
@@ -1387,10 +1408,9 @@ function abrirNovaOP(){
 }
 
 function salvarOP(){
-  var cod=G('nopc').value;
-  if(!cod){toast('Selecione o produto','err');return;}
-  var prod=null;
-  for(var i=0;i<PRODS.length;i++){if(PRODS[i].cod===cod){prod=PRODS[i];break;}}
+  var prod=resolveProdutoDigitado();
+  if(!prod){toast('Selecione um produto valido da lista de busca','err');return;}
+  var cod=prod.cod;
   var nopidVal=G('nopid')&&G('nopid').value.trim()?G('nopid').value.trim():'';
   var op={
     id:nopidVal||('OP-'+new Date().getFullYear()+'-'+uid().slice(0,6).toUpperCase()),
@@ -3979,8 +3999,21 @@ function loadLog(){
 
 function loadProds(){
   DB.ref('produtos').once('value').then(function(snap){
-    var h=''; if(snap.exists()) snap.forEach(function(c){var p=c.val();h+='<tr><td style="font-weight:600;font-size:12px">'+p.cod+'</td><td>'+p.desc+'</td><td><span class="badge bcz">'+p.unid+'</span></td></tr>';});
-    G('prodbody').innerHTML=h;
+    var h=''; if(snap.exists()) snap.forEach(function(c){
+      var p=c.val(), fbKey=c.key;
+      h+='<tr><td style="font-weight:600;font-size:12px">'+p.cod+'</td><td>'+p.desc+'</td><td><span class="badge bcz">'+p.unid+'</span></td>';
+      h+='<td style="white-space:nowrap;display:flex;gap:4px">';
+      h+='<button class="btn bxs edit-prod" data-key="'+fbKey+'" style="color:#024f2b;border-color:#024f2b">Editar</button>';
+      h+='<button class="btn bxs del-prod" data-key="'+fbKey+'" style="color:#c0392b;border-color:#c0392b">Excluir</button>';
+      h+='</td></tr>';
+    });
+    G('prodbody').innerHTML=h||'<tr><td colspan="4" style="color:#4a664a;padding:12px">Nenhum produto.</td></tr>';
+    document.querySelectorAll('.edit-prod').forEach(function(btn){
+      btn.addEventListener('click',function(){abrirEditarProd(btn.dataset.key);});
+    });
+    document.querySelectorAll('.del-prod').forEach(function(btn){
+      btn.addEventListener('click',function(){prepExcluirProd(btn.dataset.key);});
+    });
   });
 }
 
@@ -4044,7 +4077,7 @@ function importarProdutos(){
     // Atualiza lista local
     DB.ref('produtos').once('value').then(function(snap){
       PRODS=[];
-      if(snap.exists()) snap.forEach(function(c){ PRODS.push(c.val()); });
+      if(snap.exists()) snap.forEach(function(c){ var pv=c.val(); pv.fbKey=c.key; PRODS.push(pv); });
       PRODS.sort(function(a,b){return (a.cod||'').localeCompare(b.cod||'');});
       popProdSel();
     });
@@ -4054,13 +4087,57 @@ function importarProdutos(){
   });
 }
 
-function abrirNovoProd(){G('npc').value='';G('npd').value='';G('mprod').classList.add('on');}
+function abrirNovoProd(){
+  G('npfbkey').value='';G('npc').value='';G('npd').value='';G('npu').value='KG';
+  G('mprod-titulo').textContent='Novo Produto';
+  G('mprod').classList.add('on');
+}
+
+function abrirEditarProd(fbKey){
+  DB.ref('produtos/'+fbKey).once('value').then(function(s){
+    if(!s.exists()){toast('Produto nao encontrado','err');return;}
+    var p=s.val();
+    G('npfbkey').value=fbKey;G('npc').value=p.cod;G('npd').value=p.desc;G('npu').value=p.unid||'KG';
+    G('mprod-titulo').textContent='Editar Produto';
+    G('mprod').classList.add('on');
+  });
+}
+
 function salvarProd(){
+  var fbKey=G('npfbkey').value;
   var c=G('npc').value.trim().toUpperCase(),d=G('npd').value.trim();
   if(!c||!d){toast('Preencha codigo e descricao','err');return;}
-  DB.ref('produtos').push({cod:c,desc:d,unid:G('npu').value}).then(function(){
-    toast('Produto salvo!','ok');fM('mprod');addLog('NOVO_PROD',c);loadProds();
-    DB.ref('produtos').once('value').then(function(snap){PRODS=[];if(snap.exists())snap.forEach(function(cc){PRODS.push(cc.val());});popProdSel();});
+  // Valida duplicidade de codigo (evita dois produtos com o mesmo codigo, o que quebra a busca na abertura de OP)
+  var duplicado=false;
+  for(var i=0;i<PRODS.length;i++){
+    if(PRODS[i].cod===c && PRODS[i].fbKey!==fbKey){ duplicado=true; break; }
+  }
+  if(duplicado){toast('Ja existe um produto com esse codigo','err');return;}
+  var data={cod:c,desc:d,unid:G('npu').value};
+  var op=fbKey?DB.ref('produtos/'+fbKey).update(data):DB.ref('produtos').push(data);
+  op.then(function(){
+    toast(fbKey?'Produto atualizado!':'Produto salvo!','ok');fM('mprod');addLog(fbKey?'EDITAR_PROD':'NOVO_PROD',c);loadProds();
+    DB.ref('produtos').once('value').then(function(snap){PRODS=[];if(snap.exists())snap.forEach(function(cc){var pv=cc.val();pv.fbKey=cc.key;PRODS.push(pv);});popProdSel();});
+  }).catch(function(e){toast('Erro: '+e.message,'err');});
+}
+
+function prepExcluirProd(fbKey){
+  DB.ref('produtos/'+fbKey).once('value').then(function(s){
+    if(!s.exists()) return;
+    var p=s.val();
+    G('excluirprod-fbkey').value=fbKey;G('excluirprod-cod').value=p.cod;
+    G('excluirprod-confirm').value='';
+    G('excluirprod-msg').textContent='Excluir: '+p.cod+' - '+p.desc;
+    G('mexcluirprod').classList.add('on');
+  });
+}
+
+function confirmarExcluirProd(){
+  var fbKey=G('excluirprod-fbkey').value, cod=G('excluirprod-cod').value;
+  if(G('excluirprod-confirm').value.trim().toUpperCase()!==cod){toast('Codigo nao confere','err');return;}
+  DB.ref('produtos/'+fbKey).remove().then(function(){
+    toast('Produto excluido!','ok');fM('mexcluirprod');addLog('EXCLUIR_PROD',cod);loadProds();
+    DB.ref('produtos').once('value').then(function(snap){PRODS=[];if(snap.exists())snap.forEach(function(cc){var pv=cc.val();pv.fbKey=cc.key;PRODS.push(pv);});popProdSel();});
   }).catch(function(e){toast('Erro: '+e.message,'err');});
 }
 
