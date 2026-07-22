@@ -547,6 +547,10 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       <button onclick="admAba('logs')" id="adm-tab-logs" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📋 Logs</button>
       <button onclick="admAba('metas')" id="adm-tab-metas" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🎯 Metas</button>
       <button onclick="admAba('motivos')" id="adm-tab-motivos" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">⚙️ Motivos</button>
+      <button onclick="admAba('qualid')" id="adm-tab-qualid" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🧪 Qualidade</button>
+    </div>
+    <div style="display:none;margin-bottom:10px" id="adm-qualid-pdf-wrap">
+      <button onclick="gerarPDFRelatorioQualidade()" style="width:100%;background:#2471a3;color:#fff;border:none;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📄 Baixar Relatório de Qualidade (PDF)</button>
     </div>
     <div id="adm-lista-corpo" style="max-height:400px;overflow-y:auto"></div>
 
@@ -4305,7 +4309,7 @@ document.addEventListener("keydown",function(e){if(e.key==="Escape")["m-apt","m-
 
 // ── ADMIN ─────────────────────────────────────────────────
 var ADM_ABA="apts";
-var ADM_DADOS={apts:[],paradas:[]};
+var ADM_DADOS={apts:[],paradas:[],qualid:[]};
 
 function abrirAdmin(){
   if(!SES||SES.perfil!=="admin") return;
@@ -4320,12 +4324,13 @@ function abrirAdmin(){
 
 function admAba(aba){
   ADM_ABA=aba;
-  ["apts","paradas","ops","ativas","usuarios","logs","metas"].forEach(function(a){
+  ["apts","paradas","ops","ativas","usuarios","logs","metas","motivos","qualid"].forEach(function(a){
     var btn=G("adm-tab-"+a); if(!btn) return;
     btn.style.background=aba===a?"#024f2b":"#fff";
     btn.style.color=aba===a?"#fff":"#024f2b";
     btn.style.borderColor=aba===a?"#024f2b":"#d4e8d4";
   });
+  G("adm-qualid-pdf-wrap").style.display=aba==="qualid"?"block":"none";
   // Mostra/oculta os wraps corretos
   var wraps=["adm-lista-corpo","adm-usuarios-wrap","adm-logs-wrap","adm-metas-wrap","adm-motivos-wrap"];
   wraps.forEach(function(w){var el=G(w);if(el)el.style.display="none";});
@@ -4346,18 +4351,23 @@ function admBuscar(){
 
   Promise.all([
     DB.ref("extrusao_apts").orderByChild("data").equalTo(dt).once("value"),
-    DB.ref("extrusao_paradas").orderByChild("data").equalTo(dt).once("value")
+    DB.ref("extrusao_paradas").orderByChild("data").equalTo(dt).once("value"),
+    DB.ref("extrusao_qualidade").orderByChild("data").equalTo(dt).once("value")
   ]).then(function(results){
     ADM_DADOS.apts=[];
     ADM_DADOS.paradas=[];
+    ADM_DADOS.qualid=[];
     if(results[0].exists()) results[0].forEach(function(c){var v=c.val();v.fbKey=c.key;ADM_DADOS.apts.push(v);});
     if(results[1].exists()) results[1].forEach(function(c){var v=c.val();v.fbKey=c.key;ADM_DADOS.paradas.push(v);});
+    if(results[2].exists()) results[2].forEach(function(c){var v=c.val();v.fbKey=c.key;ADM_DADOS.qualid.push(v);});
     if(ln){
       ADM_DADOS.apts=ADM_DADOS.apts.filter(function(a){return a.linha===ln;});
       ADM_DADOS.paradas=ADM_DADOS.paradas.filter(function(p){return p.linha===ln;});
+      ADM_DADOS.qualid=ADM_DADOS.qualid.filter(function(q){return q.linha===ln;});
     }
     ADM_DADOS.apts.sort(function(a,b){return (a.linha+a.horaIni)>(b.linha+b.horaIni)?1:-1;});
     ADM_DADOS.paradas.sort(function(a,b){return (a.linha+a.horaIni)>(b.linha+b.horaIni)?1:-1;});
+    ADM_DADOS.qualid.sort(function(a,b){return (a.linha+a.hora)>(b.linha+b.hora)?1:-1;});
     admRenderLista();
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
@@ -4526,6 +4536,31 @@ function admBuscarLogs(){
 function admRenderLista(){
 
   var corpo=G("adm-lista-corpo");
+  if(ADM_ABA==="qualid"){
+    var listaQ=ADM_DADOS.qualid;
+    if(!listaQ.length){corpo.innerHTML='<div style="text-align:center;padding:20px;color:#4a664a;font-size:13px">Nenhum apontamento de qualidade encontrado</div>';return;}
+    var hq="";
+    listaQ.forEach(function(q){
+      var corBorda=q.foraEspec?"#f5c6cb":"#e8f0e8";
+      hq+='<div style="padding:8px 10px;border-radius:8px;border:1px solid '+corBorda+';margin-bottom:6px;font-size:12px'+(q.foraEspec?";background:#fdf3f3":"")+'">';
+      hq+='<div style="display:flex;justify-content:space-between;align-items:center">';
+      hq+='<span style="font-weight:700;color:#2471a3">'+(q.linha||"")+' · '+(q.hora||"")+' · T'+(q.turno||"")+'</span>';
+      hq+='<span style="font-weight:700;color:'+(q.foraEspec?"#c0392b":"#024f2b")+'">'+(q.foraEspec?"⚠ FORA DO PADRÃO":"✔ OK")+'</span>';
+      hq+='</div>';
+      hq+='<div style="color:#333;margin-top:2px">OP '+(q.opNum||"")+' — '+(q.desc||q.cod||"")+'</div>';
+      hq+='<div style="color:#4a664a;margin-top:2px">'+
+        (q.densidade!=null?"Dens "+fN(q.densidade)+" · ":"")+
+        (q.diametro!=null?"Diâm "+fN(q.diametro)+" · ":"")+
+        (q.corte!=null?"Corte "+fN(q.corte)+" · ":"")+
+        (q.temperatura!=null?"Temp "+fN(q.temperatura)+"°C"+(q.deltaTemp!=null?" (Δ"+(q.deltaTemp>=0?"+":"")+fN(q.deltaTemp)+")":""):"")+
+        '</div>';
+      if(q.obs) hq+='<div style="color:#888;font-size:11px;margin-top:2px;font-style:italic">'+q.obs+'</div>';
+      hq+='<div style="color:#aaa;font-size:10px;margin-top:2px">Operador: '+(q.operador||"—")+'</div>';
+      hq+='</div>';
+    });
+    corpo.innerHTML=hq;
+    return;
+  }
   var lista=ADM_ABA==="apts"?ADM_DADOS.apts:ADM_DADOS.paradas;
   if(!lista.length){corpo.innerHTML='<div style="text-align:center;padding:20px;color:#4a664a;font-size:13px">Nenhum registro encontrado</div>';return;}
   var h="";
@@ -4550,6 +4585,76 @@ function admRenderLista(){
     h+='</div>';
   });
   corpo.innerHTML=h;
+}
+
+function gerarPDFRelatorioQualidade(){
+  if(typeof jspdf==="undefined"){toast("jsPDF não disponível","err");return;}
+  var dados=ADM_DADOS.qualid||[];
+  if(!dados.length){toast("Nenhum apontamento de qualidade para o filtro selecionado","err");return;}
+  var jsPDF=jspdf.jsPDF;
+  var doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  var W=277, ML=10, y=0;
+  var dt=G("adm-dt").value||hoje();
+  var lnFiltro=G("adm-ln").value;
+
+  doc.setFillColor(36,113,163); doc.rect(0,0,297,20,"F");
+  doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(255,255,255);
+  doc.text("RAGUIFE — RELATÓRIO DE QUALIDADE (APONTAMENTOS HORÁRIOS)",ML,13);
+  doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(210,230,245);
+  doc.text("Data: "+dt+(lnFiltro?" · "+lnFiltro:" · Todas as linhas")+" · Gerado: "+new Date().toLocaleString("pt-BR"),ML,18);
+  y=26;
+
+  var linhas={};
+  dados.forEach(function(q){ (linhas[q.linha]=linhas[q.linha]||[]).push(q); });
+
+  Object.keys(linhas).sort().forEach(function(linha){
+    var qs=linhas[linha];
+    if(y>178){doc.addPage();y=15;}
+
+    doc.setFillColor(36,113,163); doc.rect(ML,y,W,7,"F");
+    doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(255,255,255);
+    doc.text(linha+" — "+qs.length+" apontamento(s)",ML+3,y+5);
+    y+=8;
+
+    doc.setFillColor(220,235,220); doc.rect(ML,y,W,6,"F");
+    doc.setFont("helvetica","bold"); doc.setFontSize(7); doc.setTextColor(36,113,163);
+    var hcQ=[ML+2,ML+16,ML+55,ML+90,ML+120,ML+155,ML+190,ML+225];
+    ["HORA","T","OP","DENSIDADE","DIÂMETRO","CORTE","TEMP (Δamb)","STATUS"].forEach(function(hh,i){doc.text(hh,hcQ[i],y+4.5);});
+    y+=7;
+
+    qs.forEach(function(q,qi){
+      if(y>185){doc.addPage();y=15;}
+      if(qi%2===0){doc.setFillColor(248,252,255);doc.rect(ML,y-1,W,7,"F");}
+      var corQ=q.foraEspec?[192,57,43]:[36,113,163];
+      doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(30,30,30);
+      doc.text(q.hora||"",hcQ[0],y+4);
+      doc.text("T"+(q.turno||""),hcQ[1],y+4);
+      doc.text(String(q.opNum||"")+" "+(q.desc||q.cod||"").slice(0,18),hcQ[2],y+4);
+      doc.setFont("helvetica","bold"); doc.setTextColor(corQ[0],corQ[1],corQ[2]);
+      doc.text(q.densidade!=null?fN(q.densidade):"-",hcQ[3],y+4);
+      doc.text(q.diametro!=null?fN(q.diametro):"-",hcQ[4],y+4);
+      doc.text(q.corte!=null?fN(q.corte):"-",hcQ[5],y+4);
+      doc.text(q.temperatura!=null?fN(q.temperatura)+(q.deltaTemp!=null?" (Δ"+(q.deltaTemp>=0?"+":"")+q.deltaTemp.toFixed(1)+")":""):"-",hcQ[6],y+4);
+      doc.text(q.foraEspec?"⚠ FORA":"✔ OK",hcQ[7],y+4);
+      y+=7;
+    });
+
+    var qst=calcQualidStats(qs);
+    if(y>185){doc.addPage();y=15;}
+    doc.setFillColor(225,240,250); doc.rect(ML,y,W,6,"F");
+    doc.setFont("helvetica","bold"); doc.setFontSize(7); doc.setTextColor(36,113,163);
+    doc.text("MÉDIAS: Dens "+(qst.mediaDens!=null?fN(qst.mediaDens):"-")+" · Diâm "+(qst.mediaDiam!=null?fN(qst.mediaDiam):"-")+" · Corte "+(qst.mediaCorte!=null?fN(qst.mediaCorte):"-")+" · Temp "+(qst.mediaTemp!=null?fN(qst.mediaTemp):"-")+"°C (Δ méd. "+(qst.mediaDelta!=null?(qst.mediaDelta>=0?"+":"")+fN(qst.mediaDelta):"-")+")   |   Fora do padrão: "+qst.foraCount+"/"+qst.total,ML+3,y+4.5);
+    y+=11;
+  });
+
+  var totalGeral=calcQualidStats(dados);
+  if(y>178){doc.addPage();y=15;}
+  doc.setFillColor(2,79,43); doc.rect(ML,y,W,7,"F");
+  doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(255,255,255);
+  doc.text("TOTAL DO DIA: "+totalGeral.total+" apontamento(s) · "+totalGeral.foraCount+" fora do padrão",ML+3,y+5);
+
+  doc.save("qualidade_"+dt+(lnFiltro?"_"+encId(lnFiltro):"")+".pdf");
+  toast("PDF gerado!","ok");
 }
 
 function admEditar(fbKey){
