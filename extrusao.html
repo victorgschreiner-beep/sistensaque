@@ -93,6 +93,11 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
 .btn-apt{background:#024f2b;color:#fff}
 .btn-para{background:#c0392b;color:#fff}
 .btn-setup{background:#739630;color:#fff}
+.btn-qualid{background:#2471a3;color:#fff}
+.btn-qualid.atrasada{background:#c0392b;animation:pulseQ 1.4s infinite}
+@keyframes pulseQ{0%{box-shadow:0 0 0 0 rgba(192,57,43,.55)}70%{box-shadow:0 0 0 9px rgba(192,57,43,0)}100%{box-shadow:0 0 0 0 rgba(192,57,43,0)}}
+.alerta-q{background:#eaf1fa;border-color:#2471a3}
+.alerta-q .alerta-txt{color:#1a4971}
 
 /* ── FILA OPs ── */
 .fila-titulo{font-size:10px;font-weight:700;color:#4a664a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between}
@@ -246,6 +251,12 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       <button class="btn-alerta" id="alerta-btn">Apontar Agora</button>
     </div>
 
+    <div class="alerta alerta-q on" id="alerta-qualid" style="display:none">
+      <span style="font-size:22px">🧪</span>
+      <span class="alerta-txt" id="alerta-qualid-txt"></span>
+      <button class="btn-alerta" id="alerta-qualid-btn" style="background:#2471a3">Apontar Qualidade</button>
+    </div>
+
     <!-- Barra turno -->
     <div class="turno-bar">
       <div class="turno-item"><div class="turno-val" id="tur-hora">--:--:--</div><div class="turno-lbl">Hora Atual</div></div>
@@ -383,6 +394,28 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <div class="mr">
       <button class="btn-cancel" onclick="fM('m-setup')">Cancelar</button>
       <button class="btn-ok" onclick="salvarSetup()">✔ Confirmar Setup</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL QUALIDADE (apontamento horário) -->
+<div class="ov" id="m-qualid">
+  <div class="modal">
+    <div class="mh">🧪 Qualidade — <span id="qualid-linha-nome"></span></div>
+    <div class="info-box" id="qualid-op-info"></div>
+    <div class="fg"><label class="fl">Hora do Apontamento</label><input class="fi" type="time" id="qualid-hora"></div>
+    <div class="setup-grid">
+      <div class="fg"><label class="fl">Densidade (g/L) <span class="hint" id="q-dens-ref" style="display:inline"></span></label><input class="fi" type="number" id="q-dens" placeholder="ex: 480" oninput="checkSpecQualid()"><div class="hint" id="q-dens-hint"></div></div>
+      <div class="fg"><label class="fl">Diâmetro (mm) <span class="hint" id="q-diam-ref" style="display:inline"></span></label><input class="fi" type="number" id="q-diam" placeholder="ex: 6.0" step="0.1" oninput="checkSpecQualid()"><div class="hint" id="q-diam-hint"></div></div>
+      <div class="fg"><label class="fl">Corte (mm) <span class="hint" id="q-corte-ref" style="display:inline"></span></label><input class="fi" type="number" id="q-corte" placeholder="ex: 6.5" step="0.1" oninput="checkSpecQualid()"><div class="hint" id="q-corte-hint"></div></div>
+      <div class="fg"><label class="fl">Temp. Saída Resfriador (°C) <span class="hint" id="q-temp-ref" style="display:inline"></span></label><input class="fi" type="number" id="q-temp" placeholder="ex: 28" step="0.1" oninput="checkSpecQualid()"><div class="hint" id="q-temp-hint"></div></div>
+      <div class="fg"><label class="fl">Temperatura Ambiente (°C)</label><input class="fi" type="number" id="q-temp-amb" placeholder="ex: 24" step="0.1" oninput="checkSpecQualid()"></div>
+    </div>
+    <div id="q-temp-obrig-aviso" style="display:none;background:#fff3cd;border-radius:8px;padding:6px 12px;font-size:11px;color:#856404;margin-bottom:10px">⚠ Informe a temperatura ambiente para validar o delta e salvar a temperatura do resfriador.</div>
+    <div class="fg"><label class="fl">Observação (opcional)</label><input class="fi" type="text" id="q-obs" placeholder=""></div>
+    <div class="mr">
+      <button class="btn-cancel" onclick="fM('m-qualid')">Cancelar</button>
+      <button class="btn-ok" onclick="salvarQualid()" style="background:#2471a3">✔ Salvar Apontamento</button>
     </div>
   </div>
 </div>
@@ -1101,6 +1134,7 @@ function sair(){
     DB.ref("extrusao_apts").off();
     DB.ref("extrusao_paradas").off();
     DB.ref("extrusao_op_concluida").off();
+    DB.ref("extrusao_qualidade").off();
     // Cancela listeners de extrusao_op_ativa por linha
     LINHAS_USER.forEach(function(l){
       var dt=DT_FILA||hoje();
@@ -1134,7 +1168,7 @@ function iniciarApp(){
       sair(); return;
     }
   }
-  LINHAS_USER.forEach(function(l){EST[l]={opAtiva:null,opAtivaTs:null,apts:[],paradas:[],totalOp:{}};});
+  LINHAS_USER.forEach(function(l){EST[l]={opAtiva:null,opAtivaTs:null,apts:[],paradas:[],qualid:[],totalOp:{}};});
   G("top-user").textContent=SES.nome;
   var btnAdm=G("btn-admin");
   if(btnAdm) btnAdm.style.display=SES.perfil==="admin"?"":"none";
@@ -1151,6 +1185,7 @@ function iniciarApp(){
   setTimeout(function(){verificarParadasAbertas();}, 2000);
   iniciarRelogio();
   iniciarAlerta();
+  iniciarAlertaQualidade();
   // Inicializa seção de conferência para admin
   setTimeout(function(){confInit();},500);
 }
@@ -1336,9 +1371,10 @@ function trocarDataFila(dt){
     DB.ref("extrusao_apts").off();
     DB.ref("extrusao_paradas").off();
     DB.ref("extrusao_op_concluida").off();
+    DB.ref("extrusao_qualidade").off();
   }
   // Reseta estado completo
-  LINHAS_USER.forEach(function(l){EST[l]={opAtiva:null,opAtivaTs:null,apts:[],paradas:[],totalOp:{}};});
+  LINHAS_USER.forEach(function(l){EST[l]={opAtiva:null,opAtivaTs:null,apts:[],paradas:[],qualid:[],totalOp:{}};});
   carregarOPs();
   carregarExtrusao();
   renderLinhas();
@@ -1581,6 +1617,18 @@ function carregarExtrusao(){
       renderLinhaCard(linha);
       atualizarBarraTurno();
     });
+    DB.ref("extrusao_qualidade").orderByChild("data").equalTo(dt).on("value",function(s){
+      if(!EST[linha]) EST[linha]={opAtiva:null,opAtivaTs:null,apts:[],paradas:[],qualid:[],totalOp:{}};
+      EST[linha].qualid=[];
+      if(s.exists()) s.forEach(function(c){
+        var q=c.val();q.fbKey=c.key;
+        if(q.linha!==linha||q.data!==dt) return;
+        if(!isAdmin&&q.turno!==t) return;
+        EST[linha].qualid.push(q);
+      });
+      EST[linha].qualid.sort(function(a,b){return (a.ts||"")>(b.ts||"")?1:-1;});
+      renderLinhaCard(linha);
+    });
     // Função interna que processa o nó de op_ativa e aplica herança
     function _aplicarOpAtiva(val, dtRef){
       if(!val) return;
@@ -1747,7 +1795,9 @@ function renderLinhaCard(linha){
   h+='<div class="btn-row">';
   h+='<button class="btn btn-apt" data-l="'+linha+'" onclick="abrirApt(this.dataset.l)">⚡ Apontar</button>';
   h+='<button class="btn btn-para" data-l="'+linha+'" onclick="abrirParada(this.dataset.l)">🔴 Parada</button>';
-  h+='<button class="btn btn-setup" data-l="'+linha+'" onclick="abrirSetup(this.dataset.l)">⚙️ Setup</button>';
+  var stQ=statusQualid(linha);
+  var qLbl='🧪 Qualidade'+(stQ.ultimo?' ('+stQ.ultimo.hora+')':'');
+  h+='<button class="btn btn-qualid'+(stQ.atrasada?' atrasada':'')+'" data-l="'+linha+'" onclick="abrirQualid(this.dataset.l)">'+qLbl+'</button>';
   h+='</div>';
   // Botão concluir OP — aparece quando tem apontamentos e OP não concluída
   // Botão aparece sempre que há OP ativa não concluída na extrusão
@@ -2447,6 +2497,153 @@ function salvarSetup(){
     .catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
+// ── QUALIDADE (apontamento horário) ────────────────────────
+// Reaproveita PARAMS_QUAL (carregado por paramsQualCarregarFirebase, fonte:
+// node qualidade_params mantido pela Qualidade) — a extrusão NÃO cadastra
+// faixas próprias, apenas compara os apontamentos horários contra elas.
+
+// Status do apontamento de qualidade da linha: última leitura e se está atrasada (>60min)
+function statusQualid(linha){
+  var e=EST[linha]||{};
+  if(!e.opAtiva) return {atrasada:false,ultimo:null,minDesde:null};
+  var qs=e.qualid||[];
+  var ultimo=qs.length?qs[qs.length-1]:null;
+  var refTs=ultimo?ultimo.ts:e.opAtivaTs;
+  if(!refTs) return {atrasada:false,ultimo:ultimo,minDesde:null};
+  var minDesde=Math.floor((Date.now()-Date.parse(refTs))/60000);
+  if(isNaN(minDesde)) return {atrasada:false,ultimo:ultimo,minDesde:null};
+  return {atrasada:minDesde>60,ultimo:ultimo,minDesde:minDesde};
+}
+
+function abrirQualid(linha){
+  linhaAtiva=linha;
+  var e=EST[linha]||{};
+  var opFk=e.opAtiva;
+  var op=opFk?OPS.find(function(o){return o.fbKey===opFk;}):null;
+  if(!op){
+    toast("Selecione uma OP antes de apontar qualidade!","err");
+    setTimeout(function(){abrirSelOp(linha);},300);
+    return;
+  }
+  G("qualid-linha-nome").textContent=linha;
+  G("qualid-op-info").innerHTML="<div class=\"ib-num\">OP: "+op.id+"</div><div class=\"ib-desc\">"+(op.desc||op.cod)+"</div>";
+  G("qualid-hora").value=horaAtual();
+  G("q-dens").value=""; G("q-diam").value=""; G("q-corte").value=""; G("q-temp").value=""; G("q-temp-amb").value=""; G("q-obs").value="";
+  ["q-dens-hint","q-diam-hint","q-corte-hint","q-temp-hint"].forEach(function(id){G(id).textContent="";G(id).className="hint";});
+  G("q-temp-obrig-aviso").style.display="none";
+  // Mostra a faixa de referência do produto (somente leitura — cadastro é da Qualidade)
+  var pq=PARAMS_QUAL[op.cod]||{};
+  function fx(min,max){return (min!=null&&max!=null)?"("+min+"–"+max+")":(max!=null?"(máx "+max+")":(min!=null?"(mín "+min+")":""));}
+  G("q-dens-ref").textContent=fx(pq.densMin,pq.densMax);
+  G("q-diam-ref").textContent=fx(pq.diamMin,pq.diamMax);
+  G("q-corte-ref").textContent=fx(pq.corteMin,pq.corteMax);
+  G("q-temp-ref").textContent=pq.tempMax!=null?"(ref. Qualidade: máx "+pq.tempMax+")":"";
+  aM("m-qualid");
+  setTimeout(function(){G("q-dens").focus();},300);
+}
+
+function checkSpecQualid(){
+  var e=EST[linhaAtiva]||{};
+  var op=e.opAtiva?OPS.find(function(o){return o.fbKey===e.opAtiva;}):null;
+  var pq=(op&&PARAMS_QUAL[op.cod])||{};
+  var campos=[
+    {v:"q-dens",h:"q-dens-hint",min:pq.densMin,max:pq.densMax},
+    {v:"q-diam",h:"q-diam-hint",min:pq.diamMin,max:pq.diamMax},
+    {v:"q-corte",h:"q-corte-hint",min:pq.corteMin,max:pq.corteMax}
+  ];
+  campos.forEach(function(c){
+    var el=G(c.h); if(!el) return;
+    var val=parseFloat(G(c.v).value);
+    if(isNaN(val)||(c.min==null&&c.max==null)){el.textContent="";el.className="hint";return;}
+    var fora=(c.min!=null&&val<c.min)||(c.max!=null&&val>c.max);
+    if(fora){el.textContent="⚠ fora do padrão";el.className="hint err2";}
+    else{el.textContent="✔ dentro do padrão";el.className="hint ok";}
+  });
+  // Temperatura: validação por DELTA em relação à ambiente (regra operacional — máx 7°C acima)
+  var temp=parseFloat(G("q-temp").value), amb=parseFloat(G("q-temp-amb").value);
+  var elT=G("q-temp-hint"), avisoT=G("q-temp-obrig-aviso");
+  if(!isNaN(temp)&&isNaN(amb)){
+    elT.textContent="⚠ informe a ambiente para calcular o delta";
+    elT.className="hint warn";
+    avisoT.style.display="block";
+  } else if(!isNaN(temp)&&!isNaN(amb)){
+    var delta=temp-amb;
+    var foraDelta=delta>7;
+    elT.textContent=(foraDelta?"⚠ ":"✔ ")+"Δ "+(delta>=0?"+":"")+delta.toFixed(1)+"°C sobre a ambiente (limite: +7°C)";
+    elT.className="hint "+(foraDelta?"err2":"ok");
+    avisoT.style.display="none";
+  } else {
+    elT.textContent=""; elT.className="hint";
+    avisoT.style.display="none";
+  }
+}
+
+function salvarQualid(){
+  var hora=G("qualid-hora").value||horaAtual();
+  var e=EST[linhaAtiva]||{};
+  var op=e.opAtiva?OPS.find(function(o){return o.fbKey===e.opAtiva;}):null;
+  if(!op){toast("Nenhuma OP ativa — selecione a OP antes de salvar","err");return;}
+  var dens=parseFloat(G("q-dens").value), diam=parseFloat(G("q-diam").value), corte=parseFloat(G("q-corte").value);
+  var temp=parseFloat(G("q-temp").value), amb=parseFloat(G("q-temp-amb").value);
+  if(isNaN(dens)&&isNaN(diam)&&isNaN(corte)&&isNaN(temp)){toast("Informe ao menos um parâmetro","err");return;}
+  // Temperatura do resfriador só é válida se acompanhada da ambiente (é a base do cálculo do delta)
+  if(!isNaN(temp)&&isNaN(amb)){toast("Informe a temperatura ambiente para registrar a temperatura do resfriador","err");return;}
+  var turnoQ=turnoDeHora(hora);
+  var dataQ=DT_FILA||hoje();
+  var pq=PARAMS_QUAL[op.cod]||{};
+  function foraSpec(v,min,max){return !isNaN(v)&&((min!=null&&v<min)||(max!=null&&v>max));}
+  var deltaTemp=(!isNaN(temp)&&!isNaN(amb))?(temp-amb):null;
+  var foraDelta=deltaTemp!=null&&deltaTemp>7;
+  var forade=foraSpec(dens,pq.densMin,pq.densMax)||foraSpec(diam,pq.diamMin,pq.diamMax)||foraSpec(corte,pq.corteMin,pq.corteMax)||foraDelta;
+  var reg={id:uid(),linha:linhaAtiva,opFbKey:op.fbKey,opNum:op.id,cod:op.cod,desc:op.desc||op.cod,turno:turnoQ,data:dataQ,hora:hora,
+    densidade:isNaN(dens)?null:dens,diametro:isNaN(diam)?null:diam,corte:isNaN(corte)?null:corte,
+    temperatura:isNaN(temp)?null:temp,temperaturaAmbiente:isNaN(amb)?null:amb,deltaTemp:deltaTemp,
+    foraEspec:forade,obs:G("q-obs").value||"",operador:SES.login,ts:agora()};
+  if(!DB){toast("Firebase não conectado","err");return;}
+  DB.ref("extrusao_qualidade").push(reg).then(function(){
+    fM("m-qualid");
+    toast(forade?"Apontamento salvo — atenção: valor fora do padrão!":"Apontamento de qualidade salvo!",forade?"err":"ok");
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+function calcQualidStats(qs){
+  var dens=[],diam=[],corte=[],temp=[],delta=[],foraCount=0;
+  (qs||[]).forEach(function(q){
+    if(q.densidade!=null) dens.push(q.densidade);
+    if(q.diametro!=null) diam.push(q.diametro);
+    if(q.corte!=null) corte.push(q.corte);
+    if(q.temperatura!=null) temp.push(q.temperatura);
+    if(q.deltaTemp!=null) delta.push(q.deltaTemp);
+    if(q.foraEspec) foraCount++;
+  });
+  function avg(arr){return arr.length?arr.reduce(function(a,b){return a+b;},0)/arr.length:null;}
+  return {mediaDens:avg(dens),mediaDiam:avg(diam),mediaCorte:avg(corte),mediaTemp:avg(temp),mediaDelta:avg(delta),foraCount:foraCount,total:(qs||[]).length};
+}
+
+// Alerta ativo: dispara se alguma linha do usuário ficar >60min sem apontamento de qualidade
+function checkAlertaQualidade(){
+  if(!LINHAS_USER||!LINHAS_USER.length) return;
+  LINHAS_USER.forEach(function(l){renderLinhaCard(l);});
+  var al=G("alerta-qualid");
+  if(!al) return;
+  var linhaAtrasada=null;
+  for(var i=0;i<LINHAS_USER.length;i++){
+    if(statusQualid(LINHAS_USER[i]).atrasada){linhaAtrasada=LINHAS_USER[i];break;}
+  }
+  if(linhaAtrasada){
+    G("alerta-qualid-txt").textContent="🧪 "+linhaAtrasada+" está há mais de 1h sem apontamento de qualidade!";
+    al.style.display="flex"; al.classList.add("on");
+    G("alerta-qualid-btn").onclick=function(){abrirQualid(linhaAtrasada);al.classList.remove("on");al.style.display="none";};
+  } else {
+    al.classList.remove("on"); al.style.display="none";
+  }
+}
+
+function iniciarAlertaQualidade(){
+  setTimeout(checkAlertaQualidade,3000);
+  setInterval(checkAlertaQualidade,30000);
+}
+
 // ── RESUMO TURNO ──────────────────────────────────────────
 function abrirResumo(){
   // Admin: mostra filtros e pré-preenche com data/turno atual
@@ -2479,6 +2676,17 @@ function abrirResumo(){
     e.paradas.forEach(function(p){
       h+="<div class=\"resumo-row\" style=\"font-size:11px;color:#c0392b\"><span>"+p.horaIni+"→"+(p.horaFim||"...")+" "+p.descricao+"</span><span>"+minH(p.minutos||0)+"</span></div>";
     });
+    var qs=e.qualid||[];
+    var qst=calcQualidStats(qs);
+    h+="<div class=\"resumo-row\"><span>Apontamentos Qualidade</span><span>"+qs.length+(qst.foraCount?" · ⚠ "+qst.foraCount+" fora do padrão":"")+"</span></div>";
+    if(qs.length){
+      h+="<div class=\"resumo-row\" style=\"font-size:11px;color:#2471a3\"><span>Médias</span><span>"+
+        (qst.mediaDens!=null?"Dens "+fN(qst.mediaDens)+" · ":"")+
+        (qst.mediaDiam!=null?"Diâm "+fN(qst.mediaDiam)+" · ":"")+
+        (qst.mediaCorte!=null?"Corte "+fN(qst.mediaCorte)+" · ":"")+
+        (qst.mediaTemp!=null?"Temp "+fN(qst.mediaTemp)+"°C"+(qst.mediaDelta!=null?" (Δ"+(qst.mediaDelta>=0?"+":"")+fN(qst.mediaDelta)+")":""):"")+
+        "</span></div>";
+    }
     h+="</div>";
   });
   G("resumo-corpo").innerHTML=h;
@@ -2647,6 +2855,42 @@ function gerarPDFResumoTurno(){
         doc.text(p.horaFim?minH(minPar):"—",ML+245,y+4);
         y+=7;
       });
+    }
+
+    // Tabela qualidade (indisponível no modo admin cross-turno/linha por enquanto)
+    if(e.qualid && e.qualid.length){
+      if(y>178){doc.addPage();y=15;}
+      doc.setFillColor(225,240,250); doc.rect(ML,y,W,6,"F");
+      doc.setFont("helvetica","bold"); doc.setFontSize(7); doc.setTextColor(36,113,163);
+      doc.text("QUALIDADE — APONTAMENTOS HORÁRIOS",ML+3,y+4.5);
+      y+=7;
+      doc.setFillColor(220,235,220); doc.rect(ML,y,W,6,"F");
+      doc.setFont("helvetica","bold"); doc.setFontSize(7); doc.setTextColor(36,113,163);
+      var hcQ=[ML+2,ML+25,ML+60,ML+95,ML+130,ML+165,ML+205];
+      ["HORA","DENSIDADE","DIÂMETRO","CORTE","TEMP (Δamb)","STATUS","OBS"].forEach(function(hh,i){doc.text(hh,hcQ[i],y+4.5);});
+      y+=7;
+      e.qualid.forEach(function(q,qi){
+        if(y>185){doc.addPage();y=15;}
+        if(qi%2===0){doc.setFillColor(248,252,255);doc.rect(ML,y-1,W,7,"F");}
+        var corQ=q.foraEspec?[192,57,43]:[36,113,163];
+        doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(30,30,30);
+        doc.text(q.hora||"",hcQ[0],y+4);
+        doc.setFont("helvetica","bold"); doc.setTextColor(corQ[0],corQ[1],corQ[2]);
+        doc.text(q.densidade!=null?fN(q.densidade):"-",hcQ[1],y+4);
+        doc.text(q.diametro!=null?fN(q.diametro):"-",hcQ[2],y+4);
+        doc.text(q.corte!=null?fN(q.corte):"-",hcQ[3],y+4);
+        doc.text(q.temperatura!=null?fN(q.temperatura)+(q.deltaTemp!=null?" (Δ"+(q.deltaTemp>=0?"+":"")+q.deltaTemp.toFixed(1)+")":""):"-",hcQ[4],y+4);
+        doc.text(q.foraEspec?"⚠ FORA":"✔ OK",hcQ[5],y+4);
+        doc.setFont("helvetica","normal"); doc.setTextColor(100,100,100);
+        doc.text((q.obs||"").slice(0,22),hcQ[6],y+4);
+        y+=7;
+      });
+      var qst=calcQualidStats(e.qualid);
+      if(y>185){doc.addPage();y=15;}
+      doc.setFillColor(225,240,250); doc.rect(ML,y,W,6,"F");
+      doc.setFont("helvetica","bold"); doc.setFontSize(7); doc.setTextColor(36,113,163);
+      doc.text("MÉDIAS: Dens "+(qst.mediaDens!=null?fN(qst.mediaDens):"-")+" · Diâm "+(qst.mediaDiam!=null?fN(qst.mediaDiam):"-")+" · Corte "+(qst.mediaCorte!=null?fN(qst.mediaCorte):"-")+" · Temp "+(qst.mediaTemp!=null?fN(qst.mediaTemp):"-")+"°C (Δ méd. "+(qst.mediaDelta!=null?(qst.mediaDelta>=0?"+":"")+fN(qst.mediaDelta):"-")+")   |   Fora do padrão: "+qst.foraCount+"/"+qst.total,ML+3,y+4.5);
+      y+=9;
     }
 
     // Reprocesso
@@ -4055,7 +4299,7 @@ function dashExportarPDF(){
   toast("PDF gerado!","ok");
 }
 
-document.addEventListener("keydown",function(e){if(e.key==="Escape")["m-apt","m-para","m-setup","m-resumo","m-sel-op","m-concluir-sel","m-confirma-setup","m-admin-corr","m-admin-lista","m-op-apts","m-confirma-troca","m-usuarios","m-logs","m-params","m-conf-apt"].forEach(fM);});
+document.addEventListener("keydown",function(e){if(e.key==="Escape")["m-apt","m-para","m-setup","m-qualid","m-resumo","m-sel-op","m-concluir-sel","m-confirma-setup","m-admin-corr","m-admin-lista","m-op-apts","m-confirma-troca","m-usuarios","m-logs","m-params","m-conf-apt"].forEach(fM);});
 
 // abrirProxOp removido — fluxo substituído por concluirOpOperador → abrirSelecaoProximaOp
 
