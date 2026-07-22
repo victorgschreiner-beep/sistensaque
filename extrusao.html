@@ -2597,12 +2597,16 @@ function salvarQualid(){
   var pq=PARAMS_QUAL[op.cod]||{};
   function foraSpec(v,min,max){return !isNaN(v)&&((min!=null&&v<min)||(max!=null&&v>max));}
   var deltaTemp=(!isNaN(temp)&&!isNaN(amb))?(temp-amb):null;
-  var foraDelta=deltaTemp!=null&&deltaTemp>7;
-  var forade=foraSpec(dens,pq.densMin,pq.densMax)||foraSpec(diam,pq.diamMin,pq.diamMax)||foraSpec(corte,pq.corteMin,pq.corteMax)||foraDelta;
+  var foraDens=foraSpec(dens,pq.densMin,pq.densMax);
+  var foraDiam=foraSpec(diam,pq.diamMin,pq.diamMax);
+  var foraCorte=foraSpec(corte,pq.corteMin,pq.corteMax);
+  var foraTemp=deltaTemp!=null&&deltaTemp>7;
+  var forade=foraDens||foraDiam||foraCorte||foraTemp;
   var reg={id:uid(),linha:linhaAtiva,opFbKey:op.fbKey,opNum:op.id,cod:op.cod,desc:op.desc||op.cod,turno:turnoQ,data:dataQ,hora:hora,
     densidade:isNaN(dens)?null:dens,diametro:isNaN(diam)?null:diam,corte:isNaN(corte)?null:corte,
     temperatura:isNaN(temp)?null:temp,temperaturaAmbiente:isNaN(amb)?null:amb,deltaTemp:deltaTemp,
-    foraEspec:forade,obs:G("q-obs").value||"",operador:SES.login,ts:agora()};
+    foraEspec:forade,foraDens:foraDens,foraDiam:foraDiam,foraCorte:foraCorte,foraTemp:foraTemp,
+    obs:G("q-obs").value||"",operador:SES.login,ts:agora()};
   if(!DB){toast("Firebase não conectado","err");return;}
   DB.ref("extrusao_qualidade").push(reg).then(function(){
     fM("m-qualid");
@@ -2610,8 +2614,33 @@ function salvarQualid(){
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
+// Retorna array com os nomes dos parâmetros fora do padrão de um apontamento.
+// Registros salvos antes desta versão não têm os flags individuais — nesse
+// caso cai no fallback genérico "Parâmetro" para não quebrar o histórico antigo.
+function listaForaParams(q){
+  var arr=[];
+  if(q.foraDens) arr.push("Densidade");
+  if(q.foraDiam) arr.push("Diâmetro");
+  if(q.foraCorte) arr.push("Corte");
+  if(q.foraTemp) arr.push("Temp.(Δamb)");
+  if(!arr.length&&q.foraEspec) arr.push("Parâmetro (registro antigo)");
+  return arr;
+}
+
+// Versão curta (para colunas estreitas de PDF/tabela)
+function abrevForaParams(q){
+  var arr=[];
+  if(q.foraDens) arr.push("DENS");
+  if(q.foraDiam) arr.push("DIÂM");
+  if(q.foraCorte) arr.push("CORTE");
+  if(q.foraTemp) arr.push("TEMP");
+  if(!arr.length&&q.foraEspec) arr.push("?");
+  return arr.join(",");
+}
+
 function calcQualidStats(qs){
   var dens=[],diam=[],corte=[],temp=[],delta=[],foraCount=0;
+  var foraDensCount=0,foraDiamCount=0,foraCorteCount=0,foraTempCount=0;
   (qs||[]).forEach(function(q){
     if(q.densidade!=null) dens.push(q.densidade);
     if(q.diametro!=null) diam.push(q.diametro);
@@ -2619,9 +2648,15 @@ function calcQualidStats(qs){
     if(q.temperatura!=null) temp.push(q.temperatura);
     if(q.deltaTemp!=null) delta.push(q.deltaTemp);
     if(q.foraEspec) foraCount++;
+    if(q.foraDens) foraDensCount++;
+    if(q.foraDiam) foraDiamCount++;
+    if(q.foraCorte) foraCorteCount++;
+    if(q.foraTemp) foraTempCount++;
   });
   function avg(arr){return arr.length?arr.reduce(function(a,b){return a+b;},0)/arr.length:null;}
-  return {mediaDens:avg(dens),mediaDiam:avg(diam),mediaCorte:avg(corte),mediaTemp:avg(temp),mediaDelta:avg(delta),foraCount:foraCount,total:(qs||[]).length};
+  return {mediaDens:avg(dens),mediaDiam:avg(diam),mediaCorte:avg(corte),mediaTemp:avg(temp),mediaDelta:avg(delta),
+    foraCount:foraCount,total:(qs||[]).length,
+    foraDensCount:foraDensCount,foraDiamCount:foraDiamCount,foraCorteCount:foraCorteCount,foraTempCount:foraTempCount};
 }
 
 // Alerta ativo: dispara se alguma linha do usuário ficar >60min sem apontamento de qualidade
@@ -2690,6 +2725,17 @@ function abrirResumo(){
         (qst.mediaCorte!=null?"Corte "+fN(qst.mediaCorte)+" · ":"")+
         (qst.mediaTemp!=null?"Temp "+fN(qst.mediaTemp)+"°C"+(qst.mediaDelta!=null?" (Δ"+(qst.mediaDelta>=0?"+":"")+fN(qst.mediaDelta)+")":""):"")+
         "</span></div>";
+    }
+    if(qst.foraCount){
+      h+="<div class=\"resumo-row\" style=\"font-size:11px;color:#c0392b\"><span>Ocorrências por parâmetro</span><span>"+
+        (qst.foraDensCount?"Dens "+qst.foraDensCount+" · ":"")+
+        (qst.foraDiamCount?"Diâm "+qst.foraDiamCount+" · ":"")+
+        (qst.foraCorteCount?"Corte "+qst.foraCorteCount+" · ":"")+
+        (qst.foraTempCount?"Temp(Δ) "+qst.foraTempCount:"")+
+        "</span></div>";
+      qs.filter(function(q){return q.foraEspec;}).forEach(function(q){
+        h+="<div class=\"resumo-row\" style=\"font-size:11px;color:#c0392b\"><span>⚠ "+q.hora+" — "+listaForaParams(q).join(", ")+"</span><span></span></div>";
+      });
     }
     h+="</div>";
   });
@@ -2884,7 +2930,7 @@ function gerarPDFResumoTurno(){
         doc.text(q.diametro!=null?fN(q.diametro):"-",hcQ[2],y+4);
         doc.text(q.corte!=null?fN(q.corte):"-",hcQ[3],y+4);
         doc.text(q.temperatura!=null?fN(q.temperatura)+(q.deltaTemp!=null?" (Δ"+(q.deltaTemp>=0?"+":"")+q.deltaTemp.toFixed(1)+")":""):"-",hcQ[4],y+4);
-        doc.text(q.foraEspec?"⚠ FORA":"✔ OK",hcQ[5],y+4);
+        doc.text(q.foraEspec?"⚠ "+abrevForaParams(q):"✔ OK",hcQ[5],y+4);
         doc.setFont("helvetica","normal"); doc.setTextColor(100,100,100);
         doc.text((q.obs||"").slice(0,22),hcQ[6],y+4);
         y+=7;
@@ -4545,7 +4591,7 @@ function admRenderLista(){
       hq+='<div style="padding:8px 10px;border-radius:8px;border:1px solid '+corBorda+';margin-bottom:6px;font-size:12px'+(q.foraEspec?";background:#fdf3f3":"")+'">';
       hq+='<div style="display:flex;justify-content:space-between;align-items:center">';
       hq+='<span style="font-weight:700;color:#2471a3">'+(q.linha||"")+' · '+(q.hora||"")+' · T'+(q.turno||"")+'</span>';
-      hq+='<span style="font-weight:700;color:'+(q.foraEspec?"#c0392b":"#024f2b")+'">'+(q.foraEspec?"⚠ FORA DO PADRÃO":"✔ OK")+'</span>';
+      hq+='<span style="font-weight:700;color:'+(q.foraEspec?"#c0392b":"#024f2b")+'">'+(q.foraEspec?"⚠ "+listaForaParams(q).join(", "):"✔ OK")+'</span>';
       hq+='</div>';
       hq+='<div style="color:#333;margin-top:2px">OP '+(q.opNum||"")+' — '+(q.desc||q.cod||"")+'</div>';
       hq+='<div style="color:#4a664a;margin-top:2px">'+
@@ -4635,7 +4681,7 @@ function gerarPDFRelatorioQualidade(){
       doc.text(q.diametro!=null?fN(q.diametro):"-",hcQ[4],y+4);
       doc.text(q.corte!=null?fN(q.corte):"-",hcQ[5],y+4);
       doc.text(q.temperatura!=null?fN(q.temperatura)+(q.deltaTemp!=null?" (Δ"+(q.deltaTemp>=0?"+":"")+q.deltaTemp.toFixed(1)+")":""):"-",hcQ[6],y+4);
-      doc.text(q.foraEspec?"⚠ FORA":"✔ OK",hcQ[7],y+4);
+      doc.text(q.foraEspec?"⚠ "+abrevForaParams(q):"✔ OK",hcQ[7],y+4);
       y+=7;
     });
 
