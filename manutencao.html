@@ -330,6 +330,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <button class="tab on" id="atab-usuarios" onclick="adminTab('usuarios')">Usuários</button>
     <button class="tab" id="atab-setores" onclick="adminTab('setores')">Setores Solicitantes</button>
     <button class="tab" id="atab-motivos" onclick="adminTab('motivos')">Motivos de Chamado</button>
+    <button class="tab" id="atab-motivosauto" onclick="adminTab('motivosauto')">Motivos Automáticos (Extrusão)</button>
   </div>
 
   <div id="admin-usuarios">
@@ -358,6 +359,22 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <div class="tw"><table>
         <thead><tr><th>Motivo</th><th>Ações</th></tr></thead>
         <tbody id="motivos-corpo"></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <div id="admin-motivosauto" style="display:none">
+    <div class="ch">
+      <div style="font-size:12px;color:#4a664a">Só os motivos marcados como Ativo criam chamado automaticamente ao registrar parada na extrusão.</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn bsm" onclick="ativarTodosMotivosAuto(true)">Ativar todos</button>
+        <button class="btn bsm" onclick="ativarTodosMotivosAuto(false)">Desativar todos</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="tw"><table>
+        <thead><tr><th>Código</th><th>Motivo (grupo Manutenção)</th><th>Chamado automático</th></tr></thead>
+        <tbody id="motivos-auto-corpo"></tbody>
       </table></div>
     </div>
   </div>
@@ -1060,13 +1077,14 @@ function excluirChamado(fbKey){
 // ABA ADMINISTRADOR — alterna entre Usuários / Setores / Motivos
 // ============================================================
 function adminTab(nome){
-  ['usuarios','setores','motivos'].forEach(function(n){
+  ['usuarios','setores','motivos','motivosauto'].forEach(function(n){
     G('atab-'+n).classList.toggle('on',n===nome);
     G('admin-'+n).style.display=(n===nome)?'':'none';
   });
   if(nome==='usuarios') carregarUsuarios();
   else if(nome==='setores') renderSetoresAdmin();
   else if(nome==='motivos') renderMotivosAdmin();
+  else if(nome==='motivosauto') carregarMotivosAutoAdmin();
 }
 
 // ============================================================
@@ -1549,6 +1567,98 @@ function abrirDetalheInterno(fbKey){
   DEEP_LINK_OS=fbKey;
   monitorarChamadoUnico(fbKey);
   go('detalhe');
+}
+
+// ============================================================
+// MOTIVOS AUTOMÁTICOS (EXTRUSÃO) — quais motivos do grupo Manutenção
+// da lista PARADAS do extrusao.html disparam chamado automático.
+// Referência de código/descrição copiada da lista PARADAS real
+// (grupo "Manutenção"). Se novos motivos forem adicionados lá dentro
+// desse grupo no futuro, replicar aqui também.
+// ============================================================
+var CODIGOS_MANUTENCAO_EXTRUSAO=[
+  {cod:34,desc:"Teste de manutenção"},
+  {cod:118,desc:"Quebra/Escape do TC-03"},
+  {cod:119,desc:"Quebra/Escape do TC-02"},
+  {cod:120,desc:"Quebra/Escape do TC-01"},
+  {cod:121,desc:"Elétrica (Gargalo)"},
+  {cod:122,desc:"Falta de Ar Comprimido"},
+  {cod:128,desc:"Problema elétrico Balança de dosagem"},
+  {cod:129,desc:"Pré - condicionador"},
+  {cod:130,desc:"Problema elétrico - extrusora"},
+  {cod:131,desc:"Problema elétrico - secadora (espalhador/Esteira)"},
+  {cod:132,desc:"Problema elétrico - resfriador"},
+  {cod:133,desc:"Problema elétrico - Redler/Elevador/Rocas"},
+  {cod:135,desc:"Problema elétrico - Sist Exaustão/Pneumático"},
+  {cod:136,desc:"Problema elétrico - Moinho"},
+  {cod:137,desc:"Problema elétrico - Engordurador-VC"},
+  {cod:138,desc:"Manutenção fora do planejado"},
+  {cod:139,desc:"Problema mecânico - extrusora"},
+  {cod:140,desc:"Problema mecânico - secadora (espalhador/Esteira)"},
+  {cod:141,desc:"Problema mecânico - resfriador"},
+  {cod:142,desc:"Problema mecânico - Redler/Elevador/Roscas"},
+  {cod:144,desc:"Problema mecânico - Sist.Exaustão/Pneumático"},
+  {cod:145,desc:"Problema mecânico - Engordurador"},
+  {cod:146,desc:"Problema mecânico - Balança de dosagem"},
+  {cod:147,desc:"Problema mecânico - Moinho"},
+  {cod:150,desc:"Rotâmetro com problema"},
+  {cod:151,desc:"linha de vapor"},
+  {cod:154,desc:"Sensor do Silo de matéria"},
+  {cod:155,desc:"Rosca dosadora"},
+  {cod:166,desc:"Válvula rotativa"},
+  {cod:170,desc:"Unidade de facas"},
+  {cod:171,desc:"Rack de vapor"},
+  {cod:172,desc:"Espalhador"},
+  {cod:174,desc:"Calha vibratória"},
+  {cod:177,desc:"Fead Clean"},
+  {cod:179,desc:"Bomba de óleo"},
+  {cod:180,desc:"Bomba de água extrusora"},
+  {cod:181,desc:"Turbo clean"},
+  {cod:182,desc:"Man. Ensaque - balança"},
+  {cod:183,desc:"Man. ensaque - Costuradeira"},
+  {cod:184,desc:"Man. Ensaque - Robo"}
+];
+var MOTIVOS_AUTO_HABILITADOS={};
+
+function carregarMotivosAutoAdmin(){
+  DB.ref('manutencao_config/motivos_auto_extrusao').once('value').then(function(snap){
+    MOTIVOS_AUTO_HABILITADOS=snap.exists()?snap.val():{};
+    renderMotivosAutoAdmin();
+  }).catch(function(e){toast('Erro: '+e.message,'err');});
+}
+
+function renderMotivosAutoAdmin(){
+  var h='';
+  CODIGOS_MANUTENCAO_EXTRUSAO.forEach(function(m){
+    var ativo=!!MOTIVOS_AUTO_HABILITADOS[m.cod];
+    h+='<tr><td>'+m.cod+'</td><td>'+m.desc+'</td><td>';
+    h+='<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:'+(ativo?'#024f2b':'#4a664a')+'">';
+    h+='<input type="checkbox" data-cod="'+m.cod+'" '+(ativo?'checked':'')+' onchange="toggleMotivoAuto(this)"> '+(ativo?'Ativo':'Inativo');
+    h+='</label></td></tr>';
+  });
+  G('motivos-auto-corpo').innerHTML=h;
+}
+
+function toggleMotivoAuto(el){
+  var cod=el.dataset.cod;
+  var ativo=el.checked;
+  DB.ref('manutencao_config/motivos_auto_extrusao/'+cod).set(ativo?true:null).then(function(){
+    if(ativo) MOTIVOS_AUTO_HABILITADOS[cod]=true; else delete MOTIVOS_AUTO_HABILITADOS[cod];
+    renderMotivosAutoAdmin();
+    toast(ativo?'Motivo ativado para chamado automático':'Motivo desativado','ok');
+  }).catch(function(e){toast('Erro: '+e.message,'err');el.checked=!ativo;});
+}
+
+function ativarTodosMotivosAuto(estado){
+  if(!confirm((estado?'Ativar':'Desativar')+' chamado automático para TODOS os '+CODIGOS_MANUTENCAO_EXTRUSAO.length+' motivos?')) return;
+  var updates={};
+  CODIGOS_MANUTENCAO_EXTRUSAO.forEach(function(m){ updates[m.cod]=estado?true:null; });
+  DB.ref('manutencao_config/motivos_auto_extrusao').update(updates).then(function(){
+    MOTIVOS_AUTO_HABILITADOS={};
+    if(estado) CODIGOS_MANUTENCAO_EXTRUSAO.forEach(function(m){ MOTIVOS_AUTO_HABILITADOS[m.cod]=true; });
+    renderMotivosAutoAdmin();
+    toast(estado?'Todos ativados!':'Todos desativados!','ok');
+  }).catch(function(e){toast('Erro: '+e.message,'err');});
 }
 </script>
 </body>
