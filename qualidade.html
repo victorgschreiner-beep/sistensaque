@@ -481,6 +481,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="fg"><label class="fl">Turno</label><input type="text" id="insp-turno" disabled></div>
     <div class="fg"><label class="fl">Data</label><input type="date" id="insp-data"></div>
   </div>
+  <div class="fg"><label class="fl">Umidade Relativa do Ar (%) — no momento da coleta</label><input type="number" step="0.1" id="ip-umidAr" placeholder="Ex: 65" style="max-width:200px"></div>
   <div id="insp-aviso-dup" class="alw" style="display:none"></div>
   <div class="card" style="margin-bottom:12px">
     <div class="ct" style="margin-bottom:10px">Parâmetros Numéricos</div>
@@ -1438,6 +1439,8 @@ function montarFormularioInspecao(dadosExistentes){
   });
   G('insp-params-texto').innerHTML=hTxt;
 
+  G('ip-umidAr').value = res.umidAr!==undefined ? res.umidAr : '';
+
   // recalcula status de cada campo já preenchido (modo edição)
   CAMPOS_NUM.forEach(function(c){ recalcCampo(c.key); });
 }
@@ -1504,6 +1507,8 @@ function coletarResultadosInspecao(){
     var v=G('ip-'+c.key).value;
     if(v!=='') resultados[c.key]=v;
   });
+  var uAr=G('ip-umidAr').value;
+  if(uAr!=='') resultados.umidAr=Number(uAr);
   return {resultados:resultados, aprovacoes:aprovacoes, algumaReprova:algumaReprova, algumaAvaliada:algumaAvaliada};
 }
 
@@ -2914,6 +2919,9 @@ function montarRastreioOP(op, destacarData, expandido){
           if(!val) return;
           h+='<span>'+c.label+': '+val+'</span><br>';
         });
+        if(i.resultados && i.resultados.umidAr!==undefined){
+          h+='<span style="color:#4a664a">Umid. Ar (coleta): '+fN(i.resultados.umidAr,1)+'%</span><br>';
+        }
         h+='</div></td>';
         h+='</tr>';
       });
@@ -3043,6 +3051,9 @@ function exportarRastreabilidadePDF(){
           var val=insp.resultados&&insp.resultados[c.key];
           if(val) params.push({txt:c.label+': '+val, fora:false});
         });
+        if(insp.resultados && insp.resultados.umidAr!==undefined){
+          params.push({txt:'Umid. Ar (coleta): '+fN(insp.resultados.umidAr,1)+'%', fora:false});
+        }
 
         var linhaH=Math.max(5, params.length*4+2);
         if(y+linhaH>195){ doc.addPage('a4','landscape'); y=15; }
