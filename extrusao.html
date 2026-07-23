@@ -939,11 +939,25 @@ var EST={};
 
 // ── UTILS ─────────────────────────────────────────────────
 function G(id){return document.getElementById(id);}
+// Calcula data/hora de Brasília de forma explícita (fuso nomeado America/Sao_Paulo),
+// independente do fuso configurado no aparelho/navegador que executa a página.
+// CORREÇÃO (23/07/2026): a versão anterior de hoje() somava o avanço de dia DUAS VEZES
+// das 21h às 23h59 — toISOString() já vira o dia seguinte sozinho nesse horário exato
+// (21h Brasília = 00h UTC, por Brasília ser sempre UTC-3), e o código ainda somava +24h
+// em cima disso, fazendo a extrusão "pular" para depois de amanhã por 3h todo dia.
+// Isso deixava OPs recém-reprogramadas (datadas corretamente para "amanhã" pelo Ensaque)
+// sem bater com a data que a extrusão procurava, até a virada da meia-noite se autocorrigir.
+function dataBrasilia(d){
+  return new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(d);
+}
+function horaBrasilia(d){
+  return parseInt(new Intl.DateTimeFormat("en-US",{timeZone:"America/Sao_Paulo",hour:"2-digit",hour12:false}).format(d),10)%24;
+}
 function hoje(){
   // Data operacional: a partir das 21h pertence ao próximo dia (início do T1)
   var now=new Date();
-  if(now.getHours()>=21) now=new Date(now.getTime()+24*60*60*1000);
-  return now.toISOString().slice(0,10);
+  if(horaBrasilia(now)>=21) now=new Date(now.getTime()+24*60*60*1000);
+  return dataBrasilia(now);
 }
 function agora(){return new Date().toISOString();}
 function horaAtual(){var d=new Date();return pad(d.getHours())+":"+pad(d.getMinutes());}
@@ -966,7 +980,7 @@ function fM(id){G(id).classList.remove("on");}
 function aM(id){G(id).classList.add("on");}
 var _pendingTroca=null;
 
-function turnoAtual(){var h=new Date().getHours();return h>=21||h<5?1:h<13?2:3;}
+function turnoAtual(){var h=horaBrasilia(new Date());return h>=21||h<5?1:h<13?2:3;}
 
 // Calcula turno baseado na hora do apontamento (não no horário atual)
 function turnoDeHora(horaStr){
@@ -2255,8 +2269,8 @@ function abrirApt(linha){
   // Turno 1: 21h→5h. Se hora atual < 5h e DT_FILA é ontem, avança para hoje
   (function verificarDtFila(){
     var agr=new Date();
-    var hAtual=agr.getHours();
-    var dtHoje=agr.toISOString().slice(0,10);
+    var hAtual=horaBrasilia(agr);
+    var dtHoje=hoje();
     // Só avança se: turno 1, hora entre 0-4h, e DT_FILA não é hoje
     if(SES.turno===1 && hAtual<5 && DT_FILA && DT_FILA!==dtHoje){
       trocarDataFila(dtHoje);
@@ -3057,8 +3071,8 @@ function iniciarAlerta(){
   setInterval(function(){
     var d=new Date(), min=d.getMinutes(), hora=pad(d.getHours())+":00";
     // Avança DT_FILA automaticamente para turno 1 após meia-noite
-    if(SES&&SES.turno===1&&d.getHours()<5){
-      var dtHoje=d.toISOString().slice(0,10);
+    if(SES&&SES.turno===1&&horaBrasilia(d)<5){
+      var dtHoje=hoje();
       if(DT_FILA&&DT_FILA!==dtHoje){
         trocarDataFila(dtHoje);
         toast("Fila avançada automaticamente para "+dtHoje.split("-").reverse().join("/"),"ok");
@@ -6376,25 +6390,29 @@ function resumoAdmBuscar(){
   Promise.all([
     DB.ref("extrusao_apts").orderByChild("data").equalTo(dt).once("value"),
     DB.ref("extrusao_paradas").orderByChild("data").equalTo(dt).once("value"),
-    DB.ref("ops").orderByChild("data").equalTo(dt).once("value")
+    DB.ref("ops").orderByChild("data").equalTo(dt).once("value"),
+    DB.ref("extrusao_qualidade").orderByChild("data").equalTo(dt).once("value")
   ]).then(function(results){
-    var apts=[], paradas=[], ops=[];
+    var apts=[], paradas=[], ops=[], qualid=[];
     if(results[0].exists()) results[0].forEach(function(c){var v=c.val();v.fbKey=c.key;apts.push(v);});
     if(results[1].exists()) results[1].forEach(function(c){var v=c.val();v.fbKey=c.key;paradas.push(v);});
     if(results[2].exists()) results[2].forEach(function(c){var v=c.val();v.fbKey=c.key;ops.push(v);});
+    if(results[3].exists()) results[3].forEach(function(c){var v=c.val();v.fbKey=c.key;qualid.push(v);});
 
     // Filtrar por turno e linha
     apts=apts.filter(function(a){ return a.turno===turno && (!linha||a.linha===linha); });
     paradas=paradas.filter(function(p){ return p.turno===turno && (!linha||p.linha===linha); });
+    qualid=qualid.filter(function(q){ return q.turno===turno && (!linha||q.linha===linha); });
 
-    _resumoAdmDados={apts:apts,paradas:paradas,ops:ops,dt:dt,turno:turno,linha:linha};
-    resumoAdmRenderizar(apts,paradas,ops,dt,turno,linha);
+    _resumoAdmDados={apts:apts,paradas:paradas,ops:ops,qualid:qualid,dt:dt,turno:turno,linha:linha};
+    resumoAdmRenderizar(apts,paradas,ops,dt,turno,linha,qualid);
     // Recarrega campos de reprocesso para o turno/data selecionado pelo admin
     carregarReprocessoAdm(dt,turno);
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
-function resumoAdmRenderizar(apts,paradas,ops,dt,turno,linhaFiltro){
+function resumoAdmRenderizar(apts,paradas,ops,dt,turno,linhaFiltro,qualid){
+  qualid=qualid||[];
   var linhas=linhaFiltro?[linhaFiltro]:["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
   var h='<div style="font-size:11px;color:#739630;margin-bottom:10px">'+
         'Turno '+turno+' · '+dt+(linhaFiltro?' · '+nomeCurto(linhaFiltro):'')+'</div>';
@@ -6404,7 +6422,8 @@ function resumoAdmRenderizar(apts,paradas,ops,dt,turno,linhaFiltro){
   linhas.forEach(function(linha){
     var aptsL=apts.filter(function(a){return a.linha===linha;});
     var parasL=paradas.filter(function(p){return p.linha===linha;});
-    if(!aptsL.length&&!parasL.length) return;
+    var qualidL=qualid.filter(function(q){return q.linha===linha;});
+    if(!aptsL.length&&!parasL.length&&!qualidL.length) return;
 
     var totalReal=aptsL.reduce(function(s,a){return s+(Number(a.real)||0);},0);
     var minPara=parasL.reduce(function(s,p){
@@ -6488,6 +6507,28 @@ function resumoAdmRenderizar(apts,paradas,ops,dt,turno,linhaFiltro){
         h+='<td style="padding:4px 8px;text-align:right;font-weight:700;color:#c0392b">'+(p.horaFim?minH(m):"—")+'</td></tr>';
       });
       h+='</table>';
+    }
+
+    // Qualidade
+    if(qualidL.length){
+      var qst=calcQualidStats(qualidL);
+      h+='<div style="background:#f0f6fb;padding:6px 8px;font-size:10px;font-weight:700;color:#2471a3;display:flex;justify-content:space-between">';
+      h+='<span>🔬 QUALIDADE</span><span>'+qualidL.length+(qst.foraCount?' · ⚠ '+qst.foraCount+' fora do padrão':'')+'</span></div>';
+      if(qst.total){
+        h+='<div style="padding:6px 8px;font-size:11px;color:#2471a3;background:#fff">';
+        h+='<span>Médias: </span>'+
+          (qst.mediaDens!=null?'Dens '+fN(qst.mediaDens)+' · ':'')+
+          (qst.mediaDiam!=null?'Diâm '+fN(qst.mediaDiam)+' · ':'')+
+          (qst.mediaCorte!=null?'Corte '+fN(qst.mediaCorte)+' · ':'')+
+          (qst.mediaTemp!=null?'Temp '+fN(qst.mediaTemp)+'°C'+(qst.mediaDelta!=null?' (Δ'+(qst.mediaDelta>=0?'+':'')+fN(qst.mediaDelta)+')':''):'');
+        h+='</div>';
+      }
+      if(qst.foraCount){
+        qualidL.filter(function(q){return q.foraEspec;}).forEach(function(q){
+          h+='<div style="padding:4px 8px;font-size:11px;color:#c0392b;background:#fdf3f3">⚠ '+q.hora+' — '+listaForaParams(q).join(", ")+
+            (q.opNum?' <span style="color:#4a664a">('+q.opNum+')</span>':'')+'</div>';
+        });
+      }
     }
     h+='</div>';
   });
