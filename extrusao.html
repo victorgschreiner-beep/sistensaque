@@ -1751,7 +1751,14 @@ function getOpsLinha(linha){
     // Mas só se o status ainda for Concluida — evita falso bloqueio após "Voltar à Fila"
     if(opConcluidaNaExt(o.fbKey, linha) && o.status==="Concluida") return false;
     // Aceita OPs do dia atual OU reprogramadas (data pode ser diferente)
-    return o.data===dt || o.status==="Reprogramada";
+    // CORREÇÃO (24/07/2026): antes, OPs com status "Reprogramada" ficavam na fila
+    // para sempre, de qualquer data histórica, porque o filtro de data era
+    // ignorado para esse status. Isso mantinha elos antigos e já superados
+    // (órfãos) presos na fila indefinidamente. Agora que hoje() já grava a
+    // data operacional corretamente no momento da reprogramação (bug corrigido
+    // separadamente), o elo novo nasce com data===dt e aparece normalmente —
+    // não precisa mais desse bypass.
+    return o.data===dt;
   }).sort(function(a,b){return (a.criadoEm||'')>(b.criadoEm||'')?1:-1;});
 }
 
