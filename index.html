@@ -464,7 +464,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     </div>
     <!-- Tabela -->
     <div class="tw"><table>
-      <thead><tr><th>Balança</th><th>Início</th><th>Fim</th><th>Duração</th><th>Turno</th><th>Categoria</th><th>Motivo</th><th>Operador</th><th>Obs</th></tr></thead>
+      <thead><tr><th>Balança</th><th>Início</th><th>Fim</th><th>Duração</th><th>Turno</th><th>Categoria</th><th>Motivo</th><th>Operador</th><th>Obs</th><th>Ações</th></tr></thead>
       <tbody id="bal-hist-body"></tbody>
     </table></div>
   </div>
@@ -4776,7 +4776,11 @@ function renderBalHistorico() {
 
   DB.ref('ensaque_historico_paradas').orderByChild('ts').once('value').then(function(snap) {
     var rows = [];
-    snap.forEach(function(c) { rows.push(c.val()); });
+    snap.forEach(function(c) {
+      var v = c.val();
+      v._key = c.key;
+      rows.push(v);
+    });
     rows.reverse();
 
     // Filtros
@@ -4784,6 +4788,8 @@ function renderBalHistorico() {
     if (filTurno) rows = rows.filter(function(r){ return r.turno === filTurno; });
     if (filDi) rows = rows.filter(function(r){ return r.ts >= new Date(filDi).getTime(); });
     if (filDf) rows = rows.filter(function(r){ return r.ts <= new Date(filDf+'T23:59:59').getTime(); });
+
+    var isAdmin = SES && SES.perfil === 'admin';
 
     // Tabela
     var h = '';
@@ -4800,13 +4806,29 @@ function renderBalHistorico() {
       h += '<td style="font-size:12px">'+(r.motivo||'-')+'</td>';
       h += '<td style="font-size:11px;color:#4a664a">'+(r.operador||'-')+'</td>';
       h += '<td style="font-size:11px;color:#4a664a">'+(r.obs||'-')+'</td>';
+      h += '<td>';
+      if (isAdmin) {
+        h += '<button class="btn br bxs" onclick="excluirBalParada(&quot;'+r._key+'&quot;,&quot;'+nome+'&quot;)" title="Excluir registro">✕</button>';
+      }
+      h += '</td>';
       h += '</tr>';
     });
     var tbody = G('bal-hist-body');
-    if (tbody) tbody.innerHTML = h || '<tr><td colspan="9" style="color:#4a664a;padding:12px;text-align:center">Nenhum registro encontrado.</td></tr>';
+    if (tbody) tbody.innerHTML = h || '<tr><td colspan="10" style="color:#4a664a;padding:12px;text-align:center">Nenhum registro encontrado.</td></tr>';
 
     // Gráficos
     renderBalGraficos(rows);
+  });
+}
+
+function excluirBalParada(key, nome) {
+  if (!confirm('Excluir este registro de parada de '+nome+'?\n\nEsta ação não pode ser desfeita.')) return;
+  DB.ref('ensaque_historico_paradas/'+key).remove().then(function() {
+    toast('Registro excluído!', 'ok');
+    addLog('BAL_EXCLUIR_PARADA', key);
+    renderBalHistorico();
+  }).catch(function(err) {
+    toast('Erro ao excluir: '+(err.message||err), 'err');
   });
 }
 
