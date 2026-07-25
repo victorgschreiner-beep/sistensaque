@@ -473,6 +473,14 @@ tr:hover td{background:rgba(2,79,43,.03)}
 <!-- ADMIN -->
 <div class="scr" id="scr-admin">
   <h2 style="font-size:16px;font-weight:700;color:#024f2b;margin-bottom:16px">Administracao</h2>
+
+  <!-- Card de configuração das balanças -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ch"><span class="ct">Configuração das Balanças</span><button class="btn bsm" onclick="loadBalConfig()">&#8635;</button></div>
+    <div style="font-size:12px;color:#4a664a;margin-bottom:12px">Inative uma balança quando ela estiver em programação ou manutenção. Balanças inativas não exibem alertas nem status no sistema.</div>
+    <div id="bal-config-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:12px"></div>
+  </div>
+
   <div class="g2">
     <div class="card">
       <div class="ch"><span class="ct">Usuarios</span><button class="btn bp bsm" onclick="abrirNovoUser()">+ Novo</button></div>
@@ -906,7 +914,7 @@ function go(s,btn){
       renderOpCards();
     }
     else if(s==='exportar'){ popOPSel(); var m=hoje().slice(0,7); G('xdi').value=m+'-01'; G('xdf').value=hoje(); }
-    else if(s==='admin'){ loadUsers(); loadLog(); loadProds(); }
+    else if(s==='admin'){ loadUsers(); loadLog(); loadProds(); loadBalConfig(); }
     else if(s==='balancas'){
       balIniciarListeners();
       var hoje2=hoje(); G('bal-hdi').value=hoje2; G('bal-hdf').value=hoje2;
@@ -4481,6 +4489,47 @@ function renderFilaOp(){
 }
 
 // ============================================================
+// CONFIG BALANÇAS — Admin
+// ============================================================
+function loadBalConfig() {
+  DB.ref('ensaque_bal_config').once('value').then(function(snap) {
+    var cfg = snap.val() || {};
+    var html = '';
+    BAL_LISTA.forEach(function(b) {
+      var ativa = cfg[b.id] !== undefined ? cfg[b.id].ativa !== false : true;
+      var cor = ativa ? '#024f2b' : '#888780';
+      var txt = ativa ? 'ATIVA' : 'INATIVA';
+      var btnTxt = ativa ? 'Inativar' : 'Ativar';
+      var btnCls = ativa ? 'br' : 'bp';
+      html += '<div style="border:1px solid #c8d8c8;border-radius:8px;padding:14px">';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+      html += '<div style="font-weight:700;font-size:14px;color:'+cor+'">'+b.nome+'</div>';
+      html += '<span class="badge" style="background:'+(ativa?'rgba(2,79,43,0.1)':'rgba(136,135,128,0.15)')+';color:'+cor+'">'+txt+'</span>';
+      html += '</div>';
+      html += '<div style="font-size:12px;color:#4a664a;margin-bottom:10px">'+(ativa?'Monitorando normalmente':'Sem monitoramento — sem alertas')+'</div>';
+      html += '<button class="btn '+btnCls+' bsm" onclick="toggleBalConfig(''+b.id+'','+ativa+')">'+btnTxt+' Balança</button>';
+      html += '</div>';
+    });
+    var el = G('bal-config-cards');
+    if (el) el.innerHTML = html;
+  });
+}
+
+function toggleBalConfig(balId, ativaAtual) {
+  var novoEstado = !ativaAtual;
+  DB.ref('ensaque_bal_config/'+balId).update({ ativa: novoEstado }).then(function() {
+    var txt = novoEstado ? 'Balança ativada!' : 'Balança inativada!';
+    toast(txt, 'ok');
+    addLog(novoEstado?'BAL_ATIVAR':'BAL_INATIVAR', balId);
+    loadBalConfig();
+    // Atualiza status no nó da balança
+    if (!novoEstado) {
+      DB.ref('ensaque_'+balId).update({ status: 'INATIVA', alerta_parada: false, tempo_parado_seg: 0 });
+    }
+  });
+}
+
+// ============================================================
 // MÓDULO BALANÇAS — Monitoramento em tempo real
 // ============================================================
 var BAL_MOTIVOS = {
@@ -4570,9 +4619,20 @@ function renderBalCards() {
   BAL_LISTA.forEach(function(b) {
     var d = BAL_STATE[b.id] || {};
     var status = d.status || 'PARADO';
+    // Se balança está inativa — mostra card cinza simples
+    if (status === 'INATIVA') {
+      html += '<div style="background:#f1efe8;border:1px solid #b4b2a9;border-radius:12px;padding:18px;opacity:0.7">';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between">';
+      html += '<div style="font-size:16px;font-weight:700;color:#888780">'+b.nome+'</div>';
+      html += '<div style="font-size:13px;color:#888780">⏸ INATIVA</div>';
+      html += '</div>';
+      html += '<div style="font-size:11px;color:#888780;margin-top:8px">Em programação ou manutenção</div>';
+      html += '</div>';
+      return;
+    }
     var ativo = status === 'ATIVO';
-    var alerta = d.alerta_parada;
-    var registrada = d.parada_registrada;
+    var alerta = d.alerta_parada === true;
+    var registrada = d.parada_registrada === true;
     var seg = d.tempo_parado_seg || 0;
     var cor = ativo ? '#024f2b' : alerta ? '#c0392b' : '#d29922';
     var bgCor = ativo ? 'rgba(2,79,43,0.07)' : alerta ? 'rgba(192,57,43,0.08)' : 'rgba(210,153,34,0.08)';
