@@ -167,6 +167,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <button class="nb" id="nb-fila-op" onclick="go('fila-op',this)">Ver Fila</button>
     <button class="nb" id="nb-op" onclick="go('operador',this)">Apontamento</button>
     <button class="nb" id="nb-exp" onclick="go('exportar',this)">Exportar</button>
+    <button class="nb" id="nb-bal" onclick="go('balancas',this)">⚖️ Balanças</button>
     <button class="nb" id="nb-adm" onclick="go('admin',this)">Admin</button>
   </div>
   <div class="ubar">
@@ -382,6 +383,90 @@ tr:hover td{background:rgba(2,79,43,.03)}
 
       <div id="div-corpo"><div style="text-align:center;padding:30px;color:#4a664a;font-size:13px">Configure os filtros e clique em Analisar</div></div>
     </div>
+  </div>
+</div>
+
+<!-- BALANÇAS -->
+<div class="scr" id="scr-balancas">
+  <h2 style="font-size:16px;font-weight:700;color:#024f2b;margin-bottom:14px">⚖️ Monitoramento de Balanças <span style="font-size:11px;color:#739630;font-weight:500">● ao vivo</span></h2>
+
+  <!-- Cards de status em tempo real -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px" id="bal-cards"></div>
+
+  <!-- Modal de registro de parada -->
+  <div class="ov" id="ov-bal-parada">
+    <div class="modal" style="max-width:480px">
+      <div class="mt">Registrar Motivo de Parada</div>
+      <div id="bal-parada-info" style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px;margin-bottom:14px;font-size:13px;color:#856404"></div>
+      <div class="fg">
+        <label class="fl">Categoria</label>
+        <select id="bal-cat" onchange="balFiltrarMotivos()">
+          <option value="">Selecione a categoria...</option>
+          <option value="Manutenção">Manutenção</option>
+          <option value="Operacional">Operacional</option>
+          <option value="Fator Externo">Fator Externo</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label class="fl">Motivo</label>
+        <select id="bal-motivo">
+          <option value="">Selecione o motivo...</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label class="fl">Observação (opcional)</label>
+        <input type="text" id="bal-obs" placeholder="Detalhe adicional...">
+      </div>
+      <div class="mfoot">
+        <button class="btn" onclick="fecharBalParada()">Cancelar</button>
+        <button class="btn bp" onclick="salvarBalParada()">Registrar Parada</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de finalizar parada -->
+  <div class="ov" id="ov-bal-finalizar">
+    <div class="modal" style="max-width:480px">
+      <div class="mt">Finalizar Parada</div>
+      <div id="bal-fin-info" style="background:#d4edda;border:1px solid #28a745;border-radius:8px;padding:10px;margin-bottom:14px;font-size:13px;color:#155724"></div>
+      <div class="mfoot">
+        <button class="btn" onclick="fecharBalFinalizar()">Cancelar</button>
+        <button class="btn bp" style="background:#024f2b" onclick="confirmarBalFinalizar()">Confirmar — Máquina Voltou</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Histórico e gráfico -->
+  <div class="card">
+    <div class="ch" style="flex-wrap:wrap;gap:8px">
+      <span class="ct">Histórico de Paradas</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select id="bal-hfil" style="width:auto" onchange="renderBalHistorico()">
+          <option value="">Todas as balanças</option>
+          <option value="balanca_1">Balança 1</option>
+          <option value="balanca_2">Balança 2</option>
+        </select>
+        <select id="bal-hturno" style="width:auto" onchange="renderBalHistorico()">
+          <option value="">Todos os turnos</option>
+          <option value="1">Turno 1</option>
+          <option value="2">Turno 2</option>
+          <option value="3">Turno 3</option>
+        </select>
+        <input type="date" id="bal-hdi" style="width:auto" onchange="renderBalHistorico()">
+        <input type="date" id="bal-hdf" style="width:auto" onchange="renderBalHistorico()">
+        <button class="btn bsm" onclick="renderBalHistorico()">&#8635; Atualizar</button>
+      </div>
+    </div>
+    <!-- Gráfico -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div><div style="font-size:11px;color:#739630;font-weight:700;margin-bottom:6px">PARADAS POR CATEGORIA</div><div style="position:relative;height:160px"><canvas id="bal-chart-cat"></canvas></div></div>
+      <div><div style="font-size:11px;color:#739630;font-weight:700;margin-bottom:6px">TOP MOTIVOS</div><div style="position:relative;height:160px"><canvas id="bal-chart-mot"></canvas></div></div>
+    </div>
+    <!-- Tabela -->
+    <div class="tw"><table>
+      <thead><tr><th>Balança</th><th>Início</th><th>Fim</th><th>Duração</th><th>Turno</th><th>Categoria</th><th>Motivo</th><th>Operador</th><th>Obs</th></tr></thead>
+      <tbody id="bal-hist-body"></tbody>
+    </table></div>
   </div>
 </div>
 
@@ -782,6 +867,7 @@ function aplicarSessao(){
   G('nb-fila-op').style.display=(isPCP||isSup)?'none':'';
   G('nb-op').style.display=(isPCP||isSup)?'none':'';
   G('nb-exp').style.display=isOP?'none':'';
+  G('nb-bal').style.display=''; // todos podem ver balanças
   G('nb-adm').style.display=(p==='admin')?'':'none';
   var pb=G('pcpbar'); if(pb) pb.style.display=isOP?'none':'';
 }
@@ -821,6 +907,12 @@ function go(s,btn){
     }
     else if(s==='exportar'){ popOPSel(); var m=hoje().slice(0,7); G('xdi').value=m+'-01'; G('xdf').value=hoje(); }
     else if(s==='admin'){ loadUsers(); loadLog(); loadProds(); }
+    else if(s==='balancas'){
+      balIniciarListeners();
+      var hoje2=hoje(); G('bal-hdi').value=hoje2; G('bal-hdf').value=hoje2;
+      renderBalCards();
+      renderBalHistorico();
+    }
   }
   var needsOPS = (s==='dashboard'||s==='ops'||s==='fila'||s==='fila-op'||s==='operador'||s==='exportar');
   if(needsOPS && OPS.length===0){
@@ -4388,6 +4480,303 @@ function renderFilaOp(){
   grid.innerHTML=h;
 }
 
+// ============================================================
+// MÓDULO BALANÇAS — Monitoramento em tempo real
+// ============================================================
+var BAL_MOTIVOS = {
+  'Manutenção': [
+    'Problema Mecânico/Elétrico — Costuradeira',
+    'Problema Mecânico/Elétrico — Robô',
+    'Problema Mecânico/Elétrico — Esteira',
+    'Problema Mecânico/Elétrico — Balança'
+  ],
+  'Operacional': [
+    'Quebra de Linha',
+    'Troca de Linha',
+    'Robô Parado (Palete)',
+    'Esteira Parada',
+    'Almoço/Janta',
+    'Aguardando Ração'
+  ],
+  'Fator Externo': [
+    'Problema Externo Libracom'
+  ]
+};
+
+var BAL_LISTA = [
+  { id: 'balanca_1', nome: 'Balança 1' },
+  { id: 'balanca_2', nome: 'Balança 2' }
+];
+
+var BAL_STATE = {};
+var BAL_LISTENERS = {};
+var BAL_PARADA_ATIVA = null;
+var BAL_FIN_ATIVA = null;
+var balChartCat = null;
+var balChartMot = null;
+
+function balTurnoAtual() {
+  var h = new Date().getHours();
+  if (h >= 6 && h < 14) return 1;
+  if (h >= 14 && h < 22) return 2;
+  return 3;
+}
+
+function balFmtDuracao(seg) {
+  if (!seg || seg < 0) return '-';
+  var m = Math.floor(seg / 60), s = seg % 60;
+  if (m >= 60) return Math.floor(m/60)+'h '+('0'+(m%60)).slice(-2)+'m';
+  return m+'m '+('0'+s).slice(-2)+'s';
+}
+
+function balFmtTs(ts) {
+  if (!ts) return '-';
+  return new Date(ts).toLocaleString('pt-BR');
+}
+
+function balFiltrarMotivos() {
+  var cat = G('bal-cat').value;
+  var sel = G('bal-motivo');
+  sel.innerHTML = '<option value="">Selecione o motivo...</option>';
+  if (cat && BAL_MOTIVOS[cat]) {
+    BAL_MOTIVOS[cat].forEach(function(m) {
+      sel.innerHTML += '<option value="'+m+'">'+m+'</option>';
+    });
+  }
+}
+
+function balIniciarListeners() {
+  BAL_LISTA.forEach(function(b) {
+    if (BAL_LISTENERS[b.id]) return;
+    BAL_LISTENERS[b.id] = DB.ref('ensaque_' + b.id).on('value', function(snap) {
+      var d = snap.val() || {};
+      BAL_STATE[b.id] = d;
+      renderBalCards();
+      // Verifica alerta — abre modal se necessário e usuário pode registrar
+      var p = SES && SES.perfil;
+      var pode = p === 'admin' || p === 'pcp' || p === 'operador' || p === 'supervisor';
+      if (d.alerta_parada && !d.parada_registrada && pode) {
+        // Só abre se não estiver com modal aberto
+        if (!G('ov-bal-parada').classList.contains('on') && !G('ov-bal-finalizar').classList.contains('on')) {
+          abrirBalParada(b.id);
+        }
+      }
+    });
+  });
+}
+
+function renderBalCards() {
+  var html = '';
+  BAL_LISTA.forEach(function(b) {
+    var d = BAL_STATE[b.id] || {};
+    var status = d.status || 'PARADO';
+    var ativo = status === 'ATIVO';
+    var alerta = d.alerta_parada;
+    var registrada = d.parada_registrada;
+    var seg = d.tempo_parado_seg || 0;
+    var cor = ativo ? '#024f2b' : alerta ? '#c0392b' : '#d29922';
+    var bgCor = ativo ? 'rgba(2,79,43,0.07)' : alerta ? 'rgba(192,57,43,0.08)' : 'rgba(210,153,34,0.08)';
+    var bordaCor = ativo ? '#024f2b' : alerta ? '#c0392b' : '#d29922';
+    var statusTxt = ativo ? '● ATIVA' : alerta ? '⚠ PARADA — ALERTA' : '○ PARADA';
+    var p = SES && SES.perfil;
+    var pode = p === 'admin' || p === 'pcp' || p === 'operador' || p === 'supervisor';
+
+    html += '<div style="background:'+bgCor+';border:2px solid '+bordaCor+';border-radius:12px;padding:18px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+    html += '<div style="font-size:16px;font-weight:700;color:'+cor+'">'+b.nome+'</div>';
+    html += '<div style="font-size:13px;font-weight:700;color:'+cor+'">'+statusTxt+'</div>';
+    html += '</div>';
+
+    if (!ativo) {
+      html += '<div style="font-size:12px;color:#4a664a;margin-bottom:8px">Tempo parado: <b style="font-size:15px;color:'+cor+'">'+balFmtDuracao(seg)+'</b></div>';
+    }
+
+    if (alerta && !registrada && pode) {
+      html += '<button class="btn br bsm" style="margin-right:6px" onclick="abrirBalParada(\''+b.id+'\')">Registrar Parada</button>';
+    }
+    if (!ativo && registrada && pode) {
+      html += '<button class="btn bsm" style="background:#024f2b;color:#fff;border-color:#024f2b" onclick="abrirBalFinalizar(\''+b.id+'\')">Finalizar Parada</button>';
+    }
+    if (registrada) {
+      html += '<div style="font-size:11px;color:#4a664a;margin-top:8px">Parada registrada ✓</div>';
+    }
+    html += '</div>';
+  });
+  var el = G('bal-cards');
+  if (el) el.innerHTML = html;
+}
+
+function abrirBalParada(balId) {
+  var b = BAL_LISTA.find(function(x){ return x.id === balId; });
+  var d = BAL_STATE[balId] || {};
+  BAL_PARADA_ATIVA = balId;
+  G('bal-parada-info').innerHTML = '<b>'+b.nome+'</b> — Parada há <b>'+balFmtDuracao(d.tempo_parado_seg)+'</b><br>Registre o motivo para continuar.';
+  G('bal-cat').value = '';
+  G('bal-motivo').innerHTML = '<option value="">Selecione o motivo...</option>';
+  G('bal-obs').value = '';
+  G('ov-bal-parada').classList.add('on');
+}
+
+function fecharBalParada() {
+  G('ov-bal-parada').classList.remove('on');
+  BAL_PARADA_ATIVA = null;
+}
+
+function salvarBalParada() {
+  var cat = G('bal-cat').value;
+  var mot = G('bal-motivo').value;
+  if (!cat || !mot) { toast('Selecione categoria e motivo','err'); return; }
+  var obs = G('bal-obs').value.trim();
+  var balId = BAL_PARADA_ATIVA;
+  var d = BAL_STATE[balId] || {};
+  var agr = agora();
+  var turno = balTurnoAtual();
+  var registro = {
+    balanca: balId,
+    inicio_ts: agr - (d.tempo_parado_seg || 0) * 1000,
+    inicio_fmt: balFmtTs(agr - (d.tempo_parado_seg || 0) * 1000),
+    tempo_parado_seg: d.tempo_parado_seg || 0,
+    categoria: cat,
+    motivo: mot,
+    obs: obs,
+    operador: SES.login,
+    turno: turno,
+    ts: agr,
+    fim_ts: null,
+    fim_fmt: null,
+    duracao_total_seg: null
+  };
+  DB.ref('ensaque_historico_paradas').push(registro).then(function(ref) {
+    DB.ref('ensaque_' + balId).update({ parada_registrada: true, parada_key: ref.key });
+    toast('Parada registrada com sucesso!', 'ok');
+    fecharBalParada();
+  });
+}
+
+function abrirBalFinalizar(balId) {
+  var b = BAL_LISTA.find(function(x){ return x.id === balId; });
+  var d = BAL_STATE[balId] || {};
+  BAL_FIN_ATIVA = balId;
+  G('bal-fin-info').innerHTML = '<b>'+b.nome+'</b> voltou a operar.<br>Confirme para finalizar o registro de parada.';
+  G('ov-bal-finalizar').classList.add('on');
+}
+
+function fecharBalFinalizar() {
+  G('ov-bal-finalizar').classList.remove('on');
+  BAL_FIN_ATIVA = null;
+}
+
+function confirmarBalFinalizar() {
+  var balId = BAL_FIN_ATIVA;
+  var d = BAL_STATE[balId] || {};
+  var agr = agora();
+  if (d.parada_key) {
+    DB.ref('ensaque_historico_paradas/' + d.parada_key).once('value').then(function(snap) {
+      var reg = snap.val() || {};
+      var dur = reg.inicio_ts ? Math.floor((agr - reg.inicio_ts) / 1000) : null;
+      DB.ref('ensaque_historico_paradas/' + d.parada_key).update({
+        fim_ts: agr,
+        fim_fmt: balFmtTs(agr),
+        duracao_total_seg: dur
+      });
+    });
+  }
+  DB.ref('ensaque_' + balId).update({
+    parada_registrada: false,
+    parada_key: null
+  });
+  toast('Parada finalizada!', 'ok');
+  fecharBalFinalizar();
+}
+
+function renderBalHistorico() {
+  var filBal = G('bal-hfil') ? G('bal-hfil').value : '';
+  var filTurno = G('bal-hturno') ? parseInt(G('bal-hturno').value) : 0;
+  var filDi = G('bal-hdi') ? G('bal-hdi').value : '';
+  var filDf = G('bal-hdf') ? G('bal-hdf').value : '';
+
+  DB.ref('ensaque_historico_paradas').orderByChild('ts').once('value').then(function(snap) {
+    var rows = [];
+    snap.forEach(function(c) { rows.push(c.val()); });
+    rows.reverse();
+
+    // Filtros
+    if (filBal) rows = rows.filter(function(r){ return r.balanca === filBal; });
+    if (filTurno) rows = rows.filter(function(r){ return r.turno === filTurno; });
+    if (filDi) rows = rows.filter(function(r){ return r.ts >= new Date(filDi).getTime(); });
+    if (filDf) rows = rows.filter(function(r){ return r.ts <= new Date(filDf+'T23:59:59').getTime(); });
+
+    // Tabela
+    var h = '';
+    rows.forEach(function(r) {
+      var nome = r.balanca === 'balanca_1' ? 'Balança 1' : 'Balança 2';
+      var catCls = r.categoria === 'Manutenção' ? 'bam' : r.categoria === 'Fator Externo' ? 'bpx' : 'bvd';
+      h += '<tr>';
+      h += '<td><b>'+nome+'</b></td>';
+      h += '<td style="font-size:11px">'+r.inicio_fmt+'</td>';
+      h += '<td style="font-size:11px">'+(r.fim_fmt||'<span style="color:#c0392b">Em aberto</span>')+'</td>';
+      h += '<td><b>'+(r.duracao_total_seg ? balFmtDuracao(r.duracao_total_seg) : balFmtDuracao(r.tempo_parado_seg))+'</b></td>';
+      h += '<td>T'+(r.turno||'-')+'</td>';
+      h += '<td><span class="badge '+catCls+'">'+(r.categoria||'-')+'</span></td>';
+      h += '<td style="font-size:12px">'+(r.motivo||'-')+'</td>';
+      h += '<td style="font-size:11px;color:#4a664a">'+(r.operador||'-')+'</td>';
+      h += '<td style="font-size:11px;color:#4a664a">'+(r.obs||'-')+'</td>';
+      h += '</tr>';
+    });
+    var tbody = G('bal-hist-body');
+    if (tbody) tbody.innerHTML = h || '<tr><td colspan="9" style="color:#4a664a;padding:12px;text-align:center">Nenhum registro encontrado.</td></tr>';
+
+    // Gráficos
+    renderBalGraficos(rows);
+  });
+}
+
+function renderBalGraficos(rows) {
+  // Agrupa por categoria
+  var cats = {};
+  var mots = {};
+  rows.forEach(function(r) {
+    if (r.categoria) cats[r.categoria] = (cats[r.categoria]||0) + 1;
+    if (r.motivo) mots[r.motivo] = (mots[r.motivo]||0) + 1;
+  });
+
+  // Gráfico categorias
+  var ctxCat = G('bal-chart-cat');
+  if (ctxCat) {
+    if (balChartCat) balChartCat.destroy();
+    balChartCat = new Chart(ctxCat, {
+      type: 'doughnut',
+      data: {
+        labels: Object.keys(cats),
+        datasets: [{ data: Object.values(cats), backgroundColor: ['#d29922','#024f2b','#8b5cf6'] }]
+      },
+      options: { plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }, responsive: true, maintainAspectRatio: false }
+    });
+  }
+
+  // Gráfico top motivos
+  var sorted = Object.entries(mots).sort(function(a,b){ return b[1]-a[1]; }).slice(0,5);
+  var ctxMot = G('bal-chart-mot');
+  if (ctxMot) {
+    if (balChartMot) balChartMot.destroy();
+    balChartMot = new Chart(ctxMot, {
+      type: 'bar',
+      data: {
+        labels: sorted.map(function(x){ return x[0].length > 20 ? x[0].substr(0,20)+'…' : x[0]; }),
+        datasets: [{ data: sorted.map(function(x){ return x[1]; }), backgroundColor: '#024f2b' }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: { x: { ticks: { font: { size: 10 } } }, y: { ticks: { font: { size: 10 } } } },
+        responsive: true, maintainAspectRatio: false
+      }
+    });
+  }
+}
+
+// Hook para iniciar listeners quando entrar na tela
+var _goOriginal = window.go;
 
 </script>
 </body>
