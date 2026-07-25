@@ -4507,7 +4507,7 @@ function loadBalConfig() {
       html += '<span class="badge" style="background:'+(ativa?'rgba(2,79,43,0.1)':'rgba(136,135,128,0.15)')+';color:'+cor+'">'+txt+'</span>';
       html += '</div>';
       html += '<div style="font-size:12px;color:#4a664a;margin-bottom:10px">'+(ativa?'Monitorando normalmente':'Sem monitoramento — sem alertas')+'</div>';
-      html += '<button class="btn '+btnCls+' bsm" onclick="toggleBalConfig(''+b.id+'','+ativa+')">'+btnTxt+' Balança</button>';
+      html += '<button class="btn '+btnCls+' bsm" onclick="toggleBalConfig(&quot;'+b.id+'&quot;,'+ativa+')">'+btnTxt+' Balanca</button>';
       html += '</div>';
     });
     var el = G('bal-config-cards');
