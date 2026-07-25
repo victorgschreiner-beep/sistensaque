@@ -4594,11 +4594,13 @@ function renderBalCards() {
     if (alerta && !registrada && pode) {
       html += '<button class="btn br bsm" style="margin-right:6px" onclick="abrirBalParada(\''+b.id+'\')">Registrar Parada</button>';
     }
-    if (!ativo && registrada && pode) {
+    if (ativo && registrada && pode) {
+      // Máquina voltou (ESP32 detectou corrente) mas parada ainda está aberta — mostra botão finalizar
+      html += '<div style="font-size:12px;color:#024f2b;font-weight:600;margin-bottom:6px">✅ Máquina voltou — finalize a parada</div>';
       html += '<button class="btn bsm" style="background:#024f2b;color:#fff;border-color:#024f2b" onclick="abrirBalFinalizar(\''+b.id+'\')">Finalizar Parada</button>';
     }
-    if (registrada) {
-      html += '<div style="font-size:11px;color:#4a664a;margin-top:8px">Parada registrada ✓</div>';
+    if (!ativo && registrada && pode) {
+      html += '<div style="font-size:11px;color:#4a664a;margin-top:8px">⏳ Parada registrada — aguardando máquina voltar</div>';
     }
     html += '</div>';
   });
@@ -4628,18 +4630,21 @@ function salvarBalParada() {
   if (!cat || !mot) { toast('Selecione categoria e motivo','err'); return; }
   var obs = G('bal-obs').value.trim();
   var balId = BAL_PARADA_ATIVA;
+  if (!balId) { toast('Erro: balanca nao identificada','err'); return; }
   var d = BAL_STATE[balId] || {};
-  var agr = agora();
+  var agr = Date.now();
+  var seg = d.tempo_parado_seg || 0;
   var turno = balTurnoAtual();
+  var inicioTs = agr - seg * 1000;
   var registro = {
     balanca: balId,
-    inicio_ts: agr - (d.tempo_parado_seg || 0) * 1000,
-    inicio_fmt: balFmtTs(agr - (d.tempo_parado_seg || 0) * 1000),
-    tempo_parado_seg: d.tempo_parado_seg || 0,
+    inicio_ts: inicioTs,
+    inicio_fmt: new Date(inicioTs).toLocaleString('pt-BR'),
+    tempo_parado_seg: seg,
     categoria: cat,
     motivo: mot,
     obs: obs,
-    operador: SES.login,
+    operador: SES ? SES.login : 'desconhecido',
     turno: turno,
     ts: agr,
     fim_ts: null,
@@ -4650,6 +4655,8 @@ function salvarBalParada() {
     DB.ref('ensaque_' + balId).update({ parada_registrada: true, parada_key: ref.key });
     toast('Parada registrada com sucesso!', 'ok');
     fecharBalParada();
+  }).catch(function(err) {
+    toast('Erro ao salvar: ' + (err.message||err), 'err');
   });
 }
 
@@ -4668,25 +4675,37 @@ function fecharBalFinalizar() {
 
 function confirmarBalFinalizar() {
   var balId = BAL_FIN_ATIVA;
+  if (!balId) { toast('Erro: balanca nao identificada','err'); return; }
   var d = BAL_STATE[balId] || {};
-  var agr = agora();
+  var agr = Date.now();
   if (d.parada_key) {
     DB.ref('ensaque_historico_paradas/' + d.parada_key).once('value').then(function(snap) {
       var reg = snap.val() || {};
       var dur = reg.inicio_ts ? Math.floor((agr - reg.inicio_ts) / 1000) : null;
       DB.ref('ensaque_historico_paradas/' + d.parada_key).update({
         fim_ts: agr,
-        fim_fmt: balFmtTs(agr),
+        fim_fmt: new Date(agr).toLocaleString('pt-BR'),
         duracao_total_seg: dur
       });
+      // Limpa parada_key e parada_registrada — status ATIVO vem do ESP32
+      DB.ref('ensaque_' + balId).update({
+        parada_registrada: false,
+        parada_key: null
+      });
+      toast('Parada finalizada com sucesso!', 'ok');
+      fecharBalFinalizar();
+    }).catch(function(err) {
+      toast('Erro ao finalizar: ' + (err.message||err), 'err');
     });
+  } else {
+    // Sem parada_key — limpa mesmo assim
+    DB.ref('ensaque_' + balId).update({
+      parada_registrada: false,
+      parada_key: null
+    });
+    toast('Parada finalizada!', 'ok');
+    fecharBalFinalizar();
   }
-  DB.ref('ensaque_' + balId).update({
-    parada_registrada: false,
-    parada_key: null
-  });
-  toast('Parada finalizada!', 'ok');
-  fecharBalFinalizar();
 }
 
 function renderBalHistorico() {
