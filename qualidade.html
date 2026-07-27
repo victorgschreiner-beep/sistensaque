@@ -302,6 +302,28 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
   <div class="mrow" id="dash-cards"></div>
 
+  <!-- ============ RELATÓRIO DE DESVIOS (Reprovado / Ponto de Atenção) ============ -->
+  <div class="card" id="dash-desvios-card">
+    <div class="ch">
+      <span class="ct">🔍 Relatório de Desvios — Reprovados e Pontos de Atenção</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select id="dash-desvio-status" style="width:auto" onchange="renderRelatorioDesvios()">
+          <option value="todos">Reprovado + Ponto de Atenção</option>
+          <option value="reprovado">Somente Reprovado</option>
+          <option value="aprovado_excecao">Somente Ponto de Atenção</option>
+        </select>
+        <button class="btn bsm" onclick="exportarDesviosCSV()">⇣ Exportar CSV</button>
+      </div>
+    </div>
+    <div class="alw">Lista, parâmetro a parâmetro, tudo que saiu da faixa especificada no período — inclusive análises liberadas por exceção (o valor medido continua fora da faixa mesmo após a liberação). Use o resumo para identificar padrões por produto/parâmetro antes de ajustar processo.</div>
+
+    <div class="ch" style="margin-top:8px"><span class="ct">Resumo por Produto e Parâmetro</span></div>
+    <div class="tw" id="dash-desvios-resumo"></div>
+
+    <div class="ch" style="margin-top:10px"><span class="ct">Detalhado — todas as ocorrências</span></div>
+    <div class="tw" id="dash-desvios-detalhe"></div>
+  </div>
+
   <!-- Visão por SKU específico — só aparece quando um produto é selecionado no filtro -->
   <div id="dash-sku-evolucao" style="display:none">
     <div class="card">
@@ -2197,6 +2219,7 @@ function gerarDashboardQual(){
     DASH_DADOS_ATUAIS={di:di, df:df, linhaF:linhaF, analistaF:analistaF, skuF:skuF, turnoF:turnoF, insp:insp, ncs:ncsNoPeriodo};
 
     renderDashCards(insp, ncsNoPeriodo);
+    renderRelatorioDesvios();
 
     if(skuF){
       // Visão focada: evolução de UM produto ao longo do período selecionado
@@ -2440,6 +2463,120 @@ function renderDashCards(insp, ncs){
   G('dash-cards').innerHTML=h;
 }
 
+// ============================================================
+// RELATÓRIO DE DESVIOS — parâmetros fora da faixa (Reprovado / Ponto de Atenção)
+// ============================================================
+var DASH_DESVIOS_ATUAIS=[]; // cache do último relatório detalhado, usado na exportação CSV
+
+// Expande cada inspeção em uma linha por parâmetro reprovado (aprovacoes[k]===false).
+// filtroStatusForcado, quando informado, ignora o select da tela (usado pelo PDF geral).
+function calcularDesvios(insp, filtroStatusForcado){
+  var filtroStatus = filtroStatusForcado || (G('dash-desvio-status') ? G('dash-desvio-status').value : 'todos');
+  var linhas=[];
+  insp.forEach(function(i){
+    if(i.statusGeral!=='reprovado' && i.statusGeral!=='aprovado_excecao') return;
+    if(filtroStatus!=='todos' && i.statusGeral!==filtroStatus) return;
+    if(!i.aprovacoes) return;
+    var pq=PARAMS_QUAL[i.cod]||{};
+    Object.keys(i.aprovacoes).forEach(function(k){
+      if(i.aprovacoes[k]!==false) return; // só o que efetivamente saiu da faixa
+      var campo=CAMPOS_NUM.find(function(c){return c.key===k;});
+      if(!campo) return;
+      var valor=i.resultados?i.resultados[k]:undefined;
+      linhas.push({
+        data:i.data, hora:i.hora, linha:i.linha, turno:i.turno,
+        cod:i.cod, desc:i.desc||'', lote:i.lote||'—',
+        parametro:campo.label, valor:(typeof valor==='number'?valor:Number(valor)),
+        faixa:faixaTexto(campo,pq), status:i.statusGeral,
+        analista:i.analistaNome||i.analista||'—', fbKey:i.fbKey
+      });
+    });
+  });
+  linhas.sort(function(a,b){ return (b.data+b.hora) > (a.data+a.hora) ? 1 : -1; });
+  return linhas;
+}
+
+function renderRelatorioDesvios(){
+  if(!DASH_DADOS_ATUAIS) return;
+  var insp = DASH_DADOS_ATUAIS.insp;
+  if(DASH_DADOS_ATUAIS.skuF){ insp = insp.filter(function(i){return i.cod===DASH_DADOS_ATUAIS.skuF;}); }
+  var linhas = calcularDesvios(insp);
+  DASH_DESVIOS_ATUAIS = linhas;
+
+  // ---- Resumo por Produto + Parâmetro ----
+  var grupos={};
+  linhas.forEach(function(l){
+    var key=l.cod+'|'+l.parametro;
+    if(!grupos[key]) grupos[key]={cod:l.cod, desc:l.desc, parametro:l.parametro, faixa:l.faixa, valores:[], reprov:0, atencao:0};
+    if(!isNaN(l.valor)) grupos[key].valores.push(l.valor);
+    if(l.status==='reprovado') grupos[key].reprov++; else grupos[key].atencao++;
+  });
+  var arrResumo=Object.keys(grupos).map(function(k){return grupos[k];})
+    .sort(function(a,b){ return (b.reprov+b.atencao)-(a.reprov+a.atencao); });
+
+  if(!arrResumo.length){
+    G('dash-desvios-resumo').innerHTML='<div style="text-align:center;padding:16px;color:#999;font-size:12px">Nenhum desvio no período/filtros selecionados</div>';
+  } else {
+    var h='<table><thead><tr><th>Código</th><th>Produto</th><th>Parâmetro</th>'+
+      '<th style="text-align:right">Ocorrências</th><th style="text-align:right">Reprov.</th><th style="text-align:right">Atenção</th>'+
+      '<th style="text-align:right">Média</th><th style="text-align:right">Mín</th><th style="text-align:right">Máx</th><th>Faixa Esperada</th></tr></thead><tbody>';
+    arrResumo.forEach(function(g){
+      var n=g.valores.length;
+      var media=n?g.valores.reduce(function(s,v){return s+v;},0)/n:null;
+      var min=n?Math.min.apply(null,g.valores):null;
+      var max=n?Math.max.apply(null,g.valores):null;
+      h+='<tr><td>'+g.cod+'</td><td>'+(g.desc||'—')+'</td><td>'+g.parametro+'</td>'+
+        '<td style="text-align:right;font-weight:700">'+(g.reprov+g.atencao)+'</td>'+
+        '<td style="text-align:right;color:#c0392b">'+g.reprov+'</td>'+
+        '<td style="text-align:right;color:#d29922">'+g.atencao+'</td>'+
+        '<td style="text-align:right">'+fN(media,2)+'</td>'+
+        '<td style="text-align:right">'+fN(min,2)+'</td>'+
+        '<td style="text-align:right">'+fN(max,2)+'</td>'+
+        '<td>'+g.faixa+'</td></tr>';
+    });
+    h+='</tbody></table>';
+    G('dash-desvios-resumo').innerHTML=h;
+  }
+
+  // ---- Detalhado — cada ocorrência ----
+  if(!linhas.length){
+    G('dash-desvios-detalhe').innerHTML='<div style="text-align:center;padding:16px;color:#999;font-size:12px">Nenhum desvio no período/filtros selecionados</div>';
+  } else {
+    var h2='<table><thead><tr><th>Data</th><th>Hora</th><th>Turno</th><th>Linha</th><th>Código</th><th>Produto</th><th>Lote</th>'+
+      '<th>Parâmetro</th><th style="text-align:right">Valor</th><th>Faixa</th><th>Status</th><th>Analista</th></tr></thead><tbody>';
+    linhas.forEach(function(l){
+      var stCls=classeStatusInsp(l.status);
+      h2+='<tr><td>'+l.data.split('-').reverse().join('/')+'</td><td>'+l.hora+'</td><td>T'+l.turno+'</td>'+
+        '<td>'+l.linha.replace(/\(.*\)/,'').trim()+'</td><td>'+l.cod+'</td><td>'+(l.desc||'—')+'</td><td>'+l.lote+'</td>'+
+        '<td>'+l.parametro+'</td><td style="text-align:right;font-weight:700">'+fN(l.valor,2)+'</td><td>'+l.faixa+'</td>'+
+        '<td><span class="badge '+stCls+'">'+labelStatusInsp(l.status)+'</span></td><td>'+l.analista+'</td></tr>';
+    });
+    h2+='</tbody></table>';
+    G('dash-desvios-detalhe').innerHTML=h2;
+  }
+}
+
+function exportarDesviosCSV(){
+  if(!DASH_DESVIOS_ATUAIS || !DASH_DESVIOS_ATUAIS.length){ toast('Nenhum desvio para exportar com os filtros atuais','err'); return; }
+  var header=['Data','Hora','Turno','Linha','Codigo','Produto','Lote','Parametro','Valor','Faixa Esperada','Status','Analista'];
+  var linhasCsv=DASH_DESVIOS_ATUAIS.map(function(l){
+    return [
+      l.data.split('-').reverse().join('/'), l.hora, 'T'+l.turno, l.linha,
+      l.cod, (l.desc||'').replace(/;/g,','), l.lote,
+      l.parametro, (isNaN(l.valor)?'':String(l.valor).replace('.',',')),
+      l.faixa.replace(/;/g,','), labelStatusInsp(l.status).replace(/[🔴🟡✅]/g,'').trim(), l.analista
+    ];
+  });
+  var csv='\uFEFF'+header.join(';')+'\n'+linhasCsv.map(function(r){return r.join(';');}).join('\n');
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url; a.download='Desvios_Qualidade_'+(DASH_DADOS_ATUAIS?DASH_DADOS_ATUAIS.di:'')+'_a_'+(DASH_DADOS_ATUAIS?DASH_DADOS_ATUAIS.df:'')+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('CSV exportado!','ok');
+}
+
 function renderChartStatus(insp){
   var aprovadas=insp.filter(function(i){return i.statusGeral==='aprovado';}).length;
   var atencao=insp.filter(function(i){return i.statusGeral==='aprovado_excecao';}).length;
@@ -2634,6 +2771,25 @@ function exportarRelatorioGeralPDF(d){
   }).sort(function(a,b){return b[2]-a[2];}).slice(0,15);
   if(arrProd.length){
     y=pdfTabela(doc,y,'PRODUTOS COM MAIS DESVIOS',['Código','Produto','Reprovações'],arrProd,[35,180,40]);
+  }
+
+  // Desvios por produto e parâmetro (reprovado + ponto de atenção) — para ajuste de parâmetros
+  var linhasDesvio=calcularDesvios(d.insp,'todos');
+  var gruposPdf={};
+  linhasDesvio.forEach(function(l){
+    var key=l.cod+'|'+l.parametro;
+    if(!gruposPdf[key]) gruposPdf[key]={cod:l.cod, desc:l.desc, parametro:l.parametro, faixa:l.faixa, valores:[], qtd:0};
+    if(!isNaN(l.valor)) gruposPdf[key].valores.push(l.valor);
+    gruposPdf[key].qtd++;
+  });
+  var arrDesvio=Object.keys(gruposPdf).map(function(k){
+    var g=gruposPdf[k]; var n=g.valores.length;
+    var media=n?g.valores.reduce(function(s,v){return s+v;},0)/n:null;
+    return [g.cod, g.desc||'—', g.parametro, g.qtd, fN(media,2), g.faixa];
+  }).sort(function(a,b){return b[3]-a[3];}).slice(0,20);
+  if(arrDesvio.length){
+    y=pdfTabela(doc,y,'DESVIOS POR PRODUTO E PARÂMETRO (REPROVADO + PONTO DE ATENÇÃO)',
+      ['Código','Produto','Parâmetro','Ocorr.','Valor Médio','Faixa Esperada'],arrDesvio,[20,60,55,18,30,90]);
   }
 
   // Não conformidades do período
