@@ -528,6 +528,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
   <div class="card">
     <div class="ch"><span class="ct">Produtos</span><div style="display:flex;gap:8px"><button class="btn bsm" style="background:#739630;border-color:#739630;color:#fff" onclick="importarProdutos()">&#8659; Importar (432)</button><button class="btn bp bsm" onclick="abrirNovoProd()">+ Novo</button></div></div>
+    <input type="text" id="prod-busca" placeholder="Buscar produto (codigo ou nome)..." style="margin-bottom:10px" oninput="renderProdsAdmin()">
     <div class="tw"><table><thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th><th>Acoes</th></tr></thead><tbody id="prodbody"></tbody></table></div>
   </div>
   <!-- Card "Manutencao — Corrigir OPs Reprogramadas" removido por decisao do usuario:
@@ -4479,23 +4480,39 @@ function loadLog(){
   });
 }
 
+var ADMIN_PRODS=[]; // cache local dos produtos, usado pra busca sem refazer fetch a cada tecla
+
 function loadProds(){
   DB.ref('produtos').once('value').then(function(snap){
-    var h=''; if(snap.exists()) snap.forEach(function(c){
-      var p=c.val(), fbKey=c.key;
-      h+='<tr><td style="font-weight:600;font-size:12px">'+p.cod+'</td><td>'+p.desc+'</td><td><span class="badge bcz">'+p.unid+'</span></td>';
-      h+='<td style="white-space:nowrap;display:flex;gap:4px">';
-      h+='<button class="btn bxs edit-prod" data-key="'+fbKey+'" style="color:#024f2b;border-color:#024f2b">Editar</button>';
-      h+='<button class="btn bxs del-prod" data-key="'+fbKey+'" style="color:#c0392b;border-color:#c0392b">Excluir</button>';
-      h+='</td></tr>';
+    ADMIN_PRODS=[];
+    if(snap.exists()) snap.forEach(function(c){
+      var p=c.val(); p.fbKey=c.key; ADMIN_PRODS.push(p);
     });
-    G('prodbody').innerHTML=h||'<tr><td colspan="4" style="color:#4a664a;padding:12px">Nenhum produto.</td></tr>';
-    document.querySelectorAll('.edit-prod').forEach(function(btn){
-      btn.addEventListener('click',function(){abrirEditarProd(btn.dataset.key);});
-    });
-    document.querySelectorAll('.del-prod').forEach(function(btn){
-      btn.addEventListener('click',function(){prepExcluirProd(btn.dataset.key);});
-    });
+    ADMIN_PRODS.sort(function(a,b){return (a.cod||'').localeCompare(b.cod||'');});
+    renderProdsAdmin();
+  });
+}
+
+function renderProdsAdmin(){
+  var busca=(G('prod-busca')?G('prod-busca').value:'').trim().toLowerCase();
+  var lista=ADMIN_PRODS.filter(function(p){
+    if(!busca) return true;
+    return (p.cod||'').toLowerCase().indexOf(busca)!==-1 || (p.desc||'').toLowerCase().indexOf(busca)!==-1;
+  });
+  var h='';
+  lista.forEach(function(p){
+    h+='<tr><td style="font-weight:600;font-size:12px">'+p.cod+'</td><td>'+p.desc+'</td><td><span class="badge bcz">'+p.unid+'</span></td>';
+    h+='<td style="white-space:nowrap;display:flex;gap:4px">';
+    h+='<button class="btn bxs edit-prod" data-key="'+p.fbKey+'" style="color:#024f2b;border-color:#024f2b">Editar</button>';
+    h+='<button class="btn bxs del-prod" data-key="'+p.fbKey+'" style="color:#c0392b;border-color:#c0392b">Excluir</button>';
+    h+='</td></tr>';
+  });
+  G('prodbody').innerHTML=h||'<tr><td colspan="4" style="color:#4a664a;padding:12px">'+(busca?'Nenhum produto encontrado para essa busca.':'Nenhum produto.')+'</td></tr>';
+  document.querySelectorAll('.edit-prod').forEach(function(btn){
+    btn.addEventListener('click',function(){abrirEditarProd(btn.dataset.key);});
+  });
+  document.querySelectorAll('.del-prod').forEach(function(btn){
+    btn.addEventListener('click',function(){prepExcluirProd(btn.dataset.key);});
   });
 }
 
