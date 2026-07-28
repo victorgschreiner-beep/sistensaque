@@ -297,7 +297,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <button class="btn bsm" onclick="G('envf-dt').value='';G('envf-prod').value='';G('envf-st').value='';G('envf-maq').value='';G('envf-lote').value='';renderEnvaseOPs()">Limpar filtros</button>
     </div>
     <div class="card" style="padding:0"><div class="tw"><table>
-      <thead><tr><th>OP Envase</th><th>Codigo</th><th>Produto</th><th>Lote</th><th>Maquina</th><th style="text-align:right">Prog. (kg)</th><th style="text-align:right">Real. (kg)</th><th>Status</th><th>OP Origem</th><th>Acoes</th></tr></thead>
+      <thead><tr><th>OP Envase</th><th>Codigo</th><th>Produto</th><th>Lote</th><th>Maquina</th><th style="text-align:right">Prog. (kg)</th><th style="text-align:right">Real. (kg)</th><th style="text-align:right">Perda (kg)</th><th>Status</th><th>OP Origem</th><th>Acoes</th></tr></thead>
       <tbody id="envaseopsbody"></tbody>
     </table></div></div>
   </div>
@@ -584,7 +584,10 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="fg"><label class="fl">Maquina</label><select id="editenv-maquina"><option>Haver</option><option>Dosetec</option><option>Raumak</option></select></div>
     <div class="fg"><label class="fl">Data</label><input type="date" id="editenv-data"></div>
   </div>
-  <div class="fg"><label class="fl">Status</label><select id="editenv-status"><option>Liberada</option><option>Em andamento</option><option>Concluida</option></select></div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Status</label><select id="editenv-status"><option>Liberada</option><option>Em andamento</option><option>Concluida</option></select></div>
+    <div class="fg"><label class="fl">Perda (kg)</label><input type="number" id="editenv-perda" min="0" step="0.1"></div>
+  </div>
   <input type="hidden" id="editenv-fbkey">
   <div class="mfoot"><button class="btn bsm" onclick="fM('medit-envase')">Cancelar</button><button class="btn bsm bp" onclick="salvarEditEnvase()">&#10004; Salvar</button></div>
 </div></div>
@@ -3783,7 +3786,7 @@ function renderEnvaseOPs(){
   });
   var h='';
   if(!lista.length){
-    h='<tr><td colspan="10" style="text-align:center;color:#889;padding:20px">Nenhuma ordem de Envase encontrada com os filtros atuais.</td></tr>';
+    h='<tr><td colspan="11" style="text-align:center;color:#889;padding:20px">Nenhuma ordem de Envase encontrada com os filtros atuais.</td></tr>';
   }
   for(var i=0;i<lista.length;i++){
     var o=lista[i];
@@ -3795,6 +3798,7 @@ function renderEnvaseOPs(){
        '<td>'+(o.maquina||'-')+'</td>'+
        '<td style="text-align:right">'+(o.prog||0).toFixed(1)+'</td>'+
        '<td style="text-align:right">'+(o.real||0).toFixed(1)+'</td>'+
+       '<td style="text-align:right;color:#c0392b">'+(o.perda?(o.perda).toFixed(1):'-')+'</td>'+
        '<td>'+(o.status||'-')+'</td>'+
        '<td style="font-size:11px;color:#4a664a">'+(o.origemOpId||'-')+'</td>'+
        '<td style="white-space:nowrap"><button class="btn bxs" data-key="'+o.fbKey+'" onclick="abrirEditEnvase(this.dataset.key)">Editar</button> '+
@@ -3815,6 +3819,7 @@ function abrirEditEnvase(fbKey){
   G('editenv-maquina').value=o.maquina||'Haver';
   G('editenv-data').value=o.data||hoje();
   G('editenv-status').value=o.status||'Liberada';
+  G('editenv-perda').value=o.perda||0;
   calcEditEnvaseSub();
   G('medit-envase').classList.add('on');
 }
@@ -3835,6 +3840,7 @@ function salvarEditEnvase(){
     maquina:G('editenv-maquina').value,
     data:G('editenv-data').value||hoje(),
     status:G('editenv-status').value,
+    perda:parseFloat(G('editenv-perda').value)||0,
     editadoPor:SES.login, editadoEm:agora()
   };
   ld(true,'Salvando...');

@@ -185,9 +185,13 @@ tr:hover td{background:rgba(2,79,43,.03)}
     </div>
   </div>
   <div class="mrow" id="dmetrics"></div>
+  <div class="g2">
+    <div class="card"><div class="ch"><span class="ct">Producao por Maquina</span></div><div style="position:relative;height:190px"><canvas id="chMaq"></canvas></div></div>
+    <div class="card"><div class="ch"><span class="ct">Status das Ordens</span></div><div style="position:relative;height:160px"><canvas id="chSt"></canvas></div><div id="legSt" style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:8px;font-size:11px;color:#4a664a"></div></div>
+  </div>
   <div class="card">
     <div class="ch"><span class="ct">Ordens do dia</span></div>
-    <div class="tw"><table><thead><tr><th>OP Envase</th><th>Produto</th><th>Lote</th><th>Maquina</th><th style="text-align:right">Prog.</th><th style="text-align:right">Real.</th><th style="text-align:right">%</th><th>Status</th></tr></thead><tbody id="dash-envase-body"></tbody></table></div>
+    <div class="tw"><table><thead><tr><th>OP Envase</th><th>Produto</th><th>Lote</th><th>Maquina</th><th style="text-align:right">Prog.</th><th style="text-align:right">Real.</th><th style="text-align:right">Perda</th><th style="text-align:right">%</th><th>Status</th></tr></thead><tbody id="dash-envase-body"></tbody></table></div>
   </div>
 </div>
 
@@ -210,6 +214,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
 
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
 // ============================================================
 // FIREBASE CONFIG — mesmo projeto/banco do restante do sistema.
@@ -350,22 +355,25 @@ function renderDashEnvase(){
     if(maq && o.maquina!==maq) return false;
     return true;
   });
-  var tp=0, tr=0;
-  lista.forEach(function(o){ tp+=Number(o.prog)||0; tr+=Number(o.real)||0; });
+  var tp=0, tr=0, tperda=0;
+  lista.forEach(function(o){ tp+=Number(o.prog)||0; tr+=Number(o.real)||0; tperda+=Number(o.perda)||0; });
   var adh=tp?Math.min(Math.round(tr/tp*100),999):0;
+  var ttotal=tr+tperda;
   var concluidas=lista.filter(function(o){return o.status==='Concluida';}).length;
   var andamento=lista.filter(function(o){return o.status==='Em andamento';}).length;
 
   G('dmetrics').innerHTML=
     '<div class="mc"><div class="ml">Programado</div><div class="mv cb">'+fN(tp)+'</div><div class="ms">kg no dia</div></div>'+
-    '<div class="mc"><div class="ml">Realizado</div><div class="mv '+(adh>=90?'cg':adh>=60?'co':'cr')+'">'+fN(tr)+'</div><div class="ms">'+adh+'% do prog.</div></div>'+
-    '<div class="mc"><div class="ml">Ordens do dia</div><div class="mv">'+lista.length+'</div><div class="ms">'+andamento+' em andamento</div></div>'+
+    '<div class="mc"><div class="ml">Prod. Bom</div><div class="mv '+(adh>=90?'cg':adh>=60?'co':'cr')+'">'+fN(tr)+'</div><div class="ms">'+adh+'% do prog.</div></div>'+
+    '<div class="mc"><div class="ml">Perda no dia</div><div class="mv cr">'+fN(tperda)+'</div><div class="ms">kg perdidos</div></div>'+
+    '<div class="mc"><div class="ml">Total Processado</div><div class="mv cg">'+fN(ttotal)+'</div><div class="ms">bom + perda</div></div>'+
+    '<div class="mc"><div class="ml">Ordens programadas</div><div class="mv">'+lista.length+'</div><div class="ms">'+andamento+' em andamento</div></div>'+
     '<div class="mc"><div class="ml">Concluidas</div><div class="mv cg">'+concluidas+'</div><div class="ms">de '+lista.length+' ordens</div></div>';
 
   var tb=G('dash-envase-body');
   var h='';
   if(!lista.length){
-    h='<tr><td colspan="8" style="text-align:center;color:#889;padding:20px">Nenhuma ordem de Envase para essa data.</td></tr>';
+    h='<tr><td colspan="9" style="text-align:center;color:#889;padding:20px">Nenhuma ordem de Envase para essa data.</td></tr>';
   }
   lista.forEach(function(o){
     var p=pct(o.real,o.prog);
@@ -376,11 +384,55 @@ function renderDashEnvase(){
        '<td>'+(o.maquina||'-')+'</td>'+
        '<td style="text-align:right">'+fN(o.prog)+'</td>'+
        '<td style="text-align:right">'+fN(o.real)+'</td>'+
+       '<td style="text-align:right;color:#c0392b">'+(Number(o.perda)?fN(o.perda):'-')+'</td>'+
        '<td style="text-align:right">'+p+'%</td>'+
        '<td>'+sbadge(o.status)+'</td>'+
        '</tr>';
   });
   tb.innerHTML=h;
+  renderChartsEnvase(lista);
+}
+
+// ============================================================
+// GRAFICOS — mesmo padrao visual/estrutural do Dashboard principal
+// (renderCharts no index.html): barras por maquina + donut de status.
+// ============================================================
+var CHT_MAQ=null, CHT_ST=null;
+var MAQUINAS_ENVASE=['Haver','Dosetec','Raumak'];
+
+function renderChartsEnvase(lista){
+  if(typeof Chart==='undefined') return;
+
+  var lp=MAQUINAS_ENVASE.map(function(m){
+    return lista.filter(function(o){return o.maquina===m;}).reduce(function(a,o){return a+(Number(o.prog)||0);},0);
+  });
+  var lr=MAQUINAS_ENVASE.map(function(m){
+    return lista.filter(function(o){return o.maquina===m;}).reduce(function(a,o){return a+(Number(o.real)||0);},0);
+  });
+  var elMaq=G('chMaq');
+  if(elMaq){
+    if(CHT_MAQ) CHT_MAQ.destroy();
+    CHT_MAQ=new Chart(elMaq.getContext('2d'),{type:'bar',data:{labels:MAQUINAS_ENVASE,datasets:[
+      {label:'Prog.',data:lp,backgroundColor:'rgba(2,79,43,.2)',borderColor:'#024f2b',borderWidth:1,borderRadius:3},
+      {label:'Real.',data:lr,backgroundColor:'#739630',borderRadius:3}
+    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#4a664a',font:{size:10}}},y:{grid:{color:'rgba(2,79,43,.08)'},ticks:{color:'#4a664a',font:{size:10}}}}}});
+  }
+
+  var stL=['Concluida','Em andamento','Liberada'];
+  var stD=[
+    lista.filter(function(o){return o.status==='Concluida';}).length,
+    lista.filter(function(o){return o.status==='Em andamento';}).length,
+    lista.filter(function(o){return o.status==='Liberada';}).length
+  ];
+  var stC=['#024f2b','#d29922','#739630'];
+  var elSt=G('chSt');
+  if(elSt){
+    if(CHT_ST) CHT_ST.destroy();
+    CHT_ST=new Chart(elSt.getContext('2d'),{type:'doughnut',data:{labels:stL,datasets:[{data:stD,backgroundColor:stC,borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,cutout:'65%',plugins:{legend:{display:false}}}});
+  }
+  var leg='';
+  for(var i=0;i<stL.length;i++) leg+='<span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:2px;background:'+stC[i]+'"></span>'+stL[i]+' ('+stD[i]+')</span>';
+  if(G('legSt')) G('legSt').innerHTML=leg;
 }
 
 // ============================================================
@@ -427,12 +479,14 @@ function renderApontamento(){
     h+='<div style="font-size:12px"><span style="color:#739630">Prog.</span> <strong>'+fN(progEmb)+' emb. ('+fN(o.prog)+' kg)</strong></div>';
     h+='<div style="font-size:12px"><span style="color:#739630">Real.</span> <strong>'+fN(realEmb)+' emb. ('+fN(o.real)+' kg)</strong></div>';
     h+='<div style="font-size:12px"><span style="color:#739630">Peso unit.</span> <strong>'+fN(o.pesoUnit)+' kg</strong></div>';
+    if(Number(o.perda)>0) h+='<div style="font-size:12px"><span style="color:#c0392b">Perda</span> <strong style="color:#c0392b">'+fN(o.perda)+' kg</strong></div>';
     h+='</div>';
     h+='<div style="margin-top:8px;background:#eef2ee;border-radius:3px;height:6px;overflow:hidden"><div style="height:100%;width:'+Math.min(p,100)+'%;background:'+cor+';border-radius:3px"></div></div>';
     h+='<div style="font-size:11px;color:#4a664a;margin-top:3px;text-align:right">'+p+'% realizado</div>';
     if(!concluida){
       h+='<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:flex-end">';
       h+='<div class="fg" style="flex:1;min-width:140px;margin-bottom:0"><label class="fl">Embalagens produzidas agora</label><input type="number" min="0" id="aptqtd-'+o.fbKey+'"></div>';
+      h+='<div class="fg" style="flex:1;min-width:120px;margin-bottom:0"><label class="fl">Perda agora (kg)</label><input type="number" min="0" id="aptperda-'+o.fbKey+'"></div>';
       h+='<button class="btn bp bsm" data-key="'+o.fbKey+'" onclick="registrarProducaoEnvase(this.dataset.key)">Registrar</button>';
       h+='<button class="btn bsm" style="color:#739630;border-color:#739630" data-key="'+o.fbKey+'" onclick="finalizarEnvase(this.dataset.key)">Finalizar</button>';
       h+='</div>';
@@ -448,21 +502,24 @@ function renderApontamento(){
 
 function registrarProducaoEnvase(fbKey){
   var input=G('aptqtd-'+fbKey);
+  var inputPerda=G('aptperda-'+fbKey);
   var qtd=parseFloat(input.value)||0;
-  if(qtd<=0){ toast('Informe a quantidade de embalagens produzidas','err'); return; }
+  var perdaAgora=parseFloat(inputPerda.value)||0;
+  if(qtd<=0 && perdaAgora<=0){ toast('Informe a quantidade produzida ou a perda','err'); return; }
   var o=null;
   for(var i=0;i<ENVASE_OPS.length;i++){ if(ENVASE_OPS[i].fbKey===fbKey){ o=ENVASE_OPS[i]; break; } }
   if(!o){ toast('Ordem nao encontrada','err'); return; }
   var novaEmb=(Number(o.realEmbalagens)||0)+qtd;
   var novoReal=novaEmb*(Number(o.pesoUnit)||0);
+  var novaPerda=(Number(o.perda)||0)+perdaAgora;
   var novoStatus=(o.status==='Liberada')?'Em andamento':o.status;
   ld(true,'Registrando producao...');
   DB.ref('envase_pet_ops/'+fbKey).update({
-    realEmbalagens:novaEmb, real:novoReal, status:novoStatus,
+    realEmbalagens:novaEmb, real:novoReal, perda:novaPerda, status:novoStatus,
     atualizadoPor:SES.login, atualizadoEm:agora()
   }).then(function(){
-    ld(false); toast('Producao registrada!','ok'); input.value='';
-    addLog('APONTAMENTO_ENVASE_PET', o.id+' +'+qtd+' emb.');
+    ld(false); toast('Producao registrada!','ok'); input.value=''; inputPerda.value='';
+    addLog('APONTAMENTO_ENVASE_PET', o.id+' +'+qtd+' emb.'+(perdaAgora?' +'+perdaAgora+'kg perda':''));
   }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
 }
 
