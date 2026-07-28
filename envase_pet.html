@@ -141,8 +141,8 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="logo-s">Confianca que Inspira</div>
   </div>
   <div style="text-align:center;font-size:12px;color:#739630;margin-bottom:16px;font-weight:500"><span class="rtdot"></span>Firebase conectado</div>
-  <div class="fld"><label>Usuario</label><input type="text" id="lu" autocomplete="off" onkeydown="if(event.key===\'Enter\')doLogin()"></div>
-  <div class="fld"><label>Senha</label><input type="password" id="lp" onkeydown="if(event.key===\'Enter\')doLogin()"></div>
+  <div class="fld"><label>Usuario</label><input type="text" id="lu" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()"></div>
+  <div class="fld"><label>Senha</label><input type="password" id="lp" onkeydown="if(event.key==='Enter')doLogin()"></div>
   <div class="lerr" id="lerr">Usuario ou senha incorretos.</div>
   <button class="btn bp bfw" style="margin-top:18px;padding:11px" onclick="doLogin()">Entrar</button>
 </div>
@@ -163,8 +163,8 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <span class="pill">ENVASE PET</span>
   </div>
   <div class="nav">
-    <button class="nb on" id="nb-dash" onclick="go(\'dashboard\',this)">Dashboard</button>
-    <button class="nb" id="nb-apt" onclick="go(\'apontamento\',this)">Apontamento</button>
+    <button class="nb on" id="nb-dash" onclick="go('dashboard',this)">Dashboard</button>
+    <button class="nb" id="nb-apt" onclick="go('apontamento',this)">Apontamento</button>
   </div>
   <div class="ubar">
     <span class="rtdot"></span>
