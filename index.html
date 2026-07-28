@@ -551,8 +551,8 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
   <div id="pdf-status" style="display:none;padding:6px 10px;border-radius:4px;font-size:12px;margin-bottom:8px"></div>
   <div class="fr"><div class="fg"><label class="fl">No da OP <span style="color:#739630;font-size:11px">(do TOTVS)</span></label><input type="text" id="nopid" placeholder="ex: 06296101001"></div><div class="fg"><label class="fl">Produto <span style="color:#739630;font-size:11px">(digite codigo ou descricao)</span></label><input type="text" id="nopc" list="prodlist_dl" autocomplete="off" placeholder="Digite para buscar..." oninput="fillDesc()"><datalist id="prodlist_dl"></datalist></div><div class="fg"><label class="fl">Descricao</label><input type="text" id="nopd" readonly style="opacity:.6"></div></div>
-  <div class="fr fr3"><div class="fg"><label class="fl">Lote</label><input type="text" id="nopl" placeholder="LOT-2026-XXX"></div><div class="fg"><label class="fl">Tipo</label><select id="nopt"><option value="SC">Sacaria (SC)</option><option value="BG">Big Bag (BG)</option><option value="KG">KG Granel</option></select></div><div class="fg"><label class="fl">Linha</label><select id="nopln"><option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option><option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option></select></div></div>
-  <div class="fr"><div class="fg"><label class="fl">Quantidade Programada</label><input type="number" id="nopq" min="0"></div><div class="fg"><label class="fl">Data</label><input type="date" id="nopdt"></div></div>
+  <div class="fr fr3"><div class="fg"><label class="fl">Lote</label><input type="text" id="nopl" placeholder="LOT-2026-XXX"></div><div class="fg"><label class="fl">Tipo</label><select id="nopt" onchange="atualizarHintQtdProg()"><option value="SC">Sacaria (SC)</option><option value="BG">Big Bag (BG)</option><option value="KG">KG Granel</option></select></div><div class="fg"><label class="fl">Linha</label><select id="nopln"><option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option><option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option></select></div></div>
+  <div class="fr"><div class="fg"><label class="fl">Quantidade Programada <span style="color:#739630;font-size:10px">(em KG)</span></label><input type="number" id="nopq" min="0" oninput="atualizarHintQtdProg()"><div id="nopq-hint" style="font-size:11px;color:#739630;margin-top:3px"></div></div><div class="fg"><label class="fl">Data</label><input type="date" id="nopdt"></div></div>
   <div class="fg"><label class="fl">Observacoes</label><input type="text" id="nopo" placeholder="Instrucoes para o operador..."></div>
   <div class="mfoot"><button class="btn bsm" onclick="fM('mop')">Cancelar</button><button class="btn bsm bp" onclick="salvarOP()">Criar OP</button></div>
 </div></div>
@@ -1249,8 +1249,8 @@ function renderDash(){
       var realDia=turnoFiltro>0?(Number(o['t'+turnoFiltro])||0):(aptsPorOp[o.fbKey]||0);
       var p2=pct(realDia,o.prog);
       var c=p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b';
-      var prog=o.tipo==='SC'?fN(Math.round((o.prog||0)/25))+' sc':fN(o.prog)+' kg';
-      var realStr=o.tipo==='SC'?fN(Math.round(realDia/25))+' sc ('+fN(realDia)+' kg)':fN(realDia)+' kg';
+      var prog=o.tipo==='SC'?fN(Math.round((o.prog||0)/25))+' sc':o.tipo==='BG'?fN(Math.round((o.prog||0)/750))+' bag':fN(o.prog)+' kg';
+      var realStr=o.tipo==='SC'?fN(Math.round(realDia/25))+' sc ('+fN(realDia)+' kg)':o.tipo==='BG'?fN(Math.round(realDia/750))+' bag ('+fN(realDia)+' kg)':fN(realDia)+' kg';
       h2+='<tr>'+
         '<td style="font-weight:600">'+o.id+'</td>'+
         '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">'+(o.desc||o.cod)+'</td>'+
@@ -1415,8 +1415,8 @@ function renderOPs(){
   for(var i=0;i<ops.length;i++){
     var o=ops[i]; var fid=o.fbKey;
     var p2=pct(o.real,o.prog); var c=p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b';
-    var prog=o.tipo==='SC'?fN(Math.round((o.prog||0)/25))+' sc':fN(o.prog)+' kg';
-    var real=o.tipo==='SC'?fN(o.t1sc!==undefined?(o.t1sc+o.t2sc+o.t3sc):Math.round((o.real||0)/25))+' sc ('+fN(o.real)+' kg)':fN(o.real)+' kg';
+    var prog=o.tipo==='SC'?fN(Math.round((o.prog||0)/25))+' sc':o.tipo==='BG'?fN(Math.round((o.prog||0)/750))+' bag':fN(o.prog)+' kg';
+    var real=o.tipo==='SC'?fN(o.t1sc!==undefined?(o.t1sc+o.t2sc+o.t3sc):Math.round((o.real||0)/25))+' sc ('+fN(o.real)+' kg)':o.tipo==='BG'?fN(Math.round((o.real||0)/750))+' bag ('+fN(o.real)+' kg)':fN(o.real)+' kg';
     var loteBadge='<span style="font-size:12px;font-weight:700;color:#024f2b;background:rgba(2,79,43,.08);padding:2px 7px;border-radius:4px">'+(o.lote||'---')+'</span>';
     h+='<tr>';
     h+='<td style="font-weight:600;white-space:nowrap">'+o.id+(o.filaPosicao!==undefined?' <span style="font-size:10px;color:#739630">#'+(o.filaPosicao+1)+'</span>':'')+'</td>';
@@ -1583,6 +1583,7 @@ function preencherCamposPDF(texto, status){
   status.textContent=ok
     ?'✅ PDF lido! OP: '+numOP+' | '+linhaNome+' | '+qtd+(unid==='SC'?' sc':' '+unid)+' | '+dtISO+' — Preencha o lote e confirme.'
     :'⚠️ Lido parcialmente. Faltou: '+campos.join(', ')+'. Preencha manualmente.';
+  atualizarHintQtdProg();
 }
 
 function abrirNovaOP(){
@@ -1590,7 +1591,20 @@ function abrirNovaOP(){
   G('nopc').value='';G('nopd').value='';G('nopl').value='';G('nopq').value='';G('nopo').value='';G('nopdt').value=diaOperacionalOP();
   if(G('nopid')) G('nopid').value='';
   if(G('pdf-status')){G('pdf-status').style.display='none';G('pdf-status').textContent='';}
+  atualizarHintQtdProg();
   G('mop').classList.add('on');
+}
+
+// Mostra, ao vivo, quantos sacos/big bags a "Quantidade Programada" (sempre em KG)
+// representa — apenas visual, nunca altera o valor que sera salvo em op.prog (KG).
+function atualizarHintQtdProg(){
+  var hintEl=G('nopq-hint'); if(!hintEl) return;
+  var tipo=G('nopt')?G('nopt').value:'KG';
+  var kg=parseFloat(G('nopq').value)||0;
+  if(!kg){ hintEl.textContent=''; return; }
+  if(tipo==='SC') hintEl.textContent='= '+Math.round(kg/25)+' sacos (25 kg cada)';
+  else if(tipo==='BG') hintEl.textContent='= '+Math.round(kg/750)+' big bags (750 kg cada)';
+  else hintEl.textContent='';
 }
 
 function salvarOP(){
@@ -1746,7 +1760,7 @@ function renderOpCards(){
     var ehCadeia=!!o.progOriginal;
     var p2=pct(realTotalCard,progTotalCard); var c=p2>=90?'var(--gr)':p2>=60?'var(--or)':'var(--rd)';
     var posTag=o.filaPosicao!==undefined?'<span style="font-size:10px;background:#024f2b;color:#fff;padding:1px 8px;border-radius:10px;margin-left:6px;font-weight:600">#'+(o.filaPosicao+1)+' na fila</span>':'';
-    var realDisp=o.tipo==='SC'?fN(Math.round(realTotalCard/25))+' sc':fN(realTotalCard)+' kg';
+    var realDisp=o.tipo==='SC'?fN(Math.round(realTotalCard/25))+' sc':o.tipo==='BG'?fN(Math.round(realTotalCard/750))+' bag':fN(realTotalCard)+' kg';
     h+='<div class="opcard '+(o.status==='Em andamento'?'and':'')+'">';
     h+='<div style="display:flex;justify-content:space-between;align-items:flex-start">';
     h+='<div><div style="font-weight:700;font-size:14px">'+o.id+posTag+'</div>';
@@ -1756,7 +1770,7 @@ function renderOpCards(){
     h+=sbadge(o.status)+'</div>';
     if(ehCadeia) h+='<div style="font-size:10px;color:#739630;margin-top:4px">&#8635; Total acumulado da ordem, incluindo reprogramações anteriores</div>';
     h+='<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px">';
-    h+='<div style="font-size:12px"><span style="color:#739630">Prog.</span> <strong>'+(o.tipo==='SC'?fN(Math.round(progTotalCard/25))+' sc':fN(progTotalCard)+' kg')+'</strong></div>';
+    h+='<div style="font-size:12px"><span style="color:#739630">Prog.</span> <strong>'+(o.tipo==='SC'?fN(Math.round(progTotalCard/25))+' sc':o.tipo==='BG'?fN(Math.round(progTotalCard/750))+' bag':fN(progTotalCard)+' kg')+'</strong></div>';
     h+='<div style="font-size:12px"><span style="color:#739630">Real.</span> <strong>'+realDisp+'</strong></div>';
     if(o.perda>0) h+='<div style="font-size:12px"><span style="color:#c0392b">Perda</span> <strong style="color:#c0392b">'+fN(o.perda)+' kg</strong></div>';
     var totProc=(Number(o.real)||0)+(Number(o.perda)||0);
@@ -1916,8 +1930,8 @@ function salvarApt(){
 
   var t1=t1sc*fator, t2=t2sc*fator, t3=t3sc*fator;
   var real=t1+t2+t3;
-  var novosStr=tipo==='SC'?fN(novoT1sc+novoT2sc+novoT3sc)+' SC':fN((novoT1sc+novoT2sc+novoT3sc)*fator)+' kg';
-  var totalStr=tipo==='SC'?fN(t1sc+t2sc+t3sc)+' SC = '+fN(real)+' kg':fN(real)+' kg';
+  var novosStr=tipo==='SC'?fN(novoT1sc+novoT2sc+novoT3sc)+' SC':tipo==='BG'?fN(novoT1sc+novoT2sc+novoT3sc)+' BG':fN((novoT1sc+novoT2sc+novoT3sc)*fator)+' kg';
+  var totalStr=tipo==='SC'?fN(t1sc+t2sc+t3sc)+' SC = '+fN(real)+' kg':tipo==='BG'?fN(t1sc+t2sc+t3sc)+' BG = '+fN(real)+' kg':fN(real)+' kg';
   var fatorStr=' (+'+novosStr+' | Total: '+totalStr+')';
 
   // Data do apontamento = data do filtro selecionado na tela (Cards do Operador),
