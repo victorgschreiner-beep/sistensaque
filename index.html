@@ -292,7 +292,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <input type="date" id="envf-dt" style="width:auto" onchange="renderEnvaseOPs()">
       <input type="text" id="envf-prod" style="width:auto;max-width:220px" placeholder="Buscar produto (codigo ou nome)..." oninput="renderEnvaseOPs()">
       <select id="envf-st" style="width:auto" onchange="renderEnvaseOPs()"><option value="">Todos status</option><option>Liberada</option><option>Em andamento</option><option>Concluida</option></select>
-      <select id="envf-maq" style="width:auto" onchange="renderEnvaseOPs()"><option value="">Todas maquinas</option><option>Haver</option><option>Dosetec</option><option>Ralmak</option></select>
+      <select id="envf-maq" style="width:auto" onchange="renderEnvaseOPs()"><option value="">Todas maquinas</option><option>Haver</option><option>Dosetec</option><option>Raumak</option></select>
       <input type="text" id="envf-lote" style="width:auto;max-width:160px" placeholder="Buscar lote..." oninput="renderEnvaseOPs()">
       <button class="btn bsm" onclick="G('envf-dt').value='';G('envf-prod').value='';G('envf-st').value='';G('envf-maq').value='';G('envf-lote').value='';renderEnvaseOPs()">Limpar filtros</button>
     </div>
@@ -561,7 +561,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div class="mt">Converter para Envase PET</div>
   <div id="envase-origem-info" style="font-size:12px;color:#4a664a;background:#eef2ee;border-radius:6px;padding:8px 10px;margin-bottom:12px"></div>
   <div class="fg"><label class="fl">Maquina</label>
-    <select id="envase-maquina"><option value="Haver">Haver</option><option value="Dosetec">Dosetec</option><option value="Ralmak">Ralmak</option></select>
+    <select id="envase-maquina"><option value="Haver">Haver</option><option value="Dosetec">Dosetec</option><option value="Raumak">Raumak</option></select>
   </div>
   <label class="fl">Produtos a gerar</label>
   <div id="envase-linhas"></div>
@@ -581,7 +581,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="fg"><label class="fl">Total (kg)</label><input type="text" id="editenv-sub" readonly style="opacity:.6"></div>
   </div>
   <div class="fr">
-    <div class="fg"><label class="fl">Maquina</label><select id="editenv-maquina"><option>Haver</option><option>Dosetec</option><option>Ralmak</option></select></div>
+    <div class="fg"><label class="fl">Maquina</label><select id="editenv-maquina"><option>Haver</option><option>Dosetec</option><option>Raumak</option></select></div>
     <div class="fg"><label class="fl">Data</label><input type="date" id="editenv-data"></div>
   </div>
   <div class="fg"><label class="fl">Status</label><select id="editenv-status"><option>Liberada</option><option>Em andamento</option><option>Concluida</option></select></div>
