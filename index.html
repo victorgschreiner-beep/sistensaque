@@ -283,12 +283,15 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div style="margin-top:24px">
     <h2 style="font-size:16px;font-weight:700;color:#024f2b;margin-bottom:14px">Ordens de Envase Geradas</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <input type="date" id="envf-dt" style="width:auto" onchange="renderEnvaseOPs()">
+      <input type="text" id="envf-prod" style="width:auto;max-width:220px" placeholder="Buscar produto (codigo ou nome)..." oninput="renderEnvaseOPs()">
       <select id="envf-st" style="width:auto" onchange="renderEnvaseOPs()"><option value="">Todos status</option><option>Liberada</option><option>Em andamento</option><option>Concluida</option></select>
       <select id="envf-maq" style="width:auto" onchange="renderEnvaseOPs()"><option value="">Todas maquinas</option><option>Haver</option><option>Dosetec</option><option>Ralmak</option></select>
       <input type="text" id="envf-lote" style="width:auto;max-width:160px" placeholder="Buscar lote..." oninput="renderEnvaseOPs()">
+      <button class="btn bsm" onclick="G('envf-dt').value='';G('envf-prod').value='';G('envf-st').value='';G('envf-maq').value='';G('envf-lote').value='';renderEnvaseOPs()">Limpar filtros</button>
     </div>
     <div class="card" style="padding:0"><div class="tw"><table>
-      <thead><tr><th>OP Envase</th><th>Codigo</th><th>Produto</th><th>Lote</th><th>Maquina</th><th style="text-align:right">Prog. (kg)</th><th style="text-align:right">Real. (kg)</th><th>Status</th><th>OP Origem</th></tr></thead>
+      <thead><tr><th>OP Envase</th><th>Codigo</th><th>Produto</th><th>Lote</th><th>Maquina</th><th style="text-align:right">Prog. (kg)</th><th style="text-align:right">Real. (kg)</th><th>Status</th><th>OP Origem</th><th>Acoes</th></tr></thead>
       <tbody id="envaseopsbody"></tbody>
     </table></div></div>
   </div>
@@ -560,6 +563,23 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div id="envase-total-info" style="margin-top:12px;font-size:13px;font-weight:700;padding:8px 10px;border-radius:6px"></div>
   <input type="hidden" id="envase-origem-fbkey">
   <div class="mfoot"><button class="btn bsm" onclick="fM('menvase')">Cancelar</button><button class="btn bsm bp" onclick="salvarConversaoEnvase()">&#10004; Gerar Ordens de Envase</button></div>
+</div></div>
+
+<div class="ov" id="medit-envase"><div class="modal" style="max-width:480px">
+  <div class="mt">Editar Ordem de Envase</div>
+  <div id="editenv-info" style="font-size:12px;color:#4a664a;background:#eef2ee;border-radius:6px;padding:8px 10px;margin-bottom:12px"></div>
+  <div class="fr fr3">
+    <div class="fg"><label class="fl">Qtd Embalagens</label><input type="number" id="editenv-qtd" min="0" oninput="calcEditEnvaseSub()"></div>
+    <div class="fg"><label class="fl">Peso Unit. (kg)</label><input type="number" id="editenv-peso" min="0" step="0.01" oninput="calcEditEnvaseSub()"></div>
+    <div class="fg"><label class="fl">Total (kg)</label><input type="text" id="editenv-sub" readonly style="opacity:.6"></div>
+  </div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Maquina</label><select id="editenv-maquina"><option>Haver</option><option>Dosetec</option><option>Ralmak</option></select></div>
+    <div class="fg"><label class="fl">Data</label><input type="date" id="editenv-data"></div>
+  </div>
+  <div class="fg"><label class="fl">Status</label><select id="editenv-status"><option>Liberada</option><option>Em andamento</option><option>Concluida</option></select></div>
+  <input type="hidden" id="editenv-fbkey">
+  <div class="mfoot"><button class="btn bsm" onclick="fM('medit-envase')">Cancelar</button><button class="btn bsm bp" onclick="salvarEditEnvase()">&#10004; Salvar</button></div>
 </div></div>
 
 <div class="ov" id="medit"><div class="modal">
@@ -3680,7 +3700,7 @@ function opsElegiveisEnvase(){
 function totalConvertidoEnvase(origemFbKey){
   var t=0;
   for(var i=0;i<ENVASE_OPS.length;i++){
-    if(ENVASE_OPS[i].origemOpFbKey===origemFbKey) t+=(ENVASE_OPS[i].prog||0);
+    if(ENVASE_OPS[i].origemOpFbKey===origemFbKey && ENVASE_OPS[i].status!=='Excluida') t+=(ENVASE_OPS[i].prog||0);
   }
   return t;
 }
@@ -3714,10 +3734,15 @@ function renderEnvaseFila(){
 
 function renderEnvaseOPs(){
   var tb=G('envaseopsbody'); if(!tb) return;
+  var dt=G('envf-dt')?G('envf-dt').value:'';
+  var prod=(G('envf-prod')?G('envf-prod').value:'').trim().toLowerCase();
   var st=G('envf-st')?G('envf-st').value:'';
   var maq=G('envf-maq')?G('envf-maq').value:'';
   var lote=(G('envf-lote')?G('envf-lote').value:'').trim().toLowerCase();
   var lista=ENVASE_OPS.filter(function(o){
+    if(o.status==='Excluida') return false; // excluidas ficam ocultas, mas preservadas (auditoria)
+    if(dt && o.data!==dt) return false;
+    if(prod && (o.cod||'').toLowerCase().indexOf(prod)===-1 && (o.desc||'').toLowerCase().indexOf(prod)===-1) return false;
     if(st && o.status!==st) return false;
     if(maq && o.maquina!==maq) return false;
     if(lote && (o.lote||'').toLowerCase().indexOf(lote)===-1) return false;
@@ -3725,7 +3750,7 @@ function renderEnvaseOPs(){
   });
   var h='';
   if(!lista.length){
-    h='<tr><td colspan="9" style="text-align:center;color:#889;padding:20px">Nenhuma ordem de Envase gerada ainda.</td></tr>';
+    h='<tr><td colspan="10" style="text-align:center;color:#889;padding:20px">Nenhuma ordem de Envase encontrada com os filtros atuais.</td></tr>';
   }
   for(var i=0;i<lista.length;i++){
     var o=lista[i];
@@ -3739,9 +3764,63 @@ function renderEnvaseOPs(){
        '<td style="text-align:right">'+(o.real||0).toFixed(1)+'</td>'+
        '<td>'+(o.status||'-')+'</td>'+
        '<td style="font-size:11px;color:#4a664a">'+(o.origemOpId||'-')+'</td>'+
+       '<td style="white-space:nowrap"><button class="btn bxs" data-key="'+o.fbKey+'" onclick="abrirEditEnvase(this.dataset.key)">Editar</button> '+
+       '<button class="btn bxs" style="color:#c0392b;border-color:#c0392b" data-key="'+o.fbKey+'" onclick="excluirEnvase(this.dataset.key)">Excluir</button></td>'+
        '</tr>';
   }
   tb.innerHTML=h;
+}
+
+function abrirEditEnvase(fbKey){
+  var o=null;
+  for(var i=0;i<ENVASE_OPS.length;i++){ if(ENVASE_OPS[i].fbKey===fbKey){ o=ENVASE_OPS[i]; break; } }
+  if(!o){ toast('Ordem nao encontrada','err'); return; }
+  G('editenv-fbkey').value=fbKey;
+  G('editenv-info').innerHTML='<b>'+o.id+'</b> &nbsp; '+o.cod+' - '+(o.desc||'')+'<br>Lote: '+(o.lote||'-')+' &nbsp; Origem: '+(o.origemOpId||'-');
+  G('editenv-qtd').value=o.qtdEmbalagens||0;
+  G('editenv-peso').value=o.pesoUnit||0;
+  G('editenv-maquina').value=o.maquina||'Haver';
+  G('editenv-data').value=o.data||hoje();
+  G('editenv-status').value=o.status||'Liberada';
+  calcEditEnvaseSub();
+  G('medit-envase').classList.add('on');
+}
+
+function calcEditEnvaseSub(){
+  var qtd=parseFloat(G('editenv-qtd').value)||0;
+  var peso=parseFloat(G('editenv-peso').value)||0;
+  G('editenv-sub').value=(qtd*peso).toFixed(1);
+}
+
+function salvarEditEnvase(){
+  var fbKey=G('editenv-fbkey').value;
+  var qtd=parseFloat(G('editenv-qtd').value)||0;
+  var peso=parseFloat(G('editenv-peso').value)||0;
+  if(qtd<=0||peso<=0){ toast('Preencha qtd e peso','err'); return; }
+  var upd={
+    qtdEmbalagens:qtd, pesoUnit:peso, prog:qtd*peso,
+    maquina:G('editenv-maquina').value,
+    data:G('editenv-data').value||hoje(),
+    status:G('editenv-status').value,
+    editadoPor:SES.login, editadoEm:agora()
+  };
+  ld(true,'Salvando...');
+  DB.ref('envase_pet_ops/'+fbKey).update(upd).then(function(){
+    ld(false); toast('Ordem atualizada!','ok'); fM('medit-envase');
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
+function excluirEnvase(fbKey){
+  var o=null;
+  for(var i=0;i<ENVASE_OPS.length;i++){ if(ENVASE_OPS[i].fbKey===fbKey){ o=ENVASE_OPS[i]; break; } }
+  if(!o) return;
+  if(!confirm('Excluir a ordem '+o.id+' ('+o.cod+')? Ela deixa de aparecer na lista, mas fica preservada para auditoria.')) return;
+  ld(true,'Excluindo...');
+  DB.ref('envase_pet_ops/'+fbKey).update({
+    status:'Excluida', excluidoPor:SES.login, excluidoEm:agora()
+  }).then(function(){
+    ld(false); toast('Ordem excluida','ok'); addLog('EXCLUIU_ENVASE_PET', o.id);
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
 }
 
 function abrirConversaoEnvase(fbKey){
