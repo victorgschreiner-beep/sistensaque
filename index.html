@@ -275,6 +275,12 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <h2 style="font-size:16px;font-weight:700;color:#024f2b">Envase PET <span style="font-size:11px;color:#739630;font-weight:500">&#9679; converte OP de Ensaque (CAT/DOG, KG) em ordens de Envase</span></h2>
     <button class="btn bsm" onclick="renderEnvaseFila()">&#8635; Atualizar</button>
   </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+    <label class="fl" style="margin:0">OPs produzidas a partir de</label>
+    <input type="date" id="envasefila-dt" style="width:auto" onchange="renderEnvaseFila()">
+    <input type="text" id="envasefila-prod" style="width:auto;max-width:220px" placeholder="Buscar produto (codigo ou nome)..." oninput="renderEnvaseFila()">
+    <span style="font-size:11px;color:#739630">OPs anteriores a essa data ja foram ensacadas em outro fluxo — nao aparecem aqui</span>
+  </div>
   <div class="card" style="padding:0"><div class="tw"><table>
     <thead><tr><th>OP Origem</th><th>Codigo</th><th>Produto</th><th>Lote</th><th style="text-align:right">Produzido (kg)</th><th style="text-align:right">Ja convertido (kg)</th><th style="text-align:right">Saldo (kg)</th><th>Acoes</th></tr></thead>
     <tbody id="envasefilabody"></tbody>
@@ -3681,19 +3687,23 @@ function classificarFamilia(cod){
 // ENVASE PET — converte OP de ensaque (CAT/DOG, tipo KG) em
 // uma ou mais ordens de envase (produto fracionado, mesmo lote).
 // Nó separado no Firebase (envase_pet_ops) — nunca escreve em 'ops'.
-// Escopo: SOMENTE prefixos CAT e DOG (nao usa FAMILIA_PREFIXOS.PET,
-// que tambem inclui EX — EX nao vai para o Envase PET).
+// Escopo: prefixos CAT, DOG e HOR (Horse). Nao usa FAMILIA_PREFIXOS.PET,
+// que tambem inclui EX — EX nao vai para o Envase PET.
 // ============================================================
 function classificarPrefixoEnvase(cod){
   var c=(cod||'').toString().trim().toUpperCase();
   if(c.indexOf('CAT')===0) return 'CAT';
   if(c.indexOf('DOG')===0) return 'DOG';
+  if(c.indexOf('HOR')===0) return 'HOR';
   return null;
 }
 
-function opsElegiveisEnvase(){
+function opsElegiveisEnvase(dataMin, prodFiltro){
   return OPS.filter(function(o){
-    return classificarPrefixoEnvase(o.cod) && o.tipo==='KG' && (o.real||0)>0;
+    if(!(classificarPrefixoEnvase(o.cod) && o.tipo==='KG' && (o.real||0)>0)) return false;
+    if(dataMin && (o.data||'')<dataMin) return false;
+    if(prodFiltro && (o.cod||'').toLowerCase().indexOf(prodFiltro)===-1 && (o.desc||'').toLowerCase().indexOf(prodFiltro)===-1) return false;
+    return true;
   });
 }
 
@@ -3707,11 +3717,19 @@ function totalConvertidoEnvase(origemFbKey){
 
 function renderEnvaseFila(){
   var tb=G('envasefilabody'); if(!tb) return;
-  var lista=opsElegiveisEnvase();
-  lista.sort(function(a,b){return (b.criadoEm||'')>(a.criadoEm||'')?1:-1;});
+  var dtEl=G('envasefila-dt');
+  if(dtEl && !dtEl.value) dtEl.value=hoje(); // padrao: so a partir de hoje, mas o usuario pode mudar para testar
+  var dataMin=dtEl?dtEl.value:'';
+  var prodFiltro=(G('envasefila-prod')?G('envasefila-prod').value:'').trim().toLowerCase();
   var h='';
+  if(prodFiltro.length<2){
+    tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#889;padding:20px">Digite o codigo ou nome do produto acima para buscar as OPs disponiveis para converter.</td></tr>';
+    return;
+  }
+  var lista=opsElegiveisEnvase(dataMin, prodFiltro);
+  lista.sort(function(a,b){return (b.criadoEm||'')>(a.criadoEm||'')?1:-1;});
   if(!lista.length){
-    h='<tr><td colspan="8" style="text-align:center;color:#889;padding:20px">Nenhuma OP de PET (CAT/DOG) em KG com producao disponivel.</td></tr>';
+    h='<tr><td colspan="8" style="text-align:center;color:#889;padding:20px">Nenhuma OP de PET (CAT/DOG) em KG com producao disponivel para esse produto/data.</td></tr>';
   }
   for(var i=0;i<lista.length;i++){
     var o=lista[i];
