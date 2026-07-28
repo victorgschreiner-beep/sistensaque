@@ -168,6 +168,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <button class="nb" id="nb-op" onclick="go('operador',this)">Apontamento</button>
     <button class="nb" id="nb-exp" onclick="go('exportar',this)">Exportar</button>
     <button class="nb" id="nb-bal" onclick="go('balancas',this)">⚖️ Balanças</button>
+    <button class="nb" id="nb-envase" onclick="go('envase',this)">Envase PET</button>
     <button class="nb" id="nb-adm" onclick="go('admin',this)">Admin</button>
   </div>
   <div class="ubar">
@@ -266,6 +267,31 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <input type="text" id="op-flote" style="width:auto;max-width:180px" placeholder="Buscar lote..." oninput="renderOpCards()">
   </div>
   <div id="opcards"></div>
+</div>
+
+<!-- ENVASE PET -->
+<div class="scr" id="scr-envase">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Envase PET <span style="font-size:11px;color:#739630;font-weight:500">&#9679; converte OP de Ensaque (CAT/DOG, KG) em ordens de Envase</span></h2>
+    <button class="btn bsm" onclick="renderEnvaseFila()">&#8635; Atualizar</button>
+  </div>
+  <div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr><th>OP Origem</th><th>Codigo</th><th>Produto</th><th>Lote</th><th style="text-align:right">Produzido (kg)</th><th style="text-align:right">Ja convertido (kg)</th><th style="text-align:right">Saldo (kg)</th><th>Acoes</th></tr></thead>
+    <tbody id="envasefilabody"></tbody>
+  </table></div></div>
+
+  <div style="margin-top:24px">
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b;margin-bottom:14px">Ordens de Envase Geradas</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <select id="envf-st" style="width:auto" onchange="renderEnvaseOPs()"><option value="">Todos status</option><option>Liberada</option><option>Em andamento</option><option>Concluida</option></select>
+      <select id="envf-maq" style="width:auto" onchange="renderEnvaseOPs()"><option value="">Todas maquinas</option><option>Haver</option><option>Dosetec</option><option>Ralmak</option></select>
+      <input type="text" id="envf-lote" style="width:auto;max-width:160px" placeholder="Buscar lote..." oninput="renderEnvaseOPs()">
+    </div>
+    <div class="card" style="padding:0"><div class="tw"><table>
+      <thead><tr><th>OP Envase</th><th>Codigo</th><th>Produto</th><th>Lote</th><th>Maquina</th><th style="text-align:right">Prog. (kg)</th><th style="text-align:right">Real. (kg)</th><th>Status</th><th>OP Origem</th></tr></thead>
+      <tbody id="envaseopsbody"></tbody>
+    </table></div></div>
+  </div>
 </div>
 
 <!-- EXPORTAR -->
@@ -521,6 +547,21 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div class="mfoot"><button class="btn bsm" onclick="fM('mop')">Cancelar</button><button class="btn bsm bp" onclick="salvarOP()">Criar OP</button></div>
 </div></div>
 
+<div class="ov" id="menvase"><div class="modal" style="max-width:660px">
+  <div class="mt">Converter para Envase PET</div>
+  <div id="envase-origem-info" style="font-size:12px;color:#4a664a;background:#eef2ee;border-radius:6px;padding:8px 10px;margin-bottom:12px"></div>
+  <div class="fg"><label class="fl">Maquina</label>
+    <select id="envase-maquina"><option value="Haver">Haver</option><option value="Dosetec">Dosetec</option><option value="Ralmak">Ralmak</option></select>
+  </div>
+  <label class="fl">Produtos a gerar</label>
+  <div id="envase-linhas"></div>
+  <button class="btn bsm" style="margin-top:6px" onclick="addLinhaEnvase()">+ Adicionar produto</button>
+  <datalist id="envaselist_dl"></datalist>
+  <div id="envase-total-info" style="margin-top:12px;font-size:13px;font-weight:700;padding:8px 10px;border-radius:6px"></div>
+  <input type="hidden" id="envase-origem-fbkey">
+  <div class="mfoot"><button class="btn bsm" onclick="fM('menvase')">Cancelar</button><button class="btn bsm bp" onclick="salvarConversaoEnvase()">&#10004; Gerar Ordens de Envase</button></div>
+</div></div>
+
 <div class="ov" id="medit"><div class="modal">
   <div class="mt" id="edtit">Editar OP</div>
   <div class="fr">
@@ -739,6 +780,7 @@ var DB = firebase.database();
 var SES = null;
 var PRODS = [];
 var OPS = [];         // array principal de ops
+var ENVASE_OPS = [];  // ordens do setor Envase PET (nó separado, envase_pet_ops)
 var EXT_CONCLUIDA = {}; // {opFbKey: {linha,turno,data,operador,ts}} — OPs que a extrusao ja concluiu
 var SEL_SILOS = [];
 var SILO_OPID = null;
@@ -876,6 +918,7 @@ function aplicarSessao(){
   G('nb-op').style.display=(isPCP||isSup)?'none':'';
   G('nb-exp').style.display=isOP?'none':'';
   G('nb-bal').style.display=''; // todos podem ver balanças
+  G('nb-envase').style.display=isPCP?'':'none';
   G('nb-adm').style.display=(p==='admin')?'':'none';
   var pb=G('pcpbar'); if(pb) pb.style.display=isOP?'none':'';
 }
@@ -884,7 +927,8 @@ function doLogout(){
   // Remove listener
   DB.ref('ops').off();
   DB.ref('extrusao_op_concluida').off();
-  SES=null; OPS=[]; EXT_CONCLUIDA={};
+  DB.ref('envase_pet_ops').off();
+  SES=null; OPS=[]; EXT_CONCLUIDA={}; ENVASE_OPS=[];
   G('pg-app').style.display='none';
   G('pg-login').style.display='flex';
 }
@@ -915,6 +959,7 @@ function go(s,btn){
     }
     else if(s==='exportar'){ popOPSel(); var m=hoje().slice(0,7); G('xdi').value=m+'-01'; G('xdf').value=hoje(); }
     else if(s==='admin'){ loadUsers(); loadLog(); loadProds(); loadBalConfig(); }
+    else if(s==='envase'){ renderEnvaseFila(); renderEnvaseOPs(); }
     else if(s==='balancas'){
       balIniciarListeners();
       var hoje2=hoje(); G('bal-hdi').value=hoje2; G('bal-hdf').value=hoje2;
@@ -922,7 +967,7 @@ function go(s,btn){
       renderBalHistorico();
     }
   }
-  var needsOPS = (s==='dashboard'||s==='ops'||s==='fila'||s==='fila-op'||s==='operador'||s==='exportar');
+  var needsOPS = (s==='dashboard'||s==='ops'||s==='fila'||s==='fila-op'||s==='operador'||s==='exportar'||s==='envase');
   if(needsOPS && OPS.length===0){
     ld(true,'Carregando...');
     DB.ref('ops').once('value').then(function(snap){
@@ -976,6 +1021,7 @@ function iniciarApp(){
       else if(id==='scr-fila-op') renderFilaOp();
       else if(id==='scr-operador') renderOpCards();
       else if(id==='scr-exportar'){ popOPSel(); if(G('exp-dt')&&!G('exp-dt').value) G('exp-dt').value=hoje(); }
+      else if(id==='scr-envase'){ renderEnvaseFila(); renderEnvaseOPs(); }
     }
   }, function(err){
     ld(false);
@@ -992,6 +1038,19 @@ function iniciarApp(){
   }, function(err){
     // Nao bloqueia o app se este listener falhar — apenas o aviso fica indisponivel
     console.warn('Erro ao carregar extrusao_op_concluida:', err.message);
+  });
+
+  // Listener do setor Envase PET — no separado, nao mistura com 'ops'
+  DB.ref('envase_pet_ops').on('value', function(snap){
+    ENVASE_OPS=[];
+    if(snap.exists()){
+      snap.forEach(function(c){ var v=c.val(); v.fbKey=c.key; ENVASE_OPS.push(v); });
+    }
+    ENVASE_OPS.sort(function(a,b){return (b.criadoEm||'')>(a.criadoEm||'')?1:-1;});
+    var ativas=document.querySelectorAll('.scr.on');
+    if(ativas.length && ativas[0].id==='scr-envase'){ renderEnvaseFila(); renderEnvaseOPs(); }
+  }, function(err){
+    console.warn('Erro ao carregar envase_pet_ops:', err.message);
   });
 
   // Navega para tela inicial
@@ -3596,6 +3655,232 @@ function classificarFamilia(cod){
     if(c.indexOf(FAMILIA_PREFIXOS.HORSE[i])===0) return 'HORSE';
   }
   return 'AQUA';
+}
+
+// ============================================================
+// ENVASE PET — converte OP de ensaque (CAT/DOG, tipo KG) em
+// uma ou mais ordens de envase (produto fracionado, mesmo lote).
+// Nó separado no Firebase (envase_pet_ops) — nunca escreve em 'ops'.
+// Escopo: SOMENTE prefixos CAT e DOG (nao usa FAMILIA_PREFIXOS.PET,
+// que tambem inclui EX — EX nao vai para o Envase PET).
+// ============================================================
+function classificarPrefixoEnvase(cod){
+  var c=(cod||'').toString().trim().toUpperCase();
+  if(c.indexOf('CAT')===0) return 'CAT';
+  if(c.indexOf('DOG')===0) return 'DOG';
+  return null;
+}
+
+function opsElegiveisEnvase(){
+  return OPS.filter(function(o){
+    return classificarPrefixoEnvase(o.cod) && o.tipo==='KG' && (o.real||0)>0;
+  });
+}
+
+function totalConvertidoEnvase(origemFbKey){
+  var t=0;
+  for(var i=0;i<ENVASE_OPS.length;i++){
+    if(ENVASE_OPS[i].origemOpFbKey===origemFbKey) t+=(ENVASE_OPS[i].prog||0);
+  }
+  return t;
+}
+
+function renderEnvaseFila(){
+  var tb=G('envasefilabody'); if(!tb) return;
+  var lista=opsElegiveisEnvase();
+  lista.sort(function(a,b){return (b.criadoEm||'')>(a.criadoEm||'')?1:-1;});
+  var h='';
+  if(!lista.length){
+    h='<tr><td colspan="8" style="text-align:center;color:#889;padding:20px">Nenhuma OP de PET (CAT/DOG) em KG com producao disponivel.</td></tr>';
+  }
+  for(var i=0;i<lista.length;i++){
+    var o=lista[i];
+    var conv=totalConvertidoEnvase(o.fbKey);
+    var saldo=(o.real||0)-conv;
+    var cor=saldo<0?'#c0392b':(saldo===0?'#739630':'#024f2b');
+    h+='<tr>'+
+       '<td>'+o.id+'</td>'+
+       '<td>'+o.cod+'</td>'+
+       '<td>'+(o.desc||'')+'</td>'+
+       '<td>'+(o.lote||'-')+'</td>'+
+       '<td style="text-align:right">'+(o.real||0).toFixed(1)+'</td>'+
+       '<td style="text-align:right">'+conv.toFixed(1)+'</td>'+
+       '<td style="text-align:right;font-weight:700;color:'+cor+'">'+saldo.toFixed(1)+'</td>'+
+       '<td><button class="btn bsm bp" data-key="'+o.fbKey+'" onclick="abrirConversaoEnvase(this.dataset.key)">Converter</button></td>'+
+       '</tr>';
+  }
+  tb.innerHTML=h;
+}
+
+function renderEnvaseOPs(){
+  var tb=G('envaseopsbody'); if(!tb) return;
+  var st=G('envf-st')?G('envf-st').value:'';
+  var maq=G('envf-maq')?G('envf-maq').value:'';
+  var lote=(G('envf-lote')?G('envf-lote').value:'').trim().toLowerCase();
+  var lista=ENVASE_OPS.filter(function(o){
+    if(st && o.status!==st) return false;
+    if(maq && o.maquina!==maq) return false;
+    if(lote && (o.lote||'').toLowerCase().indexOf(lote)===-1) return false;
+    return true;
+  });
+  var h='';
+  if(!lista.length){
+    h='<tr><td colspan="9" style="text-align:center;color:#889;padding:20px">Nenhuma ordem de Envase gerada ainda.</td></tr>';
+  }
+  for(var i=0;i<lista.length;i++){
+    var o=lista[i];
+    h+='<tr>'+
+       '<td>'+o.id+'</td>'+
+       '<td>'+o.cod+'</td>'+
+       '<td>'+(o.desc||'')+'</td>'+
+       '<td>'+(o.lote||'-')+'</td>'+
+       '<td>'+(o.maquina||'-')+'</td>'+
+       '<td style="text-align:right">'+(o.prog||0).toFixed(1)+'</td>'+
+       '<td style="text-align:right">'+(o.real||0).toFixed(1)+'</td>'+
+       '<td>'+(o.status||'-')+'</td>'+
+       '<td style="font-size:11px;color:#4a664a">'+(o.origemOpId||'-')+'</td>'+
+       '</tr>';
+  }
+  tb.innerHTML=h;
+}
+
+function abrirConversaoEnvase(fbKey){
+  var op=null;
+  for(var i=0;i<OPS.length;i++){ if(OPS[i].fbKey===fbKey){ op=OPS[i]; break; } }
+  if(!op){ toast('OP origem nao encontrada','err'); return; }
+  var conv=totalConvertidoEnvase(fbKey);
+  var saldo=(op.real||0)-conv;
+  G('envase-origem-fbkey').value=fbKey;
+  G('envase-origem-info').innerHTML='<b>OP Origem:</b> '+op.id+' &nbsp; <b>Produto:</b> '+op.cod+' - '+(op.desc||'')+' &nbsp; <b>Lote:</b> '+(op.lote||'-')+'<br><b>Produzido:</b> '+(op.real||0).toFixed(1)+' kg &nbsp; <b>Ja convertido:</b> '+conv.toFixed(1)+' kg &nbsp; <b>Saldo disponivel:</b> '+saldo.toFixed(1)+' kg';
+  G('envase-maquina').value='Haver';
+
+  // Popula datalist filtrado pelo mesmo prefixo (CAT/DOG) da origem, apenas tipos SC/BG
+  var pfx=classificarPrefixoEnvase(op.cod);
+  var dl=G('envaselist_dl'); var h='';
+  for(var j=0;j<PRODS.length;j++){
+    var p=PRODS[j];
+    var pc=(p.cod||'').toString().toUpperCase();
+    if(pfx && pc.indexOf(pfx)===0 && (p.unid==='SC'||p.unid==='BG')){
+      h+='<option value="'+p.cod+' - '+p.desc+'">';
+    }
+  }
+  dl.innerHTML=h;
+
+  G('envase-linhas').innerHTML='';
+  addLinhaEnvase();
+  calcTotalEnvase();
+  G('menvase').classList.add('on');
+}
+
+function addLinhaEnvase(){
+  var wrap=document.createElement('div');
+  wrap.className='fr envase-linha';
+  wrap.style.cssText='align-items:flex-end;gap:8px;margin-bottom:6px';
+  wrap.innerHTML=
+    '<div class="fg" style="flex:2"><label class="fl">Produto</label><input type="text" class="envl-prod" list="envaselist_dl" autocomplete="off" placeholder="Codigo ou descricao" oninput="onLinhaEnvaseInput(this)"></div>'+
+    '<div class="fg" style="flex:1"><label class="fl">Qtd Embalagens</label><input type="number" class="envl-qtd" min="0" oninput="onLinhaEnvaseInput(this)"></div>'+
+    '<div class="fg" style="flex:1"><label class="fl">Peso Unit. (kg)</label><input type="number" class="envl-peso" min="0" step="0.01" oninput="onLinhaEnvaseInput(this)"></div>'+
+    '<div class="fg" style="flex:1"><label class="fl">Subtotal (kg)</label><input type="text" class="envl-sub" readonly style="opacity:.6"></div>'+
+    '<button class="btn bsm" style="height:36px" onclick="removeLinhaEnvase(this)" title="Remover">&times;</button>';
+  G('envase-linhas').appendChild(wrap);
+}
+
+function removeLinhaEnvase(btn){
+  var linhas=G('envase-linhas');
+  if(linhas.children.length<=1){ toast('Deixe pelo menos um produto','err'); return; }
+  btn.closest('.envase-linha').remove();
+  calcTotalEnvase();
+}
+
+function resolveProdutoEnvaseLinha(raw){
+  raw=(raw||'').trim();
+  if(!raw) return null;
+  for(var i=0;i<PRODS.length;i++){ if(PRODS[i].cod===raw) return PRODS[i]; }
+  var idx=raw.indexOf(' - ');
+  if(idx>0){
+    var cod=raw.slice(0,idx);
+    for(var i=0;i<PRODS.length;i++){ if(PRODS[i].cod===cod) return PRODS[i]; }
+  }
+  return null;
+}
+
+function onLinhaEnvaseInput(el){
+  var linha=el.closest('.envase-linha');
+  var qtd=parseFloat(linha.querySelector('.envl-qtd').value)||0;
+  var peso=parseFloat(linha.querySelector('.envl-peso').value)||0;
+  var sub=qtd*peso;
+  linha.querySelector('.envl-sub').value=sub?sub.toFixed(1):'';
+  calcTotalEnvase();
+}
+
+function calcTotalEnvase(){
+  var fbKey=G('envase-origem-fbkey').value;
+  var op=null;
+  for(var i=0;i<OPS.length;i++){ if(OPS[i].fbKey===fbKey){ op=OPS[i]; break; } }
+  var jaConv=totalConvertidoEnvase(fbKey);
+  var saldo=op?((op.real||0)-jaConv):0;
+  var linhas=document.querySelectorAll('#envase-linhas .envase-linha');
+  var total=0;
+  for(var i=0;i<linhas.length;i++){
+    var qtd=parseFloat(linhas[i].querySelector('.envl-qtd').value)||0;
+    var peso=parseFloat(linhas[i].querySelector('.envl-peso').value)||0;
+    total+=qtd*peso;
+  }
+  var info=G('envase-total-info'); if(!info) return;
+  var msg='Total a converter: '+total.toFixed(1)+' kg &nbsp;|&nbsp; Saldo disponivel na origem: '+saldo.toFixed(1)+' kg';
+  if(total>saldo){
+    info.style.background='rgba(192,57,43,.1)'; info.style.color='#c0392b';
+    msg+=' &nbsp; ⚠️ Ultrapassa o saldo produzido — confira antes de gerar.';
+  } else {
+    info.style.background='rgba(2,79,43,.08)'; info.style.color='#024f2b';
+  }
+  info.innerHTML=msg;
+}
+
+function salvarConversaoEnvase(){
+  var origemFbKey=G('envase-origem-fbkey').value;
+  var op=null;
+  for(var i=0;i<OPS.length;i++){ if(OPS[i].fbKey===origemFbKey){ op=OPS[i]; break; } }
+  if(!op){ toast('OP origem nao encontrada','err'); return; }
+  var maquina=G('envase-maquina').value;
+  var linhas=document.querySelectorAll('#envase-linhas .envase-linha');
+  var itens=[];
+  for(var i=0;i<linhas.length;i++){
+    var prodRaw=linhas[i].querySelector('.envl-prod').value;
+    var prod=resolveProdutoEnvaseLinha(prodRaw);
+    var qtd=parseFloat(linhas[i].querySelector('.envl-qtd').value)||0;
+    var peso=parseFloat(linhas[i].querySelector('.envl-peso').value)||0;
+    if(!prod && !qtd && !peso) continue; // linha vazia, ignora
+    if(!prod){ toast('Selecione um produto valido em todas as linhas','err'); return; }
+    if(qtd<=0||peso<=0){ toast('Preencha qtd e peso em todas as linhas','err'); return; }
+    itens.push({prod:prod, qtd:qtd, peso:peso});
+  }
+  if(!itens.length){ toast('Adicione ao menos um produto','err'); return; }
+
+  ld(true,'Gerando ordens de Envase...');
+  var updates={};
+  var agoraStr=agora();
+  for(var i=0;i<itens.length;i++){
+    var it=itens[i];
+    var ref=DB.ref('envase_pet_ops').push();
+    var progKg=it.qtd*it.peso;
+    var envOp={
+      id:'ENV-'+new Date().getFullYear()+'-'+uid().slice(0,6).toUpperCase(),
+      cod:it.prod.cod, desc:it.prod.desc||it.prod.cod,
+      tipo:it.prod.unid==='BG'?'BG':'SC',
+      qtdEmbalagens:it.qtd, pesoUnit:it.peso,
+      prog:progKg, real:0,
+      lote:op.lote||'', maquina:maquina,
+      data:hoje(), status:'Liberada',
+      origemOpFbKey:op.fbKey, origemOpId:op.id, origemLote:op.lote||'', origemCod:op.cod,
+      criadoPor:SES.login, criadoEm:agoraStr
+    };
+    updates['envase_pet_ops/'+ref.key]=envOp;
+  }
+  DB.ref().update(updates).then(function(){
+    ld(false); toast('Ordens de Envase geradas!','ok'); fM('menvase');
+    addLog('NOVA_ENVASE_PET', op.id+' -> '+itens.length+' ordem(ns)');
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
 }
 
 // Extrai granulometria da descrição (texto livre). Normaliza vírgula/ponto
