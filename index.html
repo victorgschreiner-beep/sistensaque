@@ -3873,9 +3873,10 @@ function abrirConversaoEnvase(fbKey){
 function addLinhaEnvase(){
   var wrap=document.createElement('div');
   wrap.className='fr envase-linha';
-  wrap.style.cssText='align-items:flex-end;gap:8px;margin-bottom:6px';
+  wrap.style.cssText='align-items:flex-end;gap:8px;margin-bottom:6px;flex-wrap:wrap';
   wrap.innerHTML=
-    '<div class="fg" style="flex:2"><label class="fl">Produto</label><input type="text" class="envl-prod" list="envaselist_dl" autocomplete="off" placeholder="Codigo ou descricao" oninput="onLinhaEnvaseInput(this)"></div>'+
+    '<div class="fg" style="flex:1;min-width:130px"><label class="fl">No da OP <span style="color:#739630;font-size:10px">(opcional)</span></label><input type="text" class="envl-opnum" placeholder="auto"></div>'+
+    '<div class="fg" style="flex:2;min-width:180px"><label class="fl">Produto</label><input type="text" class="envl-prod" list="envaselist_dl" autocomplete="off" placeholder="Codigo ou descricao" oninput="onLinhaEnvaseInput(this)"></div>'+
     '<div class="fg" style="flex:1"><label class="fl">Qtd Embalagens</label><input type="number" class="envl-qtd" min="0" oninput="onLinhaEnvaseInput(this)"></div>'+
     '<div class="fg" style="flex:1"><label class="fl">Peso Unit. (kg)</label><input type="number" class="envl-peso" min="0" step="0.01" oninput="onLinhaEnvaseInput(this)"></div>'+
     '<div class="fg" style="flex:1"><label class="fl">Subtotal (kg)</label><input type="text" class="envl-sub" readonly style="opacity:.6"></div>'+
@@ -3943,15 +3944,20 @@ function salvarConversaoEnvase(){
   var maquina=G('envase-maquina').value;
   var linhas=document.querySelectorAll('#envase-linhas .envase-linha');
   var itens=[];
+  var idsUsados={}; // detecta duplicidade dentro da propria conversao (varias linhas)
+  ENVASE_OPS.forEach(function(e){ idsUsados[(e.id||'').toUpperCase()]=true; }); // + duplicidade contra o que ja existe
   for(var i=0;i<linhas.length;i++){
     var prodRaw=linhas[i].querySelector('.envl-prod').value;
     var prod=resolveProdutoEnvaseLinha(prodRaw);
     var qtd=parseFloat(linhas[i].querySelector('.envl-qtd').value)||0;
     var peso=parseFloat(linhas[i].querySelector('.envl-peso').value)||0;
-    if(!prod && !qtd && !peso) continue; // linha vazia, ignora
+    var opnumRaw=(linhas[i].querySelector('.envl-opnum').value||'').trim();
+    if(!prod && !qtd && !peso && !opnumRaw) continue; // linha vazia, ignora
     if(!prod){ toast('Selecione um produto valido em todas as linhas','err'); return; }
     if(qtd<=0||peso<=0){ toast('Preencha qtd e peso em todas as linhas','err'); return; }
-    itens.push({prod:prod, qtd:qtd, peso:peso});
+    if(opnumRaw && idsUsados[opnumRaw.toUpperCase()]){ toast('No de OP "'+opnumRaw+'" ja existe — use outro numero','err'); return; }
+    if(opnumRaw) idsUsados[opnumRaw.toUpperCase()]=true;
+    itens.push({prod:prod, qtd:qtd, peso:peso, opnum:opnumRaw});
   }
   if(!itens.length){ toast('Adicione ao menos um produto','err'); return; }
 
@@ -3963,7 +3969,7 @@ function salvarConversaoEnvase(){
     var ref=DB.ref('envase_pet_ops').push();
     var progKg=it.qtd*it.peso;
     var envOp={
-      id:'ENV-'+new Date().getFullYear()+'-'+uid().slice(0,6).toUpperCase(),
+      id:it.opnum||('ENV-'+new Date().getFullYear()+'-'+uid().slice(0,6).toUpperCase()),
       cod:it.prod.cod, desc:it.prod.desc||it.prod.cod,
       tipo:it.prod.unid==='BG'?'BG':'SC',
       qtdEmbalagens:it.qtd, pesoUnit:it.peso,
