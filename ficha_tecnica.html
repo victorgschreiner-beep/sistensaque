@@ -83,6 +83,30 @@ table.pt th{text-align:left;font-size:10px;color:#739630;text-transform:uppercas
 table.pt td{padding:6px 8px;border-bottom:1px solid #eef2ee;font-size:13px;vertical-align:middle}
 table.pt tr:last-child td{border-bottom:none}
 table.pt input{padding:6px 8px;font-size:12px}
+
+/* GRID DE PARÂMETROS — visualização (somente leitura) */
+.sec-h{font-weight:700;color:#024f2b;font-size:12px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.pitem{background:#f7faf7;border:1px solid #eef2ee;border-radius:8px;padding:8px 10px}
+.pitem-l{font-size:10px;color:#739630;text-transform:uppercase;font-weight:700;margin-bottom:3px;letter-spacing:.2px}
+.pitem-v{font-size:16px;font-weight:800;color:#024f2b;line-height:1.15}
+.pitem-v.vazio2{color:#c8d8c8;font-weight:600;font-size:13px}
+.pitem-u{font-size:11px;color:#4a664a;font-weight:500;margin-left:3px}
+.pitem-t{font-size:10px;color:#a06c00;margin-top:3px;font-weight:600}
+
+/* LINHAS DE FORMULÁRIO — edição (rótulo travado para campos padrão) */
+.prow{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid #eef2ee}
+.prow:last-child{border-bottom:none}
+.prow-label{flex:1;font-size:13px;font-weight:600;color:#1a2e1a;display:flex;align-items:center;gap:5px}
+.prow-lock{font-size:11px;opacity:.45}
+.prow-label input{font-weight:600;font-size:13px}
+.prow-valor{width:130px}
+.prow-valor input{font-size:14px;font-weight:700;color:#024f2b;text-align:center}
+.prow-unid{width:80px}
+.prow-tol{width:100px}
+.prow-rm{cursor:pointer;color:#c0392b;font-weight:900;font-size:15px;padding:2px 8px}
+.prow-rm:hover{opacity:.7}
+.sec-actions{display:flex;gap:8px;margin-top:8px}
 .pt-rm{cursor:pointer;color:#c0392b;font-weight:900;font-size:15px;padding:2px 8px}
 .pt-rm:hover{opacity:.7}
 .sec-add{margin-top:8px}
@@ -194,7 +218,7 @@ table.pt input{padding:6px 8px;font-size:12px}
 
       <div class="card">
         <div class="tabs">
-          <div class="tab on" data-tab="params" onclick="trocarTab('params')">Parâmetros de Máquina</div>
+          <div class="tab on" data-tab="params" onclick="trocarTab('params')">Parâmetros de Processo</div>
           <div class="tab" data-tab="qual" onclick="trocarTab('qual')">Qualidade (consulta)</div>
           <div class="tab" data-tab="hist" onclick="trocarTab('hist')">Histórico de Revisões</div>
         </div>
@@ -290,12 +314,65 @@ var DB = firebase.database();
 // ============================================================
 var SES = null;
 var SECOES_META = [
-  {key:"parametrosMaquina", label:"Máquina"},
-  {key:"preCondicionador",  label:"Pré-condicionador"},
-  {key:"extrusao",          label:"Extrusão"},
-  {key:"secagem",           label:"Secagem"},
-  {key:"misturadorVC",      label:"Misturador VC"}
+  {key:"parametrosMaquina", label:"Parâmetros de Máquina", icone:"⚙️"},
+  {key:"preCondicionador",  label:"Pré-condicionador",     icone:"💧"},
+  {key:"motorPrincipal",    label:"Motor Principal",       icone:"🔌"},
+  {key:"extrusora",         label:"Extrusora",             icone:"🌀"},
+  {key:"secagem",           label:"Secagem",               icone:"🔥"},
+  {key:"misturadorVC",      label:"Misturador VC",         icone:"🧪"}
 ];
+// Template padrão — rótulo e unidade travados na tela de edição (só o valor é digitado).
+// Pode sempre adicionar campos extras livres além destes, ou restaurar o padrão se remover algum.
+var TEMPLATE_PADRAO = {
+  parametrosMaquina: [
+    {label:"Matriz",                unidade:""},
+    {label:"Venturi",               unidade:"mm"},
+    {label:"Mancal",                unidade:"facas"},
+    {label:"TPH (Tonelada/hora)",   unidade:"Ton/h"}
+  ],
+  preCondicionador: [
+    {label:"Pressão da água",                    unidade:"kg/h"},
+    {label:"Água",                               unidade:"%"},
+    {label:"Pressão de Vapor",                   unidade:"Bar"},
+    {label:"Temperatura Zona 01",                unidade:"°C"},
+    {label:"Rotação da rosca (Rpm) — Zona 01",   unidade:"%"},
+    {label:"Temperatura Zona 02",                unidade:"°C"},
+    {label:"Rotação da rosca (Rpm) — Zona 02",   unidade:"%"}
+  ],
+  motorPrincipal: [
+    {label:"Rpm",              unidade:"%"},
+    {label:"Kw",               unidade:""},
+    {label:"Kwh/ton",          unidade:""},
+    {label:"Amperagem (A)",    unidade:""}
+  ],
+  extrusora: [
+    {label:"Vapor",                          unidade:"%"},
+    {label:"Temperatura da rosca — Fase 1",  unidade:"°C"},
+    {label:"Temperatura da rosca — Fase 2",  unidade:"°C"},
+    {label:"Temperatura da rosca — Fase 3",  unidade:"°C"},
+    {label:"Corte da faca (Rpm)",            unidade:"%"}
+  ],
+  secagem: [
+    {label:"Temperatura Zona 01",                            unidade:"°C"},
+    {label:"Temperatura Zona 02",                            unidade:"°C"},
+    {label:"Temperatura Zona 03",                            unidade:"°C"},
+    {label:"Temperatura Zona 04",                            unidade:"°C"},
+    {label:"Altura camada superior",                         unidade:""},
+    {label:"Altura camada inferior",                         unidade:""},
+    {label:"Ventilação superior",                            unidade:"%"},
+    {label:"Ventilação inferior",                            unidade:"%"},
+    {label:"Tempo de Residência — Camada Superior",          unidade:"min"},
+    {label:"Tempo de Residência — Camada Inferior",          unidade:"min"},
+    {label:"Abertura de ar",                                 unidade:"%"}
+  ],
+  misturadorVC: [
+    {label:"Sólido",                     unidade:"kg"},
+    {label:"Óleo",                       unidade:"%"},
+    {label:"Palatabilizante",            unidade:"%"},
+    {label:"Tempo de Mistura",           unidade:"seg"},
+    {label:"Temperatura Tanque de óleo", unidade:"°C"}
+  ]
+};
 var QUAL_CAMPOS = [
   {k:"umidMin",l:"Umidade Mín"},{k:"umidMax",l:"Umidade Máx"},
   {k:"awMin",l:"AW Mín"},{k:"awMax",l:"AW Máx"},
@@ -306,6 +383,7 @@ var QUAL_CAMPOS = [
   {k:"mmMax",l:"MM Máx"},{k:"tempMax",l:"Temp Máx"},
   {k:"fluMin",l:"Flutuab. Mín"},{k:"cozMin",l:"Cozimento Mín"}
 ];
+
 
 var CATALOGO = [{"cod": "CATRGFAS0102", "desc": "FANFOOD CAT AD TILAPIA FD - 5 X 2,5KG"}, {"cod": "CATRGFAS0103", "desc": "FANFOOD CAT AD TILAPIA 10,1KG"}, {"cod": "CATRGFAS0104", "desc": "FANFOOD CAT AD TILAPIA KG"}, {"cod": "CATRGFAS0106", "desc": "FANFOOD CAT AD CAS TILAPIA FD - 5 X 2,5KG"}, {"cod": "CATRGFAS0124", "desc": "FANFOOD CAT AD TILAPIA 60G"}, {"cod": "CATRGFAS0125", "desc": "FANFOOD CAT AD TILAPIA 1KG"}, {"cod": "CATRGFAS0126", "desc": "FANFOOD CAT AD TILAPIA 2,5KG"}, {"cod": "CATRGFAS0127", "desc": "FANFOOD CAT AD TILAPIA FD - 10 X 1KG"}, {"cod": "CATRGFAS0128", "desc": "FANFOOD CAT AD CAS TILAPIA FD - 10 X 1KG"}, {"cod": "CATRGFAS0129", "desc": "FANFOOD CAT AD TILAPIA 25KG"}, {"cod": "CATRGFAS0130", "desc": "FANFOOD CAT AD CAS TILAPIA 60G"}, {"cod": "CATRGFAS0131", "desc": "FANFOOD CAT AD CAS TILAPIA 1KG"}, {"cod": "CATRGFAS0132", "desc": "FANFOOD CAT AD CAS TILAPIA 2,5KG"}, {"cod": "CATRGFAS0133", "desc": "FANFOOD CAT AD CAS TILAPIA KG"}, {"cod": "CATRGFAS0134", "desc": "FANFOOD CAT AD CAS TILAPIA 15KG"}, {"cod": "CATRGFAS0135", "desc": "FANFOOD CAT AD CAS TILAPIA 25KG"}, {"cod": "CATRGFAS0137", "desc": "FANFOOD TODO DIA CAT CARNE KG"}, {"cod": "CATRGFAS0158", "desc": "FANFOOD CAT AD TILAPIA BG"}, {"cod": "CATRGFAS0159", "desc": "FANFOOD CAT AD CAS TILAPIA BG"}, {"cod": "CATRGFGP0200", "desc": "GOLD PLUS CAT AD TILAPIA 60G"}, {"cod": "CATRGFGP0201", "desc": "GOLD PLUS CAT AD TILAPIA 10,1KG"}, {"cod": "CATRGFGP0202", "desc": "GOLD PLUS CAT AD TILAPIA 20KG"}, {"cod": "CATRGFGP0203", "desc": "GOLD PLUS CAT AD CAST TILAPIA 60G"}, {"cod": "CATRGFGP0204", "desc": "GOLD PLUS CAT AD CAST TILAPIA 10,1KG"}, {"cod": "CATRGFGP0205", "desc": "GOLD PLUS CAT AD CAST TILAPIA 20KG"}, {"cod": "CATRGFGP0214", "desc": "GOLD PLUS CAT AD TILAPIA KG"}, {"cod": "CATRGFGP0215", "desc": "GOLD PLUS CAT AD CAST TILAPIA KG"}, {"cod": "CATRGFPE0001", "desc": "AURUS CAT FHT FRANGO 60G"}, {"cod": "CATRGFPE0002", "desc": "AURUS CAT FHT FRANGO 1KG"}, {"cod": "CATRGFPE0004", "desc": "AURUS CAT FHT FRANGO 10,1KG"}, {"cod": "CATRGFPE0005", "desc": "AURUS CAT FHT CAR/FRA FD - 10 X 1KG"}, {"cod": "CATRGFPE0007", "desc": "AURUS CAT AD SALMAO 60G"}, {"cod": "CATRGFPE0008", "desc": "AURUS CAT AD SALMAO 1KG"}, {"cod": "CATRGFPE0010", "desc": "AURUS CAT AD SALMAO 10,1KG"}, {"cod": "CATRGFPE0011", "desc": "AURUS CAT AD SALMAO FD - 10 X 1KG"}, {"cod": "CATRGFPE0012", "desc": "AURUS CAT AD SALMAO KG"}, {"cod": "CATRGFPE0013", "desc": "AURUS CAT AD CAS SALMAO 60G"}, {"cod": "CATRGFPE0014", "desc": "AURUS CAT AD CAS SALMAO KG"}, {"cod": "CATRGFPE0016", "desc": "AURUS CAT AD CAS SALMAO 10,1KG"}, {"cod": "CATRGFPE0017", "desc": "AURUS CAT AD CAS SALMAO FD - 10 X 1KG"}, {"cod": "CATRGFPE0019", "desc": "AURUS CAT AD FRA 60G"}, {"cod": "CATRGFPE0020", "desc": "AURUS CAT AD FRA 1KG"}, {"cod": "CATRGFPE0021", "desc": "AURUS CAT AD FRANGO KG"}, {"cod": "CATRGFPE0022", "desc": "AURUS CAT AD FRA 10,1KG"}, {"cod": "CATRGFPE0025", "desc": "AURUS CAT AD CAS FRA 60G"}, {"cod": "CATRGFPE0026", "desc": "AURUS CAT AD CAS FRAN KG"}, {"cod": "CATRGFPE0027", "desc": "AURUS CAT AD CAS FRA 2,5KG"}, {"cod": "CATRGFPE0028", "desc": "AURUS CAT AD CAS FRA 10,1KG"}, {"cod": "CATRGFPE0139", "desc": "AURUS CAT FHT FRANGO BG"}, {"cod": "CATRGFPE0140", "desc": "AURUS CAT AD SALMAO BG"}, {"cod": "CATRGFPE0141", "desc": "AURUS CAT AD CAS SALMÃO BG"}, {"cod": "CATRGFPE0142", "desc": "AURUS CAT AD FRA BG"}, {"cod": "CATRGFPE0143", "desc": "AURUS CAT AD CAS FRA BG"}, {"cod": "CATRGFPE0144", "desc": "AURUS CAT FHT CAR/FRA KG"}, {"cod": "CATRGFPL0001", "desc": "RAGUIFE CAT AD FRA 60G"}, {"cod": "CATRGFPL0002", "desc": "RAGUIFE CAT AD FRA KG"}, {"cod": "CATRGFPL0003", "desc": "RAGUIFE CAT AD FRA 10,1KG"}, {"cod": "CATRGFPL0004", "desc": "RAGUIFE CAT AD TILAPIA KG"}, {"cod": "CATRGFPL0005", "desc": "RAGUIFE CAT AD CAS FRANGO 60G"}, {"cod": "CATRGFPL0006", "desc": "RAGUIFE CAT AD CAS TILAPIA 60G"}, {"cod": "CATRGFPL0007", "desc": "RAGUIFE CAT AD CAS FRA 10,1KG"}, {"cod": "CATRGFPL0008", "desc": "RAGUIFE CAT AD TILAPIA 60G"}, {"cod": "CATRGFPL0009", "desc": "RAGUIFE CAT AD TILAPIA 10,1KG"}, {"cod": "CATRGFPL0010", "desc": "RAGUIFE CAT AD TILAPIA BG"}, {"cod": "CATRGFPL0011", "desc": "RAGUIFE CAT AD CAS TILAPIA 10,1KG"}, {"cod": "CATRGFPL0012", "desc": "RAGUIFE CAT AD CAS TILAPIA BG"}, {"cod": "CATRGFPL0013", "desc": "RAGUIFE CAT AD FRANGO BG"}, {"cod": "CATRGFPL0014", "desc": "RAGUIFE CAT AD CAS FRANGO BG"}, {"cod": "CATRGFPL0016", "desc": "RAGUIFE CAT AD CAS FRA KG"}, {"cod": "CATRGFPL0017", "desc": "RAGUIFE CAT AD CAS TILAPIA KG"}, {"cod": "CATRGFPP0167", "desc": "PRIME CAT AD SALM 60G"}, {"cod": "CATRGFPP0168", "desc": "PRIME CAT AD SALM 10,1KG"}, {"cod": "CATRGFPP0169", "desc": "PRIME CAT AD CAS SALM 60G"}, {"cod": "CATRGFPP0170", "desc": "PRIME CAT AD CAS SALM 10,1KG"}, {"cod": "CATRGFPP0171", "desc": "PRIME CAT FHT FRA 60G"}, {"cod": "CATRGFPP0172", "desc": "PRIME CAT FHT FRA 10,1KG"}, {"cod": "CATRGFPP0176", "desc": "PRIME CAT AD SALM KG"}, {"cod": "CATRGFPP0177", "desc": "PRIME CAT AD CAS SALM KG"}, {"cod": "CATRGFPP0178", "desc": "PRIME CAT FHT FRA KG"}, {"cod": "CATRGFPR0191", "desc": "SELECT PRO CAT AD 60G"}, {"cod": "CATRGFPR0192", "desc": "SELECT PRO CAT AD 10,1KG"}, {"cod": "CATRGFPR0193", "desc": "SELECT PRO CAT AD 20KG"}, {"cod": "CATRGFPR0211", "desc": "SELECT PRO CAT AD KG"}, {"cod": "CATRGFSL0181", "desc": "SELECT CAT AD 60G"}, {"cod": "CATRGFSL0182", "desc": "SELECT CAT AD 10,1KG"}, {"cod": "CATRGFSL0183", "desc": "SELECT CAT AD 20KG"}, {"cod": "CATRGFSL0207", "desc": "SELECT CAT AD KG"}, {"cod": "CATRGFSP0072", "desc": "IMPERIALLE CAT AD SALM 60G"}, {"cod": "CATRGFSP0073", "desc": "IMPERIALLE CAT AD SALM 1KG"}, {"cod": "CATRGFSP0074", "desc": "IMPERIALLE CAT AD SALM 2,5KG"}, {"cod": "CATRGFSP0075", "desc": "IMPERIALLE CAT AD SALM 10,1KG"}, {"cod": "CATRGFSP0076", "desc": "IMPERIALLE CAT AD SALM FD - 10 X 1KG"}, {"cod": "CATRGFSP0077", "desc": "IMPERIALLE CAT AD SALM FD - 5 X 2,5KG"}, {"cod": "CATRGFSP0078", "desc": "IMPERIALLE CAT CAS SALM 60G"}, {"cod": "CATRGFSP0079", "desc": "IMPERIALLE CAT CAS SALM 1KG"}, {"cod": "CATRGFSP0080", "desc": "IMPERIALLE CAT CAS SALM 2,5KG"}, {"cod": "CATRGFSP0081", "desc": "IMPERIALLE CAT CAS SALM 10,1KG"}, {"cod": "CATRGFSP0082", "desc": "IMPERIALLE CAT CAS SALM FD - 10 X 1KG"}, {"cod": "CATRGFSP0083", "desc": "IMPERIALLE CAT CAS SALM FD - 5 X 2,5KG"}, {"cod": "CATRGFSP0150", "desc": "IMPERIALLE CAT AD SALM BG"}, {"cod": "CATRGFSP0151", "desc": "IMPERIALLE CAT CAS SALM BG"}, {"cod": "DOGRGFAS0096", "desc": "FANFOOD DOG FHT CAR 60G"}, {"cod": "DOGRGFAS0097", "desc": "FANFOOD DOG FHT CAR 1KG"}, {"cod": "DOGRGFAS0098", "desc": "FANFOOD DOG FHT CAR 2,5KG"}, {"cod": "DOGRGFAS0099", "desc": "FANFOOD DOG FHT CAR FD - 10 X 1KG"}, {"cod": "DOGRGFAS0100", "desc": "FANFOOD DOG FHT CAR 10,1KG"}, {"cod": "DOGRGFAS0101", "desc": "FANFOOD DOG FHT CAR FD - 5 X 2,5KG"}, {"cod": "DOGRGFAS0102", "desc": "FANFOOD DOG AD RP CAR FD - 10 X 1KG"}, {"cod": "DOGRGFAS0103", "desc": "FANFOOD DOG AD RP CAR 60G"}, {"cod": "DOGRGFAS0104", "desc": "FANFOOD DOG AD RP CAR 1KG"}, {"cod": "DOGRGFAS0105", "desc": "FANFOOD DOG AD RP CAR 2,5KG"}, {"cod": "DOGRGFAS0106", "desc": "FANFOOD DOG AD RP CAR FD - 5 X 2,5KG"}, {"cod": "DOGRGFAS0107", "desc": "FANFOOD DOG AD RP CAR 10,1KG"}, {"cod": "DOGRGFAS0108", "desc": "FANFOOD DOG AD RMG CAR FD - 10 X 1KG"}, {"cod": "DOGRGFAS0109", "desc": "FANFOOD DOG FHT CAR 7 KG"}, {"cod": "DOGRGFAS0110", "desc": "FANFOOD DOG AD RMG CAR 60G"}, {"cod": "DOGRGFAS0111", "desc": "FANFOOD DOG AD RMG CAR 1KG"}, {"cod": "DOGRGFAS0112", "desc": "FANFOOD DOG AD RMG CAR 2,5KG"}, {"cod": "DOGRGFAS0113", "desc": "FANFOOD DOG AD RMG CAR FD - 5 X 2,5KG"}, {"cod": "DOGRGFAS0114", "desc": "FANFOOD DOG AD RMG CAR 10,1KG"}, {"cod": "DOGRGFAS0115", "desc": "FANFOOD DOG AD RMG CAR 15KG"}, {"cod": "DOGRGFAS0116", "desc": "FANFOOD DOG AD 19% CAR 7 KG"}, {"cod": "DOGRGFAS0117", "desc": "FANFOOD DOG AD 19% CAR 60G"}, {"cod": "DOGRGFAS0118", "desc": "FANFOOD DOG AD 19% CAR 1KG"}, {"cod": "DOGRGFAS0119", "desc": "FANFOOD DOG AD 19% CAR 2,5KG"}, {"cod": "DOGRGFAS0120", "desc": "FANFOOD DOG AD 19% CAR FD - 10X1KG"}, {"cod": "DOGRGFAS0121", "desc": "FANFOOD DOG AD 19% CAR 10,1KG"}, {"cod": "DOGRGFAS0122", "desc": "FANFOOD DOG AD 19% CAR 15KG"}, {"cod": "DOGRGFAS0123", "desc": "FANFOOD DOG AD 19% CAR FD - 5 X 2,5KG"}, {"cod": "DOGRGFAS0124", "desc": "FANFOOD DOG FHT CAR KG"}, {"cod": "DOGRGFAS0125", "desc": "FANFOOD DOG AD RP CAR KG"}, {"cod": "DOGRGFAS0126", "desc": "FANFOOD DOG AD RMG CAR KG"}, {"cod": "DOGRGFAS0127", "desc": "FANFOOD DOG AD 19% CAR KG"}, {"cod": "DOGRGFAS0154", "desc": "FANFOOD DOG FHT CAR BG"}, {"cod": "DOGRGFAS0155", "desc": "FANFOOD DOG AD RP CAR BG"}, {"cod": "DOGRGFAS0156", "desc": "FANFOOD DOG AD RMG CAR BG"}, {"cod": "DOGRGFAS0157", "desc": "FANFOOD DOG AD 19% CAR BG"}, {"cod": "DOGRGFGP0194", "desc": "GOLD PLUS DOG RMG 60G"}, {"cod": "DOGRGFGP0195", "desc": "GOLD PLUS DOG RMG 15KG"}, {"cod": "DOGRGFGP0196", "desc": "GOLD PLUS DOG RMG 20KG"}, {"cod": "DOGRGFGP0197", "desc": "GOLD PLUS DOG AD 60G"}, {"cod": "DOGRGFGP0198", "desc": "GOLD PLUS DOG AD 15KG"}, {"cod": "DOGRGFGP0199", "desc": "GOLD PLUS DOG AD 20KG"}, {"cod": "DOGRGFGP0212", "desc": "GOLD PLUS DOG RMG KG"}, {"cod": "DOGRGFGP0213", "desc": "GOLD PLUS DOG AD KG"}, {"cod": "DOGRGFGP0214", "desc": "GOLD PLUS CAT AD TILAPIA KG"}, {"cod": "DOGRGFGP0219", "desc": "GOLD PLUS DOG AD TILAPIA KG"}, {"cod": "DOGRGFP0221", "desc": "PRIME SENSITIVE DOG AD RPM TIL 10,1KG"}, {"cod": "DOGRGFPE0001", "desc": "AURUS DOG FHT CAR/FRA 60 G"}, {"cod": "DOGRGFPE0002", "desc": "AURUS DOG FHT CAR/FRA 1KG"}, {"cod": "DOGRGFPE0003", "desc": "AURUS DOG FHT CAR/FRA 2,5KG"}, {"cod": "DOGRGFPE0004", "desc": "AURUS DOG FHT CAR/FRA FD 5 X 2,5KG"}, {"cod": "DOGRGFPE0005", "desc": "AURUS DOG FHT CAR/FRA KG"}, {"cod": "DOGRGFPE0006", "desc": "AURUS DOG FHT CAR/FRA 15KG"}, {"cod": "DOGRGFPE0007", "desc": "AURUS DOG FHT CAR/FRA 25KG"}, {"cod": "DOGRGFPE0008", "desc": "AURUS DOG AD RP CAR/FRA 60 G"}, {"cod": "DOGRGFPE0009", "desc": "AURUS DOG AD RP CAR/FRA KG"}, {"cod": "DOGRGFPE0010", "desc": "AURUS DOG AD RP CAR/FRA 2,5KG"}, {"cod": "DOGRGFPE0011", "desc": "AURUS DOG AD RP CAR/FRA FD - 5 X 2,5KG"}, {"cod": "DOGRGFPE0013", "desc": "AURUS DOG AD RP CAR/FRA 15KG"}, {"cod": "DOGRGFPE0014", "desc": "AURUS DOG AD RP CAR/FRA 25KG"}, {"cod": "DOGRGFPE0015", "desc": "AURUS DOG AD RMG CAR/FRA 60G"}, {"cod": "DOGRGFPE0016", "desc": "AURUS DOG AD RMG CAR/FRA 1KG"}, {"cod": "DOGRGFPE0017", "desc": "AURUS DOG AD RMG CAR/FRA 2,5KG"}, {"cod": "DOGRGFPE0018", "desc": "AURUS DOG AD RMG CAR/FRA FD - 5 X 2,5KG"}, {"cod": "DOGRGFPE0019", "desc": "AURUS DOG AD RMG CAR/FRA KG"}, {"cod": "DOGRGFPE0020", "desc": "AURUS DOG AD RMG CAR/FRA 15KG"}, {"cod": "DOGRGFPE0021", "desc": "AURUS DOG AD RMG CAR/FRA 25KG"}, {"cod": "DOGRGFPE0022", "desc": "AURUS DOG AD RP CAR/FRA BG"}, {"cod": "DOGRGFPE0023", "desc": "AURUS DOG AD RMG CAR/FRA BG"}, {"cod": "DOGRGFPE0136", "desc": "AURUS DOG FHT CAR/FRA BG"}, {"cod": "DOGRGFPE0137", "desc": "AURUS DOG AD RP CAR/FRA BG"}, {"cod": "DOGRGFPE0138", "desc": "AURUS DOG AD RMG CAR/FRA BG"}, {"cod": "DOGRGFPL0001", "desc": "RAGUIFE DOG FHT CAR 60G"}, {"cod": "DOGRGFPL0002", "desc": "RAGUIFE DOG FHT CAR KG"}, {"cod": "DOGRGFPL0004", "desc": "RAGUIFE DOG FHT CAR 15KG"}, {"cod": "DOGRGFPL0005", "desc": "RAGUIFE DOG FHT CAR 25KG"}, {"cod": "DOGRGFPL0006", "desc": "RAGUIFE DOG AD RP CAR 60G"}, {"cod": "DOGRGFPL0007", "desc": "RAGUIFE DOG AD RP CAR KG"}, {"cod": "DOGRGFPL0009", "desc": "RAGUIFE DOG AD RP CAR 15KG"}, {"cod": "DOGRGFPL0010", "desc": "RAGUIFE DOG AD RP CAR 25KG"}, {"cod": "DOGRGFPL0011", "desc": "RAGUIFE DOG AD RMG CAR 60G"}, {"cod": "DOGRGFPL0012", "desc": "RAGUIFE DOG AD RMG CAR KG"}, {"cod": "DOGRGFPL0014", "desc": "RAGUIFE DOG AD RMG CAR 15KG"}, {"cod": "DOGRGFPL0015", "desc": "RAGUIFE DOG AD RMG CAR 25KG"}, {"cod": "DOGRGFPL0016", "desc": "RAGUIFE DOG AD TILAPIA KG"}, {"cod": "DOGRGFPL0022", "desc": "RAGUIFE DOG FHT CAR BG"}, {"cod": "DOGRGFPL0023", "desc": "RAGUIFE DOG AD RP CAR BG"}, {"cod": "DOGRGFPL0024", "desc": "RAGUIFE DOG AD RMG CAR BG"}, {"cod": "DOGRGFPL0025", "desc": "RAGUIFE DOG AD TILAPIA 15KG SC"}, {"cod": "DOGRGFPL0026", "desc": "RAGUIFE DOG AD TILAPIA BG"}, {"cod": "DOGRGFPP0151", "desc": "PRIME DOG FHT C/F 60G"}, {"cod": "DOGRGFPP0161", "desc": "PRIME DOG FHT C/F 60G"}, {"cod": "DOGRGFPP0162", "desc": "PRIME DOG FHT C/F 15KG"}, {"cod": "DOGRGFPP0163", "desc": "PRIME DOG AD RP C/F 60G"}, {"cod": "DOGRGFPP0164", "desc": "PRIME DOG AD RP C/F 15KG"}, {"cod": "DOGRGFPP0165", "desc": "PRIME DOG AD RMG C/F 60G"}, {"cod": "DOGRGFPP0166", "desc": "PRIME DOG AD RMG C/F 15KG"}, {"cod": "DOGRGFPP0173", "desc": "PRIME DOG FHT C/F KG"}, {"cod": "DOGRGFPP0174", "desc": "PRIME DOG AD RP C/F KG"}, {"cod": "DOGRGFPP0175", "desc": "PRIME DOG AD RMG C/F KG"}, {"cod": "DOGRGFPP0222", "desc": "PRIME SENSITIVE DOG AD RPM TIL KG"}, {"cod": "DOGRGFPR0184", "desc": "SELECT PRO DOG FHT 60G"}, {"cod": "DOGRGFPR0185", "desc": "SELECT PRO DOG FHT 15KG"}, {"cod": "DOGRGFPR0186", "desc": "SELECT PRO DOG AD RP 60G"}, {"cod": "DOGRGFPR0187", "desc": "SELECT PRO DOG AD RP 15KG"}, {"cod": "DOGRGFPR0188", "desc": "SELECT PRO DOG AD RMG 60G"}, {"cod": "DOGRGFPR0189", "desc": "SELECT PRO DOG AD RMG 15KG"}, {"cod": "DOGRGFPR0190", "desc": "SELECT PRO DOG AD RMG 20KG"}, {"cod": "DOGRGFPR0208", "desc": "SELECT PRO DOG FHT KG"}, {"cod": "DOGRGFPR0209", "desc": "SELECT PRO DOG AD RP KG"}, {"cod": "DOGRGFPR0210", "desc": "SELECT PRO DOG AD RMG KG"}, {"cod": "DOGRGFRN0207", "desc": "RINO DOG AD TODOS OS PORTES"}, {"cod": "DOGRGFSL0179", "desc": "SELECT DOG AD RMG 60G"}, {"cod": "DOGRGFSL0180", "desc": "SELECT DOG AD RMG 15KG"}, {"cod": "DOGRGFSL0206", "desc": "SELECT DOG AD RMG KG"}, {"cod": "DOGRGFSP0031", "desc": "IMPERIALLE DOG FHT RP F/A 60G"}, {"cod": "DOGRGFSP0032", "desc": "IMPERIALLE DOG FHT RP F/A 1KG"}, {"cod": "DOGRGFSP0033", "desc": "IMPERIALLE DOG FHT RP F/A 2,5KG"}, {"cod": "DOGRGFSP0034", "desc": "IMPERIALLE DOG FHT RP F/A FD - 5 X 2,5KG"}, {"cod": "DOGRGFSP0035", "desc": "IMPERIALLE DOG FHT RP F/A 10,1KG"}, {"cod": "DOGRGFSP0036", "desc": "IMPERIALLE DOG FHT RP F/A FD - 10 X 1KG"}, {"cod": "DOGRGFSP0037", "desc": "IMPERIALLE DOG FHT RP F/A KG"}, {"cod": "DOGRGFSP0038", "desc": "IMPERIALLE DOG FHT RMG F/A 60G"}, {"cod": "DOGRGFSP0039", "desc": "IMPERIALLE DOG FHT RMG F/A 1KG"}, {"cod": "DOGRGFSP0040", "desc": "IMPERIALLE DOG FHT RMG F/A 2,5KG"}, {"cod": "DOGRGFSP0041", "desc": "IMPERIALLE DOG FHT RMG F/A FD - 5 X 2,5KG"}, {"cod": "DOGRGFSP0042", "desc": "IMPERIALLE DOG FHT RMG F/A 10,1KG"}, {"cod": "DOGRGFSP0043", "desc": "IMPERIALLE DOG FHT RMG F/A FD - 10 X 1KG"}, {"cod": "DOGRGFSP0044", "desc": "IMPERIALLE DOG FHT RMG F/A KG"}, {"cod": "DOGRGFSP0045", "desc": "IMPERIALLE DOG AD RP F/A 60G"}, {"cod": "DOGRGFSP0046", "desc": "IMPERIALLE DOG AD RP F/A 1KG"}, {"cod": "DOGRGFSP0047", "desc": "IMPERIALLE DOG AD RP F/A 2,5KG"}, {"cod": "DOGRGFSP0048", "desc": "IMPERIALLE DOG AD RP F/A FD - 5 X 2,5KG"}, {"cod": "DOGRGFSP0049", "desc": "IMPERIALLE DOG AD RP F/A 10,1KG"}, {"cod": "DOGRGFSP0050", "desc": "IMPERIALLE DOG AD RP F/A FD - 10 X 1KG"}, {"cod": "DOGRGFSP0051", "desc": "IMPERIALLE DOG AD RP F/A KG"}, {"cod": "DOGRGFSP0052", "desc": "IMPERIALLE DOG AD RMG F/A 60G"}, {"cod": "DOGRGFSP0053", "desc": "IMPERIALLE DOG AD RMG F/A 1KG"}, {"cod": "DOGRGFSP0054", "desc": "IMPERIALLE DOG AD RMG F/A 2,5KG"}, {"cod": "DOGRGFSP0055", "desc": "IMPERIALLE DOG AD RMG F/A KG"}, {"cod": "DOGRGFSP0056", "desc": "IMPERIALLE DOG AD RMG F/A FD - 10 X 1KG"}, {"cod": "DOGRGFSP0057", "desc": "IMPERIALLE DOG AD RMG F/A 15KG"}, {"cod": "DOGRGFSP0058", "desc": "IMPERIALLE DOG AD RMG F/A FD - 5 X 2,5KG"}, {"cod": "DOGRGFSP0144", "desc": "IMPERIALLE DOG FHT RP F/A BG"}, {"cod": "DOGRGFSP0145", "desc": "IMPERIALLE DOG FHT RMG F/A BG"}, {"cod": "DOGRGFSP0146", "desc": "IMPERIALLE DOG AD RP BG"}, {"cod": "DOGRGFSP0147", "desc": "IMPERIALLE DOG AD RMG BG"}, {"cod": "HORRGF0614EQSC", "desc": "HORSE 14% EQUINO SC"}, {"cod": "HORRGF0618EQSC", "desc": "HORSE 18% EQUINO SC"}, {"cod": "HORRGF12CMKG", "desc": "RAGUIFE HORSE COMPETIÇÃO 12 KG"}, {"cod": "HORRGF12CMSC", "desc": "HORSE 12% COMPETIÇÃO SC"}, {"cod": "HORRGF12PFSC", "desc": "HORSE 12% PERFORMANCE SC"}, {"cod": "HORRGF14MTSC", "desc": "HORSE 14% MANUTENÇÃO SC"}, {"cod": "HORRGF15MTKG", "desc": "HORSE 15% MANUTENÇÃO KG"}, {"cod": "HORRGF15MTSC", "desc": "HORSE 15% MANUTENÇÃO SC"}, {"cod": "HORRGF18PTSC", "desc": "HORSE 18% POTRO SC"}, {"cod": "RGF0134DESC", "desc": "TOP FISH 1.0MM 34% DE TESTE SC"}, {"cod": "RGF0140INSC", "desc": "TOP FISH 1.0 MM 40% INICIAL SC"}, {"cod": "RGF0145ITSC", "desc": "1.0MM CAMARAO 45% SC"}, {"cod": "RGF0145PSBG", "desc": "1.0MM PRO-START 45% BG"}, {"cod": "RGF0145PSSC", "desc": "1.0MM PRO-START 45% SC"}, {"cod": "RGF0236CEBG", "desc": "2.0MM TOP FISH 36% BG"}, {"cod": "RGF0236CESC", "desc": "2.0MM TOP FISH 36% SC"}, {"cod": "RGF0236CVKG", "desc": "TOP FISH 2.0MM 36% C. VALE KG"}, {"cod": "RGF0236CVSC", "desc": "TOP FISH 2.0MM 36% C. VALE SC"}, {"cod": "RGF0238PSBG", "desc": "PRO-START 2.0MM 38% BG"}, {"cod": "RGF0238PSKG", "desc": "PRO-START 2.0MM 38% KG"}, {"cod": "RGF0238PSSC", "desc": "2.0MM PRO-START 38% SC"}, {"cod": "RGF0240INBG", "desc": "2.0MM TOP FISH 40% BG"}, {"cod": "RGF0240INSC", "desc": "2.0MM TOP FISH 40% SC"}, {"cod": "RGF0240PSSC", "desc": "TOP FISH 2.0MM 40% PRO-START SC"}, {"cod": "RGF0242EXSC", "desc": "PRO START 2.0MM 42% EXPORTAÇÃO SC"}, {"cod": "RGF0242PRBG", "desc": "2.0MM PAQ-PROTEX 42% BG"}, {"cod": "RGF0242PRSC", "desc": "2.0MM PAQ-PROTEX 42% SC"}, {"cod": "RGF0242PSBG", "desc": "2.0MM PRO-START 42% BG"}, {"cod": "RGF0242PSKG", "desc": "2.0MM PRO-START 42% KG"}, {"cod": "RGF0242PSSC", "desc": "2.0MM PRO-START 42% SC"}, {"cod": "RGF0334CEBG", "desc": "TOP FISH 3.0 A 4.0MM 34% BG"}, {"cod": "RGF0334CEKG", "desc": "TOP FISH 3.0 A 4.0MM 34% KG"}, {"cod": "RGF0334CESC", "desc": "TOP FISH 3.0 A 4.0MM 34% SC"}, {"cod": "RGF0336CEBG", "desc": "3.00 A 4.00MM TOP FISH 36% BG"}, {"cod": "RGF0336CEKG", "desc": "3.00 A 4.00MM TOP FISH 36% KG"}, {"cod": "RGF0336CESC", "desc": "3.00 A 4.00MM TOP FISH 36% SC"}, {"cod": "RGF0336PRBG", "desc": "3.00 A 4.00MM PAQ-PROTEX 36% BG"}, {"cod": "RGF0336PRKG", "desc": "3.00 A 4.00MM PAQ-PROTEX 36% KG"}, {"cod": "RGF0336PRSC", "desc": "TOP FISH 3.0 A 4.0MM 36% PAQ PROTEX SC"}, {"cod": "RGF0338EXSC", "desc": "PRO START 3 A 4 MM 38% EXPORTAÇÃO SC"}, {"cod": "RGF0338PSBG", "desc": "TOP FISH 3.0 A 4.0MM 34% BG"}, {"cod": "RGF0338PSKG", "desc": "3.00 A 4.00MM PRO-START 38% KG"}, {"cod": "RGF0338PSSC", "desc": "3.00 A 4.00MM PRO-START 38% SC"}, {"cod": "RGF0340CRSC", "desc": "3.00 A 4.00MM CARNIVORO 40% SC"}, {"cod": "RGF0342PSSC", "desc": "3.00 A 4.00MM PRO-START 42% SC"}, {"cod": "RGF0428COKG", "desc": "4.00 A 6.00MM TOP FISH 28% KG"}, {"cod": "RGF0428COSC", "desc": "4.00 A 6.00MM TOP FISH 28% SC"}, {"cod": "RGF0428NTKG", "desc": "4.00 A 6.00MM 28% NATIVOS KG"}, {"cod": "RGF0428NTSC", "desc": "NATIVOS 4.0 A 6.0MM 28% SC"}, {"cod": "RGF0428PGKG", "desc": "4.00 A 6.00MM PANGASIUS 28% KG"}, {"cod": "RGF0428PGSC", "desc": "4.00 A 6.00MM PANGASIUS 28% SC"}, {"cod": "RGF0428PLKG", "desc": "TOP FISH 4.0 A 6.0MM PLUS 28% KG"}, {"cod": "RGF0428PLSC", "desc": "TOP FISH 4.0 A 6.0MM PLUS 28% SC"}, {"cod": "RGF0430COKG", "desc": "TOP FISH 4.0 A 6.0MM 30% KG"}, {"cod": "RGF0430COSC", "desc": "TOP FISH 4.0 A 6.0MM 30% SC"}, {"cod": "RGF0430PLBG", "desc": "4.00 A 6.00MM PLUS 30% BG"}, {"cod": "RGF0430PLKG", "desc": "4.00 A 6.00MM PLUS 30% KG"}, {"cod": "RGF0430PLSC", "desc": "TOP FISH 4.0 A 6.0MM PLUS 30% SC"}, {"cod": "RGF0432APSC", "desc": "4.00 A 6.00MM 32% PLUS AP SC"}, {"cod": "RGF0432ATKG", "desc": "4.0 A 6.0MM 32% AT G50 KG"}, {"cod": "RGF0432COBG", "desc": "4.00 A 6.00MM TOP FISH 32% BG"}, {"cod": "RGF0432COKG", "desc": "4.00 A 6.00MM TOP FISH 32% KG"}, {"cod": "RGF0432COSC", "desc": "4.00 A 6.00MM TOP FISH 32% SC"}, {"cod": "RGF0432G2BG", "desc": "TOP FISH 4.00 A 6.00MM 32% G20 BG"}, {"cod": "RGF0432G2KG", "desc": "4.00 A 6.00MM G20 32% KG"}, {"cod": "RGF0432G2SC", "desc": "4.00 A 6.00MM G20 32% SC"}, {"cod": "RGF0432G3BG", "desc": "4.00 A 6.00MM G30 32% BG"}, {"cod": "RGF0432G3KG", "desc": "4.00 A 6.00MM G30 32% KG"}, {"cod": "RGF0432G3SC", "desc": "4.00 A 6.00MM G30 32% SC"}, {"cod": "RGF0432G5BG", "desc": "4.0 A 6.0MM 32% G50 BG"}, {"cod": "RGF0432G5KG", "desc": "4.0 A 6.0MM 32% G50 KG"}, {"cod": "RGF0432G5SC", "desc": "4.0 A 6.0MM 32% G50 SC"}, {"cod": "RGF0432GEKG", "desc": "TOP FISH 4.0 A 6.0MM 32% G20 EXPERIMENTO KG"}, {"cod": "RGF0432GVKG", "desc": "TOP FISH 4.0 A 6.0MM 32% PLUS VITAMINA KG"}, {"cod": "RGF0432NTKG", "desc": "4.00 A 6.00MM 32% NATIVOS KG"}, {"cod": "RGF0432NTSC", "desc": "NATIVOS 4.0 A 6.0MM 32% SC"}, {"cod": "RGF0432PCKG", "desc": "TOP FISH 4.0 A 6.0MM 32% PLUS VIT."}, {"cod": "RGF0432PHKG", "desc": "PRO-HEALTH 4.0 A 6.0MM 32% KG"}, {"cod": "RGF0432PHSC", "desc": "PRO-HEALTH 4.0 A 6.0MM 32% SC"}, {"cod": "RGF0432PLBG", "desc": "4.00 A 6.00MM PLUS 32% BG"}, {"cod": "RGF0432PLKG", "desc": "4.00 A 6.00MM PLUS 32% KG"}, {"cod": "RGF0432PLSC", "desc": "4.00 A 6.00MM PLUS 32% SC"}, {"cod": "RGF0432PRBG", "desc": "4.00 A 6.00MM PAQ-PROTEX 32% BG"}, {"cod": "RGF0432PRKG", "desc": "TOP FISH 4.0 A 6.0MM 32% PR KG"}, {"cod": "RGF0432PRSC", "desc": "TOP FISH 4.0 A 6.0MM 32% PR SC"}, {"cod": "RGF0432PUKG", "desc": "TOP FISH 4.0MM A 6.0MM 32% PLUS VITAMINA"}, {"cod": "RGF0432PXSC", "desc": "4.00 A 6.00MM 32% PLUS EXPORTAÇÃO SC"}, {"cod": "RGF0432TEBG", "desc": "TOP FISH 4.0 A 6.0MM 32% TE BG"}, {"cod": "RGF0432TEKG", "desc": "TOP FISH 4.0 A 6.0MM 32% TE KG"}, {"cod": "RGF0432TESC", "desc": "TOP FISH 4.0 A 6.0MM 32% TE SC"}, {"cod": "RGF0432V3KG", "desc": "TOP FISH 4.0 A 6.0MM 32% V3 KG VITAMINA"}, {"cod": "RGF0432V3SC", "desc": "4.00 A 6.00MM PLUS 32% KG"}, {"cod": "RGF0436RPSC", "desc": "4.00 A 6.00MM REPRODUTOR 36% SC"}, {"cod": "RGF0440CRSC", "desc": "4.00 A 6.00MM CARNIVORO 40% SC"}, {"cod": "RGF0540DESC", "desc": "0.50 A 0.70MM CAMARAO 40% DESINT. I SC"}, {"cod": "RGF0628COBG", "desc": "6.00 A 8.00MM TOP FISH 28% BG"}, {"cod": "RGF0628COKG", "desc": "6.00 A 8.00MM TOP FISH 28% KG"}, {"cod": "RGF0628COSC", "desc": "6.00 A 8.00MM TOP FISH 28% SC"}, {"cod": "RGF0628NTBG", "desc": "NATIVOS 6.0 A 8.0MM 28% BG"}, {"cod": "RGF0628NTKG", "desc": "6.00 A 8.00MM 28% NATIVOS KG"}, {"cod": "RGF0628NTSC", "desc": "NATIVOS 6.0 A 8.0MM 28% SC"}, {"cod": "RGF0628PGBG", "desc": "6.00 A 8.00MM PANGASIUS 28% BG"}, {"cod": "RGF0628PGKG", "desc": "6.00 A 8.00MM PANGASIUS 28% KG"}, {"cod": "RGF0628PGSC", "desc": "6.00 A 8.00MM PANGASIUS 28% SC"}, {"cod": "RGF0632COBG", "desc": "6.00 A 8.00MM TOP FISH 32% BG"}, {"cod": "RGF0632COKG", "desc": "6.00 A 8.00MM TOP FISH 32% KG"}, {"cod": "RGF0632COSC", "desc": "6.00 A 8.00MM TOP FISH 32% SC"}, {"cod": "RGF0632EXSC", "desc": "TOP FISH 6.0 A 8.0MM 32% PLUS SC"}, {"cod": "RGF0632G2BG", "desc": "6.00 A 8.00MM G20 32% BG"}, {"cod": "RGF0632G2KG", "desc": "6.00 A 8.00MM G20 32% KG"}, {"cod": "RGF0632G2SC", "desc": "6.00 A 8.00MM G20 32% SC"}, {"cod": "RGF0632G3BG", "desc": "6.00 A 8.00MM G30 32% BG"}, {"cod": "RGF0632G3KG", "desc": "6.00 A 8.00MM G30 32% KG"}, {"cod": "RGF0632G3SC", "desc": "6.00 A 8.00MM G30 32% SC"}, {"cod": "RGF0632G5SC", "desc": "6.0 A 8.0MM 32% G50 SC"}, {"cod": "RGF0632NTKG", "desc": "NATIVOS 6.0 A 8.0MM 32% KG"}, {"cod": "RGF0632NTSC", "desc": "NATIVOS 6.0 A 8.0MM 32% SC"}, {"cod": "RGF0632PLBG", "desc": "6.00 A 8.00MM PLUS 32% BG"}, {"cod": "RGF0632PLKG", "desc": "6.00 A 8.00MM PLUS 32% KG"}, {"cod": "RGF0632PLSC", "desc": "6.00 A 8.00MM PLUS 32% SC"}, {"cod": "RGF0632PQBG", "desc": "6.00 A 8.00MM PLUS AQUATE 32% BG"}, {"cod": "RGF0632PQKG", "desc": "6.00 A 8.00MM PLUS AQUATE 32% KG"}, {"cod": "RGF0632TEBG", "desc": "TOP FISH 6.0 A 8.0MM 32% TE BG"}, {"cod": "RGF0632TEKG", "desc": "TOP FISH 6.0 A 8.0MM 32% TE KG"}, {"cod": "RGF0632TESC", "desc": "TOP FISH 6.0 A 8.0MM 32% TE SC"}, {"cod": "RGF0640CRBG", "desc": "NATIVOS 6.0 A 8.0MM 40% CARNIVORO BG"}, {"cod": "RGF0640CRSC", "desc": "NATIVOS 6.0 A 8.0MM 40% CARNIVORO SC"}, {"cod": "RGF0828COKG", "desc": "TOP FISH 8.0 A 10.0MM 28% KG"}, {"cod": "RGF0828COSC", "desc": "8.00 A 10.00MM TOP FISH 28% SC"}, {"cod": "RGF0828NTBG", "desc": "NATIVOS 8.0 A 10.0MM 28% BG"}, {"cod": "RGF0828NTKG", "desc": "8.00 A 10.00MM 28% NATIVOS KG"}, {"cod": "RGF0828NTSC", "desc": "NATIVOS 8.0 A 10.0MM 28% SC"}, {"cod": "RGF0832COBG", "desc": "8.00 A 10.00MM TOP FISH 32% BG"}, {"cod": "RGF0832COKG", "desc": "8.00 A 10.00MM TOP FISH 32% KG"}, {"cod": "RGF0832COSC", "desc": "8.00 A 10.00MM TOP FISH 32% SC"}, {"cod": "RGF0832NTBG", "desc": "NATIVOS 8.0 A 10.0MM"}, {"cod": "RGF0832NTKG", "desc": "NATIVOS 8.0 A 10.0MM 32% KG"}, {"cod": "RGF0832NTSC", "desc": "NATIVOS 8.0 A 10.0MM 32% SC"}, {"cod": "RGF0832PLKG", "desc": "TOP FISH 8.0 A 10.0 MM 32% PLUS KG"}, {"cod": "RGF0840CRSC", "desc": "NATIVOS 8.0 A 10.0MM 40% CARNIVORO SC"}, {"cod": "RGF0840DESC", "desc": "TS 400 0.8 A 1.0MM DESINTEGRADA II SC"}, {"cod": "RGF0845ITBG", "desc": "TS 450 0.8MM 45% BG"}, {"cod": "RGF0845ITSC", "desc": "0.8MM CAMARAO 45% SC"}, {"cod": "RGF1040CRSC", "desc": "NATIVOS 10.0 A 12.0MM 40% CARNIVORO SC"}, {"cod": "RGF1224COSC", "desc": "12.00 A 14.00MM TOP FISH 24% SC"}, {"cod": "RGF1228COSC", "desc": "TOP FISH 12.0 A 14.0MM 28% SC"}, {"cod": "RGF1240CRSC", "desc": "NATIVOS 12.0 A 14.0MM 40% CARNIVORO SC"}, {"cod": "RGF1340INSC", "desc": "TOP FISH 1.3MM 40% INICIAL SC"}, {"cod": "RGF1345PSBG", "desc": "1.3MM PRO-START 45% BG"}, {"cod": "RGF1345PSSC", "desc": "1.3MM PRO-START 45% SC"}, {"cod": "RGF1432SISC", "desc": "1.4MM CAMARAO 32% SC"}, {"cod": "RGF1435SISC", "desc": "1.4MM CAMARAO 35% SC"}, {"cod": "RGF1438SUSC", "desc": "1.4MM CAMARAO 38% SC"}, {"cod": "RGF1440CRSC", "desc": "NATIVOS 14.0 A 16.0 40% CARNÍVORO SC"}, {"cod": "RGF1740INBG", "desc": "TOP FISH 1.7MM 40% INICIAL BG"}, {"cod": "RGF1740INSC", "desc": "TOP FISH 1.7MM 40% INICIAL SC"}, {"cod": "RGF1745PSBG", "desc": "1.7MM PRO-START 45% BG"}, {"cod": "RGF1745PSSC", "desc": "1.7MM PRO-START 45% SC"}, {"cod": "RGF1832SISC", "desc": "1.8MM CAMARAO 32% SC"}, {"cod": "RGF1835SIBG", "desc": "1.8MM CAMARAO 35% BG"}, {"cod": "RGF1835SISC", "desc": "1.8MM CAMARAO 35% SC"}, {"cod": "RGF1838SUSC", "desc": "1.8MM CAMARAO 38% SC"}, {"cod": "RGF1840DESC", "desc": "1.8MM CAMARAO 40% SC"}, {"cod": "RGF8045PSBG", "desc": "0.8MM 45% DESINTEGRADA"}, {"cod": "RGF8045PSKG", "desc": "0.8MM 45% DESINTEGRADA"}, {"cod": "RGF8045PSSC", "desc": "0.8MM 45% DESINTEGRADA"}];
 
@@ -629,15 +707,20 @@ function renderParams(){
   var h='';
   SECOES_META.forEach(function(sm){
     var linhas=(v.secoes&&v.secoes[sm.key])||[];
-    h+='<div style="margin-bottom:18px"><div style="font-weight:700;color:#024f2b;font-size:12px;margin-bottom:6px">'+sm.label+'</div>';
+    h+='<div style="margin-bottom:20px"><div class="sec-h">'+(sm.icone||'')+' '+sm.label+'</div>';
     if(!linhas.length){
       h+='<div class="hint">Sem parâmetros cadastrados nesta seção.</div>';
     } else {
-      h+='<table class="pt"><thead><tr><th>Parâmetro</th><th>Valor</th><th>Unidade</th><th>Tolerância</th></tr></thead><tbody>';
+      h+='<div class="pgrid">';
       linhas.forEach(function(row){
-        h+='<tr><td>'+esc(row.label)+'</td><td><b>'+esc(row.valor)+'</b></td><td>'+esc(row.unidade)+'</td><td>'+esc(row.tolerancia)+'</td></tr>';
+        var temValor = row.valor!=null && String(row.valor).trim()!=='';
+        h+='<div class="pitem"><div class="pitem-l">'+esc(row.label)+'</div>'+
+           '<div class="pitem-v'+(temValor?'':' vazio2')+'">'+(temValor?esc(row.valor):'—')+
+           (temValor&&row.unidade?'<span class="pitem-u">'+esc(row.unidade)+'</span>':'')+'</div>'+
+           (row.tolerancia?'<div class="pitem-t">± '+esc(row.tolerancia)+'</div>':'')+
+           '</div>';
       });
-      h+='</tbody></table>';
+      h+='</div>';
     }
     h+='</div>';
   });
@@ -766,20 +849,29 @@ function abrirEdicaoModal(){
   EDIT_SECOES={};
   SECOES_META.forEach(function(sm){
     var base=(atual&&atual.secoes&&atual.secoes[sm.key])||[];
-    EDIT_SECOES[sm.key]=base.map(function(r){return Object.assign({},r);}); // cópia profunda rasa
+    if(base.length){
+      EDIT_SECOES[sm.key]=base.map(function(r){return Object.assign({fixo:false},r);});
+    } else {
+      // Seção vazia (ficha nova) — prefill com o template padrão, rótulo travado
+      EDIT_SECOES[sm.key]=clonarTemplate(sm.key);
+    }
   });
   G('ed-nome-tit').textContent=f.nome;
   G('ed-obs').value='';
 
   var tabsH='', panesH='';
   SECOES_META.forEach(function(sm,i){
-    tabsH+='<div class="tab'+(i===0?' on':'')+'" data-edtab="'+sm.key+'" onclick="trocarEdTab(\''+sm.key+'\')">'+sm.label+'</div>';
+    tabsH+='<div class="tab'+(i===0?' on':'')+'" data-edtab="'+sm.key+'" onclick="trocarEdTab(\''+sm.key+'\')">'+(sm.icone||'')+' '+sm.label+'</div>';
     panesH+='<div class="tabpane'+(i===0?' on':'')+'" id="edpane-'+sm.key+'"></div>';
   });
   G('ed-tabs').innerHTML=tabsH;
   G('ed-panes').innerHTML=panesH;
   SECOES_META.forEach(function(sm){renderEdSecao(sm.key);});
   aM('ov-edicao');
+}
+function clonarTemplate(key){
+  var tpl=TEMPLATE_PADRAO[key]||[];
+  return tpl.map(function(t){return {label:t.label, unidade:t.unidade, valor:'', tolerancia:'', fixo:true};});
 }
 function trocarEdTab(key){
   document.querySelectorAll('#ed-tabs .tab').forEach(function(el){el.classList.toggle('on',el.dataset.edtab===key);});
@@ -788,40 +880,64 @@ function trocarEdTab(key){
 }
 function renderEdSecao(key){
   var linhas=EDIT_SECOES[key];
-  var h='<table class="pt"><thead><tr><th style="width:32%">Parâmetro</th><th style="width:22%">Valor</th><th style="width:18%">Unidade</th><th style="width:18%">Tolerância</th><th></th></tr></thead><tbody>';
+  var h='';
+  if(!linhas.length){
+    h+='<div class="hint" style="margin-bottom:8px">Nenhum parâmetro nesta seção.</div>';
+  }
   linhas.forEach(function(row,i){
-    h+='<tr>'+
-       '<td><input value="'+esc(row.label)+'" onchange="edUpd(\''+key+'\','+i+',\'label\',this.value)"></td>'+
-       '<td><input value="'+esc(row.valor)+'" onchange="edUpd(\''+key+'\','+i+',\'valor\',this.value)"></td>'+
-       '<td><input value="'+esc(row.unidade)+'" onchange="edUpd(\''+key+'\','+i+',\'unidade\',this.value)"></td>'+
-       '<td><input value="'+esc(row.tolerancia)+'" onchange="edUpd(\''+key+'\','+i+',\'tolerancia\',this.value)"></td>'+
-       '<td><span class="pt-rm" onclick="edRemoveLinha(\''+key+'\','+i+')">×</span></td>'+
-       '</tr>';
+    h+='<div class="prow">';
+    if(row.fixo){
+      h+='<div class="prow-label"><span class="prow-lock" title="Campo padrão">🔒</span>'+esc(row.label)+'</div>';
+    } else {
+      h+='<div class="prow-label"><input placeholder="Nome do parâmetro" value="'+esc(row.label)+'" onchange="edUpd(\''+key+'\','+i+',\'label\',this.value)"></div>';
+    }
+    h+='<div class="prow-valor"><input placeholder="valor" value="'+esc(row.valor)+'" onchange="edUpd(\''+key+'\','+i+',\'valor\',this.value)"></div>'+
+       '<div class="prow-unid"><input placeholder="unid." value="'+esc(row.unidade)+'" onchange="edUpd(\''+key+'\','+i+',\'unidade\',this.value)"></div>'+
+       '<div class="prow-tol"><input placeholder="toler." value="'+esc(row.tolerancia)+'" onchange="edUpd(\''+key+'\','+i+',\'tolerancia\',this.value)"></div>'+
+       '<span class="prow-rm" onclick="edRemoveLinha(\''+key+'\','+i+')" title="Remover">×</span>'+
+       '</div>';
   });
-  h+='</tbody></table>';
-  h+='<button class="btn bsm sec-add" onclick="edAddLinha(\''+key+'\')">+ Adicionar parâmetro</button>';
+  var temTemplate = TEMPLATE_PADRAO[key] && TEMPLATE_PADRAO[key].length;
+  h+='<div class="sec-actions">'+
+     '<button class="btn bsm" onclick="edAddLinha(\''+key+'\')">+ Adicionar parâmetro</button>'+
+     (temTemplate?'<button class="btn bsm" onclick="edRestaurarPadrao(\''+key+'\')">↺ Restaurar padrão</button>':'')+
+     '</div>';
   G('edpane-'+key).innerHTML=h;
 }
 function edUpd(key,i,campo,val){ EDIT_SECOES[key][i][campo]=val; }
 function edAddLinha(key){
-  EDIT_SECOES[key].push({label:'',valor:'',unidade:'',tolerancia:''});
+  EDIT_SECOES[key].push({label:'',valor:'',unidade:'',tolerancia:'',fixo:false});
   renderEdSecao(key);
 }
 function edRemoveLinha(key,i){
   EDIT_SECOES[key].splice(i,1);
   renderEdSecao(key);
 }
+function edRestaurarPadrao(key){
+  if(!confirm('Isso adiciona de volta os campos padrão desta seção que foram removidos (mantém os valores já preenchidos e os campos extras). Continuar?')) return;
+  var tpl=TEMPLATE_PADRAO[key]||[];
+  var existentesLabels=EDIT_SECOES[key].map(function(r){return r.label;});
+  tpl.forEach(function(t){
+    if(existentesLabels.indexOf(t.label)<0){
+      EDIT_SECOES[key].push({label:t.label, unidade:t.unidade, valor:'', tolerancia:'', fixo:true});
+    }
+  });
+  renderEdSecao(key);
+}
 function salvarNovaRevisao(){
   var f=FICHAS[FICHA_ATUAL];
-  // Limpa linhas totalmente vazias antes de gravar
+  // Mantém campos padrão mesmo vazios (fazem parte da estrutura da ficha);
+  // descarta campos extras que ficaram totalmente em branco.
   var secoesLimpas={};
   SECOES_META.forEach(function(sm){
     secoesLimpas[sm.key]=EDIT_SECOES[sm.key].filter(function(r){
-      return (r.label&&r.label.trim()) || (r.valor&&String(r.valor).trim());
+      return r.fixo || (r.label&&r.label.trim()) || (r.valor&&String(r.valor).trim());
     });
   });
-  var totalLinhas=SECOES_META.reduce(function(s,sm){return s+secoesLimpas[sm.key].length;},0);
-  if(totalLinhas===0){ toast('Cadastre ao menos um parâmetro antes de salvar','err'); return; }
+  var totalPreenchidas=SECOES_META.reduce(function(s,sm){
+    return s+secoesLimpas[sm.key].filter(function(r){return r.valor&&String(r.valor).trim();}).length;
+  },0);
+  if(totalPreenchidas===0){ toast('Preencha ao menos um valor antes de salvar','err'); return; }
 
   var proximoNumero=1;
   if(f.versoes){
