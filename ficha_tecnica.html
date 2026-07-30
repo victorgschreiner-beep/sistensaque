@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Raguife — Ficha Técnica</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f4f6f4;--bg2:#ffffff;--bg3:#eef2ee;--bg4:#dde6dd;
+  --bd:#c8d8c8;--bd2:#b0c8b0;
+  --tx:#1a2e1a;--tx2:#4a664a;--tx3:#739630;
+  --ac:#024f2b;--ac2:#036b3a;--acbg:rgba(2,79,43,.10);
+  --gr:#024f2b;--or:#d29922;--rd:#c0392b;
+  --orbg:rgba(210,153,34,.15);--rdbg:rgba(192,57,43,.12);
+  --r:8px;--r2:12px;
+}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--tx);font-size:14px;min-height:100vh}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg3)}::-webkit-scrollbar-thumb{background:#024f2b;border-radius:3px}
+input,select,textarea{width:100%;padding:9px 12px;background:#f7faf7;border:1px solid #c8d8c8;border-radius:var(--r);color:#1a2e1a;font-size:13px;outline:none;font-family:inherit;transition:.15s}
+input:focus,select:focus,textarea:focus{border-color:#024f2b;box-shadow:0 0 0 3px rgba(2,79,43,.15)}
+textarea{resize:vertical;min-height:64px}
+select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%23739630' d='M5 7L0 2h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 16px;border-radius:var(--r);border:1px solid #c8d8c8;background:#f4f6f4;color:#1a2e1a;cursor:pointer;font-size:13px;font-weight:500;transition:.15s;font-family:inherit;white-space:nowrap}
+.btn:hover{background:#dde6dd}
+.bp{background:#024f2b;border-color:#024f2b;color:#fff}.bp:hover{background:#036b3a}
+.bg2{background:#739630;border-color:#739630;color:#fff}.bg2:hover{opacity:.85}
+.br{background:#c0392b;border-color:#c0392b;color:#fff}.br:hover{opacity:.85}
+.bo{background:#d29922;border-color:#d29922;color:#fff}.bo:hover{opacity:.85}
+.bsm{padding:5px 11px;font-size:12px}.bxs{padding:3px 8px;font-size:11px}.bfw{width:100%}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.lerr{color:#c0392b;font-size:12px;margin-top:8px;display:none;text-align:center}
+
+/* LOGIN */
+#pg-login{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#024f2b 0%,#036b3a 60%,#739630 100%)}
+.lbox{background:#fff;border-radius:var(--r2);padding:36px 32px;width:380px;box-shadow:0 8px 40px rgba(0,0,0,.25)}
+.logo{text-align:center;margin-bottom:28px}
+.logo-t{font-size:18px;font-weight:700;color:#024f2b;margin-top:8px}
+.logo-s{font-size:12px;color:#739630;margin-top:3px;font-weight:500}
+.fld{margin-bottom:14px}
+.fld label{display:block;font-size:12px;color:#4a664a;margin-bottom:5px;font-weight:500}
+
+/* APP */
+#pg-app{display:none;min-height:100vh;flex-direction:column}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:8px 18px;background:#024f2b;border-bottom:2px solid #739630;position:sticky;top:0;z-index:50;flex-wrap:wrap;gap:8px;box-shadow:0 2px 12px rgba(2,79,43,.25)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;color:#fff}
+.pill{font-size:11px;padding:2px 9px;border-radius:20px;background:rgba(115,150,48,.25);color:#b6d46a;border:1px solid rgba(115,150,48,.4)}
+.ubar{display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.85)}
+.av{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:#739630;color:#fff}
+.content{flex:1;padding:16px;overflow-y:auto;max-height:calc(100vh - 58px);max-width:1180px;margin:0 auto;width:100%}
+
+/* CARDS */
+.card{background:#fff;border:1px solid var(--bd);border-radius:var(--r2);padding:16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(2,79,43,.06)}
+.card-t{font-size:13px;font-weight:700;color:#024f2b;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.hint{font-size:11px;color:#739630;margin-top:3px}
+
+/* BUSCA */
+.busca-res{margin-top:10px;display:flex;flex-direction:column;gap:6px;max-height:420px;overflow-y:auto}
+.res-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--bd);border-radius:var(--r);cursor:pointer;transition:.12s;background:#fff}
+.res-item:hover{background:#f5f9f2;border-color:#739630}
+.res-item.novo{border-style:dashed;border-color:#739630;background:#f7faf5}
+.res-nome{font-weight:600;font-size:13px;color:#1a2e1a}
+.res-sub{font-size:11px;color:#739630;margin-top:2px}
+.res-badge{font-size:10px;padding:2px 8px;border-radius:10px;background:var(--acbg);color:#024f2b;font-weight:700;white-space:nowrap}
+
+/* CHIPS */
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 9px;border-radius:12px;background:var(--acbg);color:#024f2b;font-weight:600;margin:2px}
+.chip.warn{background:var(--orbg);color:#a06c00}
+.chip x{cursor:pointer;font-weight:900;opacity:.6}.chip x:hover{opacity:1}
+
+/* TABS */
+.tabs{display:flex;gap:2px;border-bottom:2px solid var(--bd);margin-bottom:14px;flex-wrap:wrap}
+.tab{padding:9px 14px;font-size:12px;font-weight:600;color:#739630;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px}
+.tab:hover{color:#024f2b}
+.tab.on{color:#024f2b;border-color:#024f2b}
+.tabpane{display:none}.tabpane.on{display:block}
+
+/* TABELA DE PARAMETROS */
+table.pt{width:100%;border-collapse:collapse}
+table.pt th{text-align:left;font-size:10px;color:#739630;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;border-bottom:2px solid var(--bd)}
+table.pt td{padding:6px 8px;border-bottom:1px solid #eef2ee;font-size:13px;vertical-align:middle}
+table.pt tr:last-child td{border-bottom:none}
+table.pt input{padding:6px 8px;font-size:12px}
+.pt-rm{cursor:pointer;color:#c0392b;font-weight:900;font-size:15px;padding:2px 8px}
+.pt-rm:hover{opacity:.7}
+.sec-add{margin-top:8px}
+.vazio{text-align:center;color:#999;padding:20px;font-size:12px}
+
+/* QUALIDADE */
+.qcard{border:1px solid var(--bd);border-radius:var(--r);padding:12px;margin-bottom:10px}
+.qcard-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.qcard-cod{font-weight:700;color:#024f2b;font-size:13px}
+.qgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+.qitem{background:#f7faf7;border-radius:6px;padding:6px 9px}
+.qitem-l{font-size:10px;color:#739630;text-transform:uppercase;font-weight:700}
+.qitem-v{font-size:13px;font-weight:600;color:#1a2e1a}
+.qitem.div{background:var(--orbg)}
+.qitem.div .qitem-v{color:#a06c00}
+.alerta{background:var(--orbg);border:1px solid #e0b84a;border-radius:var(--r);padding:10px 14px;font-size:12px;color:#8a5a00;margin-bottom:12px;font-weight:600}
+.alerta-ok{background:var(--acbg);border:1px solid #8fc98f;color:#024f2b}
+
+/* HISTORICO */
+.hist-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--bd);border-radius:var(--r);margin-bottom:6px;cursor:pointer}
+.hist-row:hover{background:#f5f9f2}
+.hist-row.on{border-color:#024f2b;background:#f0f7ec}
+.hist-num{font-weight:800;color:#024f2b;font-size:14px;min-width:34px}
+.hist-meta{flex:1;font-size:11px;color:#4a664a}
+.banner-antiga{background:var(--rdbg);border:1px solid #e0a0a0;color:#8a1f1f;padding:10px 14px;border-radius:var(--r);font-size:12px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+
+/* MODAL */
+.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center;padding:16px}
+.ov.on{display:flex}
+.modal{background:#fff;border-radius:var(--r2);padding:22px;width:520px;max-width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal.wide{width:760px}
+.mh{font-size:15px;font-weight:700;color:#024f2b;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #f0f4f0}
+.mr{display:flex;gap:8px;margin-top:18px}
+.cat-search-res{max-height:220px;overflow-y:auto;border:1px solid var(--bd);border-radius:var(--r);margin-top:6px}
+.cat-row{display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:12px;border-bottom:1px solid #f0f4f0;cursor:pointer}
+.cat-row:hover{background:#f5f9f2}
+.cat-row:last-child{border-bottom:none}
+.cat-row input[type=checkbox]{width:auto}
+.cat-cod{font-weight:700;color:#024f2b;min-width:120px}
+
+/* TOASTS */
+#twrap{position:fixed;top:14px;right:14px;z-index:999;display:flex;flex-direction:column;gap:8px}
+.tos{padding:11px 16px;border-radius:8px;font-size:13px;font-weight:600;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.2);min-width:200px}
+.tok{background:#024f2b}.terr{background:#c0392b}.tinf{background:#4a5568}
+
+/* LOADER */
+#loader{display:none;position:fixed;inset:0;background:rgba(255,255,255,.7);z-index:999;align-items:center;justify-content:center;flex-direction:column;gap:10px}
+#loader.on{display:flex}
+.spin{width:34px;height:34px;border:3px solid #d4e8d4;border-top-color:#024f2b;border-radius:50%;animation:sp 0.8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+#lmsg{font-size:12px;color:#4a664a;font-weight:600}
+</style>
+</head>
+<body>
+
+<div id="twrap"></div>
+<div id="loader"><div class="spin"></div><div id="lmsg">Carregando...</div></div>
+
+<!-- LOGIN -->
+<div id="pg-login">
+  <div class="lbox">
+    <div class="logo">
+      <div class="logo-t">RAGUIFE</div>
+      <div class="logo-s">FICHA TÉCNICA DE PROCESSO</div>
+    </div>
+    <div class="fld"><label>Usuário</label><input id="lu" placeholder="login"></div>
+    <div class="fld"><label>Senha</label><input id="lp" type="password" placeholder="senha" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <button class="btn bp bfw" onclick="doLogin()">Entrar</button>
+    <div class="lerr" id="lerr">Usuário, senha ou perfil sem acesso a este módulo.</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="pg-app">
+  <div class="topbar">
+    <div class="brand">🧪 Raguife <span class="pill">Ficha Técnica</span></div>
+    <div class="ubar">
+      <div class="av" id="av-ini">?</div>
+      <span id="nome-user">—</span>
+      <button class="btn bsm" onclick="doLogout()" style="background:rgba(255,255,255,.15);color:#fff;border:none">Sair</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- BUSCA -->
+    <div class="card">
+      <div class="card-t">🔎 Buscar produto</div>
+      <input id="busca-produto" placeholder="Digite o nome ou código do produto..." oninput="renderResultadosBusca(this.value)">
+      <div class="hint">Busca tanto fichas já cadastradas quanto códigos do catálogo de SKUs sem ficha ainda.</div>
+      <div class="busca-res" id="busca-res"></div>
+    </div>
+
+    <!-- FICHA ABERTA -->
+    <div id="ficha-wrap" style="display:none">
+      <div class="card">
+        <div class="card-t">
+          <span id="ficha-nome-tit">—</span>
+          <div style="display:flex;gap:6px">
+            <button class="btn bsm" onclick="abrirVinculosModal()">🔗 Vínculos de SKU</button>
+            <button class="btn bsm bg2" onclick="abrirEdicaoModal()">✏️ Nova revisão</button>
+            <button class="btn bsm" onclick="fecharFicha()">✕ Fechar</button>
+          </div>
+        </div>
+        <div id="ficha-skus"></div>
+      </div>
+
+      <div id="banner-versao-antiga"></div>
+
+      <div class="card">
+        <div class="tabs">
+          <div class="tab on" data-tab="params" onclick="trocarTab('params')">Parâmetros de Máquina</div>
+          <div class="tab" data-tab="qual" onclick="trocarTab('qual')">Qualidade (consulta)</div>
+          <div class="tab" data-tab="hist" onclick="trocarTab('hist')">Histórico de Revisões</div>
+        </div>
+
+        <div class="tabpane on" id="pane-params"></div>
+        <div class="tabpane" id="pane-qual"></div>
+        <div class="tabpane" id="pane-hist"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MODAL NOVA FICHA -->
+<div class="ov" id="ov-nova-ficha">
+  <div class="modal">
+    <div class="mh">📄 Nova Ficha Técnica</div>
+    <div class="fld"><label>Nome do produto</label><input id="nf-nome"></div>
+    <div class="fld"><label>Linha padrão</label>
+      <select id="nf-linha">
+        <option value="">—</option>
+        <option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option>
+        <option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option>
+      </select>
+    </div>
+    <div class="fld">
+      <label>Códigos de SKU vinculados</label>
+      <input id="nf-cat-busca" placeholder="Buscar código ou descrição..." oninput="renderCatalogoBusca('nf')">
+      <div class="cat-search-res" id="nf-cat-res"></div>
+      <div id="nf-selecionados" style="margin-top:8px"></div>
+    </div>
+    <div class="mr">
+      <button class="btn bfw" onclick="fM('ov-nova-ficha')">Cancelar</button>
+      <button class="btn bp bfw" onclick="salvarNovaFicha()">Criar ficha</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL VINCULOS -->
+<div class="ov" id="ov-vinculos">
+  <div class="modal">
+    <div class="mh">🔗 Vínculos de SKU — <span id="vinc-nome-tit"></span></div>
+    <div class="fld"><label>Nome do produto</label><input id="vinc-nome"></div>
+    <div class="fld"><label>Linha padrão</label>
+      <select id="vinc-linha">
+        <option value="">—</option>
+        <option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option>
+        <option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option>
+      </select>
+    </div>
+    <div class="fld">
+      <label>Códigos de SKU vinculados</label>
+      <input id="vc-cat-busca" placeholder="Buscar código ou descrição..." oninput="renderCatalogoBusca('vc')">
+      <div class="cat-search-res" id="vc-cat-res"></div>
+      <div id="vc-selecionados" style="margin-top:8px"></div>
+    </div>
+    <div class="mr">
+      <button class="btn bfw" onclick="fM('ov-vinculos')">Cancelar</button>
+      <button class="btn bp bfw" onclick="salvarVinculos()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL NOVA REVISAO -->
+<div class="ov" id="ov-edicao">
+  <div class="modal wide">
+    <div class="mh">✏️ Nova Revisão — <span id="ed-nome-tit"></span></div>
+    <div class="tabs" id="ed-tabs"></div>
+    <div id="ed-panes"></div>
+    <div class="fld" style="margin-top:10px"><label>Observações da revisão</label><textarea id="ed-obs" placeholder="O que mudou nessa revisão, por que, etc."></textarea></div>
+    <div class="mr">
+      <button class="btn bfw" onclick="fM('ov-edicao')">Cancelar</button>
+      <button class="btn bp bfw" onclick="salvarNovaRevisao()">Salvar revisão</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// FIREBASE CONFIG — mesmo banco do ensaque/extrusão/qualidade
+// ============================================================
+var firebaseConfig = {
+  apiKey: "AIzaSyB52cXfvtmY2xXu9vMkMPhCWU-rp6NXhxc",
+  authDomain: "sistema-ensaque.firebaseapp.com",
+  databaseURL: "https://sistema-ensaque-default-rtdb.firebaseio.com",
+  projectId: "sistema-ensaque"
+};
+firebase.initializeApp(firebaseConfig);
+var DB = firebase.database();
+
+// ============================================================
+// GLOBAIS
+// ============================================================
+var SES = null;
+var SECOES_META = [
+  {key:"parametrosMaquina", label:"Máquina"},
+  {key:"preCondicionador",  label:"Pré-condicionador"},
+  {key:"extrusao",          label:"Extrusão"},
+  {key:"secagem",           label:"Secagem"},
+  {key:"misturadorVC",      label:"Misturador VC"}
+];
+var QUAL_CAMPOS = [
+  {k:"umidMin",l:"Umidade Mín"},{k:"umidMax",l:"Umidade Máx"},
+  {k:"awMin",l:"AW Mín"},{k:"awMax",l:"AW Máx"},
+  {k:"densMin",l:"Densidade Mín"},{k:"densMax",l:"Densidade Máx"},
+  {k:"corteMin",l:"Corte Mín"},{k:"corteMax",l:"Corte Máx"},
+  {k:"diamMin",l:"Diâmetro Mín"},{k:"diamMax",l:"Diâmetro Máx"},
+  {k:"pbMin",l:"PB Mín"},{k:"eeMin",l:"EE Mín"},
+  {k:"mmMax",l:"MM Máx"},{k:"tempMax",l:"Temp Máx"},
+  {k:"fluMin",l:"Flutuab. Mín"},{k:"cozMin",l:"Cozimento Mín"}
+];
+
+var CATALOGO = [{"cod": "CATRGFAS0102", "desc": "FANFOOD CAT AD TILAPIA FD - 5 X 2,5KG"}, {"cod": "CATRGFAS0103", "desc": "FANFOOD CAT AD TILAPIA 10,1KG"}, {"cod": "CATRGFAS0104", "desc": "FANFOOD CAT AD TILAPIA KG"}, {"cod": "CATRGFAS0106", "desc": "FANFOOD CAT AD CAS TILAPIA FD - 5 X 2,5KG"}, {"cod": "CATRGFAS0124", "desc": "FANFOOD CAT AD TILAPIA 60G"}, {"cod": "CATRGFAS0125", "desc": "FANFOOD CAT AD TILAPIA 1KG"}, {"cod": "CATRGFAS0126", "desc": "FANFOOD CAT AD TILAPIA 2,5KG"}, {"cod": "CATRGFAS0127", "desc": "FANFOOD CAT AD TILAPIA FD - 10 X 1KG"}, {"cod": "CATRGFAS0128", "desc": "FANFOOD CAT AD CAS TILAPIA FD - 10 X 1KG"}, {"cod": "CATRGFAS0129", "desc": "FANFOOD CAT AD TILAPIA 25KG"}, {"cod": "CATRGFAS0130", "desc": "FANFOOD CAT AD CAS TILAPIA 60G"}, {"cod": "CATRGFAS0131", "desc": "FANFOOD CAT AD CAS TILAPIA 1KG"}, {"cod": "CATRGFAS0132", "desc": "FANFOOD CAT AD CAS TILAPIA 2,5KG"}, {"cod": "CATRGFAS0133", "desc": "FANFOOD CAT AD CAS TILAPIA KG"}, {"cod": "CATRGFAS0134", "desc": "FANFOOD CAT AD CAS TILAPIA 15KG"}, {"cod": "CATRGFAS0135", "desc": "FANFOOD CAT AD CAS TILAPIA 25KG"}, {"cod": "CATRGFAS0137", "desc": "FANFOOD TODO DIA CAT CARNE KG"}, {"cod": "CATRGFAS0158", "desc": "FANFOOD CAT AD TILAPIA BG"}, {"cod": "CATRGFAS0159", "desc": "FANFOOD CAT AD CAS TILAPIA BG"}, {"cod": "CATRGFGP0200", "desc": "GOLD PLUS CAT AD TILAPIA 60G"}, {"cod": "CATRGFGP0201", "desc": "GOLD PLUS CAT AD TILAPIA 10,1KG"}, {"cod": "CATRGFGP0202", "desc": "GOLD PLUS CAT AD TILAPIA 20KG"}, {"cod": "CATRGFGP0203", "desc": "GOLD PLUS CAT AD CAST TILAPIA 60G"}, {"cod": "CATRGFGP0204", "desc": "GOLD PLUS CAT AD CAST TILAPIA 10,1KG"}, {"cod": "CATRGFGP0205", "desc": "GOLD PLUS CAT AD CAST TILAPIA 20KG"}, {"cod": "CATRGFGP0214", "desc": "GOLD PLUS CAT AD TILAPIA KG"}, {"cod": "CATRGFGP0215", "desc": "GOLD PLUS CAT AD CAST TILAPIA KG"}, {"cod": "CATRGFPE0001", "desc": "AURUS CAT FHT FRANGO 60G"}, {"cod": "CATRGFPE0002", "desc": "AURUS CAT FHT FRANGO 1KG"}, {"cod": "CATRGFPE0004", "desc": "AURUS CAT FHT FRANGO 10,1KG"}, {"cod": "CATRGFPE0005", "desc": "AURUS CAT FHT CAR/FRA FD - 10 X 1KG"}, {"cod": "CATRGFPE0007", "desc": "AURUS CAT AD SALMAO 60G"}, {"cod": "CATRGFPE0008", "desc": "AURUS CAT AD SALMAO 1KG"}, {"cod": "CATRGFPE0010", "desc": "AURUS CAT AD SALMAO 10,1KG"}, {"cod": "CATRGFPE0011", "desc": "AURUS CAT AD SALMAO FD - 10 X 1KG"}, {"cod": "CATRGFPE0012", "desc": "AURUS CAT AD SALMAO KG"}, {"cod": "CATRGFPE0013", "desc": "AURUS CAT AD CAS SALMAO 60G"}, {"cod": "CATRGFPE0014", "desc": "AURUS CAT AD CAS SALMAO KG"}, {"cod": "CATRGFPE0016", "desc": "AURUS CAT AD CAS SALMAO 10,1KG"}, {"cod": "CATRGFPE0017", "desc": "AURUS CAT AD CAS SALMAO FD - 10 X 1KG"}, {"cod": "CATRGFPE0019", "desc": "AURUS CAT AD FRA 60G"}, {"cod": "CATRGFPE0020", "desc": "AURUS CAT AD FRA 1KG"}, {"cod": "CATRGFPE0021", "desc": "AURUS CAT AD FRANGO KG"}, {"cod": "CATRGFPE0022", "desc": "AURUS CAT AD FRA 10,1KG"}, {"cod": "CATRGFPE0025", "desc": "AURUS CAT AD CAS FRA 60G"}, {"cod": "CATRGFPE0026", "desc": "AURUS CAT AD CAS FRAN KG"}, {"cod": "CATRGFPE0027", "desc": "AURUS CAT AD CAS FRA 2,5KG"}, {"cod": "CATRGFPE0028", "desc": "AURUS CAT AD CAS FRA 10,1KG"}, {"cod": "CATRGFPE0139", "desc": "AURUS CAT FHT FRANGO BG"}, {"cod": "CATRGFPE0140", "desc": "AURUS CAT AD SALMAO BG"}, {"cod": "CATRGFPE0141", "desc": "AURUS CAT AD CAS SALMÃO BG"}, {"cod": "CATRGFPE0142", "desc": "AURUS CAT AD FRA BG"}, {"cod": "CATRGFPE0143", "desc": "AURUS CAT AD CAS FRA BG"}, {"cod": "CATRGFPE0144", "desc": "AURUS CAT FHT CAR/FRA KG"}, {"cod": "CATRGFPL0001", "desc": "RAGUIFE CAT AD FRA 60G"}, {"cod": "CATRGFPL0002", "desc": "RAGUIFE CAT AD FRA KG"}, {"cod": "CATRGFPL0003", "desc": "RAGUIFE CAT AD FRA 10,1KG"}, {"cod": "CATRGFPL0004", "desc": "RAGUIFE CAT AD TILAPIA KG"}, {"cod": "CATRGFPL0005", "desc": "RAGUIFE CAT AD CAS FRANGO 60G"}, {"cod": "CATRGFPL0006", "desc": "RAGUIFE CAT AD CAS TILAPIA 60G"}, {"cod": "CATRGFPL0007", "desc": "RAGUIFE CAT AD CAS FRA 10,1KG"}, {"cod": "CATRGFPL0008", "desc": "RAGUIFE CAT AD TILAPIA 60G"}, {"cod": "CATRGFPL0009", "desc": "RAGUIFE CAT AD TILAPIA 10,1KG"}, {"cod": "CATRGFPL0010", "desc": "RAGUIFE CAT AD TILAPIA BG"}, {"cod": "CATRGFPL0011", "desc": "RAGUIFE CAT AD CAS TILAPIA 10,1KG"}, {"cod": "CATRGFPL0012", "desc": "RAGUIFE CAT AD CAS TILAPIA BG"}, {"cod": "CATRGFPL0013", "desc": "RAGUIFE CAT AD FRANGO BG"}, {"cod": "CATRGFPL0014", "desc": "RAGUIFE CAT AD CAS FRANGO BG"}, {"cod": "CATRGFPL0016", "desc": "RAGUIFE CAT AD CAS FRA KG"}, {"cod": "CATRGFPL0017", "desc": "RAGUIFE CAT AD CAS TILAPIA KG"}, {"cod": "CATRGFPP0167", "desc": "PRIME CAT AD SALM 60G"}, {"cod": "CATRGFPP0168", "desc": "PRIME CAT AD SALM 10,1KG"}, {"cod": "CATRGFPP0169", "desc": "PRIME CAT AD CAS SALM 60G"}, {"cod": "CATRGFPP0170", "desc": "PRIME CAT AD CAS SALM 10,1KG"}, {"cod": "CATRGFPP0171", "desc": "PRIME CAT FHT FRA 60G"}, {"cod": "CATRGFPP0172", "desc": "PRIME CAT FHT FRA 10,1KG"}, {"cod": "CATRGFPP0176", "desc": "PRIME CAT AD SALM KG"}, {"cod": "CATRGFPP0177", "desc": "PRIME CAT AD CAS SALM KG"}, {"cod": "CATRGFPP0178", "desc": "PRIME CAT FHT FRA KG"}, {"cod": "CATRGFPR0191", "desc": "SELECT PRO CAT AD 60G"}, {"cod": "CATRGFPR0192", "desc": "SELECT PRO CAT AD 10,1KG"}, {"cod": "CATRGFPR0193", "desc": "SELECT PRO CAT AD 20KG"}, {"cod": "CATRGFPR0211", "desc": "SELECT PRO CAT AD KG"}, {"cod": "CATRGFSL0181", "desc": "SELECT CAT AD 60G"}, {"cod": "CATRGFSL0182", "desc": "SELECT CAT AD 10,1KG"}, {"cod": "CATRGFSL0183", "desc": "SELECT CAT AD 20KG"}, {"cod": "CATRGFSL0207", "desc": "SELECT CAT AD KG"}, {"cod": "CATRGFSP0072", "desc": "IMPERIALLE CAT AD SALM 60G"}, {"cod": "CATRGFSP0073", "desc": "IMPERIALLE CAT AD SALM 1KG"}, {"cod": "CATRGFSP0074", "desc": "IMPERIALLE CAT AD SALM 2,5KG"}, {"cod": "CATRGFSP0075", "desc": "IMPERIALLE CAT AD SALM 10,1KG"}, {"cod": "CATRGFSP0076", "desc": "IMPERIALLE CAT AD SALM FD - 10 X 1KG"}, {"cod": "CATRGFSP0077", "desc": "IMPERIALLE CAT AD SALM FD - 5 X 2,5KG"}, {"cod": "CATRGFSP0078", "desc": "IMPERIALLE CAT CAS SALM 60G"}, {"cod": "CATRGFSP0079", "desc": "IMPERIALLE CAT CAS SALM 1KG"}, {"cod": "CATRGFSP0080", "desc": "IMPERIALLE CAT CAS SALM 2,5KG"}, {"cod": "CATRGFSP0081", "desc": "IMPERIALLE CAT CAS SALM 10,1KG"}, {"cod": "CATRGFSP0082", "desc": "IMPERIALLE CAT CAS SALM FD - 10 X 1KG"}, {"cod": "CATRGFSP0083", "desc": "IMPERIALLE CAT CAS SALM FD - 5 X 2,5KG"}, {"cod": "CATRGFSP0150", "desc": "IMPERIALLE CAT AD SALM BG"}, {"cod": "CATRGFSP0151", "desc": "IMPERIALLE CAT CAS SALM BG"}, {"cod": "DOGRGFAS0096", "desc": "FANFOOD DOG FHT CAR 60G"}, {"cod": "DOGRGFAS0097", "desc": "FANFOOD DOG FHT CAR 1KG"}, {"cod": "DOGRGFAS0098", "desc": "FANFOOD DOG FHT CAR 2,5KG"}, {"cod": "DOGRGFAS0099", "desc": "FANFOOD DOG FHT CAR FD - 10 X 1KG"}, {"cod": "DOGRGFAS0100", "desc": "FANFOOD DOG FHT CAR 10,1KG"}, {"cod": "DOGRGFAS0101", "desc": "FANFOOD DOG FHT CAR FD - 5 X 2,5KG"}, {"cod": "DOGRGFAS0102", "desc": "FANFOOD DOG AD RP CAR FD - 10 X 1KG"}, {"cod": "DOGRGFAS0103", "desc": "FANFOOD DOG AD RP CAR 60G"}, {"cod": "DOGRGFAS0104", "desc": "FANFOOD DOG AD RP CAR 1KG"}, {"cod": "DOGRGFAS0105", "desc": "FANFOOD DOG AD RP CAR 2,5KG"}, {"cod": "DOGRGFAS0106", "desc": "FANFOOD DOG AD RP CAR FD - 5 X 2,5KG"}, {"cod": "DOGRGFAS0107", "desc": "FANFOOD DOG AD RP CAR 10,1KG"}, {"cod": "DOGRGFAS0108", "desc": "FANFOOD DOG AD RMG CAR FD - 10 X 1KG"}, {"cod": "DOGRGFAS0109", "desc": "FANFOOD DOG FHT CAR 7 KG"}, {"cod": "DOGRGFAS0110", "desc": "FANFOOD DOG AD RMG CAR 60G"}, {"cod": "DOGRGFAS0111", "desc": "FANFOOD DOG AD RMG CAR 1KG"}, {"cod": "DOGRGFAS0112", "desc": "FANFOOD DOG AD RMG CAR 2,5KG"}, {"cod": "DOGRGFAS0113", "desc": "FANFOOD DOG AD RMG CAR FD - 5 X 2,5KG"}, {"cod": "DOGRGFAS0114", "desc": "FANFOOD DOG AD RMG CAR 10,1KG"}, {"cod": "DOGRGFAS0115", "desc": "FANFOOD DOG AD RMG CAR 15KG"}, {"cod": "DOGRGFAS0116", "desc": "FANFOOD DOG AD 19% CAR 7 KG"}, {"cod": "DOGRGFAS0117", "desc": "FANFOOD DOG AD 19% CAR 60G"}, {"cod": "DOGRGFAS0118", "desc": "FANFOOD DOG AD 19% CAR 1KG"}, {"cod": "DOGRGFAS0119", "desc": "FANFOOD DOG AD 19% CAR 2,5KG"}, {"cod": "DOGRGFAS0120", "desc": "FANFOOD DOG AD 19% CAR FD - 10X1KG"}, {"cod": "DOGRGFAS0121", "desc": "FANFOOD DOG AD 19% CAR 10,1KG"}, {"cod": "DOGRGFAS0122", "desc": "FANFOOD DOG AD 19% CAR 15KG"}, {"cod": "DOGRGFAS0123", "desc": "FANFOOD DOG AD 19% CAR FD - 5 X 2,5KG"}, {"cod": "DOGRGFAS0124", "desc": "FANFOOD DOG FHT CAR KG"}, {"cod": "DOGRGFAS0125", "desc": "FANFOOD DOG AD RP CAR KG"}, {"cod": "DOGRGFAS0126", "desc": "FANFOOD DOG AD RMG CAR KG"}, {"cod": "DOGRGFAS0127", "desc": "FANFOOD DOG AD 19% CAR KG"}, {"cod": "DOGRGFAS0154", "desc": "FANFOOD DOG FHT CAR BG"}, {"cod": "DOGRGFAS0155", "desc": "FANFOOD DOG AD RP CAR BG"}, {"cod": "DOGRGFAS0156", "desc": "FANFOOD DOG AD RMG CAR BG"}, {"cod": "DOGRGFAS0157", "desc": "FANFOOD DOG AD 19% CAR BG"}, {"cod": "DOGRGFGP0194", "desc": "GOLD PLUS DOG RMG 60G"}, {"cod": "DOGRGFGP0195", "desc": "GOLD PLUS DOG RMG 15KG"}, {"cod": "DOGRGFGP0196", "desc": "GOLD PLUS DOG RMG 20KG"}, {"cod": "DOGRGFGP0197", "desc": "GOLD PLUS DOG AD 60G"}, {"cod": "DOGRGFGP0198", "desc": "GOLD PLUS DOG AD 15KG"}, {"cod": "DOGRGFGP0199", "desc": "GOLD PLUS DOG AD 20KG"}, {"cod": "DOGRGFGP0212", "desc": "GOLD PLUS DOG RMG KG"}, {"cod": "DOGRGFGP0213", "desc": "GOLD PLUS DOG AD KG"}, {"cod": "DOGRGFGP0214", "desc": "GOLD PLUS CAT AD TILAPIA KG"}, {"cod": "DOGRGFGP0219", "desc": "GOLD PLUS DOG AD TILAPIA KG"}, {"cod": "DOGRGFP0221", "desc": "PRIME SENSITIVE DOG AD RPM TIL 10,1KG"}, {"cod": "DOGRGFPE0001", "desc": "AURUS DOG FHT CAR/FRA 60 G"}, {"cod": "DOGRGFPE0002", "desc": "AURUS DOG FHT CAR/FRA 1KG"}, {"cod": "DOGRGFPE0003", "desc": "AURUS DOG FHT CAR/FRA 2,5KG"}, {"cod": "DOGRGFPE0004", "desc": "AURUS DOG FHT CAR/FRA FD 5 X 2,5KG"}, {"cod": "DOGRGFPE0005", "desc": "AURUS DOG FHT CAR/FRA KG"}, {"cod": "DOGRGFPE0006", "desc": "AURUS DOG FHT CAR/FRA 15KG"}, {"cod": "DOGRGFPE0007", "desc": "AURUS DOG FHT CAR/FRA 25KG"}, {"cod": "DOGRGFPE0008", "desc": "AURUS DOG AD RP CAR/FRA 60 G"}, {"cod": "DOGRGFPE0009", "desc": "AURUS DOG AD RP CAR/FRA KG"}, {"cod": "DOGRGFPE0010", "desc": "AURUS DOG AD RP CAR/FRA 2,5KG"}, {"cod": "DOGRGFPE0011", "desc": "AURUS DOG AD RP CAR/FRA FD - 5 X 2,5KG"}, {"cod": "DOGRGFPE0013", "desc": "AURUS DOG AD RP CAR/FRA 15KG"}, {"cod": "DOGRGFPE0014", "desc": "AURUS DOG AD RP CAR/FRA 25KG"}, {"cod": "DOGRGFPE0015", "desc": "AURUS DOG AD RMG CAR/FRA 60G"}, {"cod": "DOGRGFPE0016", "desc": "AURUS DOG AD RMG CAR/FRA 1KG"}, {"cod": "DOGRGFPE0017", "desc": "AURUS DOG AD RMG CAR/FRA 2,5KG"}, {"cod": "DOGRGFPE0018", "desc": "AURUS DOG AD RMG CAR/FRA FD - 5 X 2,5KG"}, {"cod": "DOGRGFPE0019", "desc": "AURUS DOG AD RMG CAR/FRA KG"}, {"cod": "DOGRGFPE0020", "desc": "AURUS DOG AD RMG CAR/FRA 15KG"}, {"cod": "DOGRGFPE0021", "desc": "AURUS DOG AD RMG CAR/FRA 25KG"}, {"cod": "DOGRGFPE0022", "desc": "AURUS DOG AD RP CAR/FRA BG"}, {"cod": "DOGRGFPE0023", "desc": "AURUS DOG AD RMG CAR/FRA BG"}, {"cod": "DOGRGFPE0136", "desc": "AURUS DOG FHT CAR/FRA BG"}, {"cod": "DOGRGFPE0137", "desc": "AURUS DOG AD RP CAR/FRA BG"}, {"cod": "DOGRGFPE0138", "desc": "AURUS DOG AD RMG CAR/FRA BG"}, {"cod": "DOGRGFPL0001", "desc": "RAGUIFE DOG FHT CAR 60G"}, {"cod": "DOGRGFPL0002", "desc": "RAGUIFE DOG FHT CAR KG"}, {"cod": "DOGRGFPL0004", "desc": "RAGUIFE DOG FHT CAR 15KG"}, {"cod": "DOGRGFPL0005", "desc": "RAGUIFE DOG FHT CAR 25KG"}, {"cod": "DOGRGFPL0006", "desc": "RAGUIFE DOG AD RP CAR 60G"}, {"cod": "DOGRGFPL0007", "desc": "RAGUIFE DOG AD RP CAR KG"}, {"cod": "DOGRGFPL0009", "desc": "RAGUIFE DOG AD RP CAR 15KG"}, {"cod": "DOGRGFPL0010", "desc": "RAGUIFE DOG AD RP CAR 25KG"}, {"cod": "DOGRGFPL0011", "desc": "RAGUIFE DOG AD RMG CAR 60G"}, {"cod": "DOGRGFPL0012", "desc": "RAGUIFE DOG AD RMG CAR KG"}, {"cod": "DOGRGFPL0014", "desc": "RAGUIFE DOG AD RMG CAR 15KG"}, {"cod": "DOGRGFPL0015", "desc": "RAGUIFE DOG AD RMG CAR 25KG"}, {"cod": "DOGRGFPL0016", "desc": "RAGUIFE DOG AD TILAPIA KG"}, {"cod": "DOGRGFPL0022", "desc": "RAGUIFE DOG FHT CAR BG"}, {"cod": "DOGRGFPL0023", "desc": "RAGUIFE DOG AD RP CAR BG"}, {"cod": "DOGRGFPL0024", "desc": "RAGUIFE DOG AD RMG CAR BG"}, {"cod": "DOGRGFPL0025", "desc": "RAGUIFE DOG AD TILAPIA 15KG SC"}, {"cod": "DOGRGFPL0026", "desc": "RAGUIFE DOG AD TILAPIA BG"}, {"cod": "DOGRGFPP0151", "desc": "PRIME DOG FHT C/F 60G"}, {"cod": "DOGRGFPP0161", "desc": "PRIME DOG FHT C/F 60G"}, {"cod": "DOGRGFPP0162", "desc": "PRIME DOG FHT C/F 15KG"}, {"cod": "DOGRGFPP0163", "desc": "PRIME DOG AD RP C/F 60G"}, {"cod": "DOGRGFPP0164", "desc": "PRIME DOG AD RP C/F 15KG"}, {"cod": "DOGRGFPP0165", "desc": "PRIME DOG AD RMG C/F 60G"}, {"cod": "DOGRGFPP0166", "desc": "PRIME DOG AD RMG C/F 15KG"}, {"cod": "DOGRGFPP0173", "desc": "PRIME DOG FHT C/F KG"}, {"cod": "DOGRGFPP0174", "desc": "PRIME DOG AD RP C/F KG"}, {"cod": "DOGRGFPP0175", "desc": "PRIME DOG AD RMG C/F KG"}, {"cod": "DOGRGFPP0222", "desc": "PRIME SENSITIVE DOG AD RPM TIL KG"}, {"cod": "DOGRGFPR0184", "desc": "SELECT PRO DOG FHT 60G"}, {"cod": "DOGRGFPR0185", "desc": "SELECT PRO DOG FHT 15KG"}, {"cod": "DOGRGFPR0186", "desc": "SELECT PRO DOG AD RP 60G"}, {"cod": "DOGRGFPR0187", "desc": "SELECT PRO DOG AD RP 15KG"}, {"cod": "DOGRGFPR0188", "desc": "SELECT PRO DOG AD RMG 60G"}, {"cod": "DOGRGFPR0189", "desc": "SELECT PRO DOG AD RMG 15KG"}, {"cod": "DOGRGFPR0190", "desc": "SELECT PRO DOG AD RMG 20KG"}, {"cod": "DOGRGFPR0208", "desc": "SELECT PRO DOG FHT KG"}, {"cod": "DOGRGFPR0209", "desc": "SELECT PRO DOG AD RP KG"}, {"cod": "DOGRGFPR0210", "desc": "SELECT PRO DOG AD RMG KG"}, {"cod": "DOGRGFRN0207", "desc": "RINO DOG AD TODOS OS PORTES"}, {"cod": "DOGRGFSL0179", "desc": "SELECT DOG AD RMG 60G"}, {"cod": "DOGRGFSL0180", "desc": "SELECT DOG AD RMG 15KG"}, {"cod": "DOGRGFSL0206", "desc": "SELECT DOG AD RMG KG"}, {"cod": "DOGRGFSP0031", "desc": "IMPERIALLE DOG FHT RP F/A 60G"}, {"cod": "DOGRGFSP0032", "desc": "IMPERIALLE DOG FHT RP F/A 1KG"}, {"cod": "DOGRGFSP0033", "desc": "IMPERIALLE DOG FHT RP F/A 2,5KG"}, {"cod": "DOGRGFSP0034", "desc": "IMPERIALLE DOG FHT RP F/A FD - 5 X 2,5KG"}, {"cod": "DOGRGFSP0035", "desc": "IMPERIALLE DOG FHT RP F/A 10,1KG"}, {"cod": "DOGRGFSP0036", "desc": "IMPERIALLE DOG FHT RP F/A FD - 10 X 1KG"}, {"cod": "DOGRGFSP0037", "desc": "IMPERIALLE DOG FHT RP F/A KG"}, {"cod": "DOGRGFSP0038", "desc": "IMPERIALLE DOG FHT RMG F/A 60G"}, {"cod": "DOGRGFSP0039", "desc": "IMPERIALLE DOG FHT RMG F/A 1KG"}, {"cod": "DOGRGFSP0040", "desc": "IMPERIALLE DOG FHT RMG F/A 2,5KG"}, {"cod": "DOGRGFSP0041", "desc": "IMPERIALLE DOG FHT RMG F/A FD - 5 X 2,5KG"}, {"cod": "DOGRGFSP0042", "desc": "IMPERIALLE DOG FHT RMG F/A 10,1KG"}, {"cod": "DOGRGFSP0043", "desc": "IMPERIALLE DOG FHT RMG F/A FD - 10 X 1KG"}, {"cod": "DOGRGFSP0044", "desc": "IMPERIALLE DOG FHT RMG F/A KG"}, {"cod": "DOGRGFSP0045", "desc": "IMPERIALLE DOG AD RP F/A 60G"}, {"cod": "DOGRGFSP0046", "desc": "IMPERIALLE DOG AD RP F/A 1KG"}, {"cod": "DOGRGFSP0047", "desc": "IMPERIALLE DOG AD RP F/A 2,5KG"}, {"cod": "DOGRGFSP0048", "desc": "IMPERIALLE DOG AD RP F/A FD - 5 X 2,5KG"}, {"cod": "DOGRGFSP0049", "desc": "IMPERIALLE DOG AD RP F/A 10,1KG"}, {"cod": "DOGRGFSP0050", "desc": "IMPERIALLE DOG AD RP F/A FD - 10 X 1KG"}, {"cod": "DOGRGFSP0051", "desc": "IMPERIALLE DOG AD RP F/A KG"}, {"cod": "DOGRGFSP0052", "desc": "IMPERIALLE DOG AD RMG F/A 60G"}, {"cod": "DOGRGFSP0053", "desc": "IMPERIALLE DOG AD RMG F/A 1KG"}, {"cod": "DOGRGFSP0054", "desc": "IMPERIALLE DOG AD RMG F/A 2,5KG"}, {"cod": "DOGRGFSP0055", "desc": "IMPERIALLE DOG AD RMG F/A KG"}, {"cod": "DOGRGFSP0056", "desc": "IMPERIALLE DOG AD RMG F/A FD - 10 X 1KG"}, {"cod": "DOGRGFSP0057", "desc": "IMPERIALLE DOG AD RMG F/A 15KG"}, {"cod": "DOGRGFSP0058", "desc": "IMPERIALLE DOG AD RMG F/A FD - 5 X 2,5KG"}, {"cod": "DOGRGFSP0144", "desc": "IMPERIALLE DOG FHT RP F/A BG"}, {"cod": "DOGRGFSP0145", "desc": "IMPERIALLE DOG FHT RMG F/A BG"}, {"cod": "DOGRGFSP0146", "desc": "IMPERIALLE DOG AD RP BG"}, {"cod": "DOGRGFSP0147", "desc": "IMPERIALLE DOG AD RMG BG"}, {"cod": "HORRGF0614EQSC", "desc": "HORSE 14% EQUINO SC"}, {"cod": "HORRGF0618EQSC", "desc": "HORSE 18% EQUINO SC"}, {"cod": "HORRGF12CMKG", "desc": "RAGUIFE HORSE COMPETIÇÃO 12 KG"}, {"cod": "HORRGF12CMSC", "desc": "HORSE 12% COMPETIÇÃO SC"}, {"cod": "HORRGF12PFSC", "desc": "HORSE 12% PERFORMANCE SC"}, {"cod": "HORRGF14MTSC", "desc": "HORSE 14% MANUTENÇÃO SC"}, {"cod": "HORRGF15MTKG", "desc": "HORSE 15% MANUTENÇÃO KG"}, {"cod": "HORRGF15MTSC", "desc": "HORSE 15% MANUTENÇÃO SC"}, {"cod": "HORRGF18PTSC", "desc": "HORSE 18% POTRO SC"}, {"cod": "RGF0134DESC", "desc": "TOP FISH 1.0MM 34% DE TESTE SC"}, {"cod": "RGF0140INSC", "desc": "TOP FISH 1.0 MM 40% INICIAL SC"}, {"cod": "RGF0145ITSC", "desc": "1.0MM CAMARAO 45% SC"}, {"cod": "RGF0145PSBG", "desc": "1.0MM PRO-START 45% BG"}, {"cod": "RGF0145PSSC", "desc": "1.0MM PRO-START 45% SC"}, {"cod": "RGF0236CEBG", "desc": "2.0MM TOP FISH 36% BG"}, {"cod": "RGF0236CESC", "desc": "2.0MM TOP FISH 36% SC"}, {"cod": "RGF0236CVKG", "desc": "TOP FISH 2.0MM 36% C. VALE KG"}, {"cod": "RGF0236CVSC", "desc": "TOP FISH 2.0MM 36% C. VALE SC"}, {"cod": "RGF0238PSBG", "desc": "PRO-START 2.0MM 38% BG"}, {"cod": "RGF0238PSKG", "desc": "PRO-START 2.0MM 38% KG"}, {"cod": "RGF0238PSSC", "desc": "2.0MM PRO-START 38% SC"}, {"cod": "RGF0240INBG", "desc": "2.0MM TOP FISH 40% BG"}, {"cod": "RGF0240INSC", "desc": "2.0MM TOP FISH 40% SC"}, {"cod": "RGF0240PSSC", "desc": "TOP FISH 2.0MM 40% PRO-START SC"}, {"cod": "RGF0242EXSC", "desc": "PRO START 2.0MM 42% EXPORTAÇÃO SC"}, {"cod": "RGF0242PRBG", "desc": "2.0MM PAQ-PROTEX 42% BG"}, {"cod": "RGF0242PRSC", "desc": "2.0MM PAQ-PROTEX 42% SC"}, {"cod": "RGF0242PSBG", "desc": "2.0MM PRO-START 42% BG"}, {"cod": "RGF0242PSKG", "desc": "2.0MM PRO-START 42% KG"}, {"cod": "RGF0242PSSC", "desc": "2.0MM PRO-START 42% SC"}, {"cod": "RGF0334CEBG", "desc": "TOP FISH 3.0 A 4.0MM 34% BG"}, {"cod": "RGF0334CEKG", "desc": "TOP FISH 3.0 A 4.0MM 34% KG"}, {"cod": "RGF0334CESC", "desc": "TOP FISH 3.0 A 4.0MM 34% SC"}, {"cod": "RGF0336CEBG", "desc": "3.00 A 4.00MM TOP FISH 36% BG"}, {"cod": "RGF0336CEKG", "desc": "3.00 A 4.00MM TOP FISH 36% KG"}, {"cod": "RGF0336CESC", "desc": "3.00 A 4.00MM TOP FISH 36% SC"}, {"cod": "RGF0336PRBG", "desc": "3.00 A 4.00MM PAQ-PROTEX 36% BG"}, {"cod": "RGF0336PRKG", "desc": "3.00 A 4.00MM PAQ-PROTEX 36% KG"}, {"cod": "RGF0336PRSC", "desc": "TOP FISH 3.0 A 4.0MM 36% PAQ PROTEX SC"}, {"cod": "RGF0338EXSC", "desc": "PRO START 3 A 4 MM 38% EXPORTAÇÃO SC"}, {"cod": "RGF0338PSBG", "desc": "TOP FISH 3.0 A 4.0MM 34% BG"}, {"cod": "RGF0338PSKG", "desc": "3.00 A 4.00MM PRO-START 38% KG"}, {"cod": "RGF0338PSSC", "desc": "3.00 A 4.00MM PRO-START 38% SC"}, {"cod": "RGF0340CRSC", "desc": "3.00 A 4.00MM CARNIVORO 40% SC"}, {"cod": "RGF0342PSSC", "desc": "3.00 A 4.00MM PRO-START 42% SC"}, {"cod": "RGF0428COKG", "desc": "4.00 A 6.00MM TOP FISH 28% KG"}, {"cod": "RGF0428COSC", "desc": "4.00 A 6.00MM TOP FISH 28% SC"}, {"cod": "RGF0428NTKG", "desc": "4.00 A 6.00MM 28% NATIVOS KG"}, {"cod": "RGF0428NTSC", "desc": "NATIVOS 4.0 A 6.0MM 28% SC"}, {"cod": "RGF0428PGKG", "desc": "4.00 A 6.00MM PANGASIUS 28% KG"}, {"cod": "RGF0428PGSC", "desc": "4.00 A 6.00MM PANGASIUS 28% SC"}, {"cod": "RGF0428PLKG", "desc": "TOP FISH 4.0 A 6.0MM PLUS 28% KG"}, {"cod": "RGF0428PLSC", "desc": "TOP FISH 4.0 A 6.0MM PLUS 28% SC"}, {"cod": "RGF0430COKG", "desc": "TOP FISH 4.0 A 6.0MM 30% KG"}, {"cod": "RGF0430COSC", "desc": "TOP FISH 4.0 A 6.0MM 30% SC"}, {"cod": "RGF0430PLBG", "desc": "4.00 A 6.00MM PLUS 30% BG"}, {"cod": "RGF0430PLKG", "desc": "4.00 A 6.00MM PLUS 30% KG"}, {"cod": "RGF0430PLSC", "desc": "TOP FISH 4.0 A 6.0MM PLUS 30% SC"}, {"cod": "RGF0432APSC", "desc": "4.00 A 6.00MM 32% PLUS AP SC"}, {"cod": "RGF0432ATKG", "desc": "4.0 A 6.0MM 32% AT G50 KG"}, {"cod": "RGF0432COBG", "desc": "4.00 A 6.00MM TOP FISH 32% BG"}, {"cod": "RGF0432COKG", "desc": "4.00 A 6.00MM TOP FISH 32% KG"}, {"cod": "RGF0432COSC", "desc": "4.00 A 6.00MM TOP FISH 32% SC"}, {"cod": "RGF0432G2BG", "desc": "TOP FISH 4.00 A 6.00MM 32% G20 BG"}, {"cod": "RGF0432G2KG", "desc": "4.00 A 6.00MM G20 32% KG"}, {"cod": "RGF0432G2SC", "desc": "4.00 A 6.00MM G20 32% SC"}, {"cod": "RGF0432G3BG", "desc": "4.00 A 6.00MM G30 32% BG"}, {"cod": "RGF0432G3KG", "desc": "4.00 A 6.00MM G30 32% KG"}, {"cod": "RGF0432G3SC", "desc": "4.00 A 6.00MM G30 32% SC"}, {"cod": "RGF0432G5BG", "desc": "4.0 A 6.0MM 32% G50 BG"}, {"cod": "RGF0432G5KG", "desc": "4.0 A 6.0MM 32% G50 KG"}, {"cod": "RGF0432G5SC", "desc": "4.0 A 6.0MM 32% G50 SC"}, {"cod": "RGF0432GEKG", "desc": "TOP FISH 4.0 A 6.0MM 32% G20 EXPERIMENTO KG"}, {"cod": "RGF0432GVKG", "desc": "TOP FISH 4.0 A 6.0MM 32% PLUS VITAMINA KG"}, {"cod": "RGF0432NTKG", "desc": "4.00 A 6.00MM 32% NATIVOS KG"}, {"cod": "RGF0432NTSC", "desc": "NATIVOS 4.0 A 6.0MM 32% SC"}, {"cod": "RGF0432PCKG", "desc": "TOP FISH 4.0 A 6.0MM 32% PLUS VIT."}, {"cod": "RGF0432PHKG", "desc": "PRO-HEALTH 4.0 A 6.0MM 32% KG"}, {"cod": "RGF0432PHSC", "desc": "PRO-HEALTH 4.0 A 6.0MM 32% SC"}, {"cod": "RGF0432PLBG", "desc": "4.00 A 6.00MM PLUS 32% BG"}, {"cod": "RGF0432PLKG", "desc": "4.00 A 6.00MM PLUS 32% KG"}, {"cod": "RGF0432PLSC", "desc": "4.00 A 6.00MM PLUS 32% SC"}, {"cod": "RGF0432PRBG", "desc": "4.00 A 6.00MM PAQ-PROTEX 32% BG"}, {"cod": "RGF0432PRKG", "desc": "TOP FISH 4.0 A 6.0MM 32% PR KG"}, {"cod": "RGF0432PRSC", "desc": "TOP FISH 4.0 A 6.0MM 32% PR SC"}, {"cod": "RGF0432PUKG", "desc": "TOP FISH 4.0MM A 6.0MM 32% PLUS VITAMINA"}, {"cod": "RGF0432PXSC", "desc": "4.00 A 6.00MM 32% PLUS EXPORTAÇÃO SC"}, {"cod": "RGF0432TEBG", "desc": "TOP FISH 4.0 A 6.0MM 32% TE BG"}, {"cod": "RGF0432TEKG", "desc": "TOP FISH 4.0 A 6.0MM 32% TE KG"}, {"cod": "RGF0432TESC", "desc": "TOP FISH 4.0 A 6.0MM 32% TE SC"}, {"cod": "RGF0432V3KG", "desc": "TOP FISH 4.0 A 6.0MM 32% V3 KG VITAMINA"}, {"cod": "RGF0432V3SC", "desc": "4.00 A 6.00MM PLUS 32% KG"}, {"cod": "RGF0436RPSC", "desc": "4.00 A 6.00MM REPRODUTOR 36% SC"}, {"cod": "RGF0440CRSC", "desc": "4.00 A 6.00MM CARNIVORO 40% SC"}, {"cod": "RGF0540DESC", "desc": "0.50 A 0.70MM CAMARAO 40% DESINT. I SC"}, {"cod": "RGF0628COBG", "desc": "6.00 A 8.00MM TOP FISH 28% BG"}, {"cod": "RGF0628COKG", "desc": "6.00 A 8.00MM TOP FISH 28% KG"}, {"cod": "RGF0628COSC", "desc": "6.00 A 8.00MM TOP FISH 28% SC"}, {"cod": "RGF0628NTBG", "desc": "NATIVOS 6.0 A 8.0MM 28% BG"}, {"cod": "RGF0628NTKG", "desc": "6.00 A 8.00MM 28% NATIVOS KG"}, {"cod": "RGF0628NTSC", "desc": "NATIVOS 6.0 A 8.0MM 28% SC"}, {"cod": "RGF0628PGBG", "desc": "6.00 A 8.00MM PANGASIUS 28% BG"}, {"cod": "RGF0628PGKG", "desc": "6.00 A 8.00MM PANGASIUS 28% KG"}, {"cod": "RGF0628PGSC", "desc": "6.00 A 8.00MM PANGASIUS 28% SC"}, {"cod": "RGF0632COBG", "desc": "6.00 A 8.00MM TOP FISH 32% BG"}, {"cod": "RGF0632COKG", "desc": "6.00 A 8.00MM TOP FISH 32% KG"}, {"cod": "RGF0632COSC", "desc": "6.00 A 8.00MM TOP FISH 32% SC"}, {"cod": "RGF0632EXSC", "desc": "TOP FISH 6.0 A 8.0MM 32% PLUS SC"}, {"cod": "RGF0632G2BG", "desc": "6.00 A 8.00MM G20 32% BG"}, {"cod": "RGF0632G2KG", "desc": "6.00 A 8.00MM G20 32% KG"}, {"cod": "RGF0632G2SC", "desc": "6.00 A 8.00MM G20 32% SC"}, {"cod": "RGF0632G3BG", "desc": "6.00 A 8.00MM G30 32% BG"}, {"cod": "RGF0632G3KG", "desc": "6.00 A 8.00MM G30 32% KG"}, {"cod": "RGF0632G3SC", "desc": "6.00 A 8.00MM G30 32% SC"}, {"cod": "RGF0632G5SC", "desc": "6.0 A 8.0MM 32% G50 SC"}, {"cod": "RGF0632NTKG", "desc": "NATIVOS 6.0 A 8.0MM 32% KG"}, {"cod": "RGF0632NTSC", "desc": "NATIVOS 6.0 A 8.0MM 32% SC"}, {"cod": "RGF0632PLBG", "desc": "6.00 A 8.00MM PLUS 32% BG"}, {"cod": "RGF0632PLKG", "desc": "6.00 A 8.00MM PLUS 32% KG"}, {"cod": "RGF0632PLSC", "desc": "6.00 A 8.00MM PLUS 32% SC"}, {"cod": "RGF0632PQBG", "desc": "6.00 A 8.00MM PLUS AQUATE 32% BG"}, {"cod": "RGF0632PQKG", "desc": "6.00 A 8.00MM PLUS AQUATE 32% KG"}, {"cod": "RGF0632TEBG", "desc": "TOP FISH 6.0 A 8.0MM 32% TE BG"}, {"cod": "RGF0632TEKG", "desc": "TOP FISH 6.0 A 8.0MM 32% TE KG"}, {"cod": "RGF0632TESC", "desc": "TOP FISH 6.0 A 8.0MM 32% TE SC"}, {"cod": "RGF0640CRBG", "desc": "NATIVOS 6.0 A 8.0MM 40% CARNIVORO BG"}, {"cod": "RGF0640CRSC", "desc": "NATIVOS 6.0 A 8.0MM 40% CARNIVORO SC"}, {"cod": "RGF0828COKG", "desc": "TOP FISH 8.0 A 10.0MM 28% KG"}, {"cod": "RGF0828COSC", "desc": "8.00 A 10.00MM TOP FISH 28% SC"}, {"cod": "RGF0828NTBG", "desc": "NATIVOS 8.0 A 10.0MM 28% BG"}, {"cod": "RGF0828NTKG", "desc": "8.00 A 10.00MM 28% NATIVOS KG"}, {"cod": "RGF0828NTSC", "desc": "NATIVOS 8.0 A 10.0MM 28% SC"}, {"cod": "RGF0832COBG", "desc": "8.00 A 10.00MM TOP FISH 32% BG"}, {"cod": "RGF0832COKG", "desc": "8.00 A 10.00MM TOP FISH 32% KG"}, {"cod": "RGF0832COSC", "desc": "8.00 A 10.00MM TOP FISH 32% SC"}, {"cod": "RGF0832NTBG", "desc": "NATIVOS 8.0 A 10.0MM"}, {"cod": "RGF0832NTKG", "desc": "NATIVOS 8.0 A 10.0MM 32% KG"}, {"cod": "RGF0832NTSC", "desc": "NATIVOS 8.0 A 10.0MM 32% SC"}, {"cod": "RGF0832PLKG", "desc": "TOP FISH 8.0 A 10.0 MM 32% PLUS KG"}, {"cod": "RGF0840CRSC", "desc": "NATIVOS 8.0 A 10.0MM 40% CARNIVORO SC"}, {"cod": "RGF0840DESC", "desc": "TS 400 0.8 A 1.0MM DESINTEGRADA II SC"}, {"cod": "RGF0845ITBG", "desc": "TS 450 0.8MM 45% BG"}, {"cod": "RGF0845ITSC", "desc": "0.8MM CAMARAO 45% SC"}, {"cod": "RGF1040CRSC", "desc": "NATIVOS 10.0 A 12.0MM 40% CARNIVORO SC"}, {"cod": "RGF1224COSC", "desc": "12.00 A 14.00MM TOP FISH 24% SC"}, {"cod": "RGF1228COSC", "desc": "TOP FISH 12.0 A 14.0MM 28% SC"}, {"cod": "RGF1240CRSC", "desc": "NATIVOS 12.0 A 14.0MM 40% CARNIVORO SC"}, {"cod": "RGF1340INSC", "desc": "TOP FISH 1.3MM 40% INICIAL SC"}, {"cod": "RGF1345PSBG", "desc": "1.3MM PRO-START 45% BG"}, {"cod": "RGF1345PSSC", "desc": "1.3MM PRO-START 45% SC"}, {"cod": "RGF1432SISC", "desc": "1.4MM CAMARAO 32% SC"}, {"cod": "RGF1435SISC", "desc": "1.4MM CAMARAO 35% SC"}, {"cod": "RGF1438SUSC", "desc": "1.4MM CAMARAO 38% SC"}, {"cod": "RGF1440CRSC", "desc": "NATIVOS 14.0 A 16.0 40% CARNÍVORO SC"}, {"cod": "RGF1740INBG", "desc": "TOP FISH 1.7MM 40% INICIAL BG"}, {"cod": "RGF1740INSC", "desc": "TOP FISH 1.7MM 40% INICIAL SC"}, {"cod": "RGF1745PSBG", "desc": "1.7MM PRO-START 45% BG"}, {"cod": "RGF1745PSSC", "desc": "1.7MM PRO-START 45% SC"}, {"cod": "RGF1832SISC", "desc": "1.8MM CAMARAO 32% SC"}, {"cod": "RGF1835SIBG", "desc": "1.8MM CAMARAO 35% BG"}, {"cod": "RGF1835SISC", "desc": "1.8MM CAMARAO 35% SC"}, {"cod": "RGF1838SUSC", "desc": "1.8MM CAMARAO 38% SC"}, {"cod": "RGF1840DESC", "desc": "1.8MM CAMARAO 40% SC"}, {"cod": "RGF8045PSBG", "desc": "0.8MM 45% DESINTEGRADA"}, {"cod": "RGF8045PSKG", "desc": "0.8MM 45% DESINTEGRADA"}, {"cod": "RGF8045PSSC", "desc": "0.8MM 45% DESINTEGRADA"}];
+
+var FICHAS = {};          // id -> objeto completo carregado do Firebase (dadosGerais + versoes)
+var VINCULADOS_SET = {};  // cod -> id da ficha que já usa esse cod (p/ evitar vínculo duplicado)
+var QUAL_CACHE = {};      // cod -> qualidade_params[cod] (ou null se ausente)
+var FICHA_ATUAL = null;   // id da ficha aberta
+var VERSAO_VISTA = null;  // fbKey da versão sendo exibida (pode não ser a mais atual)
+var CAT_SEL_NOVA = {};    // seleção temporária de códigos no modal nova ficha
+var CAT_SEL_VINC = {};    // seleção temporária de códigos no modal editar vínculos
+var EDIT_SECOES = null;   // cópia de trabalho das seções durante edição de nova revisão
+
+// ============================================================
+// UTILS
+// ============================================================
+function G(id){return document.getElementById(id);}
+function aM(id){G(id).classList.add('on');}
+function fM(id){G(id).classList.remove('on');}
+function ld(on,msg){G('loader').classList.toggle('on',!!on);if(msg)G('lmsg').textContent=msg;}
+function toast(msg,tipo){
+  var t=document.createElement('div');
+  t.className='tos '+(tipo==='err'?'terr':tipo==='info'?'tinf':'tok');
+  t.textContent=msg;
+  G('twrap').appendChild(t);
+  setTimeout(function(){t.remove();},3200);
+}
+function pad(n){return String(n).padStart(2,"0");}
+function agora(){return new Date().toISOString();}
+function fData(iso){
+  if(!iso) return "—";
+  var d=new Date(iso);
+  return pad(d.getDate())+"/"+pad(d.getMonth()+1)+"/"+d.getFullYear()+" "+pad(d.getHours())+":"+pad(d.getMinutes());
+}
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+function norm(s){return String(s||"").toLowerCase();}
+
+// ============================================================
+// LOGIN / LOGOUT
+// ============================================================
+function doLogin(){
+  var u=G('lu').value.trim(), p=G('lp').value;
+  if(!u||!p) return;
+  ld(true,'Autenticando...');
+  DB.ref('usuarios').orderByChild('login').equalTo(u).once('value').then(function(snap){
+    ld(false);
+    if(!snap.exists()){ G('lerr').style.display='block'; return; }
+    var found=null;
+    snap.forEach(function(c){ var v=c.val(); if(v.senha===p && v.inativo!==true && v.ativo!==false) found=v; });
+    if(!found){ G('lerr').style.display='block'; return; }
+    if(found.perfil!=='admin'){
+      G('lerr').textContent='Sem acesso ao módulo de Ficha Técnica (restrito a admin).';
+      G('lerr').style.display='block';
+      return;
+    }
+    SES=found;
+    G('lerr').style.display='none';
+    G('lp').value='';
+    G('pg-login').style.display='none';
+    G('pg-app').style.display='flex';
+    G('nome-user').textContent=SES.nome||SES.login;
+    G('av-ini').textContent=(SES.nome||SES.login||'?').slice(0,1).toUpperCase();
+    iniciarApp();
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+function doLogout(){
+  SES=null;
+  G('pg-app').style.display='none';
+  G('pg-login').style.display='flex';
+  G('lu').value=''; G('lp').value='';
+}
+
+// ============================================================
+// INICIALIZAÇÃO — carrega todas as fichas técnicas (escala pequena)
+// ============================================================
+function iniciarApp(){
+  ld(true,'Carregando fichas técnicas...');
+  DB.ref('fichas_tecnicas').once('value').then(function(s){
+    FICHAS = s.exists()? s.val() : {};
+    reconstruirIndiceVinculos();
+    ld(false);
+  }).catch(function(e){ ld(false); toast('Erro ao carregar fichas: '+e.message,'err'); });
+}
+function reconstruirIndiceVinculos(){
+  VINCULADOS_SET = {};
+  Object.keys(FICHAS).forEach(function(id){
+    var f=FICHAS[id];
+    if(f.skusVinculados){
+      Object.keys(f.skusVinculados).forEach(function(cod){
+        if(f.skusVinculados[cod]) VINCULADOS_SET[cod]=id;
+      });
+    }
+  });
+}
+
+// ============================================================
+// BUSCA — combina fichas já cadastradas + catálogo de SKUs sem ficha
+// ============================================================
+function renderResultadosBusca(termo){
+  var t=norm(termo).trim();
+  var box=G('busca-res');
+  if(t.length<2){ box.innerHTML=''; return; }
+
+  var achFichas=Object.keys(FICHAS).filter(function(id){
+    var f=FICHAS[id];
+    if(norm(f.nome).indexOf(t)>=0) return true;
+    if(f.skusVinculados) return Object.keys(f.skusVinculados).some(function(c){return norm(c).indexOf(t)>=0;});
+    return false;
+  });
+
+  var achCatalogo=CATALOGO.filter(function(m){
+    if(VINCULADOS_SET[m.cod]) return false;
+    return norm(m.cod).indexOf(t)>=0 || norm(m.desc).indexOf(t)>=0;
+  }).slice(0,12);
+
+  var h='';
+  achFichas.forEach(function(id){
+    var f=FICHAS[id];
+    var nVersoes=f.versoes?Object.keys(f.versoes).length:0;
+    var nSkus=f.skusVinculados?Object.keys(f.skusVinculados).length:0;
+    h+='<div class="res-item" onclick="abrirFicha(\''+id+'\')">'+
+       '<div><div class="res-nome">📄 '+esc(f.nome)+'</div>'+
+       '<div class="res-sub">'+nSkus+' SKU(s) vinculado(s) · '+nVersoes+' revisão(ões)</div></div>'+
+       '<div class="res-badge">FICHA</div></div>';
+  });
+  achCatalogo.forEach(function(m){
+    h+='<div class="res-item novo" onclick="abrirNovaFichaModal(\''+m.cod+'\')">'+
+       '<div><div class="res-nome">+ '+esc(m.cod)+'</div>'+
+       '<div class="res-sub">'+esc(m.desc)+' — sem ficha técnica ainda</div></div>'+
+       '<div class="res-badge" style="background:var(--orbg);color:#8a5a00">CRIAR</div></div>';
+  });
+  if(!achFichas.length && !achCatalogo.length){
+    h='<div class="vazio">Nenhum resultado para "'+esc(termo)+'"</div>';
+  }
+  box.innerHTML=h;
+}
+
+// ============================================================
+// CATÁLOGO — busca com checklist reutilizada nos modais nova ficha / vínculos
+// ============================================================
+function renderCatalogoBusca(prefixo){
+  var termo=norm(G(prefixo+'-cat-busca').value).trim();
+  var sel = prefixo==='nf' ? CAT_SEL_NOVA : CAT_SEL_VINC;
+  var res=G(prefixo+'-cat-res');
+  if(termo.length<1){ res.innerHTML=''; return; }
+  var lista=CATALOGO.filter(function(m){
+    return norm(m.cod).indexOf(termo)>=0 || norm(m.desc).indexOf(termo)>=0;
+  }).slice(0,30);
+  var h='';
+  lista.forEach(function(m){
+    var jaOutraFicha = VINCULADOS_SET[m.cod] && VINCULADOS_SET[m.cod]!==FICHA_ATUAL;
+    var checked = sel[m.cod] ? 'checked' : '';
+    h+='<label class="cat-row"><input type="checkbox" '+checked+' onchange="toggleCatSel(\''+prefixo+'\',\''+m.cod+'\',this.checked)">'+
+       '<span class="cat-cod">'+esc(m.cod)+'</span><span>'+esc(m.desc)+'</span>'+
+       (jaOutraFicha?'<span style="color:#c0392b;font-size:10px;margin-left:auto">já vinculado a outra ficha</span>':'')+
+       '</label>';
+  });
+  res.innerHTML = h || '<div class="vazio">Nenhum código encontrado</div>';
+}
+function toggleCatSel(prefixo,cod,marcado){
+  var sel = prefixo==='nf' ? CAT_SEL_NOVA : CAT_SEL_VINC;
+  if(marcado) sel[cod]=true; else delete sel[cod];
+  renderSelecionados(prefixo);
+}
+function renderSelecionados(prefixo){
+  var sel = prefixo==='nf' ? CAT_SEL_NOVA : CAT_SEL_VINC;
+  var box=G(prefixo+'-selecionados');
+  var codigos=Object.keys(sel);
+  if(!codigos.length){ box.innerHTML='<span class="hint">Nenhum código vinculado ainda.</span>'; return; }
+  box.innerHTML=codigos.map(function(c){
+    return '<span class="chip">'+esc(c)+' <x onclick="toggleCatSel(\''+prefixo+'\',\''+c+'\',false)">×</x></span>';
+  }).join('');
+}
+
+// ============================================================
+// NOVA FICHA
+// ============================================================
+function abrirNovaFichaModal(codPre){
+  CAT_SEL_NOVA={};
+  G('nf-nome').value='';
+  G('nf-linha').value='';
+  G('nf-cat-busca').value='';
+  G('nf-cat-res').innerHTML='';
+  if(codPre){
+    CAT_SEL_NOVA[codPre]=true;
+    var item=CATALOGO.find(function(m){return m.cod===codPre;});
+    if(item) G('nf-nome').value=item.desc;
+  }
+  renderSelecionados('nf');
+  aM('ov-nova-ficha');
+}
+function salvarNovaFicha(){
+  var nome=G('nf-nome').value.trim();
+  if(!nome){ toast('Informe o nome do produto','err'); return; }
+  var codigos=Object.keys(CAT_SEL_NOVA);
+  if(!codigos.length){ toast('Vincule ao menos um código de SKU','err'); return; }
+  var conflito=codigos.find(function(c){return VINCULADOS_SET[c];});
+  if(conflito){ toast('O código '+conflito+' já pertence a outra ficha técnica','err'); return; }
+
+  var skusVinculados={};
+  codigos.forEach(function(c){skusVinculados[c]=true;});
+
+  ld(true,'Criando ficha...');
+  var novaRef=DB.ref('fichas_tecnicas').push();
+  var dados={
+    nome:nome,
+    linhaPadrao:G('nf-linha').value||'',
+    skusVinculados:skusVinculados
+  };
+  novaRef.update(dados).then(function(){
+    var vRef=novaRef.child('versoes').push();
+    var secoesVazias={};
+    SECOES_META.forEach(function(s){secoesVazias[s.key]=[];});
+    return vRef.set({
+      numero:1, criadoEm:agora(), criadoPor:SES.nome||SES.login,
+      observacoes:'', secoes:secoesVazias
+    }).then(function(){
+      return novaRef.update({versaoAtualKey:vRef.key});
+    }).then(function(){ return {id:novaRef.key, dados:dados, versaoKey:vRef.key, secoesVazias:secoesVazias}; });
+  }).then(function(r){
+    FICHAS[r.id]=Object.assign({}, r.dados, {versaoAtualKey:r.versaoKey, versoes:{}});
+    FICHAS[r.id].versoes[r.versaoKey]={numero:1,criadoEm:agora(),criadoPor:SES.nome||SES.login,observacoes:'',secoes:r.secoesVazias};
+    reconstruirIndiceVinculos();
+    ld(false);
+    fM('ov-nova-ficha');
+    toast('Ficha criada! Agora cadastre os parâmetros de máquina.','ok');
+    abrirFicha(r.id);
+    setTimeout(function(){abrirEdicaoModal();},300);
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
+// ============================================================
+// EDITAR VÍNCULOS (produto existente)
+// ============================================================
+function abrirVinculosModal(){
+  if(!FICHA_ATUAL) return;
+  var f=FICHAS[FICHA_ATUAL];
+  CAT_SEL_VINC={};
+  Object.keys(f.skusVinculados||{}).forEach(function(c){CAT_SEL_VINC[c]=true;});
+  G('vinc-nome-tit').textContent=f.nome;
+  G('vinc-nome').value=f.nome;
+  G('vinc-linha').value=f.linhaPadrao||'';
+  G('vc-cat-busca').value='';
+  G('vc-cat-res').innerHTML='';
+  renderSelecionados('vc');
+  aM('ov-vinculos');
+}
+function salvarVinculos(){
+  var nome=G('vinc-nome').value.trim();
+  if(!nome){ toast('Informe o nome do produto','err'); return; }
+  var codigos=Object.keys(CAT_SEL_VINC);
+  if(!codigos.length){ toast('Mantenha ao menos um código vinculado','err'); return; }
+  var conflito=codigos.find(function(c){return VINCULADOS_SET[c] && VINCULADOS_SET[c]!==FICHA_ATUAL;});
+  if(conflito){ toast('O código '+conflito+' já pertence a outra ficha técnica','err'); return; }
+
+  var skusVinculados={};
+  codigos.forEach(function(c){skusVinculados[c]=true;});
+
+  ld(true,'Salvando vínculos...');
+  DB.ref('fichas_tecnicas/'+FICHA_ATUAL).update({
+    nome:nome, linhaPadrao:G('vinc-linha').value||'', skusVinculados:skusVinculados
+  }).then(function(){
+    FICHAS[FICHA_ATUAL].nome=nome;
+    FICHAS[FICHA_ATUAL].linhaPadrao=G('vinc-linha').value||'';
+    FICHAS[FICHA_ATUAL].skusVinculados=skusVinculados;
+    reconstruirIndiceVinculos();
+    ld(false);
+    fM('ov-vinculos');
+    toast('Vínculos atualizados!','ok');
+    renderFichaHeader();
+    renderQualidade();
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
+// ============================================================
+// ABRIR / FECHAR FICHA
+// ============================================================
+function abrirFicha(id){
+  FICHA_ATUAL=id;
+  var f=FICHAS[id];
+  VERSAO_VISTA = f.versaoAtualKey;
+  G('busca-produto').value='';
+  G('busca-res').innerHTML='';
+  G('ficha-wrap').style.display='block';
+  renderFichaHeader();
+  trocarTab('params');
+  renderParams();
+  renderQualidade();
+  renderHistorico();
+  G('ficha-wrap').scrollIntoView({behavior:'smooth'});
+}
+function fecharFicha(){
+  FICHA_ATUAL=null;
+  VERSAO_VISTA=null;
+  G('ficha-wrap').style.display='none';
+}
+function renderFichaHeader(){
+  var f=FICHAS[FICHA_ATUAL];
+  G('ficha-nome-tit').textContent=f.nome + (f.linhaPadrao?' — '+f.linhaPadrao:'');
+  var codigos=Object.keys(f.skusVinculados||{});
+  G('ficha-skus').innerHTML = codigos.length
+    ? codigos.map(function(c){return '<span class="chip">'+esc(c)+'</span>';}).join('')
+    : '<span class="hint">Nenhum código vinculado — use "Vínculos de SKU".</span>';
+}
+function versaoSendoVista(){
+  var f=FICHAS[FICHA_ATUAL];
+  return (f.versoes||{})[VERSAO_VISTA] || null;
+}
+function trocarTab(tab){
+  document.querySelectorAll('.tab').forEach(function(el){el.classList.toggle('on',el.dataset.tab===tab);});
+  document.querySelectorAll('.tabpane').forEach(function(el){el.classList.remove('on');});
+  G('pane-'+tab).classList.add('on');
+}
+
+// ============================================================
+// PAINEL DE PARÂMETROS (somente leitura da versão vista)
+// ============================================================
+function renderParams(){
+  var v=versaoSendoVista();
+  var box=G('pane-params');
+  if(!v){ box.innerHTML='<div class="vazio">Nenhuma versão cadastrada ainda. Clique em "Nova revisão".</div>'; return; }
+  var h='';
+  SECOES_META.forEach(function(sm){
+    var linhas=(v.secoes&&v.secoes[sm.key])||[];
+    h+='<div style="margin-bottom:18px"><div style="font-weight:700;color:#024f2b;font-size:12px;margin-bottom:6px">'+sm.label+'</div>';
+    if(!linhas.length){
+      h+='<div class="hint">Sem parâmetros cadastrados nesta seção.</div>';
+    } else {
+      h+='<table class="pt"><thead><tr><th>Parâmetro</th><th>Valor</th><th>Unidade</th><th>Tolerância</th></tr></thead><tbody>';
+      linhas.forEach(function(row){
+        h+='<tr><td>'+esc(row.label)+'</td><td><b>'+esc(row.valor)+'</b></td><td>'+esc(row.unidade)+'</td><td>'+esc(row.tolerancia)+'</td></tr>';
+      });
+      h+='</tbody></table>';
+    }
+    h+='</div>';
+  });
+  if(v.observacoes) h+='<div class="hint" style="font-size:12px;margin-top:6px"><b>Observações:</b> '+esc(v.observacoes)+'</div>';
+  box.innerHTML=h;
+}
+
+// ============================================================
+// PAINEL DE QUALIDADE — somente leitura, direto de qualidade_params/{cod}
+// qualidade_params é dono exclusivo desses dados (decisão B) — aqui NUNCA gravamos.
+// ============================================================
+function renderQualidade(){
+  var box=G('pane-qual');
+  var f=FICHAS[FICHA_ATUAL];
+  var codigos=Object.keys(f.skusVinculados||{});
+  if(!codigos.length){ box.innerHTML='<div class="vazio">Vincule ao menos um código de SKU para consultar a qualidade.</div>'; return; }
+
+  box.innerHTML='<div class="vazio">Carregando parâmetros de qualidade...</div>';
+  var pend=codigos.map(function(c){
+    if(QUAL_CACHE.hasOwnProperty(c)) return Promise.resolve();
+    return DB.ref('qualidade_params/'+c).once('value').then(function(s){ QUAL_CACHE[c]=s.exists()?s.val():null; });
+  });
+  Promise.all(pend).then(function(){
+    montarPainelQualidade(codigos);
+  }).catch(function(e){ box.innerHTML='<div class="vazio">Erro ao carregar qualidade: '+esc(e.message)+'</div>'; });
+}
+function montarPainelQualidade(codigos){
+  var box=G('pane-qual');
+  // Detecta divergência: campo numérico com mais de um valor distinto entre os códigos vinculados
+  var divergentes={};
+  QUAL_CAMPOS.forEach(function(qc){
+    var vals={};
+    codigos.forEach(function(c){
+      var p=QUAL_CACHE[c];
+      if(p && p[qc.k]!=null) vals[p[qc.k]]=true;
+    });
+    if(Object.keys(vals).length>1) divergentes[qc.k]=true;
+  });
+  var nDiverg=Object.keys(divergentes).length;
+  var semCadastro=codigos.filter(function(c){return !QUAL_CACHE[c];});
+
+  var h='';
+  if(nDiverg>0){
+    h+='<div class="alerta">⚠ '+nDiverg+' parâmetro(s) de qualidade divergem entre os SKUs vinculados a este produto — verifique se é intencional ou erro de cadastro na Qualidade.</div>';
+  }
+  if(semCadastro.length){
+    h+='<div class="alerta">⚠ Sem parâmetros de qualidade cadastrados para: '+semCadastro.map(esc).join(', ')+'</div>';
+  }
+  if(nDiverg===0 && !semCadastro.length){
+    h+='<div class="alerta alerta-ok">✓ Parâmetros de qualidade consistentes entre todos os SKUs vinculados.</div>';
+  }
+
+  codigos.forEach(function(c){
+    var p=QUAL_CACHE[c];
+    h+='<div class="qcard"><div class="qcard-h"><span class="qcard-cod">'+esc(c)+'</span>'+
+       (p&&p.unidade?'<span class="chip">'+esc(p.unidade)+'</span>':'')+'</div>';
+    if(!p){
+      h+='<div class="hint">Nenhum parâmetro cadastrado na Qualidade para este código.</div>';
+    } else {
+      h+='<div class="qgrid">';
+      QUAL_CAMPOS.forEach(function(qc){
+        var val=p[qc.k];
+        if(val==null) return;
+        h+='<div class="qitem'+(divergentes[qc.k]?' div':'')+'"><div class="qitem-l">'+qc.l+'</div><div class="qitem-v">'+esc(val)+'</div></div>';
+      });
+      h+='</div>';
+    }
+    h+='</div>';
+  });
+  box.innerHTML=h;
+}
+
+// ============================================================
+// HISTÓRICO DE REVISÕES
+// ============================================================
+function renderHistorico(){
+  var box=G('pane-hist');
+  var f=FICHAS[FICHA_ATUAL];
+  var versoes=f.versoes||{};
+  var lista=Object.keys(versoes).map(function(k){return Object.assign({fbKey:k},versoes[k]);});
+  lista.sort(function(a,b){return (b.numero||0)-(a.numero||0);});
+  if(!lista.length){ box.innerHTML='<div class="vazio">Nenhuma revisão cadastrada ainda.</div>'; return; }
+  var h='';
+  lista.forEach(function(v){
+    var atual=v.fbKey===f.versaoAtualKey;
+    var vista=v.fbKey===VERSAO_VISTA;
+    h+='<div class="hist-row'+(vista?' on':'')+'" onclick="verVersao(\''+v.fbKey+'\')">'+
+       '<div class="hist-num">#'+v.numero+'</div>'+
+       '<div class="hist-meta">'+fData(v.criadoEm)+' · por '+esc(v.criadoPor||'—')+(v.observacoes?' · '+esc(v.observacoes):'')+'</div>'+
+       (atual?'<span class="chip">ATUAL</span>':'')+
+       '</div>';
+  });
+  box.innerHTML=h;
+  atualizarBannerVersaoAntiga();
+}
+function verVersao(fbKey){
+  VERSAO_VISTA=fbKey;
+  renderParams();
+  renderHistorico();
+  atualizarBannerVersaoAntiga();
+  trocarTab('params');
+}
+function atualizarBannerVersaoAntiga(){
+  var f=FICHAS[FICHA_ATUAL];
+  var b=G('banner-versao-antiga');
+  if(VERSAO_VISTA && VERSAO_VISTA!==f.versaoAtualKey){
+    var v=f.versoes[VERSAO_VISTA];
+    b.innerHTML='<div class="banner-antiga">📌 Você está vendo a revisão #'+(v?v.numero:'?')+' (não é a versão atual — somente consulta).'+
+      '<button class="btn bsm" onclick="voltarVersaoAtual()">Voltar para versão atual</button></div>';
+  } else {
+    b.innerHTML='';
+  }
+}
+function voltarVersaoAtual(){
+  VERSAO_VISTA=FICHAS[FICHA_ATUAL].versaoAtualKey;
+  renderParams(); renderHistorico(); atualizarBannerVersaoAntiga();
+}
+
+// ============================================================
+// EDITOR — NOVA REVISÃO (clona a versão atual como ponto de partida)
+// ============================================================
+function abrirEdicaoModal(){
+  if(!FICHA_ATUAL) return;
+  var f=FICHAS[FICHA_ATUAL];
+  var atual=f.versaoAtualKey ? f.versoes[f.versaoAtualKey] : null;
+  EDIT_SECOES={};
+  SECOES_META.forEach(function(sm){
+    var base=(atual&&atual.secoes&&atual.secoes[sm.key])||[];
+    EDIT_SECOES[sm.key]=base.map(function(r){return Object.assign({},r);}); // cópia profunda rasa
+  });
+  G('ed-nome-tit').textContent=f.nome;
+  G('ed-obs').value='';
+
+  var tabsH='', panesH='';
+  SECOES_META.forEach(function(sm,i){
+    tabsH+='<div class="tab'+(i===0?' on':'')+'" data-edtab="'+sm.key+'" onclick="trocarEdTab(\''+sm.key+'\')">'+sm.label+'</div>';
+    panesH+='<div class="tabpane'+(i===0?' on':'')+'" id="edpane-'+sm.key+'"></div>';
+  });
+  G('ed-tabs').innerHTML=tabsH;
+  G('ed-panes').innerHTML=panesH;
+  SECOES_META.forEach(function(sm){renderEdSecao(sm.key);});
+  aM('ov-edicao');
+}
+function trocarEdTab(key){
+  document.querySelectorAll('#ed-tabs .tab').forEach(function(el){el.classList.toggle('on',el.dataset.edtab===key);});
+  document.querySelectorAll('#ed-panes .tabpane').forEach(function(el){el.classList.remove('on');});
+  G('edpane-'+key).classList.add('on');
+}
+function renderEdSecao(key){
+  var linhas=EDIT_SECOES[key];
+  var h='<table class="pt"><thead><tr><th style="width:32%">Parâmetro</th><th style="width:22%">Valor</th><th style="width:18%">Unidade</th><th style="width:18%">Tolerância</th><th></th></tr></thead><tbody>';
+  linhas.forEach(function(row,i){
+    h+='<tr>'+
+       '<td><input value="'+esc(row.label)+'" onchange="edUpd(\''+key+'\','+i+',\'label\',this.value)"></td>'+
+       '<td><input value="'+esc(row.valor)+'" onchange="edUpd(\''+key+'\','+i+',\'valor\',this.value)"></td>'+
+       '<td><input value="'+esc(row.unidade)+'" onchange="edUpd(\''+key+'\','+i+',\'unidade\',this.value)"></td>'+
+       '<td><input value="'+esc(row.tolerancia)+'" onchange="edUpd(\''+key+'\','+i+',\'tolerancia\',this.value)"></td>'+
+       '<td><span class="pt-rm" onclick="edRemoveLinha(\''+key+'\','+i+')">×</span></td>'+
+       '</tr>';
+  });
+  h+='</tbody></table>';
+  h+='<button class="btn bsm sec-add" onclick="edAddLinha(\''+key+'\')">+ Adicionar parâmetro</button>';
+  G('edpane-'+key).innerHTML=h;
+}
+function edUpd(key,i,campo,val){ EDIT_SECOES[key][i][campo]=val; }
+function edAddLinha(key){
+  EDIT_SECOES[key].push({label:'',valor:'',unidade:'',tolerancia:''});
+  renderEdSecao(key);
+}
+function edRemoveLinha(key,i){
+  EDIT_SECOES[key].splice(i,1);
+  renderEdSecao(key);
+}
+function salvarNovaRevisao(){
+  var f=FICHAS[FICHA_ATUAL];
+  // Limpa linhas totalmente vazias antes de gravar
+  var secoesLimpas={};
+  SECOES_META.forEach(function(sm){
+    secoesLimpas[sm.key]=EDIT_SECOES[sm.key].filter(function(r){
+      return (r.label&&r.label.trim()) || (r.valor&&String(r.valor).trim());
+    });
+  });
+  var totalLinhas=SECOES_META.reduce(function(s,sm){return s+secoesLimpas[sm.key].length;},0);
+  if(totalLinhas===0){ toast('Cadastre ao menos um parâmetro antes de salvar','err'); return; }
+
+  var proximoNumero=1;
+  if(f.versoes){
+    proximoNumero=1+Object.values(f.versoes).reduce(function(m,v){return Math.max(m,v.numero||0);},0);
+  }
+
+  ld(true,'Salvando revisão...');
+  var vRef=DB.ref('fichas_tecnicas/'+FICHA_ATUAL+'/versoes').push();
+  var novaVersao={
+    numero:proximoNumero, criadoEm:agora(), criadoPor:SES.nome||SES.login,
+    observacoes:G('ed-obs').value.trim(), secoes:secoesLimpas
+  };
+  vRef.set(novaVersao).then(function(){
+    return DB.ref('fichas_tecnicas/'+FICHA_ATUAL).update({versaoAtualKey:vRef.key});
+  }).then(function(){
+    if(!f.versoes) f.versoes={};
+    f.versoes[vRef.key]=novaVersao;
+    f.versaoAtualKey=vRef.key;
+    VERSAO_VISTA=vRef.key;
+    ld(false);
+    fM('ov-edicao');
+    toast('Revisão #'+proximoNumero+' salva!','ok');
+    renderParams(); renderHistorico(); atualizarBannerVersaoAntiga();
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+</script>
+</body>
+</html>
