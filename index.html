@@ -163,6 +163,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div class="nav">
     <button class="nb on" id="nb-dash" onclick="go('dashboard',this)">Dashboard</button>
     <button class="nb" id="nb-ops" onclick="go('ops',this)">Ordens de Producao</button>
+    <button class="nb" id="nb-progr" onclick="go('programacao',this)">Programação</button>
     <button class="nb" id="nb-fila" onclick="go('fila',this)">Fila por Maquina</button>
     <button class="nb" id="nb-fila-op" onclick="go('fila-op',this)">Ver Fila</button>
     <button class="nb" id="nb-op" onclick="go('operador',this)">Apontamento</button>
@@ -236,6 +237,18 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <thead><tr><th>OP</th><th>Codigo</th><th>Produto</th><th>Lote</th><th>Linha</th><th>Tipo</th><th>Prog.</th><th>Real. (bom)</th><th>Perda</th><th>Total Proc.</th><th>%</th><th>Status</th><th>Acoes</th></tr></thead>
     <tbody id="opsbody"></tbody>
   </table></div></div>
+</div>
+
+<!-- PROGRAMACAO — Meta diaria por linha (PCP) -->
+<div class="scr" id="scr-programacao">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Programação <span style="font-size:11px;color:#739630;font-weight:500">meta diária por linha (referência do Dashboard)</span></h2>
+    <input type="date" id="progr-dt" style="width:auto" onchange="renderProgramacao()">
+  </div>
+  <div id="progr-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px"></div>
+  <div style="display:flex;justify-content:flex-end">
+    <button class="btn bp" onclick="salvarProgramacao()">Salvar Metas do Dia</button>
+  </div>
 </div>
 
 <!-- FILA PCP -->
@@ -860,13 +873,6 @@ function dataTurno(turno){
   return hoje();
 }
 
-// Dia operacional para CRIAÇÃO/REPROGRAMAÇÃO de OP — aplica a regra das 21h
-// (a partir das 21h, uma OP nova/reprogramada já pertence ao dia operacional seguinte,
-// igual à Extrusão). Reaproveita dataTurno(1), que já trata o fuso BR (UTC-3) corretamente.
-// Usado SÓ nos pontos de criação/reprogramação de OP — não altera hoje() nem nenhuma
-// outra tela (filtros, dashboard, exportações continuam em data de calendário puro).
-function diaOperacionalOP(){ return dataTurno(1); }
-
 // Retorna label legível da data do turno
 function labelDataTurno(turno){
   var dt=dataTurno(turno);
@@ -921,12 +927,18 @@ function doLogin(){
       else if(l.indexOf('turno3')!==-1) t=3;
     }
     SES.turno=t;
+    // Dia operacional da sessao — calculado UMA UNICA VEZ aqui, no momento do login,
+    // usando o turno do usuario. Fica fixo em SES ate o proximo login (nao muda mais
+    // sozinho as 21h pelo relogio do servidor). Isso permite que um operador do T3
+    // continue apontando apos as 21h ainda no dia/turno anterior, enquanto outro
+    // usuario que loga como T1 ja abre o dia operacional seguinte.
+    SES.dataOperacional=dataTurno(t||1);
     G('lerr').style.display='none';
     G('lp').value='';
     aplicarSessao();
     G('pg-login').style.display='none';
     G('pg-app').style.display='flex';
-    addLog('LOGIN','');
+    addLog('LOGIN','T'+(t||0)+' | dia operacional: '+SES.dataOperacional);
     iniciarApp();
   }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
 }
@@ -949,6 +961,7 @@ function aplicarSessao(){
   G('nb-exp').style.display=isOP?'none':'';
   G('nb-bal').style.display=''; // todos podem ver balanças
   G('nb-envase').style.display=isPCP?'':'none';
+  G('nb-progr').style.display=isPCP?'':'none';
   G('nb-adm').style.display=(p==='admin')?'':'none';
   var pb=G('pcpbar'); if(pb) pb.style.display=isOP?'none':'';
 }
@@ -959,6 +972,7 @@ function doLogout(){
   DB.ref('extrusao_op_concluida').off();
   DB.ref('envase_pet_ops').off();
   SES=null; OPS=[]; EXT_CONCLUIDA={}; ENVASE_OPS=[];
+  AUTO_AVANCO_FEITO=false;
   G('pg-app').style.display='none';
   G('pg-login').style.display='flex';
 }
@@ -980,16 +994,20 @@ function go(s,btn){
     else if(s==='fila'){ renderFila(); }
     else if(s==='fila-op'){ renderFilaOp(); }
     else if(s==='operador'){
-      // Define data do filtro baseada no turno do operador — T1 após 21h vê amanhã
+      // Define data do filtro = dia operacional da SESSAO (fixado no login), nao mais
+      // recalculado pelo relogio a cada vez que a tela e aberta. Evita que o contexto
+      // do apontamento mude sozinho no meio do turno (ex: operador entra e sai da tela
+      // e o filtro pula pro dia seguinte so porque o relogio passou das 21h).
       var opFdtEl=G('op-fdt');
       if(opFdtEl && SES && SES.turno){
-        opFdtEl.value=dataTurno(SES.turno);
+        opFdtEl.value=SES.dataOperacional||dataTurno(SES.turno);
       }
       renderOpCards();
     }
     else if(s==='exportar'){ popOPSel(); var m=hoje().slice(0,7); G('xdi').value=m+'-01'; G('xdf').value=hoje(); }
     else if(s==='admin'){ loadUsers(); loadLog(); loadProds(); loadBalConfig(); }
     else if(s==='envase'){ renderEnvaseFila(); renderEnvaseOPs(); }
+    else if(s==='programacao'){ if(!G('progr-dt').value) G('progr-dt').value=hoje(); renderProgramacao(); }
     else if(s==='balancas'){
       balIniciarListeners();
       var hoje2=hoje(); G('bal-hdi').value=hoje2; G('bal-hdf').value=hoje2;
@@ -997,7 +1015,7 @@ function go(s,btn){
       renderBalHistorico();
     }
   }
-  var needsOPS = (s==='dashboard'||s==='ops'||s==='fila'||s==='fila-op'||s==='operador'||s==='exportar'||s==='envase');
+  var needsOPS = (s==='dashboard'||s==='ops'||s==='fila'||s==='fila-op'||s==='operador'||s==='exportar'||s==='envase'||s==='programacao');
   if(needsOPS && OPS.length===0){
     ld(true,'Carregando...');
     DB.ref('ops').once('value').then(function(snap){
@@ -1013,11 +1031,69 @@ function go(s,btn){
 }
 
 // ============================================================
+// AUTO-AVANCO DE OPs ATRASADAS
+// ============================================================
+// Nao depende de ninguem clicar em nada: toda vez que uma sessao carrega as OPs,
+// checa se existe alguma OP nao concluida (Liberada/Em andamento/Reprogramada)
+// com 'data' anterior ao dia operacional DESSA sessao (SES.dataOperacional) e
+// avanca ela sozinha pro dia de hoje da sessao — mesmo fbKey, sem duplicar,
+// sem confirmacao, sem depender do PCP lembrar de clicar em nada.
+// Compara contra SES.dataOperacional (nao contra hoje() puro) de proposito: uma
+// sessao do T3 que ainda esta com data de "ontem" (login antes da virada) nunca
+// dispara o avanco contra o proprio trabalho dela — so quando uma sessao cujo dia
+// operacional ja avancou (outro turno, outro usuario) carrega o app, o avanco
+// acontece, exatamente como cada setor pode estar em dias diferentes ao mesmo tempo.
+var AUTO_AVANCO_FEITO=false;
+function autoAvancarOPsAtrasadas(){
+  if(AUTO_AVANCO_FEITO||!SES||!SES.dataOperacional) return;
+  AUTO_AVANCO_FEITO=true;
+  var atrasadas=OPS.filter(function(o){
+    return o.status!=='Concluida' && o.data && o.data<SES.dataOperacional;
+  });
+  if(!atrasadas.length) return;
+
+  var promises=[];
+  var porLinha={};
+  atrasadas.forEach(function(o){ (porLinha[o.linha]=porLinha[o.linha]||[]).push(o); });
+
+  Object.keys(porLinha).forEach(function(linha){
+    // As mais antigas primeiro — viram as primeiras da fila do dia (prioridade,
+    // ja que ficaram pendentes ha mais tempo)
+    var lista=porLinha[linha].slice().sort(function(a,b){return (a.data||'')<(b.data||'')?-1:1;});
+    // Empurra quem ja estava no dia de hoje dessa linha pro final, abrindo espaco
+    var jaNoDiaAtual=OPS.filter(function(o){
+      return o.linha===linha && o.data===SES.dataOperacional && o.status!=='Concluida';
+    });
+    jaNoDiaAtual.forEach(function(o){
+      var posAtual=Number(o.filaPosicao)||0;
+      promises.push(DB.ref('ops/'+o.fbKey+'/filaPosicao').set(posAtual+lista.length));
+    });
+    lista.forEach(function(o,idx){
+      promises.push(DB.ref('ops/'+o.fbKey).update({
+        data:SES.dataOperacional,
+        filaPosicao:idx,
+        movidaEm:agora(),
+        movidaPor:'AUTO ('+SES.login+')',
+        diasAnteriores:(o.diasAnteriores||[]).concat([o.data])
+      }));
+    });
+  });
+
+  Promise.all(promises).then(function(){
+    toast(atrasadas.length+' OP(s) que não foram finalizadas foram movidas automaticamente para hoje','inf');
+    addLog('AUTO_AVANCAR_OP', atrasadas.map(function(o){return o.id+' ('+o.data+' → '+SES.dataOperacional+')';}).join(' | '));
+  }).catch(function(e){ console.warn('Erro no auto-avanco de OPs:', e.message); });
+}
+
+// ============================================================
 // INIT — carrega TUDO uma vez e escuta mudancas
 // ============================================================
 function iniciarApp(){
   G('ddt').value=hoje();
-  G('nopdt').value=diaOperacionalOP();
+  // Data padrao da Nova OP = hoje (calendario). Antes usava diaOperacionalOP() (regra
+  // das 21h); agora quem decide o dia da OP e o PCP na aba de Programacao, entao o
+  // padrao so precisa ser um ponto de partida sensato — o campo continua editavel.
+  G('nopdt').value=hoje();
   ld(true,'Carregando dados...');
 
   // Carrega produtos
@@ -1039,6 +1115,7 @@ function iniciarApp(){
     // Ordena por data de criacao
     OPS.sort(function(a,b){return (b.criadoEm||'')>(a.criadoEm||'')?1:-1;});
 
+    autoAvancarOPsAtrasadas();
     ld(false);
 
     // Re-renderiza tela ativa
@@ -1052,6 +1129,7 @@ function iniciarApp(){
       else if(id==='scr-operador') renderOpCards();
       else if(id==='scr-exportar'){ popOPSel(); if(G('exp-dt')&&!G('exp-dt').value) G('exp-dt').value=hoje(); }
       else if(id==='scr-envase'){ renderEnvaseFila(); renderEnvaseOPs(); }
+      else if(id==='scr-programacao'){ renderProgramacao(); }
     }
   }, function(err){
     ld(false);
@@ -1085,7 +1163,7 @@ function iniciarApp(){
 
   // Navega para tela inicial
   // Define data do filtro antes de renderizar cards do operador
-  if(SES.turno && G('op-fdt')) G('op-fdt').value=dataTurno(SES.turno);
+  if(SES.turno && G('op-fdt')) G('op-fdt').value=SES.dataOperacional||dataTurno(SES.turno);
   if(SES.perfil==='operador') go('operador',G('nb-op'));
   else if(SES.perfil==='supervisor') go('dashboard',G('nb-dash'));
   else go('dashboard',G('nb-dash'));
@@ -1130,6 +1208,72 @@ function fillDesc(){
 }
 
 // ============================================================
+// PROGRAMACAO — META DIARIA POR LINHA (PCP)
+// ============================================================
+// Node novo e independente do resto do sistema: metas_diarias/{data}/{linhaId}.
+// Nao mexe em op.prog nem em nenhum outro dado existente — e so uma referencia
+// que o Dashboard usa (com fallback pro calculo antigo quando nao houver meta).
+function renderProgramacao(){
+  var dt=G('progr-dt').value||hoje();
+  DB.ref('metas_diarias/'+dt).once('value').then(function(snap){
+    var metas=snap.val()||{};
+    var h='';
+    LINHAS.forEach(function(l){
+      var nm=l.nome+' ('+l.maq+')';
+      var progOPs=OPS.filter(function(o){return o.linha===nm&&o.data===dt;})
+        .reduce(function(a,o){return a+(Number(o.prog)||0);},0);
+      var realOPs=OPS.filter(function(o){return o.linha===nm&&o.data===dt;})
+        .reduce(function(a,o){var rpd=o.realPorData||{};return a+(Number(rpd[dt])||Number(o.real)||0);},0);
+      var m=metas[l.id]||{};
+      h+='<div class="card" style="padding:14px">';
+      h+='<div style="font-weight:700;font-size:14px;color:#024f2b;margin-bottom:8px">'+l.nome+' ('+l.maq+')</div>';
+      h+='<div class="fg" style="margin-bottom:8px"><label class="fl">Meta do dia (kg)</label><input type="number" min="0" id="progr-'+l.id+'" value="'+(m.metaKG!==undefined?m.metaKG:'')+'" placeholder="ex: 50000"></div>';
+      h+='<div style="font-size:11px;color:#4a664a;display:flex;justify-content:space-between">'+
+           '<span>Soma das OPs do dia: <strong>'+fN(progOPs)+' kg</strong></span>'+
+           '<span>Real até agora: <strong>'+fN(realOPs)+' kg</strong></span>'+
+         '</div>';
+      if(m.atualizadoPor) h+='<div style="font-size:10px;color:#888780;margin-top:6px">Ultima edicao: '+m.atualizadoPor+' em '+(m.atualizadoEm?m.atualizadoEm.slice(0,16).replace('T',' '):'')+'</div>';
+      h+='</div>';
+    });
+    G('progr-grid').innerHTML=h;
+  }).catch(function(e){ toast('Erro ao carregar programacao: '+e.message,'err'); });
+}
+
+function salvarProgramacao(){
+  var dt=G('progr-dt').value||hoje();
+  var updates={};
+  var log=[];
+  LINHAS.forEach(function(l){
+    var el=G('progr-'+l.id);
+    if(!el) return;
+    var v=el.value===''?null:(parseInt(el.value)||0);
+    if(v===null) return; // campo vazio: nao mexe (nao apaga meta ja existente sem querer)
+    updates[l.id]={metaKG:v, atualizadoPor:SES.login, atualizadoEm:agora()};
+    log.push(l.nome+':'+v);
+  });
+  if(!Object.keys(updates).length){ toast('Nenhuma meta preenchida','err'); return; }
+  ld(true,'Salvando programação...');
+  DB.ref('metas_diarias/'+dt).update(updates).then(function(){
+    ld(false); toast('Metas salvas!','ok');
+    addLog('META_DEFINIDA', dt+' | '+log.join(' | '));
+    renderProgramacao();
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
+// PROGRAMADO por linha/dia: vem EXCLUSIVAMENTE da META que o PCP cadastra na aba
+// Programacao (metas_diarias/{dt}/{linhaId}). Sem meta cadastrada para aquela
+// linha/dia = Programado 0 — NAO cai mais na soma de o.prog das OPs (decisao
+// explicita: o PCP e a unica fonte do Programado a partir de agora).
+// IMPORTANTE: isso NAO altera o.prog nem nenhuma outra tela — Lista de OPs, PDFs,
+// Aderencia por SKU e relatorios continuam usando o.prog de cada OP normalmente.
+// O REALIZADO continua vindo das OPs (apontamento do dia), sem nenhuma mudanca.
+function progPorLinha(nomeLinha, metas){
+  var lObj=LINHAS.filter(function(l){return (l.nome+' ('+l.maq+')')===nomeLinha;})[0];
+  var meta=lObj&&metas[lObj.id]&&metas[lObj.id].metaKG!==undefined?Number(metas[lObj.id].metaKG):0;
+  return meta;
+}
+
+// ============================================================
 // DASHBOARD
 // ============================================================
 function renderDash(){
@@ -1137,24 +1281,19 @@ function renderDash(){
   var ln=G('dash-fln')?G('dash-fln').value:'';
   var turnoFiltro=G('dash-turno')?parseInt(G('dash-turno').value)||0:0;
 
-  // OPs do dia — REGRA UNICA, igual a lista de Ordens de Producao (renderOPs):
-  // mostra apenas OPs cujo campo 'data' e igual ao dia filtrado (registro fisico).
-  // Nao reconstitui historico de OPs reprogramadas a partir deste dia (reprogramadaDe)
-  // para que Dashboard e Lista sempre exibam o mesmo conjunto de OPs e os mesmos totais.
+  // OPs do dia — mostra OPs cujo campo 'data' e igual ao dia filtrado (dia atual dela),
+  // OU que tenham producao registrada nesse dia em realPorData (dia por onde ela ja
+  // passou antes de avancar — a OP e continua, o mesmo registro segue de dia em dia,
+  // entao um dia antigo so continua aparecendo no historico via realPorData).
   var vistosFbKey={};
   var ops=[];
   OPS.forEach(function(o){
     if(ln && o.linha!==ln) return;
     if(vistosFbKey[o.fbKey]) return;
-    if(o.data!==dt) return;
+    var teveNesseDia=(o.data===dt)||(o.realPorData&&o.realPorData[dt]);
+    if(!teveNesseDia) return;
     vistosFbKey[o.fbKey]=true;
     ops.push(o);
-  });
-
-  // PROGRAMADO: soma o.prog de cada OP do dia (mesmo valor exibido na lista)
-  var tp=0;
-  ops.forEach(function(o){
-    tp+=Number(o.prog)||0;
   });
 
   // REALIZADO: usa realPorData[dt] se existir (apontamento granular), senao o.real
@@ -1191,8 +1330,17 @@ function renderDash(){
   var tr=Object.keys(aptsPorOp).reduce(function(a,k){return a+(aptsPorOp[k]||0);},0);
   if(turnoFiltro>0) tr=dadosPorTurno[turnoFiltro].real;
 
-  // PERDA — busca perdas_diarias do dia
-  DB.ref('perdas_diarias').orderByChild('data').equalTo(dt).once('value').then(function(snapPerda){
+  // PERDA — busca perdas_diarias do dia + META do dia (metas_diarias), em paralelo
+  Promise.all([
+    DB.ref('perdas_diarias').orderByChild('data').equalTo(dt).once('value'),
+    DB.ref('metas_diarias/'+dt).once('value')
+  ]).then(function(results){
+    var snapPerda=results[0];
+    var metas=results[1].val()||{};
+    var linhasParaSomar=ln?[ln]:LINHAS.map(function(l){return l.nome+' ('+l.maq+')';});
+    var tp=0;
+    linhasParaSomar.forEach(function(nomeLinha){ tp+=progPorLinha(nomeLinha,metas); });
+
     var tperda=0;
     var opIdsComPerda={};
     if(snapPerda.exists()){
@@ -1220,7 +1368,7 @@ function renderDash(){
     var ttotal=tr+tperda;
 
     G('dmetrics').innerHTML=
-      '<div class="mc"><div class="ml">Programado</div><div class="mv cb">'+fN(tp)+'</div><div class="ms">OPs do dia</div></div>'+
+      '<div class="mc"><div class="ml">Programado</div><div class="mv cb">'+fN(tp)+'</div><div class="ms">'+(tp?('meta PCP'+(ln?'':' — todas linhas')):'sem meta cadastrada')+'</div></div>'+
       '<div class="mc"><div class="ml">Prod. Bom</div><div class="mv '+(adh>=90?'cg':adh>=60?'co':'cr')+'">'+fN(tr)+'</div><div class="ms">'+adh+'% do prog.</div></div>'+
       '<div class="mc"><div class="ml">Perda no dia</div><div class="mv cr">'+fN(tperda)+'</div><div class="ms">kg perdidos</div></div>'+
       '<div class="mc"><div class="ml">Total Processado</div><div class="mv cg">'+fN(ttotal)+'</div><div class="ms">bom + perda</div></div>'+
@@ -1266,16 +1414,17 @@ function renderDash(){
         '</tr>';
     }
     G('dops').innerHTML=h2||'<tr><td colspan="8" style="text-align:center;color:#4a664a;padding:20px">Nenhuma OP para esta data.</td></tr>';
-    renderCharts(ops, aptsPorOp);
+    renderCharts(ops, aptsPorOp, metas);
     renderAderenciaSKU(ops, aptsPorOp, dt);
   }).catch(function(e){ console.error('Erro dashboard:',e); });
 }
-function renderCharts(ops, aptsPorOp){
+function renderCharts(ops, aptsPorOp, metas){
   aptsPorOp=aptsPorOp||{};
+  metas=metas||{};
   var lbl=LINHAS.map(function(l){return l.nome;});
   var lp=LINHAS.map(function(l){
     var nm=l.nome+' ('+l.maq+')';
-    return ops.filter(function(o){return o.linha===nm;}).reduce(function(a,o){return a+(Number(o.prog)||0);},0);
+    return progPorLinha(nm, metas);
   });
   // Realizado por linha: soma dos apontamentos do dia por linha
   var lr=LINHAS.map(function(l){
@@ -1400,11 +1549,11 @@ function renderOPs(){
   if(ln) ops=ops.filter(function(o){return o.linha===ln;});
   if(tp) ops=ops.filter(function(o){return o.tipo===tp;});
   if(dt) ops=ops.filter(function(o){
-    // Mostra apenas a OP no seu dia atual (o.data).
-    // A OP reprogramada (status 'Reprogramada') so deve aparecer no dia novo (dtNova),
-    // nunca no dia de origem (reprogramadaDe) — esse contexto e exclusivo do Dashboard,
-    // que recalcula prog/real por dia. Aqui na lista, a OP existe uma vez so, no seu dia.
-    return o.data===dt;
+    // Mostra a OP no dia filtrado se for o dia atual dela (o.data) OU se ela teve
+    // producao registrada nesse dia (realPorData) — a OP e continua (mesmo registro
+    // segue avancando de dia em dia), entao um dia que ja passou so continua visivel
+    // no historico atraves do realPorData daquele dia.
+    return o.data===dt||(o.realPorData&&o.realPorData[dt]);
   });
   if(lote) ops=ops.filter(function(o){return (o.lote||'').toLowerCase().indexOf(lote)!==-1;});
 
@@ -1591,7 +1740,7 @@ function preencherCamposPDF(texto, status){
 
 function abrirNovaOP(){
   if(SES&&(SES.perfil==='operador'||SES.perfil==='supervisor')) return;
-  G('nopc').value='';G('nopd').value='';G('nopl').value='';G('nopq').value='';G('nopo').value='';G('nopdt').value=diaOperacionalOP();
+  G('nopc').value='';G('nopd').value='';G('nopl').value='';G('nopq').value='';G('nopo').value='';G('nopdt').value=hoje();
   if(G('nopid')) G('nopid').value='';
   if(G('pdf-status')){G('pdf-status').style.display='none';G('pdf-status').textContent='';}
   atualizarHintQtdProg();
@@ -1833,7 +1982,7 @@ function abrirApt(fbKey){
   // Se o operador esta vendo a planilha do dia 22 e aponta, o apontamento vale pro dia 22,
   // mesmo que o relogio do servidor ja tenha virado pro dia 23 (lancamento atrasado).
   // Fallback para hoje() apenas se nao houver filtro de data selecionado (campo vazio).
-  var dtCtx=G('op-fdt')&&G('op-fdt').value?G('op-fdt').value:hoje();
+  var dtCtx=G('op-fdt')&&G('op-fdt').value?G('op-fdt').value:(SES.dataOperacional||hoje());
   G('adtctx').value=dtCtx;
 
   // Hint
@@ -1942,7 +2091,7 @@ function salvarApt(){
   // Isso evita que lancamentos atrasados (ex: T3 do dia 22 digitado ja na madrugada
   // do dia 23) gravem na data errada — vale a planilha que o operador esta vendo,
   // nao o relogio do servidor no momento do clique em "Salvar".
-  var dtCtx=G('adtctx')&&G('adtctx').value?G('adtctx').value:hoje();
+  var dtCtx=G('adtctx')&&G('adtctx').value?G('adtctx').value:(SES.dataOperacional||hoje());
   var dtT1=dtCtx, dtT2=dtCtx, dtT3=dtCtx;
   var dtApt=dtCtx;
 
@@ -2064,7 +2213,7 @@ function salvarSilos(){
   // Registro historico (nunca sobrescreve) - permite multiplos silos por OP ao longo dos turnos
   DB.ref('silos_registros').push({
     opId:SILO_OPID, silos:str, hora:hor, turno:(SES.turno||0),
-    data:dataTurno(SES.turno||0), operador:SES.login, ts:agora()
+    data:SES.dataOperacional||dataTurno(SES.turno||0), operador:SES.login, ts:agora()
   }).then(function(){
     // Atualiza tambem campo resumo da OP (acumulando, sem sobrescrever registros anteriores)
     var op=OPS.find(function(o){return o.fbKey===SILO_OPID;});
@@ -2095,7 +2244,7 @@ function abrirEditarApt(fbKey){
   G('eatipo').value=tipo;
   // Data de contexto = filtro de data selecionado na tela de Cards do Operador.
   // Usada para saber em qual data do realPorData aplicar o delta de correcao.
-  G('eadtctx').value=G('op-fdt')&&G('op-fdt').value?G('op-fdt').value:hoje();
+  G('eadtctx').value=G('op-fdt')&&G('op-fdt').value?G('op-fdt').value:(SES.dataOperacional||hoje());
 
   // Labels com unidade
   G('editapt-lbl1').textContent='Turno 1 ('+unid+')';
@@ -2341,84 +2490,40 @@ function salvarParada(){
 // ============================================================
 // FINALIZAR
 // ============================================================
+// OP CONTINUA: uma ordem que nao termina no dia nao vira outro registro — ela
+// simplesmente AVANCA pro dia seguinte (mesmo fbKey, mesmo numero, mesmo status).
+// Isso resolve na raiz a confusao que a Extrusao tinha: ela ja sabe herdar
+// automaticamente a OP ativa de um turno pro outro enquanto o status nao for
+// 'Concluida' (extrusao.html: verificarHerancaOp) — como a gente nunca mais conclui
+// a OP so pra reprogramar, essa heranca passa a funcionar sozinha, sem precisar
+// mexer no arquivo da Extrusao.
+// O historico por dia (quem apontou, turno, quanto) continua 100% preservado —
+// isso mora no no 'apontamentos' e em op.realPorData, indexados por data, e nunca
+// dependeu de criar um registro de OP novo. O PDF da OP (dlOP/_gerarPDFOP) busca
+// TODOS os apontamentos pelo mesmo opId=fbKey, entao passa a trazer o historico
+// completo da ordem — antes, reprogramar cortava esse historico na rodada atual.
 function reprogramarOP(fbKey){
   var op=OPS.filter(function(o){return o.fbKey===fbKey;})[0];
   if(!op) return;
   if(op.status==='Concluida'){toast('OP ja concluida','err');return;}
 
-  var dtAtual=op.data||diaOperacionalOP();
+  var dtAtual=op.data||hoje();
   var dtProx=new Date(dtAtual+'T12:00:00');
   dtProx.setDate(dtProx.getDate()+1);
   var dtNova=dtProx.toISOString().slice(0,10);
-  var fator=op.tipo==='SC'?25:op.tipo==='BG'?750:1;
 
-  // Real produzido POR ESTE ELO — usa op.real (total acumulado desde a criação deste
-  // registro, somando todos os turnos/dias em que produziu), NUNCA realPorData[dtAtual].
-  // Bug anterior: realPorData[dtAtual] só pegava a fatia gravada na data de NASCIMENTO
-  // do elo — se o elo ficou ativo produzindo por mais de um dia antes de ser reprogramado
-  // de novo, a produção dos dias seguintes (gravada sob outras chaves de data dentro do
-  // mesmo realPorData) era descartada da conta, inflando o saldo reprogramado.
-  // op.real já é seguro pra isso: cada elo novo sempre nasce com real:0, então nunca
-  // soma produção de elos anteriores — é só o total genuíno deste elo específico.
-  var realDoDia=Number(op.real)||0;
-
-  // IMPORTANTE: op.prog / op.progOriginal sao SEMPRE guardados em KG puro,
-  // igual a qualquer outra OP do sistema (ver salvarOP, linha ~934, ~1034 etc,
-  // que sempre dividem por fator so na hora de EXIBIR, nunca no dado bruto).
-  // realPorData e realAcumulado tambem sao sempre em KG.
-  // Bug anterior: este trecho multiplicava progOriginal/prog por fator de novo,
-  // como se ja nao estivessem em KG, inflando o valor e gerando saldo errado
-  // (ex: 75.000 kg vira 1.875.000 "kg", saldo sai bem menor que o correto).
-  var progOrigKG=Number(op.progOriginal)||Number(op.prog)||0; // ja em KG, sem conversao
-
-  var realAcumAnterior=Number(op.realAcumulado)||0; // ja em KG
-  var novoRealAcum=realAcumAnterior+realDoDia; // KG
-
-  // Perda tambem precisa ser descontada do saldo — perda ja virou refugo, nao
-  // deve voltar pra fila como se ainda pudesse ser produzida. Segue o mesmo padrao
-  // de acumulo em cadeia que realAcumulado ja usa (perdaAcumulado e novo campo).
-  var perdaAcumAnterior=Number(op.perdaAcumulado)||0; // ja em KG
-  var perdaDoElo=Number(op.perda)||0; // perda registrada so neste elo, ja em KG
-  var novoPerdaAcum=perdaAcumAnterior+perdaDoElo;
-
-  var saldoKG=Math.max(progOrigKG-novoRealAcum-novoPerdaAcum,0); // saldo sempre em KG, ja descontando perda
-  var saldoStr=op.tipo!=='KG'?fN(Math.round(saldoKG/fator))+' '+(op.tipo==='SC'?'sc':'bg')+' ('+fN(saldoKG)+' kg)':fN(saldoKG)+' kg';
+  var progStr=op.tipo!=='KG'?fN(Math.round((Number(op.prog)||0)/(op.tipo==='SC'?25:750)))+' '+(op.tipo==='SC'?'sc':'bg'):fN(op.prog)+' kg';
+  var realStr=fN(op.real)+' kg';
 
   if(!confirm(
-    'Reprogramar OP '+op.id+' para '+dtNova+'?\n\n'+
-    'Prog. original:     '+fN(progOrigKG)+' kg\n'+
-    'Produzido nesta OP (todos os dias): '+fN(realDoDia)+' kg\n'+
-    'Acumulado anterior: '+fN(realAcumAnterior)+' kg\n'+
-    'Perda (esta OP): '+fN(perdaDoElo)+' kg\n'+
-    'Perda acumulada: '+fN(perdaAcumAnterior)+' kg\n'+
-    'Saldo (novo prog):  '+saldoStr+'\n\n'+
-    'A OP atual sera CONCLUIDA no dia '+dtAtual.split('-').reverse().join('/')+'.\n'+
-    'Uma nova OP sera criada para '+dtNova+' como 1a da fila.'
+    'Mover OP '+op.id+' para '+dtNova+'?\n\n'+
+    'Programado (total da ordem): '+progStr+'\n'+
+    'Ja produzido ate agora: '+realStr+' (fica preservado)\n\n'+
+    'A OP continua sendo a MESMA — mesmo numero, mesmo historico de apontamentos.\n'+
+    'Ela so passa a valer para o dia '+dtNova.split('-').reverse().join('/')+', como 1a da fila.'
   )) return;
 
-  ld(true,'Reprogramando...');
-
-  // PASSO 1: Conclui a OP atual no dia que estava programada
-  var updConcluir={
-    status:'Concluida',
-    concluidoEm:agora(),
-    concluidoPor:SES.login
-  };
-
-  // PASSO 2: Prepara a nova OP para o dia seguinte
-  // Determina o sufixo sequencial (#2, #3...)
-  var baseId=op.id.replace(/ #\d+$/,'');
-  var seq=1;
-  OPS.forEach(function(o){
-    if(!o.id) return;
-    // Conta quantas reprogramacoes dessa OP base ja existem
-    if(o.id.indexOf(baseId)===0 && o.id.length>baseId.length){
-      var sufixo=o.id.slice(baseId.length).trim();
-      var numMatch=sufixo.match(/^#(\d+)$/);
-      if(numMatch) seq=Math.max(seq,parseInt(numMatch[1]));
-    }
-  });
-  var novoId=baseId+' #'+(seq+1);
+  ld(true,'Movendo OP...');
 
   // Reordena OPs existentes da mesma linha no dtNova — empurra todas +1
   var opsNovoDia=OPS.filter(function(o){
@@ -2430,39 +2535,18 @@ function reprogramarOP(fbKey){
     reordPromises.push(DB.ref('ops/'+o.fbKey+'/filaPosicao').set(posAtual+1));
   });
 
-  // prog e progOriginal da nova OP ficam em KG puro, igual a qualquer outra OP
-  // do sistema (a divisao por fator acontece so na hora de EXIBIR, nunca aqui).
-  var novaOp={
-    id:novoId,
-    cod:op.cod, desc:op.desc||op.cod,
-    linha:op.linha, tipo:op.tipo,
-    lote:op.lote||'', obs:op.obs||'',
-    data:dtNova,
-    prog:saldoKG,
-    real:0, t1:0, t2:0, t3:0, t1sc:0, t2sc:0, t3sc:0,
-    perda:0, perdaSC:0,
-    status:'Reprogramada',
-    reprogramadaDe:dtAtual,
-    reprogramadaEm:agora(),
-    reprogramadaDeId:op.id,
-    reprogramadaDeFbKey:fbKey,
-    progOriginal:progOrigKG,
-    realAcumulado:novoRealAcum,
-    perdaAcumulado:novoPerdaAcum,
-    filaPosicao:0,
-    criadoPor:SES.login,
-    criadoEm:agora()
-  };
-
-  // Executa: conclui OP atual + reordena + cria nova OP
   Promise.all(reordPromises).then(function(){
-    return DB.ref('ops/'+fbKey).update(updConcluir);
+    return DB.ref('ops/'+fbKey).update({
+      data:dtNova,
+      filaPosicao:0,
+      movidaEm:agora(),
+      movidaPor:SES.login,
+      diasAnteriores:(op.diasAnteriores||[]).concat([dtAtual])
+    });
   }).then(function(){
-    return DB.ref('ops').push(novaOp);
-  }).then(function(ref){
     ld(false);
-    toast('OP '+op.id+' concluida — nova OP '+novoId+' criada para '+dtNova,'ok');
-    addLog('REPROGRAMAR',op.id+' → '+novoId+' | '+dtAtual+' → '+dtNova+' | saldo: '+fN(saldoKG)+' kg | perda acum: '+fN(novoPerdaAcum)+' kg');
+    toast('OP '+op.id+' movida para '+dtNova,'ok');
+    addLog('MOVER_OP_DIA',op.id+' | '+dtAtual+' → '+dtNova);
   }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
 }
 
