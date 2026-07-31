@@ -96,7 +96,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;height:1
 <div class="content">
   <!-- Cards resumo -->
   <div class="cards-row" id="cards-row">
-    <div class="card"><div class="card-lbl">Programado</div><div class="card-val val-or" id="c-prog">0</div><div class="card-sub">OPs do dia</div></div>
+    <div class="card"><div class="card-lbl">Programado</div><div class="card-val val-or" id="c-prog">0</div><div class="card-sub">meta PCP</div></div>
     <div class="card"><div class="card-lbl">Prod. BOM</div><div class="card-val val-rd" id="c-bom">0</div><div class="card-sub" id="c-bom-pct">% do prog.</div></div>
     <div class="card"><div class="card-lbl">Perda no Dia</div><div class="card-val val-rd" id="c-perda">0</div><div class="card-sub">kg perdidos</div></div>
     <div class="card"><div class="card-lbl">Total Processado</div><div class="card-val val-gr" id="c-total">0</div><div class="card-sub">bom + perda</div></div>
@@ -137,10 +137,10 @@ var firebaseConfig={apiKey:"AIzaSyB52cXfvtmY2xXu9vMkMPhCWU-rp6NXhxc",authDomain:
 var DB=null;
 try{firebase.initializeApp(firebaseConfig);DB=firebase.database();}catch(e){console.warn(e);}
 
-var OPS=[], PERDAS=[];
+var OPS=[], PERDAS=[], METAS={};
 var CHARTS={};
 var DT_ATUAL=null; // data operacional carregada agora — usada para detectar virada de dia
-var REF_OPS=null, REF_PERDAS=null; // referências dos listeners ativos, para poder desligar na virada
+var REF_OPS=null, REF_PERDAS=null, REF_METAS=null; // referências dos listeners ativos, para poder desligar na virada
 
 function G(id){return document.getElementById(id);}
 function hoje(){return new Date().toISOString().slice(0,10);}
@@ -155,32 +155,36 @@ function horaLocalBR(){
 }
 function turnoAtual(){var h=horaLocalBR();return h>=21||h<5?1:h<13?2:3;}
 
-// Data operacional do dia — mesma regra do dashboard (dataTurno):
-// Turno 1 (21h→05h): depois das 21h já é a data de amanhã (turno em curso termina amanhã)
-// Turno 2 e 3: sempre hoje
-// Isso faz a TV virar de dia no horário certo, sem cortar o T1 na metade.
-function dataOperacionalAtual(){
-  var h=horaLocalBR();
-  if(h>=21){
-    var d=new Date();
-    d.setUTCDate(d.getUTCDate()+1);
-    return d.toISOString().slice(0,10);
-  }
-  return hoje();
-}
+// A TV agora so acompanha a data de calendario (hoje()) — nao tem mais virada
+// automatica as 21h. Quem decide se uma OP pertence a hoje ou a outro dia e o
+// proprio campo op.data (atualizado pelo index.html: manualmente pelo PCP no botao
+// "Amanha", ou automaticamente no login de qualquer usuario via autoAvancarOPsAtrasadas
+// pra OPs que ficaram presas em dias anteriores). A TV so precisa refletir isso, sem
+// tentar calcular sozinha quando o dia operacional vira.
 
 function realDia(op,dt){
-  if(op.realPorData&&op.realPorData[dt]) return Number(op.realPorData[dt]);
-  return Number(op.real)||0;
+  return Number((op.realPorData||{})[dt])||0;
+}
+
+// Quanto um turno especifico produziu NUM DIA especifico desta OP.
+// Usa realPorDataTurno (por dia, por turno) — nao o.t1/o.t2/o.t3, que agora e
+// acumulado da vida inteira da OP (ela pode rodar varios dias sem finalizar).
+// Sem esse cuidado, um turno que nao trabalhou hoje pode aparecer com producao
+// "fantasma" herdada de um dia anterior em que essa mesma OP ja estava ativa.
+function realTurnoDia(o,dt,turno){
+  var rpdt=o.realPorDataTurno;
+  if(rpdt&&rpdt[dt]&&rpdt[dt][turno]!==undefined) return Number(rpdt[dt][turno])||0;
+  if(o.data===dt) return Number(o["t"+turno])||0;
+  return 0;
 }
 
 function iniciar(){
   iniciarRelogio();
   if(!DB) return;
-  carregarDia(dataOperacionalAtual());
-  // Verifica a cada minuto se a data operacional virou — se virou, reabre os listeners no novo dia
+  carregarDia(hoje());
+  // Verifica a cada minuto se o calendario virou o dia — se virou, reabre os listeners no novo dia
   setInterval(function(){
-    var dtNova=dataOperacionalAtual();
+    var dtNova=hoje();
     if(dtNova!==DT_ATUAL) carregarDia(dtNova);
   },60000);
 }
@@ -190,8 +194,9 @@ function iniciar(){
 function carregarDia(dt){
   if(REF_OPS) REF_OPS.off("value");
   if(REF_PERDAS) REF_PERDAS.off("value");
+  if(REF_METAS) REF_METAS.off("value");
   DT_ATUAL=dt;
-  OPS=[];PERDAS=[];
+  OPS=[];PERDAS=[];METAS={};
 
   REF_OPS=DB.ref("ops").orderByChild("data").equalTo(dt);
   REF_OPS.on("value",function(s){
@@ -206,13 +211,26 @@ function carregarDia(dt){
     if(s.exists()) s.forEach(function(c){var v=c.val();PERDAS.push(v);});
     renderTudo();
   });
+
+  // Programado = meta que o PCP cadastra por linha/dia — mesma fonte usada no
+  // Dashboard (index.html), exclusivamente. Sem meta cadastrada = 0, sem cair
+  // de volta pra soma de o.prog das OPs.
+  REF_METAS=DB.ref("metas_diarias/"+dt);
+  REF_METAS.on("value",function(s){
+    METAS=s.val()||{};
+    renderTudo();
+  });
 }
 
 function renderTudo(){
-  var dt=DT_ATUAL||dataOperacionalAtual(), t=turnoAtual();
+  var dt=DT_ATUAL||hoje(), t=turnoAtual();
 
   // ── TOTAIS ────────────────────────────────────────────────
-  var totalProg=OPS.reduce(function(a,o){return a+(Number(o.prog)||0);},0);
+  // Programado = soma das metas cadastradas pelo PCP (metas_diarias), exclusivamente —
+  // mesma regra do Dashboard: sem meta cadastrada naquela linha/dia = 0, sem fallback
+  // pra soma de o.prog das OPs.
+  var LINHAS_IDS=[{nome:"Linha 1",id:"l1"},{nome:"Linha 2",id:"l2"},{nome:"Linha 4",id:"l4"},{nome:"Linha 5",id:"l5"}];
+  var totalProg=LINHAS_IDS.reduce(function(a,l){return a+(METAS[l.id]?Number(METAS[l.id].metaKG)||0:0);},0);
   var totalBom=OPS.reduce(function(a,o){return a+realDia(o,dt);},0);
   var totalPerda=PERDAS.reduce(function(a,p){return a+(Number(p.perdaKG)||Number(p.quantidade)||0);},0);
   var totalProc=totalBom+totalPerda;
@@ -235,11 +253,16 @@ function renderTudo(){
   // ── GRÁFICO LINHAS ────────────────────────────────────────
   var linhas=["Linha 1","Linha 2","Linha 4","Linha 5"];
   var mapL={"Linha 1 (E-240)":"Linha 1","Linha 2 (E-200)":"Linha 2","Linha 4 (Andritz I)":"Linha 4","Linha 5 (Andritz II)":"Linha 5"};
+  var linhaToId={"Linha 1":"l1","Linha 2":"l2","Linha 4":"l4","Linha 5":"l5"};
   var progL={}, bomL={};
-  linhas.forEach(function(l){progL[l]=0;bomL[l]=0;});
+  linhas.forEach(function(l){
+    var lid=linhaToId[l];
+    progL[l]=METAS[lid]?Number(METAS[lid].metaKG)||0:0;
+    bomL[l]=0;
+  });
   OPS.forEach(function(o){
     var l=mapL[o.linha]||o.linha;
-    if(progL[l]!==undefined){progL[l]+=(Number(o.prog)||0);bomL[l]+=realDia(o,dt);}
+    if(bomL[l]!==undefined) bomL[l]+=realDia(o,dt);
   });
   mkChart("g-linha","bar",linhas,[
     {label:"Programado",data:linhas.map(function(l){return progL[l];}),backgroundColor:"rgba(115,150,48,.3)",borderColor:"#739630",borderWidth:1},
@@ -256,21 +279,23 @@ function renderTudo(){
     borderWidth:2,borderColor:"#fff"
   }],{plugins:{legend:{position:"bottom",labels:{font:{size:11},boxWidth:14}}}});
 
-  // ── TURNOS — real e perda direto dos campos da OP (o.t1/o.t2/o.t3), igual o dashboard ──
-  // Cada OP grava o quanto cada turno apontou nela (o['t'+turno]). Somando entre todas
-  // as OPs do dia chegamos no real de cada turno — mesma fonte de dado do bloco
-  // "Detalhamento por Turno" do dashboard, sem precisar de apontamentos brutos.
+  // ── TURNOS — real por dia via realPorDataTurno, nao o.t1/o.t2/o.t3 acumulado ──
+  // o.t1/o.t2/o.t3 agora é o total da vida inteira da OP (ela pode rodar vários dias
+  // sem finalizar), então usá-los direto faria um turno aparecer com produção mesmo
+  // sem ter trabalhado hoje, herdada de um dia anterior em que essa mesma OP já
+  // estava ativa. realTurnoDia isola certinho só o que foi apontado NESTE dia.
   var porTurno={1:{real:0,perda:0},2:{real:0,perda:0},3:{real:0,perda:0}};
   OPS.forEach(function(o){
     [1,2,3].forEach(function(ti){
-      porTurno[ti].real+=Number(o["t"+ti])||0;
+      porTurno[ti].real+=realTurnoDia(o,dt,ti);
     });
   });
   PERDAS.forEach(function(p){
     var ti=Number(p.turno)||0;
     if(ti>=1&&ti<=3) porTurno[ti].perda+=Number(p.perdaKG)||Number(p.quantidade)||0;
   });
-  // Programado dividido igualmente entre os 3 turnos (não há programado por turno na OP)
+  // Programado dividido igualmente entre os 3 turnos (meta e cadastrada por dia
+  // inteiro, nao por turno — mesma simplificacao que ja existia antes)
   var progPorTurno=Math.round(totalProg/3);
 
   var nomes={1:"Turno 1  (21h — 05h)",2:"Turno 2  (05h — 13h)",3:"Turno 3  (13h — 21h)"};
