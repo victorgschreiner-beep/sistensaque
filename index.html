@@ -1223,7 +1223,7 @@ function renderProgramacao(){
       var progOPs=OPS.filter(function(o){return o.linha===nm&&o.data===dt;})
         .reduce(function(a,o){return a+(Number(o.prog)||0);},0);
       var realOPs=OPS.filter(function(o){return o.linha===nm&&o.data===dt;})
-        .reduce(function(a,o){var rpd=o.realPorData||{};return a+(Number(rpd[dt])||Number(o.real)||0);},0);
+        .reduce(function(a,o){var rpd=o.realPorData||{};return a+(Number(rpd[dt])||0);},0);
       var m=metas[l.id]||{};
       h+='<div class="card" style="padding:14px">';
       h+='<div style="font-weight:700;font-size:14px;color:#024f2b;margin-bottom:8px">'+l.nome+' ('+l.maq+')</div>';
@@ -1273,6 +1273,21 @@ function progPorLinha(nomeLinha, metas){
   return meta;
 }
 
+// Quanto um turno especifico produziu NUM DIA especifico desta OP.
+// Usa realPorDataTurno (por dia, por turno) — nao o.t1/o.t2/o.t3, que agora e
+// acumulado da vida inteira da OP (ela pode rodar varios dias sem finalizar).
+// Fallback: OPs antigas, gravadas antes dessa funcionalidade existir, so tem
+// o.t1/t2/t3 acumulado — só é seguro usar isso quando a data pedida é a MESMA
+// que o.data atual da OP (unico caso em que ainda não deu tempo de acumular
+// mais de um dia); pra qualquer outro dia, sem dado estruturado, retorna 0
+// em vez de arriscar mostrar um total inflado.
+function realTurnoDia(o,dt,turno){
+  var rpdt=o.realPorDataTurno;
+  if(rpdt&&rpdt[dt]&&rpdt[dt][turno]!==undefined) return Number(rpdt[dt][turno])||0;
+  if(o.data===dt) return Number(o['t'+turno])||0;
+  return 0;
+}
+
 // ============================================================
 // DASHBOARD
 // ============================================================
@@ -1307,18 +1322,18 @@ function renderDash(){
 
   ops.forEach(function(o){
     var rpd=o.realPorData||{};
-    var realOp=Number(rpd[dt])||Number(o.real)||0;
+    var realOp=Number(rpd[dt])||0;
     if(realOp<=0) return;
     aptsPorOp[o.fbKey]=realOp;
     if(turnoFiltro>0){
-      var vT=Number(o['t'+turnoFiltro])||0;
+      var vT=realTurnoDia(o,dt,turnoFiltro);
       dadosPorTurno[turnoFiltro].real+=vT;
       if(o.tipo==='SC') dadosPorTurno[turnoFiltro].sc+=Math.round(vT/25);
       else if(o.tipo==='BG') dadosPorTurno[turnoFiltro].bg+=Math.round(vT/750);
       else dadosPorTurno[turnoFiltro].kg+=vT;
     } else {
       [1,2,3].forEach(function(t){
-        var v=Number(o['t'+t])||0;
+        var v=realTurnoDia(o,dt,t);
         dadosPorTurno[t].real+=v;
         if(o.tipo==='SC') dadosPorTurno[t].sc+=Math.round(v/25);
         else if(o.tipo==='BG') dadosPorTurno[t].bg+=Math.round(v/750);
@@ -1397,7 +1412,7 @@ function renderDash(){
     var slice=ops.slice(0,8);
     for(var i=0;i<slice.length;i++){
       var o=slice[i];
-      var realDia=turnoFiltro>0?(Number(o['t'+turnoFiltro])||0):(aptsPorOp[o.fbKey]||0);
+      var realDia=turnoFiltro>0?realTurnoDia(o,dt,turnoFiltro):(aptsPorOp[o.fbKey]||0);
       var p2=pct(realDia,o.prog);
       var c=p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b';
       var prog=o.tipo==='SC'?fN(Math.round((o.prog||0)/25))+' sc':o.tipo==='BG'?fN(Math.round((o.prog||0)/750))+' bag':fN(o.prog)+' kg';
@@ -1471,7 +1486,7 @@ function renderAderenciaSKU(ops, aptsPorOp, dt){
     var desc=o.desc||o.cod||'—';
     if(!skus[cod]) skus[cod]={cod:cod,desc:desc,prog:0,real:0};
     var rpd=o.realPorData||{};
-    var realOp=dt?(Number(rpd[dt])||Number(o.real)||0):(Number(o.real)||0);
+    var realOp=dt?(Number(rpd[dt])||0):(Number(o.real)||0);
     skus[cod].prog += Number(o.prog)||0;
     skus[cod].real += realOp;
   });
@@ -1566,9 +1581,13 @@ function renderOPs(){
   var h='';
   for(var i=0;i<ops.length;i++){
     var o=ops[i]; var fid=o.fbKey;
-    var p2=pct(o.real,o.prog); var c=p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b';
+    // Com filtro de data: Real = so o que essa OP produziu NAQUELE DIA (realPorData).
+    // Sem filtro: Real = total acumulado da OP (visao geral, todos os dias somados).
+    var rpdRow=o.realPorData||{};
+    var realNum=dt?(Number(rpdRow[dt])||0):(Number(o.real)||0);
+    var p2=pct(realNum,o.prog); var c=p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b';
     var prog=o.tipo==='SC'?fN(Math.round((o.prog||0)/25))+' sc':o.tipo==='BG'?fN(Math.round((o.prog||0)/750))+' bag':fN(o.prog)+' kg';
-    var real=o.tipo==='SC'?fN(o.t1sc!==undefined?(o.t1sc+o.t2sc+o.t3sc):Math.round((o.real||0)/25))+' sc ('+fN(o.real)+' kg)':o.tipo==='BG'?fN(Math.round((o.real||0)/750))+' bag ('+fN(o.real)+' kg)':fN(o.real)+' kg';
+    var real=o.tipo==='SC'?fN(Math.round(realNum/25))+' sc ('+fN(realNum)+' kg)':o.tipo==='BG'?fN(Math.round(realNum/750))+' bag ('+fN(realNum)+' kg)':fN(realNum)+' kg';
     var loteBadge='<span style="font-size:12px;font-weight:700;color:#024f2b;background:rgba(2,79,43,.08);padding:2px 7px;border-radius:4px">'+(o.lote||'---')+'</span>';
     h+='<tr>';
     h+='<td style="font-weight:600;white-space:nowrap">'+o.id+(o.filaPosicao!==undefined?' <span style="font-size:10px;color:#739630">#'+(o.filaPosicao+1)+'</span>':'')+'</td>';
@@ -2099,20 +2118,28 @@ function salvarApt(){
   // Busca apontamentos anteriores desta OP para calcular real total por data
   ld(true,'Salvando...');
 
-  // Calcula realPorData — busca o que já existe e incrementa
-  DB.ref('ops/'+fbKey).child('realPorData').once('value').then(function(snapRPD){
-    var rpd=snapRPD.val()||{};
+  // Calcula realPorData (total do dia) e realPorDataTurno (total do dia, por turno)
+  // — busca o que já existe e incrementa. realPorDataTurno é o que garante que
+  // "quanto o T1 fez no dia X nessa OP" continue certo mesmo com a OP rodando
+  // por varios dias sem finalizar (o.t1/o.t2/o.t3 sozinhos nao dao mais essa resposta,
+  // porque agora acumulam a vida inteira da ordem, nao so o dia atual).
+  Promise.all([
+    DB.ref('ops/'+fbKey).child('realPorData').once('value'),
+    DB.ref('ops/'+fbKey).child('realPorDataTurno').once('value')
+  ]).then(function(snaps){
+    var rpd=snaps[0].val()||{};
+    var rpdt=snaps[1].val()||{};
     // Incrementa cada turno na data correta
-    if(novoT1sc>0) rpd[dtT1]=(rpd[dtT1]||0)+novoT1sc*fator;
-    if(novoT2sc>0) rpd[dtT2]=(rpd[dtT2]||0)+novoT2sc*fator;
-    if(novoT3sc>0) rpd[dtT3]=(rpd[dtT3]||0)+novoT3sc*fator;
+    if(novoT1sc>0){ rpd[dtT1]=(rpd[dtT1]||0)+novoT1sc*fator; rpdt[dtT1]=rpdt[dtT1]||{}; rpdt[dtT1]['1']=(rpdt[dtT1]['1']||0)+novoT1sc*fator; }
+    if(novoT2sc>0){ rpd[dtT2]=(rpd[dtT2]||0)+novoT2sc*fator; rpdt[dtT2]=rpdt[dtT2]||{}; rpdt[dtT2]['2']=(rpdt[dtT2]['2']||0)+novoT2sc*fator; }
+    if(novoT3sc>0){ rpd[dtT3]=(rpd[dtT3]||0)+novoT3sc*fator; rpdt[dtT3]=rpdt[dtT3]||{}; rpdt[dtT3]['3']=(rpdt[dtT3]['3']||0)+novoT3sc*fator; }
 
     var promises=[
       DB.ref('ops/'+fbKey).update({
         t1:t1, t2:t2, t3:t3, real:real,
         t1sc:t1sc, t2sc:t2sc, t3sc:t3sc,
         perda:totalPerda, ultimoApt:dtApt, status:'Em andamento',
-        realPorData:rpd
+        realPorData:rpd, realPorDataTurno:rpdt
       })
     ];
   // Apontamento T1
@@ -3255,9 +3282,9 @@ function genRelPDF(tipo){
     return a+(rpd?(Number(rpd[dtFiltro])||0):(Number(o.real)||0));
   },0);
   var tperda=ops.reduce(function(a,o){return a+(Number(o.perda)||0);},0);
-  var tT1=ops.reduce(function(a,o){return a+(Number(o.t1)||0);},0);
-  var tT2=ops.reduce(function(a,o){return a+(Number(o.t2)||0);},0);
-  var tT3=ops.reduce(function(a,o){return a+(Number(o.t3)||0);},0);
+  var tT1=ops.reduce(function(a,o){return a+realTurnoDia(o,dtFiltro,1);},0);
+  var tT2=ops.reduce(function(a,o){return a+realTurnoDia(o,dtFiltro,2);},0);
+  var tT3=ops.reduce(function(a,o){return a+realTurnoDia(o,dtFiltro,3);},0);
   var tproc=tr+tperda;
   var adh=tp?Math.min(Math.round(tr/tp*100),999):0;
   var corAdh=corP(adh);
@@ -3364,7 +3391,7 @@ function genRelPDF(tipo){
     var realOp=o.realPorData?(Number((o.realPorData||{})[dtFiltro])||0):(Number(o.real)||0);
     var p2=o.prog?Math.min(Math.round(realOp/o.prog*100),999):0;
     var cor2=corP(p2);
-    var t1=Number(o.t1)||0, t2=Number(o.t2)||0, t3=Number(o.t3)||0;
+    var t1=realTurnoDia(o,dtFiltro,1), t2=realTurnoDia(o,dtFiltro,2), t3=realTurnoDia(o,dtFiltro,3);
     var t1p=realOp>0?Math.round(t1/realOp*100):0;
     var t2p=realOp>0?Math.round(t2/realOp*100):0;
     var t3p=realOp>0?Math.round(t3/realOp*100):0;
@@ -3747,16 +3774,16 @@ function exportarFamiliasExcel(){
     l2.push([g,v,pct+'%']);
   });
 
-  // Aba 3 — Detalhe por OP (rastreabilidade/auditoria da classificação)
-  var l3=[['Código','Descrição','Linha','Família','Granulometria','KG']];
+  // Aba 3 — Detalhe por OP e dia (rastreabilidade/auditoria da classificação)
+  var l3=[['Data','Código','Descrição','Linha','Família','Granulometria','KG']];
   d.detalheFamilias.forEach(function(o){
-    l3.push([o.cod,o.desc,o.linha,o.familia,o.granulometria,o.kg]);
+    l3.push([o.data,o.cod,o.desc,o.linha,o.familia,o.granulometria,o.kg]);
   });
 
   var wb=XLSX.utils.book_new();
   var ws1=XLSX.utils.aoa_to_sheet(l1); ws1['!cols']=[{wch:14},{wch:16},{wch:18}];
   var ws2=XLSX.utils.aoa_to_sheet(l2); ws2['!cols']=[{wch:22},{wch:16},{wch:18}];
-  var ws3=XLSX.utils.aoa_to_sheet(l3); ws3['!cols']=[{wch:14},{wch:34},{wch:14},{wch:10},{wch:22},{wch:12}];
+  var ws3=XLSX.utils.aoa_to_sheet(l3); ws3['!cols']=[{wch:12},{wch:14},{wch:34},{wch:14},{wch:10},{wch:22},{wch:12}];
   XLSX.utils.book_append_sheet(wb,ws1,'Resumo Familia');
   XLSX.utils.book_append_sheet(wb,ws2,'Granulometria AQUA');
   XLSX.utils.book_append_sheet(wb,ws3,'Detalhe OPs');
@@ -4116,288 +4143,352 @@ function gerarRelPeriodo(){
   var cont=G('rel-periodo-conteudo');
   cont.innerHTML='<div style="text-align:center;padding:40px;color:#4a664a">Calculando...</div>';
 
-  // Filtra OPs do período
-  var ops=OPS.filter(function(o){
-    if(o.data<di||o.data>df) return false;
+  // Lista de dias do periodo (inclusive)
+  var datas=[];
+  var dIt=new Date(di+'T12:00:00');
+  var dFimLoop=new Date(df+'T12:00:00');
+  while(dIt<=dFimLoop){ datas.push(dIt.toISOString().slice(0,10)); dIt.setDate(dIt.getDate()+1); }
+
+  // OPs relevantes para o periodo: qualquer OP que produziu (realPorData) em algum dia
+  // do intervalo, OU que esteja programada (o.data) dentro do intervalo. NAO filtra mais
+  // pelo o.data sozinho como antes — a OP e continua agora, pode ter passado por varios
+  // dias do periodo mesmo estando hoje programada num dia fora dele.
+  var opsRelevantes=OPS.filter(function(o){
     if(ln&&o.linha!==ln) return false;
-    return true;
+    var teveNoPeriodo=datas.some(function(d){return o.realPorData&&o.realPorData[d];});
+    var programadaNoPeriodo=o.data>=di&&o.data<=df;
+    return teveNoPeriodo||programadaNoPeriodo;
   });
 
-  if(!ops.length){
-    cont.innerHTML='<div style="text-align:center;padding:40px;color:#c0392b">Nenhuma OP encontrada para o período selecionado.</div>';
+  if(!opsRelevantes.length){
+    cont.innerHTML='<div style="text-align:center;padding:40px;color:#c0392b">Nenhuma produção encontrada para o período selecionado.</div>';
     return;
   }
 
-  // ── PRODUÇÃO POR FAMÍLIA (AQUA/PET/HORSE) E GRANULOMETRIA (AQUA) ──
-  var famTotais={AQUA:0,PET:0,HORSE:0};
-  var granTotais={};
-  var detalheFamilias=[];
-  ops.forEach(function(o){
-    var kg=Number(o.real)||0;
-    var fam=classificarFamilia(o.cod);
-    famTotais[fam]+=kg;
-    var gran='';
-    if(fam==='AQUA'){
-      gran=extrairGranulometria(o.desc)||'Sem granulometria identificada';
-      granTotais[gran]=(granTotais[gran]||0)+kg;
-    }
-    detalheFamilias.push({cod:o.cod||'',desc:o.desc||'',linha:o.linha||'',familia:fam,granulometria:gran,kg:kg});
-  });
-  var totalFamilias=famTotais.AQUA+famTotais.PET+famTotais.HORSE;
+  // fbKey -> linha, usado pra filtrar perdas_diarias por linha (o registro de perda
+  // nao guarda linha diretamente, so o opId)
+  var fbKeyToLinha={};
+  OPS.forEach(function(o){fbKeyToLinha[o.fbKey]=o.linha;});
 
-  // Agrupa por data
-  var porData={};
-  ops.forEach(function(o){
-    var d=o.data;
-    if(!porData[d]) porData[d]={prog:0,real:0,t1:0,t2:0,t3:0,perda:0,scT1:0,scT2:0,scT3:0,kgT1:0,kgT2:0,kgT3:0};
-    var pd=porData[d];
-    pd.prog+=(Number(o.prog)||0);
-    pd.real+=(Number(o.real)||0);
-    pd.t1+=(Number(o.t1)||0);
-    pd.t2+=(Number(o.t2)||0);
-    pd.t3+=(Number(o.t3)||0);
-    pd.perda+=(Number(o.perda)||0);
-    // Separa SC e KG por turno
-    if(o.tipo==='SC'){
-      pd.scT1+=Number(o.t1)||0;
-      pd.scT2+=Number(o.t2)||0;
-      pd.scT3+=Number(o.t3)||0;
-    } else {
-      pd.kgT1+=Number(o.t1)||0;
-      pd.kgT2+=Number(o.t2)||0;
-      pd.kgT3+=Number(o.t3)||0;
-    }
-  });
+  // Busca em paralelo: metas_diarias de cada dia do periodo (Programado) e
+  // perdas_diarias do periodo inteiro (Perda) — mesmas fontes que o Dashboard usa
+  Promise.all([
+    Promise.all(datas.map(function(d){return DB.ref('metas_diarias/'+d).once('value');})),
+    DB.ref('perdas_diarias').orderByChild('data').startAt(di).endAt(df).once('value')
+  ]).then(function(results){
+    var metasSnaps=results[0];
+    var perdasSnap=results[1];
 
-  var datas=Object.keys(porData).sort();
-
-  // Totais consolidados
-  var totProg=0,totReal=0,totT1=0,totT2=0,totT3=0,totPerda=0;
-  var totScT1=0,totScT2=0,totScT3=0,totKgT1=0,totKgT2=0,totKgT3=0;
-  datas.forEach(function(d){
-    var pd=porData[d];
-    totProg+=pd.prog; totReal+=pd.real;
-    totT1+=pd.t1; totT2+=pd.t2; totT3+=pd.t3; totPerda+=pd.perda;
-    totScT1+=pd.scT1; totScT2+=pd.scT2; totScT3+=pd.scT3;
-    totKgT1+=pd.kgT1; totKgT2+=pd.kgT2; totKgT3+=pd.kgT3;
-  });
-  var totAdh=totProg?Math.min(Math.round(totReal/totProg*100),100):0;
-  var adhT1=totProg?Math.min(Math.round(totT1/totProg*100),100):0;
-  var adhT2=totProg?Math.min(Math.round(totT2/totProg*100),100):0;
-  var adhT3=totProg?Math.min(Math.round(totT3/totProg*100),100):0;
-  var corAdh=totAdh>=90?'#024f2b':totAdh>=60?'#d29922':'#c0392b';
-
-  // Formata data DD/MM
-  function fDt(d){return d?d.slice(8)+'/'+d.slice(5,7):'';}
-
-  // ── CARDS CONSOLIDADOS ───────────────────────────────────
-  var html='<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:20px">';
-  var cards=[
-    {l:'PROGRAMADO',v:fN(totProg)+' kg',c:'#024f2b'},
-    {l:'PROD. BOM',v:fN(totReal)+' kg',c:corAdh},
-    {l:'ADERÊNCIA',v:totAdh+'%',c:corAdh},
-    {l:'PERDA TOTAL',v:fN(totPerda)+' kg',c:'#c0392b'},
-    {l:'DIAS NO PERÍODO',v:datas.length+' dias',c:'#4a664a'},
-    {l:'OPs NO PERÍODO',v:ops.length+' OPs',c:'#4a664a'}
-  ];
-  cards.forEach(function(card){
-    html+='<div style="background:#f5f9f2;border:1px solid #d4e8d4;border-radius:8px;padding:12px;text-align:center">';
-    html+='<div style="font-size:10px;font-weight:700;color:#739630;margin-bottom:4px">'+card.l+'</div>';
-    html+='<div style="font-size:16px;font-weight:700;color:'+card.c+'">'+card.v+'</div>';
-    html+='</div>';
-  });
-  html+='</div>';
-
-  // ── ADERÊNCIA POR TURNO ──────────────────────────────────
-  html+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px">';
-  var turnos=[
-    {n:'Turno 1 (21h–05h)',real:totT1,adh:adhT1,c:'#00643c'},
-    {n:'Turno 2 (05h–13h)',real:totT2,adh:adhT2,c:'#148c50'},
-    {n:'Turno 3 (13h–21h)',real:totT3,adh:adhT3,c:'#64aa78'}
-  ];
-  turnos.forEach(function(t){
-    var corT=t.adh>=90?'#024f2b':t.adh>=60?'#d29922':'#c0392b';
-    html+='<div style="background:#f5f9f2;border:2px solid '+t.c+';border-radius:8px;padding:14px">';
-    html+='<div style="font-weight:700;color:'+t.c+';margin-bottom:8px">'+t.n+'</div>';
-    html+='<div style="display:flex;justify-content:space-between;margin-bottom:6px">';
-    html+='<span style="font-size:12px;color:#4a664a">Realizado</span><span style="font-weight:700;color:'+t.c+'">'+fN(t.real)+' kg</span></div>';
-    html+='<div style="display:flex;justify-content:space-between;margin-bottom:8px">';
-    html+='<span style="font-size:12px;color:#4a664a">Aderência</span><span style="font-weight:700;color:'+corT+'">'+t.adh+'%</span></div>';
-    html+='<div style="background:#e8f0e8;border-radius:4px;height:6px"><div style="background:'+corT+';width:'+t.adh+'%;height:100%;border-radius:4px"></div></div>';
-    html+='</div>';
-  });
-  html+='</div>';
-
-  // ── GRÁFICOS ─────────────────────────────────────────────
-  var chartId1='rp-chart1', chartId2='rp-chart2', chartId3='rp-chart3', chartId4='rp-chart4', chartId5='rp-chart5', chartId6='rp-chart6';
-  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">';
-
-  // G1 — Produção diária Prog×Real
-  html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
-  html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Produção Diária — Prog. vs Real.</div>';
-  html+='<canvas id="'+chartId1+'" height="180"></canvas></div>';
-
-  // G2 — Sacaria por turno
-  html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
-  html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Sacaria por Turno (em sacas)</div>';
-  html+='<canvas id="'+chartId2+'" height="180"></canvas></div>';
-
-  // G3 — Granel por turno
-  html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
-  html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Granel por Turno (em kg)</div>';
-  html+='<canvas id="'+chartId3+'" height="180"></canvas></div>';
-
-  // G4 — Total KG por turno (SC+KG juntos)
-  html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
-  html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Total KG por Turno (Sacaria + Granel)</div>';
-  html+='<canvas id="'+chartId4+'" height="180"></canvas></div>';
-
-  // G5 — Aderência por dia
-  html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
-  html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Aderência por Dia (%)</div>';
-  html+='<canvas id="'+chartId5+'" height="180"></canvas></div>';
-
-  // G6 — Perda por dia
-  html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
-  html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Perda por Dia (kg)</div>';
-  html+='<canvas id="'+chartId6+'" height="180"></canvas></div>';
-
-  html+='</div>';
-
-  // ── PRODUÇÃO POR FAMÍLIA ─────────────────────────────────
-  html+='<div style="margin-bottom:8px"><span style="font-weight:700;color:#024f2b;font-size:14px">🐾 Produção por Família</span></div>';
-  html+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">';
-  var famCards=[
-    {l:'AQUA',v:famTotais.AQUA,c:'#0077b6'},
-    {l:'PET',v:famTotais.PET,c:'#c0392b'},
-    {l:'HORSE',v:famTotais.HORSE,c:'#8a5a2b'}
-  ];
-  famCards.forEach(function(f){
-    var pct=totalFamilias?(f.v/totalFamilias*100).toFixed(1):'0.0';
-    html+='<div style="background:#f5f9f2;border:1px solid #d4e8d4;border-radius:8px;padding:12px;text-align:center">';
-    html+='<div style="font-size:10px;font-weight:700;color:#739630;margin-bottom:4px">'+f.l+'</div>';
-    html+='<div style="font-size:18px;font-weight:800;color:'+f.c+'">'+fN(f.v)+' kg</div>';
-    html+='<div style="font-size:11px;color:#4a664a;margin-top:2px">'+pct+'% do período</div>';
-    html+='</div>';
-  });
-  html+='</div>';
-
-  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
-  html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
-  html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Participação por Família</div>';
-  html+='<canvas id="rp-chart-fam" height="180"></canvas></div>';
-  html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
-  html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">AQUA — Produção por Granulometria</div>';
-  html+='<canvas id="rp-chart-gran" height="180"></canvas></div>';
-  html+='</div>';
-
-  // Tabela detalhamento AQUA por granulometria
-  var granKeys=Object.keys(granTotais).sort();
-  if(granKeys.length){
-    var kgSemGran=granTotais['Sem granulometria identificada']||0;
-    html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px;margin-bottom:20px">';
-    html+='<div style="font-weight:700;color:#024f2b;margin-bottom:10px;font-size:13px">Detalhamento AQUA por Granulometria</div>';
-    if(kgSemGran>0){
-      html+='<div style="font-size:11px;color:#c0392b;margin-bottom:8px">⚠️ '+fN(kgSemGran)+' kg sem granulometria identificada na descrição — verifique cadastro dos produtos.</div>';
-    }
-    html+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
-    html+='<tr style="border-bottom:2px solid #d4e8d4"><th style="text-align:left;padding:6px;color:#4a664a">Granulometria</th><th style="text-align:right;padding:6px;color:#4a664a">Total (kg)</th><th style="text-align:right;padding:6px;color:#4a664a">%</th></tr>';
-    granKeys.forEach(function(g){
-      var v=granTotais[g];
-      var pct=famTotais.AQUA?(v/famTotais.AQUA*100).toFixed(1):'0.0';
-      var estilo=g==='Sem granulometria identificada'?'color:#c0392b':'';
-      html+='<tr style="border-bottom:1px solid #eef4ea"><td style="padding:6px;'+estilo+'">'+g+'</td><td style="text-align:right;padding:6px;font-weight:700">'+fN(v)+'</td><td style="text-align:right;padding:6px;color:#739630">'+pct+'%</td></tr>';
+    // Programado por dia — soma das metas das linhas relevantes (mesma regra do
+    // Dashboard: SO a meta do PCP conta, sem cair de volta pra soma de o.prog)
+    var lObjFiltro=ln?LINHAS.filter(function(l){return (l.nome+' ('+l.maq+')')===ln;})[0]:null;
+    var progPorDia={};
+    datas.forEach(function(d,i){
+      var metas=metasSnaps[i].val()||{};
+      if(ln){
+        progPorDia[d]=lObjFiltro&&metas[lObjFiltro.id]?Number(metas[lObjFiltro.id].metaKG)||0:0;
+      } else {
+        progPorDia[d]=LINHAS.reduce(function(a,l){return a+(metas[l.id]?Number(metas[l.id].metaKG)||0:0);},0);
+      }
     });
+
+    // Perda por dia — direto de perdas_diarias (fonte ja correta por dia), respeitando
+    // filtro de linha via opId->linha e ignorando registros substituidos/corrigidos
+    var perdaPorDia={};
+    datas.forEach(function(d){perdaPorDia[d]=0;});
+    if(perdasSnap.exists()) perdasSnap.forEach(function(c){
+      var p=c.val();
+      if(p.substituido) return;
+      if(!perdaPorDia.hasOwnProperty(p.data)) return;
+      if(ln&&fbKeyToLinha[p.opId]!==ln) return;
+      perdaPorDia[p.data]+=Number(p.perdaKG)||Number(p.quantidade)||0;
+    });
+
+    // ── PRODUÇÃO POR FAMÍLIA, GRANULOMETRIA E POR DIA — tudo via realPorData/
+    // realPorDataTurno, nunca o.real/o.t1-t3 acumulado (que agora e vida inteira da OP)
+    var famTotais={AQUA:0,PET:0,HORSE:0};
+    var granTotais={};
+    var detalheFamilias=[];
+    var porData={};
+    datas.forEach(function(d){
+      porData[d]={prog:progPorDia[d]||0,real:0,t1:0,t2:0,t3:0,perda:perdaPorDia[d]||0,scT1:0,scT2:0,scT3:0,kgT1:0,kgT2:0,kgT3:0};
+    });
+
+    opsRelevantes.forEach(function(o){
+      var fam=classificarFamilia(o.cod);
+      var gran=fam==='AQUA'?(extrairGranulometria(o.desc)||'Sem granulometria identificada'):'';
+      datas.forEach(function(d){
+        var rpd=o.realPorData||{};
+        var kgDia=Number(rpd[d])||0;
+        if(kgDia<=0) return;
+        var pd=porData[d];
+        pd.real+=kgDia;
+        var t1=realTurnoDia(o,d,1), t2=realTurnoDia(o,d,2), t3=realTurnoDia(o,d,3);
+        pd.t1+=t1; pd.t2+=t2; pd.t3+=t3;
+        if(o.tipo==='SC'){ pd.scT1+=t1; pd.scT2+=t2; pd.scT3+=t3; }
+        else { pd.kgT1+=t1; pd.kgT2+=t2; pd.kgT3+=t3; }
+
+        famTotais[fam]+=kgDia;
+        if(fam==='AQUA') granTotais[gran]=(granTotais[gran]||0)+kgDia;
+        detalheFamilias.push({data:d,cod:o.cod||'',desc:o.desc||'',linha:o.linha||'',familia:fam,granulometria:gran,kg:kgDia});
+      });
+    });
+    var totalFamilias=famTotais.AQUA+famTotais.PET+famTotais.HORSE;
+
+    // Totais consolidados do periodo
+    var totProg=0,totReal=0,totT1=0,totT2=0,totT3=0,totPerda=0;
+    var totScT1=0,totScT2=0,totScT3=0,totKgT1=0,totKgT2=0,totKgT3=0;
+    datas.forEach(function(d){
+      var pd=porData[d];
+      totProg+=pd.prog; totReal+=pd.real;
+      totT1+=pd.t1; totT2+=pd.t2; totT3+=pd.t3; totPerda+=pd.perda;
+      totScT1+=pd.scT1; totScT2+=pd.scT2; totScT3+=pd.scT3;
+      totKgT1+=pd.kgT1; totKgT2+=pd.kgT2; totKgT3+=pd.kgT3;
+    });
+    var totAdh=totProg?Math.min(Math.round(totReal/totProg*100),100):0;
+    var adhT1=totProg?Math.min(Math.round(totT1/totProg*100),100):0;
+    var adhT2=totProg?Math.min(Math.round(totT2/totProg*100),100):0;
+    var adhT3=totProg?Math.min(Math.round(totT3/totProg*100),100):0;
+    var corAdh=totAdh>=90?'#024f2b':totAdh>=60?'#d29922':'#c0392b';
+
+    // Formata data DD/MM
+    function fDt(d){return d?d.slice(8)+'/'+d.slice(5,7):'';}
+
+    // ── CARDS CONSOLIDADOS ───────────────────────────────────
+    var html='<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:20px">';
+    var cards=[
+      {l:'PROGRAMADO',v:fN(totProg)+' kg',c:'#024f2b'},
+      {l:'PROD. BOM',v:fN(totReal)+' kg',c:corAdh},
+      {l:'ADERÊNCIA',v:totAdh+'%',c:corAdh},
+      {l:'PERDA TOTAL',v:fN(totPerda)+' kg',c:'#c0392b'},
+      {l:'DIAS NO PERÍODO',v:datas.length+' dias',c:'#4a664a'},
+      {l:'OPs NO PERÍODO',v:opsRelevantes.length+' OPs',c:'#4a664a'}
+    ];
+    cards.forEach(function(card){
+      html+='<div style="background:#f5f9f2;border:1px solid #d4e8d4;border-radius:8px;padding:12px;text-align:center">';
+      html+='<div style="font-size:10px;font-weight:700;color:#739630;margin-bottom:4px">'+card.l+'</div>';
+      html+='<div style="font-size:16px;font-weight:700;color:'+card.c+'">'+card.v+'</div>';
+      html+='</div>';
+    });
+    html+='</div>';
+
+    // ── ADERÊNCIA POR TURNO ──────────────────────────────────
+    html+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px">';
+    var turnos=[
+      {n:'Turno 1 (21h–05h)',real:totT1,adh:adhT1,c:'#00643c'},
+      {n:'Turno 2 (05h–13h)',real:totT2,adh:adhT2,c:'#148c50'},
+      {n:'Turno 3 (13h–21h)',real:totT3,adh:adhT3,c:'#64aa78'}
+    ];
+    turnos.forEach(function(t){
+      var corT=t.adh>=90?'#024f2b':t.adh>=60?'#d29922':'#c0392b';
+      html+='<div style="background:#f5f9f2;border:2px solid '+t.c+';border-radius:8px;padding:14px">';
+      html+='<div style="font-weight:700;color:'+t.c+';margin-bottom:8px">'+t.n+'</div>';
+      html+='<div style="display:flex;justify-content:space-between;margin-bottom:6px">';
+      html+='<span style="font-size:12px;color:#4a664a">Realizado</span><span style="font-weight:700;color:'+t.c+'">'+fN(t.real)+' kg</span></div>';
+      html+='<div style="display:flex;justify-content:space-between;margin-bottom:8px">';
+      html+='<span style="font-size:12px;color:#4a664a">Aderência</span><span style="font-weight:700;color:'+corT+'">'+t.adh+'%</span></div>';
+      html+='<div style="background:#e8f0e8;border-radius:4px;height:6px"><div style="background:'+corT+';width:'+t.adh+'%;height:100%;border-radius:4px"></div></div>';
+      html+='</div>';
+    });
+    html+='</div>';
+
+    // ── GRÁFICOS ─────────────────────────────────────────────
+    var chartId1='rp-chart1', chartId2='rp-chart2', chartId3='rp-chart3', chartId4='rp-chart4', chartId5='rp-chart5', chartId6='rp-chart6';
+    html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">';
+
+    html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
+    html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Produção Diária — Prog. vs Real.</div>';
+    html+='<canvas id="'+chartId1+'" height="180"></canvas></div>';
+
+    html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
+    html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Sacaria por Turno (em sacas)</div>';
+    html+='<canvas id="'+chartId2+'" height="180"></canvas></div>';
+
+    html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
+    html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Granel por Turno (em kg)</div>';
+    html+='<canvas id="'+chartId3+'" height="180"></canvas></div>';
+
+    html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
+    html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Total KG por Turno (Sacaria + Granel)</div>';
+    html+='<canvas id="'+chartId4+'" height="180"></canvas></div>';
+
+    html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
+    html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Aderência por Dia (%)</div>';
+    html+='<canvas id="'+chartId5+'" height="180"></canvas></div>';
+
+    html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
+    html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Perda por Dia (kg)</div>';
+    html+='<canvas id="'+chartId6+'" height="180"></canvas></div>';
+
+    html+='</div>';
+
+    // ── DETALHE DIA A DIA (tabela) ────────────────────────────
+    html+='<div style="margin-bottom:8px"><span style="font-weight:700;color:#024f2b;font-size:14px">📅 Detalhe Dia a Dia</span></div>';
+    html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px;margin-bottom:20px;overflow-x:auto">';
+    html+='<table style="width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap">';
+    html+='<tr style="border-bottom:2px solid #d4e8d4">'+
+      '<th style="text-align:left;padding:6px;color:#4a664a">Data</th>'+
+      '<th style="text-align:right;padding:6px;color:#4a664a">Programado</th>'+
+      '<th style="text-align:right;padding:6px;color:#4a664a">Realizado</th>'+
+      '<th style="text-align:right;padding:6px;color:#4a664a">Aderência</th>'+
+      '<th style="text-align:right;padding:6px;color:#4a664a">T1</th>'+
+      '<th style="text-align:right;padding:6px;color:#4a664a">T2</th>'+
+      '<th style="text-align:right;padding:6px;color:#4a664a">T3</th>'+
+      '<th style="text-align:right;padding:6px;color:#4a664a">Perda</th></tr>';
+    datas.forEach(function(d){
+      var pd=porData[d];
+      var adhDia=pd.prog?Math.min(Math.round(pd.real/pd.prog*100),999):0;
+      var corDia=adhDia>=90?'#024f2b':adhDia>=60?'#d29922':'#c0392b';
+      html+='<tr style="border-bottom:1px solid #eef4ea">'+
+        '<td style="padding:6px;font-weight:600">'+fDt(d)+'</td>'+
+        '<td style="text-align:right;padding:6px">'+fN(pd.prog)+' kg</td>'+
+        '<td style="text-align:right;padding:6px;font-weight:700;color:'+corDia+'">'+fN(pd.real)+' kg</td>'+
+        '<td style="text-align:right;padding:6px;color:'+corDia+'">'+adhDia+'%</td>'+
+        '<td style="text-align:right;padding:6px;color:#4a664a">'+fN(pd.t1)+' kg</td>'+
+        '<td style="text-align:right;padding:6px;color:#4a664a">'+fN(pd.t2)+' kg</td>'+
+        '<td style="text-align:right;padding:6px;color:#4a664a">'+fN(pd.t3)+' kg</td>'+
+        '<td style="text-align:right;padding:6px;color:#c0392b">'+(pd.perda>0?fN(pd.perda)+' kg':'—')+'</td></tr>';
+    });
+    html+='<tr style="border-top:2px solid #024f2b;background:#f0f7ec;font-weight:700">'+
+      '<td style="padding:8px;color:#024f2b">TOTAL</td>'+
+      '<td style="text-align:right;padding:8px">'+fN(totProg)+' kg</td>'+
+      '<td style="text-align:right;padding:8px;color:'+corAdh+'">'+fN(totReal)+' kg</td>'+
+      '<td style="text-align:right;padding:8px;color:'+corAdh+'">'+totAdh+'%</td>'+
+      '<td style="text-align:right;padding:8px;color:#024f2b">'+fN(totT1)+' kg</td>'+
+      '<td style="text-align:right;padding:8px;color:#024f2b">'+fN(totT2)+' kg</td>'+
+      '<td style="text-align:right;padding:8px;color:#024f2b">'+fN(totT3)+' kg</td>'+
+      '<td style="text-align:right;padding:8px;color:#c0392b">'+fN(totPerda)+' kg</td></tr>';
     html+='</table></div>';
-  }
 
-  // Botões exportar
-  html+='<div style="text-align:right;margin-bottom:20px">';
-  html+='<button class="btn" onclick="exportarFamiliasExcel()" style="background:#217346;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;margin-right:8px">📥 Excel Famílias</button>';
-  html+='<button class="btn bp" onclick="exportarRelPeriodoPDF()">↓ Exportar PDF</button>';
-  html+='</div>';
+    // ── PRODUÇÃO POR FAMÍLIA ─────────────────────────────────
+    html+='<div style="margin-bottom:8px"><span style="font-weight:700;color:#024f2b;font-size:14px">🐾 Produção por Família</span></div>';
+    html+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">';
+    var famCards=[
+      {l:'AQUA',v:famTotais.AQUA,c:'#0077b6'},
+      {l:'PET',v:famTotais.PET,c:'#c0392b'},
+      {l:'HORSE',v:famTotais.HORSE,c:'#8a5a2b'}
+    ];
+    famCards.forEach(function(f){
+      var pct=totalFamilias?(f.v/totalFamilias*100).toFixed(1):'0.0';
+      html+='<div style="background:#f5f9f2;border:1px solid #d4e8d4;border-radius:8px;padding:12px;text-align:center">';
+      html+='<div style="font-size:10px;font-weight:700;color:#739630;margin-bottom:4px">'+f.l+'</div>';
+      html+='<div style="font-size:18px;font-weight:800;color:'+f.c+'">'+fN(f.v)+' kg</div>';
+      html+='<div style="font-size:11px;color:#4a664a;margin-top:2px">'+pct+'% do período</div>';
+      html+='</div>';
+    });
+    html+='</div>';
 
-  cont.innerHTML=html;
+    html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
+    html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
+    html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Participação por Família</div>';
+    html+='<canvas id="rp-chart-fam" height="180"></canvas></div>';
+    html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
+    html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">AQUA — Produção por Granulometria</div>';
+    html+='<canvas id="rp-chart-gran" height="180"></canvas></div>';
+    html+='</div>';
 
-  // ── RENDERIZA GRÁFICOS ───────────────────────────────────
-  var labels=datas.map(fDt);
-  var progs=datas.map(function(d){return porData[d].prog;});
-  var reals=datas.map(function(d){return porData[d].real;});
-  var t1s=datas.map(function(d){return porData[d].t1;});
-  var t2s=datas.map(function(d){return porData[d].t2;});
-  var t3s=datas.map(function(d){return porData[d].t3;});
-  var perdas=datas.map(function(d){return porData[d].perda;});
-  var adhs=datas.map(function(d){var pd=porData[d];return pd.prog?Math.min(Math.round(pd.real/pd.prog*100),100):0;});
-  var scT1s=datas.map(function(d){return Math.round((porData[d].scT1||0)/25);});
-  var scT2s=datas.map(function(d){return Math.round((porData[d].scT2||0)/25);});
-  var scT3s=datas.map(function(d){return Math.round((porData[d].scT3||0)/25);});
-  var kgT1s=datas.map(function(d){return porData[d].kgT1||0;});
-  var kgT2s=datas.map(function(d){return porData[d].kgT2||0;});
-  var kgT3s=datas.map(function(d){return porData[d].kgT3||0;});
+    // Tabela detalhamento AQUA por granulometria
+    var granKeys=Object.keys(granTotais).sort();
+    if(granKeys.length){
+      var kgSemGran=granTotais['Sem granulometria identificada']||0;
+      html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px;margin-bottom:20px">';
+      html+='<div style="font-weight:700;color:#024f2b;margin-bottom:10px;font-size:13px">Detalhamento AQUA por Granulometria</div>';
+      if(kgSemGran>0){
+        html+='<div style="font-size:11px;color:#c0392b;margin-bottom:8px">⚠️ '+fN(kgSemGran)+' kg sem granulometria identificada na descrição — verifique cadastro dos produtos.</div>';
+      }
+      html+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+      html+='<tr style="border-bottom:2px solid #d4e8d4"><th style="text-align:left;padding:6px;color:#4a664a">Granulometria</th><th style="text-align:right;padding:6px;color:#4a664a">Total (kg)</th><th style="text-align:right;padding:6px;color:#4a664a">%</th></tr>';
+      granKeys.forEach(function(g){
+        var v=granTotais[g];
+        var pct=famTotais.AQUA?(v/famTotais.AQUA*100).toFixed(1):'0.0';
+        var estilo=g==='Sem granulometria identificada'?'color:#c0392b':'';
+        html+='<tr style="border-bottom:1px solid #eef4ea"><td style="padding:6px;'+estilo+'">'+g+'</td><td style="text-align:right;padding:6px;font-weight:700">'+fN(v)+'</td><td style="text-align:right;padding:6px;color:#739630">'+pct+'%</td></tr>';
+      });
+      html+='</table></div>';
+    }
 
-  function mkChart(id,type,labels,datasets,opts){
-    var ctx=document.getElementById(id);
-    if(!ctx) return;
-    if(ctx._chart) ctx._chart.destroy();
-    ctx._chart=new Chart(ctx,{type:type,data:{labels:labels,datasets:datasets},options:Object.assign({responsive:true,plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:12}}},scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:9}}}}},opts||{})});
-  }
+    // Botões exportar
+    html+='<div style="text-align:right;margin-bottom:20px">';
+    html+='<button class="btn" onclick="exportarFamiliasExcel()" style="background:#217346;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;margin-right:8px">📥 Excel Famílias</button>';
+    html+='<button class="btn bp" onclick="exportarRelPeriodoPDF()">↓ Exportar PDF</button>';
+    html+='</div>';
 
-  // G1 — Prog vs Real
-  mkChart(chartId1,'bar',labels,[
-    {label:'Programado',data:progs,backgroundColor:'rgba(2,79,43,0.2)',borderColor:'#024f2b',borderWidth:1},
-    {label:'Realizado',data:reals,backgroundColor:'rgba(115,150,48,0.7)',borderColor:'#739630',borderWidth:1}
-  ]);
+    cont.innerHTML=html;
 
-  // G2 — Sacaria por turno (sacas)
-  mkChart(chartId2,'bar',labels,[
-    {label:'T1 Sacaria',data:scT1s,backgroundColor:'rgba(0,100,60,0.8)'},
-    {label:'T2 Sacaria',data:scT2s,backgroundColor:'rgba(20,140,80,0.8)'},
-    {label:'T3 Sacaria',data:scT3s,backgroundColor:'rgba(100,170,120,0.8)'}
-  ],{scales:{x:{stacked:false,ticks:{font:{size:9}}},y:{stacked:false,ticks:{font:{size:9}}}}});
+    // ── RENDERIZA GRÁFICOS ───────────────────────────────────
+    var labels=datas.map(fDt);
+    var progs=datas.map(function(d){return porData[d].prog;});
+    var reals=datas.map(function(d){return porData[d].real;});
+    var t1s=datas.map(function(d){return porData[d].t1;});
+    var t2s=datas.map(function(d){return porData[d].t2;});
+    var t3s=datas.map(function(d){return porData[d].t3;});
+    var perdas=datas.map(function(d){return porData[d].perda;});
+    var adhs=datas.map(function(d){var pd=porData[d];return pd.prog?Math.min(Math.round(pd.real/pd.prog*100),100):0;});
+    var scT1s=datas.map(function(d){return Math.round((porData[d].scT1||0)/25);});
+    var scT2s=datas.map(function(d){return Math.round((porData[d].scT2||0)/25);});
+    var scT3s=datas.map(function(d){return Math.round((porData[d].scT3||0)/25);});
+    var kgT1s=datas.map(function(d){return porData[d].kgT1||0;});
+    var kgT2s=datas.map(function(d){return porData[d].kgT2||0;});
+    var kgT3s=datas.map(function(d){return porData[d].kgT3||0;});
 
-  // G3 — Granel por turno (kg)
-  mkChart(chartId3,'bar',labels,[
-    {label:'T1 Granel',data:kgT1s,backgroundColor:'rgba(0,80,140,0.8)'},
-    {label:'T2 Granel',data:kgT2s,backgroundColor:'rgba(20,120,180,0.8)'},
-    {label:'T3 Granel',data:kgT3s,backgroundColor:'rgba(100,160,220,0.8)'}
-  ],{scales:{x:{stacked:false,ticks:{font:{size:9}}},y:{stacked:false,ticks:{font:{size:9}}}}});
+    function mkChart(id,type,labels,datasets,opts){
+      var ctx=document.getElementById(id);
+      if(!ctx) return;
+      if(ctx._chart) ctx._chart.destroy();
+      ctx._chart=new Chart(ctx,{type:type,data:{labels:labels,datasets:datasets},options:Object.assign({responsive:true,plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:12}}},scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:9}}}}},opts||{})});
+    }
 
-  // G4 — Total KG por turno
-  mkChart(chartId4,'bar',labels,[
-    {label:'Turno 1',data:t1s,backgroundColor:'rgba(0,100,60,0.8)'},
-    {label:'Turno 2',data:t2s,backgroundColor:'rgba(20,140,80,0.8)'},
-    {label:'Turno 3',data:t3s,backgroundColor:'rgba(100,170,120,0.8)'}
-  ],{scales:{x:{stacked:false,ticks:{font:{size:9}}},y:{stacked:false,ticks:{font:{size:9}}}}});
+    mkChart(chartId1,'bar',labels,[
+      {label:'Programado',data:progs,backgroundColor:'rgba(2,79,43,0.2)',borderColor:'#024f2b',borderWidth:1},
+      {label:'Realizado',data:reals,backgroundColor:'rgba(115,150,48,0.7)',borderColor:'#739630',borderWidth:1}
+    ]);
 
-  // G5 — Aderência por dia
-  mkChart(chartId5,'line',labels,[
-    {label:'Aderência %',data:adhs,borderColor:'#024f2b',backgroundColor:'rgba(2,79,43,0.1)',tension:0.3,fill:true,pointRadius:4},
-    {label:'Meta 90%',data:datas.map(function(){return 90;}),borderColor:'#d29922',borderDash:[5,5],pointRadius:0,fill:false}
-  ],{scales:{x:{ticks:{font:{size:9}}},y:{min:0,max:110,ticks:{font:{size:9}}}}});
+    mkChart(chartId2,'bar',labels,[
+      {label:'T1 Sacaria',data:scT1s,backgroundColor:'rgba(0,100,60,0.8)'},
+      {label:'T2 Sacaria',data:scT2s,backgroundColor:'rgba(20,140,80,0.8)'},
+      {label:'T3 Sacaria',data:scT3s,backgroundColor:'rgba(100,170,120,0.8)'}
+    ],{scales:{x:{stacked:false,ticks:{font:{size:9}}},y:{stacked:false,ticks:{font:{size:9}}}}});
 
-  // G6 — Perda por dia
-  mkChart(chartId6,'bar',labels,[
-    {label:'Perda (kg)',data:perdas,backgroundColor:'rgba(192,57,43,0.7)',borderColor:'#c0392b',borderWidth:1}
-  ]);
+    mkChart(chartId3,'bar',labels,[
+      {label:'T1 Granel',data:kgT1s,backgroundColor:'rgba(0,80,140,0.8)'},
+      {label:'T2 Granel',data:kgT2s,backgroundColor:'rgba(20,120,180,0.8)'},
+      {label:'T3 Granel',data:kgT3s,backgroundColor:'rgba(100,160,220,0.8)'}
+    ],{scales:{x:{stacked:false,ticks:{font:{size:9}}},y:{stacked:false,ticks:{font:{size:9}}}}});
 
-  // G-FAM — Participação por família (pizza)
-  mkChart('rp-chart-fam','pie',['AQUA','PET','HORSE'],[
-    {data:[famTotais.AQUA,famTotais.PET,famTotais.HORSE],backgroundColor:['#0077b6','#c0392b','#8a5a2b']}
-  ]);
+    mkChart(chartId4,'bar',labels,[
+      {label:'Turno 1',data:t1s,backgroundColor:'rgba(0,100,60,0.8)'},
+      {label:'Turno 2',data:t2s,backgroundColor:'rgba(20,140,80,0.8)'},
+      {label:'Turno 3',data:t3s,backgroundColor:'rgba(100,170,120,0.8)'}
+    ],{scales:{x:{stacked:false,ticks:{font:{size:9}}},y:{stacked:false,ticks:{font:{size:9}}}}});
 
-  // G-GRAN — Produção AQUA por granulometria (barras)
-  var granKeysChart=Object.keys(granTotais).sort();
-  mkChart('rp-chart-gran','bar',granKeysChart,[
-    {label:'Produção (kg)',data:granKeysChart.map(function(g){return granTotais[g];}),backgroundColor:'rgba(0,119,182,0.7)',borderColor:'#0077b6',borderWidth:1}
-  ]);
+    mkChart(chartId5,'line',labels,[
+      {label:'Aderência %',data:adhs,borderColor:'#024f2b',backgroundColor:'rgba(2,79,43,0.1)',tension:0.3,fill:true,pointRadius:4},
+      {label:'Meta 90%',data:datas.map(function(){return 90;}),borderColor:'#d29922',borderDash:[5,5],pointRadius:0,fill:false}
+    ],{scales:{x:{ticks:{font:{size:9}}},y:{min:0,max:110,ticks:{font:{size:9}}}}});
 
-  // Guarda dados para exportar PDF/Excel
-  window._relPeriodoData={di:di,df:df,ln:ln,datas:datas,porData:porData,
-    totProg:totProg,totReal:totReal,totAdh:totAdh,totPerda:totPerda,
-    totT1:totT1,totT2:totT2,totT3:totT3,adhT1:adhT1,adhT2:adhT2,adhT3:adhT3,
-    totScT1:totScT1,totScT2:totScT2,totScT3:totScT3,
-    totKgT1:totKgT1,totKgT2:totKgT2,totKgT3:totKgT3,ops:ops,
-    famTotais:famTotais,granTotais:granTotais,detalheFamilias:detalheFamilias};
+    mkChart(chartId6,'bar',labels,[
+      {label:'Perda (kg)',data:perdas,backgroundColor:'rgba(192,57,43,0.7)',borderColor:'#c0392b',borderWidth:1}
+    ]);
+
+    mkChart('rp-chart-fam','pie',['AQUA','PET','HORSE'],[
+      {data:[famTotais.AQUA,famTotais.PET,famTotais.HORSE],backgroundColor:['#0077b6','#c0392b','#8a5a2b']}
+    ]);
+
+    var granKeysChart=Object.keys(granTotais).sort();
+    mkChart('rp-chart-gran','bar',granKeysChart,[
+      {label:'Produção (kg)',data:granKeysChart.map(function(g){return granTotais[g];}),backgroundColor:'rgba(0,119,182,0.7)',borderColor:'#0077b6',borderWidth:1}
+    ]);
+
+    // Guarda dados para exportar PDF/Excel
+    window._relPeriodoData={di:di,df:df,ln:ln,datas:datas,porData:porData,
+      totProg:totProg,totReal:totReal,totAdh:totAdh,totPerda:totPerda,
+      totT1:totT1,totT2:totT2,totT3:totT3,adhT1:adhT1,adhT2:adhT2,adhT3:adhT3,
+      totScT1:totScT1,totScT2:totScT2,totScT3:totScT3,
+      totKgT1:totKgT1,totKgT2:totKgT2,totKgT3:totKgT3,ops:opsRelevantes,
+      famTotais:famTotais,granTotais:granTotais,detalheFamilias:detalheFamilias};
+  }).catch(function(e){
+    cont.innerHTML='<div style="text-align:center;padding:40px;color:#c0392b">Erro ao calcular relatório: '+e.message+'</div>';
+  });
 }
 
 function exportarRelPeriodoPDF(){
