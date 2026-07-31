@@ -174,7 +174,6 @@ function realDia(op,dt){
 function realTurnoDia(o,dt,turno){
   var rpdt=o.realPorDataTurno;
   if(rpdt&&rpdt[dt]&&rpdt[dt][turno]!==undefined) return Number(rpdt[dt][turno])||0;
-  if(o.data===dt) return Number(o["t"+turno])||0;
   return 0;
 }
 
