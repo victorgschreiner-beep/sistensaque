@@ -973,6 +973,7 @@ function doLogout(){
   DB.ref('envase_pet_ops').off();
   SES=null; OPS=[]; EXT_CONCLUIDA={}; ENVASE_OPS=[];
   AUTO_AVANCO_FEITO=false;
+  AUTO_AVANCO_ENVASE_FEITO=false;
   G('pg-app').style.display='none';
   G('pg-login').style.display='flex';
 }
@@ -1086,6 +1087,44 @@ function autoAvancarOPsAtrasadas(){
 }
 
 // ============================================================
+// AUTO-AVANCO DE ORDENS DE ENVASE ATRASADAS
+// ============================================================
+// Mesmo principio da OP continua do Ensaque: uma ordem de Envase que nao foi
+// finalizada nao duplica no dia seguinte — o MESMO registro so avanca a 'data'.
+// prog/real continuam sendo o total unico da ordem, entao se uma ordem de
+// 20.000 kg fez 10.000, ela aparece no dia seguinte com 50% na barra, do
+// jeito que ja fazia no dia anterior — nada e resetado, nada e duplicado.
+//
+// Mais simples que a versao do Ensaque porque o Envase e turno unico, num
+// horario so — nao existe a sessao "dia operacional por turno de login" aqui,
+// entao a comparacao e direta contra o calendario (hoje()), sem depender de
+// SES.dataOperacional.
+var AUTO_AVANCO_ENVASE_FEITO=false;
+function autoAvancarEnvaseAtrasadas(){
+  if(AUTO_AVANCO_ENVASE_FEITO||!SES) return;
+  AUTO_AVANCO_ENVASE_FEITO=true;
+  var hj=hoje();
+  var atrasadas=ENVASE_OPS.filter(function(o){
+    return o.status!=='Concluida' && o.status!=='Excluida' && o.data && o.data<hj;
+  });
+  if(!atrasadas.length) return;
+
+  var promises=atrasadas.map(function(o){
+    return DB.ref('envase_pet_ops/'+o.fbKey).update({
+      data:hj,
+      movidaEm:agora(),
+      movidaPor:'AUTO ('+SES.login+')',
+      diasAnteriores:(o.diasAnteriores||[]).concat([o.data])
+    });
+  });
+
+  Promise.all(promises).then(function(){
+    toast(atrasadas.length+' ordem(ns) de Envase que não foram finalizadas foram movidas automaticamente para hoje','inf');
+    addLog('AUTO_AVANCAR_ENVASE', atrasadas.map(function(o){return o.id+' ('+o.data+' → '+hj+')';}).join(' | '));
+  }).catch(function(e){ console.warn('Erro no auto-avanco de Envase:', e.message); });
+}
+
+// ============================================================
 // INIT — carrega TUDO uma vez e escuta mudancas
 // ============================================================
 function iniciarApp(){
@@ -1155,6 +1194,7 @@ function iniciarApp(){
       snap.forEach(function(c){ var v=c.val(); v.fbKey=c.key; ENVASE_OPS.push(v); });
     }
     ENVASE_OPS.sort(function(a,b){return (b.criadoEm||'')>(a.criadoEm||'')?1:-1;});
+    autoAvancarEnvaseAtrasadas();
     var ativas=document.querySelectorAll('.scr.on');
     if(ativas.length && ativas[0].id==='scr-envase'){ renderEnvaseFila(); renderEnvaseOPs(); }
   }, function(err){

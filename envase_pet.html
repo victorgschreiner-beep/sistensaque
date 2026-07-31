@@ -235,6 +235,7 @@ var DB = firebase.database();
 // ============================================================
 var SES = null;
 var ENVASE_OPS = [];
+var AUTO_AVANCO_ENVASE_FEITO = false;
 
 // ============================================================
 // UTILS (mesmos padroes do index.html)
@@ -299,6 +300,7 @@ function aplicarSessao(){
 function doLogout(){
   DB.ref('envase_pet_ops').off();
   SES=null; ENVASE_OPS=[];
+  AUTO_AVANCO_ENVASE_FEITO=false;
   G('pg-app').style.display='none';
   G('pg-login').style.display='flex';
 }
@@ -318,6 +320,39 @@ function go(s,btn){
 }
 
 // ============================================================
+// AUTO-AVANCO DE ORDENS ATRASADAS
+// ============================================================
+// Ordem de Envase nao finalizada (status != Concluida/Excluida) com 'data'
+// anterior a hoje avanca sozinha, automaticamente, no login — mesmo registro,
+// sem duplicar. prog/real continuam intactos, entao uma ordem de 20.000 kg
+// que fez 10.000 continua aparecendo com 50% no dia seguinte.
+// Envase e turno unico, num horario so — nao tem sessao de "dia operacional
+// por turno" aqui, entao compara direto contra o calendario (hoje()).
+function autoAvancarEnvaseAtrasadas(){
+  if(AUTO_AVANCO_ENVASE_FEITO||!SES) return;
+  AUTO_AVANCO_ENVASE_FEITO=true;
+  var hj=hoje();
+  var atrasadas=ENVASE_OPS.filter(function(o){
+    return o.status!=='Concluida' && o.status!=='Excluida' && o.data && o.data<hj;
+  });
+  if(!atrasadas.length) return;
+
+  var promises=atrasadas.map(function(o){
+    return DB.ref('envase_pet_ops/'+o.fbKey).update({
+      data:hj,
+      movidaEm:agora(),
+      movidaPor:'AUTO ('+SES.login+')',
+      diasAnteriores:(o.diasAnteriores||[]).concat([o.data])
+    });
+  });
+
+  Promise.all(promises).then(function(){
+    toast(atrasadas.length+' ordem(ns) que não foram finalizadas foram movidas automaticamente para hoje','inf');
+    addLog('AUTO_AVANCAR_ENVASE', atrasadas.map(function(o){return o.id+' ('+o.data+' → '+hj+')';}).join(' | '));
+  }).catch(function(e){ console.warn('Erro no auto-avanco de Envase:', e.message); });
+}
+
+// ============================================================
 // INIT
 // ============================================================
 function iniciarApp(){
@@ -330,6 +365,7 @@ function iniciarApp(){
       snap.forEach(function(c){ var v=c.val(); v.fbKey=c.key; ENVASE_OPS.push(v); });
     }
     ENVASE_OPS.sort(function(a,b){return (b.criadoEm||'')>(a.criadoEm||'')?1:-1;});
+    autoAvancarEnvaseAtrasadas();
     ld(false);
     var ativas=document.querySelectorAll('.scr.on');
     if(ativas.length){
