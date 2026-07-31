@@ -1273,19 +1273,9 @@ function progPorLinha(nomeLinha, metas){
   return meta;
 }
 
-// Quanto um turno especifico produziu NUM DIA especifico desta OP.
-// Usa realPorDataTurno (por dia, por turno) — nao o.t1/o.t2/o.t3, que agora e
-// acumulado da vida inteira da OP (ela pode rodar varios dias sem finalizar).
-// Fallback: OPs antigas, gravadas antes dessa funcionalidade existir, so tem
-// o.t1/t2/t3 acumulado — só é seguro usar isso quando a data pedida é a MESMA
-// que o.data atual da OP (unico caso em que ainda não deu tempo de acumular
-// mais de um dia); pra qualquer outro dia, sem dado estruturado, retorna 0
-// em vez de arriscar mostrar um total inflado.
-function realTurnoDia(o,dt,turno){
-  var rpdt=o.realPorDataTurno;
-  if(rpdt&&rpdt[dt]&&rpdt[dt][turno]!==undefined) return Number(rpdt[dt][turno])||0;
-  return 0;
-}
+// Detalhamento por turno (T1/T2/T3) em qualquer tela agora le direto do no
+// 'apontamentos' (data+turno por registro, sempre existiu) em vez de um campo
+// resumido na OP — mais robusto, funciona igual pra dado antigo e novo.
 
 // ============================================================
 // DASHBOARD
@@ -1313,47 +1303,56 @@ function renderDash(){
   // REALIZADO: usa realPorData[dt] se existir (apontamento granular), senao o.real
   // (mesma fonte de dado que a lista de Ordens de Producao usa para exibir o.real)
   var aptsPorOp={};
-  var dadosPorTurno={
-    1:{real:0,perda:0,sc:0,bg:0,kg:0},
-    2:{real:0,perda:0,sc:0,bg:0,kg:0},
-    3:{real:0,perda:0,sc:0,bg:0,kg:0}
-  };
-
   ops.forEach(function(o){
     var rpd=o.realPorData||{};
     var realOp=Number(rpd[dt])||0;
     if(realOp<=0) return;
     aptsPorOp[o.fbKey]=realOp;
-    if(turnoFiltro>0){
-      var vT=realTurnoDia(o,dt,turnoFiltro);
-      dadosPorTurno[turnoFiltro].real+=vT;
-      if(o.tipo==='SC') dadosPorTurno[turnoFiltro].sc+=Math.round(vT/25);
-      else if(o.tipo==='BG') dadosPorTurno[turnoFiltro].bg+=Math.round(vT/750);
-      else dadosPorTurno[turnoFiltro].kg+=vT;
-    } else {
-      [1,2,3].forEach(function(t){
-        var v=realTurnoDia(o,dt,t);
-        dadosPorTurno[t].real+=v;
-        if(o.tipo==='SC') dadosPorTurno[t].sc+=Math.round(v/25);
-        else if(o.tipo==='BG') dadosPorTurno[t].bg+=Math.round(v/750);
-        else dadosPorTurno[t].kg+=v;
-      });
-    }
   });
 
   var tr=Object.keys(aptsPorOp).reduce(function(a,k){return a+(aptsPorOp[k]||0);},0);
-  if(turnoFiltro>0) tr=dadosPorTurno[turnoFiltro].real;
 
-  // PERDA — busca perdas_diarias do dia + META do dia (metas_diarias), em paralelo
+  // PERDA — busca perdas_diarias do dia + META do dia (metas_diarias) + apontamentos
+  // do dia (detalhamento por turno), em paralelo. Apontamentos e a fonte robusta pro
+  // turno — sempre existiu, nao depende de nenhum campo novo na OP nem dela ainda existir.
   Promise.all([
     DB.ref('perdas_diarias').orderByChild('data').equalTo(dt).once('value'),
-    DB.ref('metas_diarias/'+dt).once('value')
+    DB.ref('metas_diarias/'+dt).once('value'),
+    DB.ref('apontamentos').orderByChild('data').equalTo(dt).once('value')
   ]).then(function(results){
     var snapPerda=results[0];
     var metas=results[1].val()||{};
+    var snapApts=results[2];
     var linhasParaSomar=ln?[ln]:LINHAS.map(function(l){return l.nome+' ('+l.maq+')';});
     var tp=0;
     linhasParaSomar.forEach(function(nomeLinha){ tp+=progPorLinha(nomeLinha,metas); });
+
+    // Detalhamento por turno + por OP — direto de apontamentos
+    var fbKeyToLinhaLocal={};
+    OPS.forEach(function(o){fbKeyToLinhaLocal[o.fbKey]=o.linha;});
+    var dadosPorTurno={
+      1:{real:0,perda:0,sc:0,bg:0,kg:0},
+      2:{real:0,perda:0,sc:0,bg:0,kg:0},
+      3:{real:0,perda:0,sc:0,bg:0,kg:0}
+    };
+    var aptsPorOpTurno={};
+    if(snapApts.exists()) snapApts.forEach(function(c){
+      var a=c.val();
+      if(a.substituido) return;
+      if(ln&&fbKeyToLinhaLocal[a.opId]!==ln) return;
+      var t=Number(a.turno);
+      if(t<1||t>3) return;
+      var real=a.real!==undefined?(Number(a.real)||0):((Number(a.t1)||0)+(Number(a.t2)||0)+(Number(a.t3)||0));
+      if(real<=0) return;
+      var opRef=OPS.filter(function(o){return o.fbKey===a.opId;})[0];
+      var tipo=opRef?opRef.tipo:'KG';
+      dadosPorTurno[t].real+=real;
+      if(tipo==='SC') dadosPorTurno[t].sc+=Math.round(real/25);
+      else if(tipo==='BG') dadosPorTurno[t].bg+=Math.round(real/750);
+      else dadosPorTurno[t].kg+=real;
+      if(!aptsPorOpTurno[a.opId]) aptsPorOpTurno[a.opId]={1:0,2:0,3:0};
+      aptsPorOpTurno[a.opId][t]+=real;
+    });
 
     var tperda=0;
     var opIdsComPerda={};
@@ -1368,6 +1367,8 @@ function renderDash(){
         }
         tperda+=Number(p.perdaKG)||0;
         opIdsComPerda[p.opId]=true;
+        var tp2=Number(p.turno)||0;
+        if(tp2>=1&&tp2<=3) dadosPorTurno[tp2].perda+=Number(p.perdaKG)||0;
       });
     }
     // Fallback perda: OPs sem perdas_diarias E sem realPorData (dados antigos)
@@ -1378,6 +1379,7 @@ function renderDash(){
       tperda+=Number(o.perda)||0;
     });
 
+    if(turnoFiltro>0) tr=dadosPorTurno[turnoFiltro].real;
     var adh=tp?Math.min(Math.round(tr/tp*100),999):0;
     var ttotal=tr+tperda;
 
@@ -1411,7 +1413,7 @@ function renderDash(){
     var slice=ops.slice(0,8);
     for(var i=0;i<slice.length;i++){
       var o=slice[i];
-      var realDia=turnoFiltro>0?realTurnoDia(o,dt,turnoFiltro):(aptsPorOp[o.fbKey]||0);
+      var realDia=turnoFiltro>0?((aptsPorOpTurno[o.fbKey]&&aptsPorOpTurno[o.fbKey][turnoFiltro])||0):(aptsPorOp[o.fbKey]||0);
       var p2=pct(realDia,o.prog);
       var c=p2>=90?'#024f2b':p2>=60?'#d29922':'#c0392b';
       var prog=o.tipo==='SC'?fN(Math.round((o.prog||0)/25))+' sc':o.tipo==='BG'?fN(Math.round((o.prog||0)/750))+' bag':fN(o.prog)+' kg';
@@ -3249,6 +3251,27 @@ function genRelPDF(tipo){
     vistosId[o.id]=o; ops.push(o);
   });
 
+  var fbKeyToLinhaPdf={};
+  OPS.forEach(function(o){fbKeyToLinhaPdf[o.fbKey]=o.linha;});
+
+  // Detalhamento por turno vem de 'apontamentos' — fonte robusta que sempre existiu,
+  // nao depende de nenhum campo novo na OP (realPorDataTurno) nem da OP ainda existir.
+  DB.ref('apontamentos').orderByChild('data').equalTo(dtFiltro).once('value').then(function(snapApts){
+    var aptsPorOpTurno={};
+    var tT1=0,tT2=0,tT3=0;
+    if(snapApts.exists()) snapApts.forEach(function(c){
+      var a=c.val();
+      if(a.substituido) return;
+      if(lnFiltro&&fbKeyToLinhaPdf[a.opId]!==lnFiltro) return;
+      var t=Number(a.turno);
+      if(t<1||t>3) return;
+      var real=a.real!==undefined?(Number(a.real)||0):((Number(a.t1)||0)+(Number(a.t2)||0)+(Number(a.t3)||0));
+      if(real<=0) return;
+      if(!aptsPorOpTurno[a.opId]) aptsPorOpTurno[a.opId]={1:0,2:0,3:0};
+      aptsPorOpTurno[a.opId][t]+=real;
+      if(t===1) tT1+=real; else if(t===2) tT2+=real; else tT3+=real;
+    });
+
   var jsPDF=jspdf.jsPDF;
   var doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
   var W=277, ML=10, y=0;
@@ -3281,9 +3304,6 @@ function genRelPDF(tipo){
     return a+(rpd?(Number(rpd[dtFiltro])||0):(Number(o.real)||0));
   },0);
   var tperda=ops.reduce(function(a,o){return a+(Number(o.perda)||0);},0);
-  var tT1=ops.reduce(function(a,o){return a+realTurnoDia(o,dtFiltro,1);},0);
-  var tT2=ops.reduce(function(a,o){return a+realTurnoDia(o,dtFiltro,2);},0);
-  var tT3=ops.reduce(function(a,o){return a+realTurnoDia(o,dtFiltro,3);},0);
   var tproc=tr+tperda;
   var adh=tp?Math.min(Math.round(tr/tp*100),999):0;
   var corAdh=corP(adh);
@@ -3390,7 +3410,8 @@ function genRelPDF(tipo){
     var realOp=o.realPorData?(Number((o.realPorData||{})[dtFiltro])||0):(Number(o.real)||0);
     var p2=o.prog?Math.min(Math.round(realOp/o.prog*100),999):0;
     var cor2=corP(p2);
-    var t1=realTurnoDia(o,dtFiltro,1), t2=realTurnoDia(o,dtFiltro,2), t3=realTurnoDia(o,dtFiltro,3);
+    var perTurnoOp=aptsPorOpTurno[o.fbKey]||{1:0,2:0,3:0};
+    var t1=perTurnoOp[1], t2=perTurnoOp[2], t3=perTurnoOp[3];
     var t1p=realOp>0?Math.round(t1/realOp*100):0;
     var t2p=realOp>0?Math.round(t2/realOp*100):0;
     var t3p=realOp>0?Math.round(t3/realOp*100):0;
@@ -3473,6 +3494,7 @@ function genRelPDF(tipo){
   doc.save('Relatorio_'+dtFiltro+'.pdf');
   addLog('PDF_REL','diario_'+dtFiltro);
   toast('Relatorio gerado!','ok');
+  }).catch(function(e){ toast('Erro ao gerar PDF: '+e.message,'err'); });
 }
 function tabExp(i,btn){
   for(var j=0;j<4;j++){var e=G('et'+j);if(e)e.style.display=j===i?'':'none';}
@@ -4164,19 +4186,25 @@ function gerarRelPeriodo(){
     return;
   }
 
-  // fbKey -> linha, usado pra filtrar perdas_diarias por linha (o registro de perda
-  // nao guarda linha diretamente, so o opId)
-  var fbKeyToLinha={};
-  OPS.forEach(function(o){fbKeyToLinha[o.fbKey]=o.linha;});
+  // fbKey -> linha e fbKey -> tipo, usado pra filtrar/agrupar apontamentos e perdas
+  // por linha (esses registros nao guardam linha/tipo diretamente, so o opId)
+  var fbKeyToLinha={}, fbKeyToTipo={};
+  OPS.forEach(function(o){fbKeyToLinha[o.fbKey]=o.linha; fbKeyToTipo[o.fbKey]=o.tipo;});
 
-  // Busca em paralelo: metas_diarias de cada dia do periodo (Programado) e
-  // perdas_diarias do periodo inteiro (Perda) — mesmas fontes que o Dashboard usa
+  // Busca em paralelo: metas_diarias de cada dia (Programado), perdas_diarias do
+  // periodo (Perda) e apontamentos do periodo (detalhamento por turno) — mesmas
+  // fontes que o Dashboard usa. O detalhamento por turno vem direto de 'apontamentos'
+  // (nunca de o.realPorDataTurno) porque esse no sempre teve 'turno' gravado por
+  // registro, desde o inicio do sistema — nao depende da OP ainda existir nem de
+  // nenhum campo novo, entao funciona igual pra dado antigo e novo.
   Promise.all([
     Promise.all(datas.map(function(d){return DB.ref('metas_diarias/'+d).once('value');})),
-    DB.ref('perdas_diarias').orderByChild('data').startAt(di).endAt(df).once('value')
+    DB.ref('perdas_diarias').orderByChild('data').startAt(di).endAt(df).once('value'),
+    DB.ref('apontamentos').orderByChild('data').startAt(di).endAt(df).once('value')
   ]).then(function(results){
     var metasSnaps=results[0];
     var perdasSnap=results[1];
+    var aptsSnap=results[2];
 
     // Programado por dia — soma das metas das linhas relevantes (mesma regra do
     // Dashboard: SO a meta do PCP conta, sem cair de volta pra soma de o.prog)
@@ -4203,6 +4231,28 @@ function gerarRelPeriodo(){
       perdaPorDia[p.data]+=Number(p.perdaKG)||Number(p.quantidade)||0;
     });
 
+    // Detalhamento por turno (T1/T2/T3, sacaria e granel) — direto de 'apontamentos',
+    // por dia. Respeita filtro de linha e ignora substituidos, igual perda.
+    var turnoPorDia={}, scTurnoPorDia={}, kgTurnoPorDia={};
+    datas.forEach(function(d){
+      turnoPorDia[d]={1:0,2:0,3:0};
+      scTurnoPorDia[d]={1:0,2:0,3:0};
+      kgTurnoPorDia[d]={1:0,2:0,3:0};
+    });
+    if(aptsSnap.exists()) aptsSnap.forEach(function(c){
+      var a=c.val();
+      if(a.substituido) return;
+      if(!turnoPorDia.hasOwnProperty(a.data)) return;
+      if(ln&&fbKeyToLinha[a.opId]!==ln) return;
+      var t=Number(a.turno);
+      if(t<1||t>3) return;
+      var real=a.real!==undefined?(Number(a.real)||0):((Number(a.t1)||0)+(Number(a.t2)||0)+(Number(a.t3)||0));
+      if(real<=0) return;
+      turnoPorDia[a.data][t]+=real;
+      if(fbKeyToTipo[a.opId]==='SC') scTurnoPorDia[a.data][t]+=real;
+      else kgTurnoPorDia[a.data][t]+=real;
+    });
+
     // ── PRODUÇÃO POR FAMÍLIA, GRANULOMETRIA E POR DIA — tudo via realPorData/
     // realPorDataTurno, nunca o.real/o.t1-t3 acumulado (que agora e vida inteira da OP)
     var famTotais={AQUA:0,PET:0,HORSE:0};
@@ -4210,7 +4260,13 @@ function gerarRelPeriodo(){
     var detalheFamilias=[];
     var porData={};
     datas.forEach(function(d){
-      porData[d]={prog:progPorDia[d]||0,real:0,t1:0,t2:0,t3:0,perda:perdaPorDia[d]||0,scT1:0,scT2:0,scT3:0,kgT1:0,kgT2:0,kgT3:0};
+      porData[d]={
+        prog:progPorDia[d]||0, real:0,
+        t1:turnoPorDia[d][1], t2:turnoPorDia[d][2], t3:turnoPorDia[d][3],
+        perda:perdaPorDia[d]||0,
+        scT1:scTurnoPorDia[d][1], scT2:scTurnoPorDia[d][2], scT3:scTurnoPorDia[d][3],
+        kgT1:kgTurnoPorDia[d][1], kgT2:kgTurnoPorDia[d][2], kgT3:kgTurnoPorDia[d][3]
+      };
     });
 
     opsRelevantes.forEach(function(o){
@@ -4222,10 +4278,6 @@ function gerarRelPeriodo(){
         if(kgDia<=0) return;
         var pd=porData[d];
         pd.real+=kgDia;
-        var t1=realTurnoDia(o,d,1), t2=realTurnoDia(o,d,2), t3=realTurnoDia(o,d,3);
-        pd.t1+=t1; pd.t2+=t2; pd.t3+=t3;
-        if(o.tipo==='SC'){ pd.scT1+=t1; pd.scT2+=t2; pd.scT3+=t3; }
-        else { pd.kgT1+=t1; pd.kgT2+=t2; pd.kgT3+=t3; }
 
         famTotais[fam]+=kgDia;
         if(fam==='AQUA') granTotais[gran]=(granTotais[gran]||0)+kgDia;
