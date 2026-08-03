@@ -176,7 +176,7 @@ function G(id){return document.getElementById(id);}
 function hoje(){return new Date().toISOString().slice(0,10);}
 function pad(n){return String(n).padStart(2,"0");}
 function fN(n){return (Number(n)||0).toLocaleString("pt-BR");}
-function turnoAtual(){var h=new Date().getHours();return h>=21||h<5?1:h<13?2:3;}
+function turnoAtual(){var h=new Date().getHours();return h>=21||h<6?1:h<16?2:3;}
 function normDesc(s){return (s||"").toUpperCase().trim();}
 
 // Busca meta por NOME (desc) primeiro — Firebase tem prioridade

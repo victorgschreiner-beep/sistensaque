@@ -287,9 +287,9 @@ tr:hover td{background:rgba(2,79,43,.03)}
       </select>
       <select id="dash-turno" style="width:auto" onchange="gerarDashboardQual()">
         <option value="">Todos os turnos</option>
-        <option value="1">Turno 1 (21h-5h)</option>
-        <option value="2">Turno 2 (5h-13h)</option>
-        <option value="3">Turno 3 (13h-21h)</option>
+        <option value="1">Turno 1 (21h-06h)</option>
+        <option value="2">Turno 2 (06h-16h)</option>
+        <option value="3">Turno 3 (16h-21h)</option>
       </select>
       <select id="dash-analista" style="width:auto" onchange="gerarDashboardQual()">
         <option value="">Todos os analistas</option>
@@ -391,9 +391,9 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <div class="fg"><label class="fl">Data</label><input type="date" id="rt-data"></div>
       <div class="fg"><label class="fl">Turno</label>
         <select id="rt-turno">
-          <option value="1">Turno 1 (21h-5h)</option>
-          <option value="2">Turno 2 (5h-13h)</option>
-          <option value="3">Turno 3 (13h-21h)</option>
+          <option value="1">Turno 1 (21h-06h)</option>
+          <option value="2">Turno 2 (06h-16h)</option>
+          <option value="3">Turno 3 (16h-21h)</option>
         </select>
       </div>
       <div class="fg" style="align-self:flex-end;display:flex;gap:8px">
@@ -786,11 +786,11 @@ function toast(msg,tipo){
   G('twrap').appendChild(t);
   setTimeout(function(){t.remove();},3200);
 }
-function turnoAtual(){var h=new Date().getHours();return h>=21||h<5?1:h<13?2:3;}
+function turnoAtual(){var h=new Date().getHours();return h>=21||h<6?1:h<16?2:3;}
 function turnoDeHora(horaStr){
   if(!horaStr) return turnoAtual();
   var h=parseInt(horaStr.split(":")[0]);
-  return h>=21||h<5?1:h<13?2:3;
+  return h>=21||h<6?1:h<16?2:3;
 }
 
 // ============================================================
@@ -2662,7 +2662,7 @@ function renderChartUmidadeTurno(insp){
     porTurno[t].soma+=Number(u);
     porTurno[t].n++;
   });
-  var labels=['Turno 1 (21h-5h)','Turno 2 (5h-13h)','Turno 3 (13h-21h)'];
+  var labels=['Turno 1 (21h-06h)','Turno 2 (06h-16h)','Turno 3 (16h-21h)'];
   var data=[1,2,3].map(function(t){ return porTurno[t].n ? +(porTurno[t].soma/porTurno[t].n).toFixed(2) : 0; });
   var qtd=[1,2,3].map(function(t){ return porTurno[t].n; });
   if(DASH_CHARTS.umidTurno) DASH_CHARTS.umidTurno.destroy();

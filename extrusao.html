@@ -431,9 +431,9 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
           <input type="date" id="resumo-adm-dt" class="fi" style="font-size:12px"></div>
         <div><label style="font-size:11px;font-weight:700;color:#4a664a;display:block;margin-bottom:3px">TURNO</label>
           <select id="resumo-adm-turno" class="fi" style="font-size:12px">
-            <option value="1">Turno 1 (21h-05h)</option>
-            <option value="2">Turno 2 (05h-13h)</option>
-            <option value="3">Turno 3 (13h-21h)</option>
+            <option value="1">Turno 1 (21h-06h)</option>
+            <option value="2">Turno 2 (06h-16h)</option>
+            <option value="3">Turno 3 (16h-21h)</option>
           </select></div>
         <div><label style="font-size:11px;font-weight:700;color:#4a664a;display:block;margin-bottom:3px">LINHA</label>
           <select id="resumo-adm-linha" class="fi" style="font-size:12px">
@@ -980,13 +980,13 @@ function fM(id){G(id).classList.remove("on");}
 function aM(id){G(id).classList.add("on");}
 var _pendingTroca=null;
 
-function turnoAtual(){var h=horaBrasilia(new Date());return h>=21||h<5?1:h<13?2:3;}
+function turnoAtual(){var h=horaBrasilia(new Date());return h>=21||h<6?1:h<16?2:3;}
 
 // Calcula turno baseado na hora do apontamento (não no horário atual)
 function turnoDeHora(horaStr){
   if(!horaStr) return turnoAtual();
   var h=parseInt(horaStr.split(":")[0]);
-  return h>=21||h<5?1:h<13?2:3;
+  return h>=21||h<6?1:h<16?2:3;
 }
 
 // Calcula data do apontamento baseado na hora inicial
@@ -1545,8 +1545,8 @@ function verificarParadasAbertas(){
     dtAnt=d.toISOString().slice(0,10);
   }
   // Último minuto do turno anterior e primeiro do atual
-  var ultimoMinTurno={1:"04:59",2:"12:59",3:"20:59"};
-  var inicioTurnos={1:"21:00",2:"05:00",3:"13:00"};
+  var ultimoMinTurno={1:"05:59",2:"15:59",3:"20:59"};
+  var inicioTurnos={1:"21:00",2:"06:00",3:"16:00"};
   var horaFimAnt=ultimoMinTurno[tAnt];  // ex: T3 fecha às 20:59
   var horaIniAtual=inicioTurnos[t];     // ex: T1 começa às 21:00
 
@@ -2273,13 +2273,13 @@ function abrirParadaSetup(linha){
 function abrirApt(linha){
   // CORREÇÃO TURNO 1: avança DT_FILA automaticamente se operador ficou logado
   // após a meia-noite sem recarregar a página
-  // Turno 1: 21h→5h. Se hora atual < 5h e DT_FILA é ontem, avança para hoje
+  // Turno 1: 21h→6h. Se hora atual < 6h e DT_FILA é ontem, avança para hoje
   (function verificarDtFila(){
     var agr=new Date();
     var hAtual=horaBrasilia(agr);
     var dtHoje=hoje();
-    // Só avança se: turno 1, hora entre 0-4h, e DT_FILA não é hoje
-    if(SES.turno===1 && hAtual<5 && DT_FILA && DT_FILA!==dtHoje){
+    // Só avança se: turno 1, hora entre 0-5h, e DT_FILA não é hoje
+    if(SES.turno===1 && hAtual<6 && DT_FILA && DT_FILA!==dtHoje){
       trocarDataFila(dtHoje);
       toast("Data da fila avançada automaticamente para "+dtHoje.split("-").reverse().join("/"),"ok");
     }
@@ -3044,7 +3044,7 @@ function atualizarBarraTurno(){
     if(decorrido<0) decorrido+=1440;
   } else {
     // Operador: desde início do turno atual
-    var inicioMin={1:21*60, 2:5*60, 3:13*60}[t]||5*60;
+    var inicioMin={1:21*60, 2:6*60, 3:16*60}[t]||6*60;
     decorrido=hAtualMin-inicioMin;
     if(decorrido<0) decorrido+=1440;
   }
@@ -3078,7 +3078,7 @@ function iniciarAlerta(){
   setInterval(function(){
     var d=new Date(), min=d.getMinutes(), hora=pad(d.getHours())+":00";
     // Avança DT_FILA automaticamente para turno 1 após meia-noite
-    if(SES&&SES.turno===1&&horaBrasilia(d)<5){
+    if(SES&&SES.turno===1&&horaBrasilia(d)<6){
       var dtHoje=hoje();
       if(DT_FILA&&DT_FILA!==dtHoje){
         trocarDataFila(dtHoje);
