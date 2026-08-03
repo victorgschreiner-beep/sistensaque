@@ -373,6 +373,10 @@ function mkChart(id,type,labels,datasets,extraOpts){
 
 function iniciarRelogio(){
   var meses=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  // Seta o badge de turno imediatamente no carregamento — antes so era setado
+  // dentro do setInterval de 60s, entao a TV recem-aberta ficava ate 1 minuto
+  // mostrando "TURNO 1" (valor estatico do HTML) mesmo com o turno atual sendo outro.
+  G("top-turno").textContent="TURNO "+turnoAtual();
   setInterval(function(){
     var d=new Date();
     G("top-hora").textContent=pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds());

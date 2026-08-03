@@ -2492,6 +2492,14 @@ function salvarEdicaoApt(){
   var origReal=(Number(op.t1)||0)+(Number(op.t2)||0)+(Number(op.t3)||0);
   var deltaReal=real-origReal; // pode ser negativo se a edicao reduziu o valor
 
+  // Delta POR TURNO (KG) — mesma logica do deltaReal acima, mas separada por turno,
+  // pra alimentar realPorDataTurno (usado pela TV no bloco "Consolidado por Turno").
+  // Ate agora essa funcao so atualizava realPorData (total do dia), entao a edicao
+  // do PCP nao aparecia no consolidado por turno da TV mesmo o total do dia batendo.
+  // Nao mexe em t1/t2/t3/real/perda nem em nenhuma escrita ja existente abaixo.
+  var origT1=Number(op.t1)||0, origT2=Number(op.t2)||0, origT3=Number(op.t3)||0;
+  var deltaT1=t1-origT1, deltaT2=t2-origT2, deltaT3=t3-origT3;
+
   var dtCtx=G('eadtctx')&&G('eadtctx').value?G('eadtctx').value:hoje();
 
   // Perda so muda quando e o PCP editando (operador preserva origPerda) - so nesse caso
@@ -2501,19 +2509,30 @@ function salvarEdicaoApt(){
   ld(true,'Salvando edicao...');
 
   (perdaMudou?arquivarPerdasAntigas(fbKey):Promise.resolve()).then(function(){
-    return DB.ref('ops/'+fbKey).child('realPorData').once('value');
-  }).then(function(snapRPD){
-    var rpd=snapRPD.val()||{};
+    return Promise.all([
+      DB.ref('ops/'+fbKey).child('realPorData').once('value'),
+      DB.ref('ops/'+fbKey).child('realPorDataTurno').once('value')
+    ]);
+  }).then(function(snaps){
+    var rpd=snaps[0].val()||{};
+    var rpdt=snaps[1].val()||{};
     if(deltaReal!==0){
       rpd[dtCtx]=Math.max((Number(rpd[dtCtx])||0)+deltaReal,0);
       if(rpd[dtCtx]===0) delete rpd[dtCtx]; // limpa entrada zerada
+    }
+    if(deltaT1!==0||deltaT2!==0||deltaT3!==0){
+      rpdt[dtCtx]=rpdt[dtCtx]||{};
+      if(deltaT1!==0){ rpdt[dtCtx]['1']=Math.max((Number(rpdt[dtCtx]['1'])||0)+deltaT1,0); }
+      if(deltaT2!==0){ rpdt[dtCtx]['2']=Math.max((Number(rpdt[dtCtx]['2'])||0)+deltaT2,0); }
+      if(deltaT3!==0){ rpdt[dtCtx]['3']=Math.max((Number(rpdt[dtCtx]['3'])||0)+deltaT3,0); }
     }
     var writes=[
       DB.ref('ops/'+fbKey).update({
         t1:t1, t2:t2, t3:t3, real:real,
         t1sc:t1sc, t2sc:t2sc, t3sc:t3sc,
         perda:perdaKG,
-        realPorData:rpd
+        realPorData:rpd,
+        realPorDataTurno:rpdt
       }),
       DB.ref('correcoes/'+fbKey).push({
         ts:agora(), usuario:SES.login, perfil:SES.perfil,
