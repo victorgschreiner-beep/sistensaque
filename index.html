@@ -2856,13 +2856,17 @@ function salvarCorrecao(){
     var opFresh=res[0].val()||{};
     var snapApts=res[1];
 
-    // Passo 1: marca como substituidos SOMENTE os apontamentos das datas que
-    // estao sendo corrigidas agora. Apontamentos de qualquer outra data dessa
-    // mesma OP ficam validos e continuam contando no historico normalmente.
+    // Passo 1: marca como substituidos os apontamentos das datas que estao
+    // sendo corrigidas agora — de QUALQUER tipo, inclusive correcao_pcp
+    // anterior. Sem isso, corrigir a mesma OP/data duas vezes deixava as duas
+    // correcoes ativas ao mesmo tempo e o dashboard somava as duas (bug real
+    // encontrado em producao: duas correcoes seguidas na mesma OP/turno
+    // dobraram o valor mostrado no "Turno X — Detalhamento").
+    // Apontamentos de qualquer OUTRA data dessa mesma OP ficam intactos.
     var promisesSubst=[];
     snapApts.forEach(function(c){
       var a=c.val();
-      if(a.tipo==='correcao_pcp') return;
+      if(a.substituido) return; // ja estava marcado, nao precisa reescrever
       if(datasEnvolvidas.indexOf(a.data)===-1) return; // fora do escopo desta correcao
       promisesSubst.push(DB.ref('apontamentos/'+c.key).update({substituido:true}));
     });
