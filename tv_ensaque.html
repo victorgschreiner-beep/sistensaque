@@ -137,10 +137,10 @@ var firebaseConfig={apiKey:"AIzaSyB52cXfvtmY2xXu9vMkMPhCWU-rp6NXhxc",authDomain:
 var DB=null;
 try{firebase.initializeApp(firebaseConfig);DB=firebase.database();}catch(e){console.warn(e);}
 
-var OPS=[], PERDAS=[], METAS={};
+var OPS=[], PERDAS=[], METAS={}, APTS=[];
 var CHARTS={};
 var DT_ATUAL=null; // data operacional carregada agora — usada para detectar virada de dia
-var REF_OPS=null, REF_PERDAS=null, REF_METAS=null; // referências dos listeners ativos, para poder desligar na virada
+var REF_OPS=null, REF_PERDAS=null, REF_METAS=null, REF_APTS=null; // referências dos listeners ativos, para poder desligar na virada
 
 function G(id){return document.getElementById(id);}
 function hoje(){return new Date().toISOString().slice(0,10);}
@@ -166,17 +166,6 @@ function realDia(op,dt){
   return Number((op.realPorData||{})[dt])||0;
 }
 
-// Quanto um turno especifico produziu NUM DIA especifico desta OP.
-// Usa realPorDataTurno (por dia, por turno) — nao o.t1/o.t2/o.t3, que agora e
-// acumulado da vida inteira da OP (ela pode rodar varios dias sem finalizar).
-// Sem esse cuidado, um turno que nao trabalhou hoje pode aparecer com producao
-// "fantasma" herdada de um dia anterior em que essa mesma OP ja estava ativa.
-function realTurnoDia(o,dt,turno){
-  var rpdt=o.realPorDataTurno;
-  if(rpdt&&rpdt[dt]&&rpdt[dt][turno]!==undefined) return Number(rpdt[dt][turno])||0;
-  return 0;
-}
-
 function iniciar(){
   iniciarRelogio();
   if(!DB) return;
@@ -194,6 +183,7 @@ function carregarDia(dt){
   if(REF_OPS) REF_OPS.off("value");
   if(REF_PERDAS) REF_PERDAS.off("value");
   if(REF_METAS) REF_METAS.off("value");
+  if(REF_APTS) REF_APTS.off("value");
   DT_ATUAL=dt;
   OPS=[];PERDAS=[];METAS={};
 
@@ -208,6 +198,17 @@ function carregarDia(dt){
   REF_PERDAS.on("value",function(s){
     PERDAS=[];
     if(s.exists()) s.forEach(function(c){var v=c.val();PERDAS.push(v);});
+    renderTudo();
+  });
+
+  // Apontamentos do dia — MESMA fonte que o Dashboard (index.html/renderDash) usa
+  // pro detalhamento por turno. E a fonte que reflete corretamente as correcoes do
+  // PCP (que gravam registros tipo 'correcao_pcp' aqui e marcam os antigos como
+  // substituido), diferente de realPorDataTurno que podia ficar dessincronizado.
+  REF_APTS=DB.ref("apontamentos").orderByChild("data").equalTo(dt);
+  REF_APTS.on("value",function(s){
+    APTS=[];
+    if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;APTS.push(v);});
     renderTudo();
   });
 
@@ -231,7 +232,10 @@ function renderTudo(){
   var LINHAS_IDS=[{nome:"Linha 1",id:"l1"},{nome:"Linha 2",id:"l2"},{nome:"Linha 4",id:"l4"},{nome:"Linha 5",id:"l5"}];
   var totalProg=LINHAS_IDS.reduce(function(a,l){return a+(METAS[l.id]?Number(METAS[l.id].metaKG)||0:0);},0);
   var totalBom=OPS.reduce(function(a,o){return a+realDia(o,dt);},0);
-  var totalPerda=PERDAS.reduce(function(a,p){return a+(Number(p.perdaKG)||Number(p.quantidade)||0);},0);
+  // Perda total do dia — exclui registros marcados substituido (arquivados por
+  // correcao do PCP), igual ao Dashboard. Sem esse filtro a TV contava a perda
+  // antiga E a nova depois de uma correcao, duplicando o valor.
+  var totalPerda=PERDAS.filter(function(p){return !p.substituido;}).reduce(function(a,p){return a+(Number(p.perdaKG)||Number(p.quantidade)||0);},0);
   var totalProc=totalBom+totalPerda;
   var nAndamento=OPS.filter(function(o){return o.status==="Em andamento";}).length;
   var nConc=OPS.filter(function(o){return o.status==="Concluida";}).length;
@@ -278,24 +282,30 @@ function renderTudo(){
     borderWidth:2,borderColor:"#fff"
   }],{plugins:{legend:{position:"bottom",labels:{font:{size:11},boxWidth:14}}}});
 
-  // ── TURNOS — real por dia via realPorDataTurno, nao o.t1/o.t2/o.t3 acumulado ──
-  // o.t1/o.t2/o.t3 agora é o total da vida inteira da OP (ela pode rodar vários dias
-  // sem finalizar), então usá-los direto faria um turno aparecer com produção mesmo
-  // sem ter trabalhado hoje, herdada de um dia anterior em que essa mesma OP já
-  // estava ativa. realTurnoDia isola certinho só o que foi apontado NESTE dia.
+  // ── TURNOS — MESMA fonte e MESMOS filtros que o Dashboard do index.html usa
+  // (renderDash → dadosPorTurno): soma direto de 'apontamentos' do dia, turno a
+  // turno, excluindo registros substituido. E a fonte que reflete corretamente
+  // as correcoes do PCP (que gravam apontamentos tipo 'correcao_pcp' e marcam os
+  // substituidos), entao a TV passa a bater sempre com o Dashboard.
   var porTurno={1:{real:0,perda:0},2:{real:0,perda:0},3:{real:0,perda:0}};
-  OPS.forEach(function(o){
-    [1,2,3].forEach(function(ti){
-      porTurno[ti].real+=realTurnoDia(o,dt,ti);
-    });
+  APTS.forEach(function(a){
+    if(a.substituido) return;
+    var t=Number(a.turno);
+    if(t<1||t>3) return;
+    var real=a.real!==undefined?(Number(a.real)||0):((Number(a.t1)||0)+(Number(a.t2)||0)+(Number(a.t3)||0));
+    if(real<=0) return;
+    porTurno[t].real+=real;
   });
   PERDAS.forEach(function(p){
+    if(p.substituido) return; // mesmo filtro do Dashboard — nao conta perda arquivada
     var ti=Number(p.turno)||0;
     if(ti>=1&&ti<=3) porTurno[ti].perda+=Number(p.perdaKG)||Number(p.quantidade)||0;
   });
-  // Programado dividido igualmente entre os 3 turnos (meta e cadastrada por dia
-  // inteiro, nao por turno — mesma simplificacao que ja existia antes)
-  var progPorTurno=Math.round(totalProg/3);
+  // Aderencia por turno = producao do turno vs o PROGRAMADO TOTAL DO DIA (nao
+  // dividido por 3) — mesma conta que o Dashboard faz no detalhamento por turno
+  // (pctT = d.real/tp). Antes a TV dividia a meta em 3 partes iguais, o que dava
+  // um numero diferente do que aparece no index.html pro mesmo turno.
+  var progPorTurno=totalProg;
 
   var nomes={1:"Turno 1  (21h — 05h)",2:"Turno 2  (05h — 13h)",3:"Turno 3  (13h — 21h)"};
   var h="";
