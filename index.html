@@ -1650,13 +1650,11 @@ function renderOPs(){
       h+='<button class="btn bxs" data-key="'+fid+'" onclick="abrirEd(this.dataset.key)">Editar</button>';
       h+='<button class="btn bxs" style="color:#024f2b;border-color:#024f2b" data-key="'+fid+'" onclick="abrirCorrecao(this.dataset.key)">Corrigir</button>';
       if(o.status!=='Concluida') h+='<button class="btn bxs" style="background:#739630;border-color:#739630;color:#fff" data-key="'+fid+'" onclick="abrirFin(this.dataset.key)">Finalizar</button>';
-      if(o.status!=='Concluida') h+='<button class="btn bxs" style="color:#d29922;border-color:#d29922" data-key="'+fid+'" onclick="reprogramarOP(this.dataset.key)" title="Mover OP para o próximo dia">&#8594; Amanhã</button>';
       if(o.status==='Concluida') h+='<button class="btn bxs" style="color:#1a73e8;border-color:#1a73e8" data-key="'+fid+'" onclick="reabrirOP(this.dataset.key)">&#8635; Reabrir</button>';
       h+='<button class="btn bxs" style="color:#c0392b;border-color:#c0392b" data-key="'+fid+'" onclick="abrirExcluir(this.dataset.key)">Excluir</button>';
     }
     if(canSup && o.status!=='Concluida'){
-      h+='<button class="btn bxs" style="color:#d29922;border-color:#d29922" data-key="'+fid+'" onclick="reprogramarOP(this.dataset.key)" title="Mover OP para o próximo dia">&#8594; Amanhã</button>';
-    }
+      }
     if(canSup && o.status==='Concluida'){
       h+='<button class="btn bxs" style="color:#1a73e8;border-color:#1a73e8" data-key="'+fid+'" onclick="reabrirOP(this.dataset.key)">&#8635; Reabrir</button>';
     }
