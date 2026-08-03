@@ -2386,10 +2386,10 @@ function salvarApt(){
   // Validação de sobreposição de horários na mesma linha e turno
   var aptsExist=(EST[linhaAtiva]&&EST[linhaAtiva].apts)||[];
   var hiMin=hi.replace(":",""); var hfMin=hf.replace(":","");
-  // Para T1 (noturno) normalizar horas < "05" somando 24h para comparação
+  // Para T1 (noturno) normalizar horas <= "06:00" somando 24h para comparação
   function normH(h,t){
     var n=parseInt(h.replace(":",""));
-    if(t===1 && n<=500) n+=2400;
+    if(t===1 && n<=600) n+=2400;
     return n;
   }
   var nHi=normH(hi,turnoApt), nHf=normH(hf,turnoApt);
