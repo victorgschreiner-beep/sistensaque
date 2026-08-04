@@ -1647,8 +1647,14 @@ function renderOPs(){
     var prog=o.tipo==='SC'?fN(Math.round((o.prog||0)/25))+' sc':o.tipo==='BG'?fN(Math.round((o.prog||0)/750))+' bag':fN(o.prog)+' kg';
     var real=o.tipo==='SC'?fN(Math.round(realNum/25))+' sc ('+fN(realNum)+' kg)':o.tipo==='BG'?fN(Math.round(realNum/750))+' bag ('+fN(realNum)+' kg)':fN(realNum)+' kg';
     var loteBadge='<span style="font-size:12px;font-weight:700;color:#024f2b;background:rgba(2,79,43,.08);padding:2px 7px;border-radius:4px">'+(o.lote||'---')+'</span>';
-    h+='<tr>';
-    h+='<td style="font-weight:600;white-space:nowrap">'+o.id+(o.filaPosicao!==undefined?' <span style="font-size:10px;color:#739630">#'+(o.filaPosicao+1)+'</span>':'')+'</td>';
+    // Linha e HISTORICO quando ha filtro de data e a OP ja nao esta mais programada
+    // pra esse dia (o.data mudou pra frente), mas produziu nele — mesmo criterio
+    // usado pra decidir se ela entra na lista (linha 1629). Sem esse aviso visual,
+    // uma OP que ja avancou aparece igual a uma ativa e confunde o PCP.
+    var ehHistorico=dt&&o.data!==dt;
+    var histBadge=ehHistorico?' <span class="badge bcz" title="Esta OP ja avancou para outra data, esta linha mostra so o que foi produzido neste dia">📅 hist. — avançou p/ '+(o.data?o.data.split('-').reverse().join('/'):'?')+'</span>':'';
+    h+='<tr'+(ehHistorico?' style="opacity:.7"':'')+'>';
+    h+='<td style="font-weight:600;white-space:nowrap">'+o.id+(o.filaPosicao!==undefined?' <span style="font-size:10px;color:#739630">#'+(o.filaPosicao+1)+'</span>':'')+histBadge+'</td>';
     h+='<td style="font-size:11px;color:#4a664a">'+o.cod+'</td>';
     h+='<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">'+(o.desc||o.cod)+'</td>';
     h+='<td>'+loteBadge+'</td>';
