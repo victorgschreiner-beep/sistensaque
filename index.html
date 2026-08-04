@@ -522,6 +522,21 @@ tr:hover td{background:rgba(2,79,43,.03)}
 <div class="scr" id="scr-admin">
   <h2 style="font-size:16px;font-weight:700;color:#024f2b;margin-bottom:16px">Administracao</h2>
 
+  <!-- Card de auditoria de consistencia — compara os dois caminhos de calculo do
+       sistema (apontamentos por turno vs realPorData agregado) pra achar exatamente
+       qual OP esta com registro duplicado ou orfao numa data, sem precisar testar
+       tela por tela manualmente. -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ch"><span class="ct">🔍 Auditoria de Consistência (Apontamentos)</span></div>
+    <div style="font-size:12px;color:#4a664a;margin-bottom:12px">Compara a soma por turno (apontamentos) com o total agregado do dia (realPorData) OP por OP. Use quando o total "Todos os turnos" não bater com a soma dos turnos separados.</div>
+    <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:12px;flex-wrap:wrap">
+      <div class="fg" style="margin:0"><label class="fl">Data</label><input type="date" id="aud-dt" style="width:auto"></div>
+      <button class="btn bp bsm" onclick="auditarConsistencia()">Auditar</button>
+    </div>
+    <div id="aud-resumo" style="font-size:12px;color:#4a664a;margin-bottom:10px"></div>
+    <div class="tw"><table><thead><tr><th>OP</th><th>Linha</th><th>Apont. T1</th><th>Apont. T2</th><th>Apont. T3</th><th>Soma Apont.</th><th>realPorData</th><th>Diferença</th></tr></thead><tbody id="aud-body"></tbody></table></div>
+  </div>
+
   <!-- Card de configuração das balanças -->
   <div class="card" style="margin-bottom:14px">
     <div class="ch"><span class="ct">Configuração das Balanças</span><button class="btn bsm" onclick="loadBalConfig()">&#8635;</button></div>
@@ -5332,6 +5347,88 @@ function renderFilaOp(){
 // ============================================================
 // CONFIG BALANÇAS — Admin
 // ============================================================
+// ============================================================
+// AUDITORIA DE CONSISTENCIA — apontamentos (por turno) vs realPorData (agregado)
+// ============================================================
+// Os dois caminhos deveriam SEMPRE bater: realPorData e recalculado do zero a
+// partir de realPorDataTurno a cada correcao, enquanto a soma por turno le direto
+// da colecao 'apontamentos'. Se um registro fica orfao (substituido sem
+// substituto) ou duplicado (substituido incorretamente, ou nao substituido
+// quando deveria), os dois caminhos divergem — exatamente o tipo de bug ja
+// encontrado e corrigido em producao (OP 06480701001, Turno 3). Esta auditoria
+// compara OP por OP pra achar rapido qual delas esta com o problema, sem
+// precisar testar tela por tela manualmente.
+function auditarConsistencia(){
+  var dt=G('aud-dt').value;
+  if(!dt){toast('Informe uma data','err');return;}
+  if(!DB){toast('Sem conexao','err');return;}
+  G('aud-resumo').textContent='Auditando...';
+  G('aud-body').innerHTML='';
+  DB.ref('apontamentos').orderByChild('data').equalTo(dt).once('value').then(function(snap){
+    // Soma apontamentos ativos por OP e por turno
+    var porOp={}; // fbKey -> {1:kg,2:kg,3:kg}
+    if(snap.exists()) snap.forEach(function(c){
+      var a=c.val();
+      if(a.substituido) return;
+      var t=Number(a.turno);
+      if(t<1||t>3) return; // ignora registro-resumo (turno:0) e outros tipos
+      var real=a.real!==undefined?(Number(a.real)||0):((Number(a.t1)||0)+(Number(a.t2)||0)+(Number(a.t3)||0));
+      if(!porOp[a.opId]) porOp[a.opId]={1:0,2:0,3:0};
+      porOp[a.opId][t]+=real;
+    });
+
+    // Junta com realPorData de cada OP (ja carregado em memoria em OPS)
+    var fbKeys={};
+    Object.keys(porOp).forEach(function(k){fbKeys[k]=true;});
+    OPS.forEach(function(o){
+      if(o.realPorData&&o.realPorData[dt]) fbKeys[o.fbKey]=true;
+    });
+
+    var linhas=[];
+    var totalApont=0, totalRPD=0, divergentes=0;
+    Object.keys(fbKeys).forEach(function(fbKey){
+      var o=OPS.filter(function(x){return x.fbKey===fbKey;})[0];
+      var ap=porOp[fbKey]||{1:0,2:0,3:0};
+      var somaApont=ap[1]+ap[2]+ap[3];
+      var rpd=o&&o.realPorData?(Number(o.realPorData[dt])||0):0;
+      var diff=somaApont-rpd;
+      totalApont+=somaApont; totalRPD+=rpd;
+      if(Math.abs(diff)>0) divergentes++;
+      linhas.push({
+        id:o?o.id:fbKey, linha:o?o.linha:'?',
+        t1:ap[1], t2:ap[2], t3:ap[3], somaApont:somaApont, rpd:rpd, diff:diff
+      });
+    });
+    // Ordena: divergencias primeiro (maior diferenca absoluta no topo)
+    linhas.sort(function(a,b){return Math.abs(b.diff)-Math.abs(a.diff);});
+
+    G('aud-resumo').innerHTML='Total via apontamentos: <strong>'+fN(totalApont)+' kg</strong> &nbsp;|&nbsp; '+
+      'Total via realPorData: <strong>'+fN(totalRPD)+' kg</strong> &nbsp;|&nbsp; '+
+      'Diferença: <strong style="color:'+(totalApont!==totalRPD?'#c0392b':'#024f2b')+'">'+fN(totalApont-totalRPD)+' kg</strong> &nbsp;|&nbsp; '+
+      divergentes+' OP(s) com divergência';
+
+    if(!linhas.length){
+      G('aud-body').innerHTML='<tr><td colspan="8" style="text-align:center;color:#4a664a;padding:16px">Nenhum apontamento encontrado nessa data.</td></tr>';
+      return;
+    }
+    var h='';
+    linhas.forEach(function(l){
+      var divergente=Math.abs(l.diff)>0;
+      h+='<tr'+(divergente?' style="background:rgba(192,57,43,.06)"':'')+'>';
+      h+='<td style="font-weight:600">'+l.id+'</td>';
+      h+='<td>'+l.linha+'</td>';
+      h+='<td>'+fN(l.t1)+'</td>';
+      h+='<td>'+fN(l.t2)+'</td>';
+      h+='<td>'+fN(l.t3)+'</td>';
+      h+='<td>'+fN(l.somaApont)+'</td>';
+      h+='<td>'+fN(l.rpd)+'</td>';
+      h+='<td style="font-weight:700;color:'+(divergente?'#c0392b':'#024f2b')+'">'+(l.diff>0?'+':'')+fN(l.diff)+'</td>';
+      h+='</tr>';
+    });
+    G('aud-body').innerHTML=h;
+  }).catch(function(e){ toast('Erro na auditoria: '+e.message,'err'); G('aud-resumo').textContent=''; });
+}
+
 function loadBalConfig() {
   DB.ref('ensaque_bal_config').once('value').then(function(snap) {
     var cfg = snap.val() || {};
