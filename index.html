@@ -1346,13 +1346,20 @@ function renderDash(){
   // OU que tenham producao registrada nesse dia em realPorData (dia por onde ela ja
   // passou antes de avancar — a OP e continua, o mesmo registro segue de dia em dia,
   // entao um dia antigo so continua aparecendo no historico via realPorData).
+  // EXCECAO: uma OP ja Concluida cujo 'data' so aponta pra hoje por sobra do
+  // auto-avanco (foi finalizada sem nenhum apontamento novo no dia) NAO entra so
+  // por isso — sem essa excecao ela aparecia com Real. 0kg / 0% no dashboard de
+  // hoje, mesmo tendo dezenas de milhares de kg produzidos em dias anteriores,
+  // parecendo uma OP concluida com producao zero (bug real encontrado em producao,
+  // OP 06480701001: 39.581kg reais em 03-04/08, mostrando 0kg no dash de 05/08).
   var vistosFbKey={};
   var ops=[];
   OPS.forEach(function(o){
     if(ln && o.linha!==ln) return;
     if(vistosFbKey[o.fbKey]) return;
-    var teveNesseDia=(o.data===dt)||(o.realPorData&&o.realPorData[dt]);
-    if(!teveNesseDia) return;
+    var produziuNesseDia=!!(o.realPorData&&o.realPorData[dt]);
+    var ativaNesseDia=(o.data===dt)&&o.status!=='Concluida';
+    if(!produziuNesseDia && !ativaNesseDia) return;
     vistosFbKey[o.fbKey]=true;
     ops.push(o);
   });
@@ -1622,11 +1629,15 @@ function renderOPs(){
   if(ln) ops=ops.filter(function(o){return o.linha===ln;});
   if(tp) ops=ops.filter(function(o){return o.tipo===tp;});
   if(dt) ops=ops.filter(function(o){
-    // Mostra a OP no dia filtrado se for o dia atual dela (o.data) OU se ela teve
-    // producao registrada nesse dia (realPorData) — a OP e continua (mesmo registro
-    // segue avancando de dia em dia), entao um dia que ja passou so continua visivel
-    // no historico atraves do realPorData daquele dia.
-    return o.data===dt||(o.realPorData&&o.realPorData[dt]);
+    // Mostra a OP no dia filtrado se ela produziu naquele dia (realPorData) OU se
+    // esta ativa (nao concluida) e programada pra esse dia. Mesma excecao aplicada
+    // no Dashboard: uma OP ja Concluida cujo 'data' so aponta pra esse dia por
+    // sobra do auto-avanco (foi finalizada sem nenhum apontamento novo naquele dia)
+    // NAO entra so por isso — sem essa excecao ela aparecia com Real 0kg/0% mesmo
+    // tendo produzido normalmente em dias anteriores (caso real: OP 06480701001).
+    var produziuNesseDia=!!(o.realPorData&&o.realPorData[dt]);
+    var ativaNesseDia=(o.data===dt)&&o.status!=='Concluida';
+    return produziuNesseDia||ativaNesseDia;
   });
   if(lote) ops=ops.filter(function(o){return (o.lote||'').toLowerCase().indexOf(lote)!==-1;});
 
