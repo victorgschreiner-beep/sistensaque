@@ -2426,10 +2426,18 @@ function abrirEditarApt(fbKey){
   G('editapt-lbl2').textContent='Turno 2 ('+unid+')';
   G('editapt-lbl3').textContent='Turno 3 ('+unid+')';
 
-  // Valores atuais de cada turno
-  var v1=op.t1sc!==undefined?op.t1sc:Math.round((op.t1||0)/fator);
-  var v2=op.t2sc!==undefined?op.t2sc:Math.round((op.t2||0)/fator);
-  var v3=op.t3sc!==undefined?op.t3sc:Math.round((op.t3||0)/fator);
+  // Valores atuais de cada turno, do DIA selecionado na tela (op-fdt/eadtctx) —
+  // via realPorDataTurno, igual ao "Corrigir Apontamento" do PCP. ANTES usava
+  // op.t1sc/t2sc/t3sc (acumulado da vida inteira da OP), o que misturava a
+  // producao de varios dias diferentes numa OP que roda mais de um dia sem
+  // finalizar. O operador via um numero que nao era "o que ele apontou hoje",
+  // editava achando que era, e a correcao derrubava/duplicava producao de OUTROS
+  // dias (bug real reportado: correcao do operador nao refletia no Dashboard).
+  var dtCtxView=G('op-fdt')&&G('op-fdt').value?G('op-fdt').value:(SES.dataOperacional||hoje());
+  var diaSel=(op.realPorDataTurno&&op.realPorDataTurno[dtCtxView])||{};
+  var v1=Math.round((Number(diaSel['1'])||0)/fator);
+  var v2=Math.round((Number(diaSel['2'])||0)/fator);
+  var v3=Math.round((Number(diaSel['3'])||0)/fator);
 
   var bloq=G('editapt-bloq');
   var form=G('editapt-form');
@@ -2468,7 +2476,7 @@ function abrirEditarApt(fbKey){
     G('eat3').value=v3; G('eat3').readOnly=false;
     G('eape').value=op.perda||0;
     G('eamodo').value='';
-    G('editapt-info').textContent='PCP: edite qualquer turno. Os valores substituem o total acumulado.';
+    G('editapt-info').textContent='PCP: edite os turnos do dia '+dtCtxView.split('-').reverse().join('/')+'. Os valores substituem a producao daquele dia (outros dias da OP nao sao alterados).';
   } else {
     // Operador de turno — ve e edita SOMENTE seu turno
     bloq.style.display='none';
@@ -2495,7 +2503,7 @@ function abrirEditarApt(fbKey){
     G('eamodo').value='';
 
     var nomeTurno = turno===1?'Turno 1':turno===2?'Turno 2':turno===3?'Turno 3':'seu turno';
-    G('editapt-info').textContent='Editando apenas o '+nomeTurno+' ('+unid+'). Os demais turnos sao preservados.';
+    G('editapt-info').textContent='Editando apenas o '+nomeTurno+' ('+unid+') do dia '+dtCtxView.split('-').reverse().join('/')+'. Os demais turnos e dias sao preservados.';
   }
 
   G('eamotivo').value='';
@@ -2564,81 +2572,105 @@ function salvarEdicaoApt(){
   var turno=SES.turno||0;
   var isPCP=SES.perfil==='pcp'||SES.perfil==='admin';
 
-  // Busca OP atual para preservar valores dos outros turnos
+  // Busca OP atual (visao em memoria, so pra achar o registro e o id/descricao)
   var op=null;
   for(var i=0;i<OPS.length;i++){if(OPS[i].fbKey===fbKey){op=OPS[i];break;}}
   if(!op){ toast('OP nao encontrada','err'); return; }
 
-  // Valores originais dos 3 turnos (em unidade do tipo)
-  var origT1sc=op.t1sc!==undefined?op.t1sc:Math.round((op.t1||0)/fator);
-  var origT2sc=op.t2sc!==undefined?op.t2sc:Math.round((op.t2||0)/fator);
-  var origT3sc=op.t3sc!==undefined?op.t3sc:Math.round((op.t3||0)/fator);
   var origPerda=Number(op.perda)||0;
 
-  var t1sc, t2sc, t3sc, perdaKG;
-
-  if(isPCP){
-    // PCP substitui tudo que digitou
-    t1sc=parseInt(G('eat1').value)||0;
-    t2sc=parseInt(G('eat2').value)||0;
-    t3sc=parseInt(G('eat3').value)||0;
-    perdaKG=parseInt(G('eape').value)||0;
-  } else {
-    // Operador: substitui APENAS seu turno, preserva os outros intactos do Firebase
-    t1sc = turno===1 ? parseInt(G('eat1').value)||0 : origT1sc;
-    t2sc = turno===2 ? parseInt(G('eat2').value)||0 : origT2sc;
-    t3sc = turno===3 ? parseInt(G('eat3').value)||0 : origT3sc;
-    perdaKG = origPerda; // operador nao altera perda total
-  }
-
-  var t1=t1sc*fator, t2=t2sc*fator, t3=t3sc*fator;
-  var real=t1+t2+t3;
-
-  // Delta de producao (KG) causado por esta edicao — usado para ajustar realPorData
-  // na MESMA data que o operador esta vendo na tela (eadtctx), evitando que o.real
-  // total da OP fique dessincronizado do somatorio de realPorData (a fonte usada
-  // pelo Dashboard para o calculo diario).
-  var origReal=(Number(op.t1)||0)+(Number(op.t2)||0)+(Number(op.t3)||0);
-  var deltaReal=real-origReal; // pode ser negativo se a edicao reduziu o valor
-
-  // Delta POR TURNO (KG) — mesma logica do deltaReal acima, mas separada por turno,
-  // pra alimentar realPorDataTurno (usado pela TV no bloco "Consolidado por Turno").
-  // Ate agora essa funcao so atualizava realPorData (total do dia), entao a edicao
-  // do PCP nao aparecia no consolidado por turno da TV mesmo o total do dia batendo.
-  // Nao mexe em t1/t2/t3/real/perda nem em nenhuma escrita ja existente abaixo.
-  var origT1=Number(op.t1)||0, origT2=Number(op.t2)||0, origT3=Number(op.t3)||0;
-  var deltaT1=t1-origT1, deltaT2=t2-origT2, deltaT3=t3-origT3;
-
+  // Data do dia sendo editado = filtro selecionado na tela (eadtctx), igual ao
+  // "Corrigir Apontamento" do PCP. TODO o calculo abaixo e feito em cima de dados
+  // FRESCOS do Firebase (realPorDataTurno), nao do total acumulado da OP —
+  // isso e o que corrige o bug: antes, a edicao usava op.t1sc/t2sc/t3sc (vida
+  // inteira da OP, somando todos os dias que ela ja rodou), entao uma correcao
+  // feita hoje calculava um delta absurdo (baseado em dias que nao tinham nada
+  // a ver com a edicao) e derrubava/zerava a producao do dia certo no Dashboard,
+  // alem de corromper o total historico da OP.
   var dtCtx=G('eadtctx')&&G('eadtctx').value?G('eadtctx').value:hoje();
-
-  // Perda so muda quando e o PCP editando (operador preserva origPerda) - so nesse caso
-  // precisa arquivar os registros antigos de perdas_diarias para o Dashboard nao duplicar/manter valor velho
-  var perdaMudou=perdaKG!==origPerda;
 
   ld(true,'Salvando edicao...');
 
-  (perdaMudou?arquivarPerdasAntigas(fbKey):Promise.resolve()).then(function(){
-    return Promise.all([
-      DB.ref('ops/'+fbKey).child('realPorData').once('value'),
-      DB.ref('ops/'+fbKey).child('realPorDataTurno').once('value')
-    ]);
-  }).then(function(snaps){
+  Promise.all([
+    DB.ref('ops/'+fbKey).child('realPorData').once('value'),
+    DB.ref('ops/'+fbKey).child('realPorDataTurno').once('value'),
+    DB.ref('ops/'+fbKey).child('t1').once('value'),
+    DB.ref('ops/'+fbKey).child('t2').once('value'),
+    DB.ref('ops/'+fbKey).child('t3').once('value'),
+    DB.ref('apontamentos').orderByChild('opId').equalTo(fbKey).once('value')
+  ]).then(function(snaps){
     var rpd=snaps[0].val()||{};
     var rpdt=snaps[1].val()||{};
-    if(deltaReal!==0){
-      rpd[dtCtx]=Math.max((Number(rpd[dtCtx])||0)+deltaReal,0);
-      if(rpd[dtCtx]===0) delete rpd[dtCtx]; // limpa entrada zerada
+    var lifeT1=Number(snaps[2].val())||0;
+    var lifeT2=Number(snaps[3].val())||0;
+    var lifeT3=Number(snaps[4].val())||0;
+    var snapApts=snaps[5];
+
+    // Valores JA EXISTENTES no dia especifico sendo editado (nao vida inteira)
+    var diaAtual=rpdt[dtCtx]||{};
+    var origT1Dia=Number(diaAtual['1'])||0;
+    var origT2Dia=Number(diaAtual['2'])||0;
+    var origT3Dia=Number(diaAtual['3'])||0;
+
+    var novoT1sc,novoT2sc,novoT3sc,perdaKG;
+    if(isPCP){
+      // PCP substitui os 3 turnos DO DIA selecionado
+      novoT1sc=parseInt(G('eat1').value)||0;
+      novoT2sc=parseInt(G('eat2').value)||0;
+      novoT3sc=parseInt(G('eat3').value)||0;
+      perdaKG=parseInt(G('eape').value)||0;
+    } else {
+      // Operador: substitui APENAS seu turno, no dia selecionado; os demais
+      // turnos daquele mesmo dia ficam com o valor ja existente (nao mexe)
+      novoT1sc = turno===1 ? parseInt(G('eat1').value)||0 : Math.round(origT1Dia/fator);
+      novoT2sc = turno===2 ? parseInt(G('eat2').value)||0 : Math.round(origT2Dia/fator);
+      novoT3sc = turno===3 ? parseInt(G('eat3').value)||0 : Math.round(origT3Dia/fator);
+      perdaKG = origPerda; // operador nao altera perda total
     }
-    if(deltaT1!==0||deltaT2!==0||deltaT3!==0){
-      rpdt[dtCtx]=rpdt[dtCtx]||{};
-      if(deltaT1!==0){ rpdt[dtCtx]['1']=Math.max((Number(rpdt[dtCtx]['1'])||0)+deltaT1,0); }
-      if(deltaT2!==0){ rpdt[dtCtx]['2']=Math.max((Number(rpdt[dtCtx]['2'])||0)+deltaT2,0); }
-      if(deltaT3!==0){ rpdt[dtCtx]['3']=Math.max((Number(rpdt[dtCtx]['3'])||0)+deltaT3,0); }
-    }
-    var writes=[
+
+    var novoT1=novoT1sc*fator, novoT2=novoT2sc*fator, novoT3=novoT3sc*fator;
+
+    // Delta POR TURNO, restrito ao dia selecionado — e o que corrige o bug
+    var deltaT1=novoT1-origT1Dia, deltaT2=novoT2-origT2Dia, deltaT3=novoT3-origT3Dia;
+    var deltaReal=deltaT1+deltaT2+deltaT3;
+
+    // Atualiza realPorDataTurno/realPorData SOMENTE do dia selecionado
+    rpdt[dtCtx]=rpdt[dtCtx]||{};
+    if(novoT1>0) rpdt[dtCtx]['1']=novoT1; else delete rpdt[dtCtx]['1'];
+    if(novoT2>0) rpdt[dtCtx]['2']=novoT2; else delete rpdt[dtCtx]['2'];
+    if(novoT3>0) rpdt[dtCtx]['3']=novoT3; else delete rpdt[dtCtx]['3'];
+    var somaDia=novoT1+novoT2+novoT3;
+    if(somaDia>0) rpd[dtCtx]=somaDia; else { delete rpd[dtCtx]; delete rpdt[dtCtx]; }
+
+    // Total "vida inteira" da OP = valor atual + delta desta edicao (NUNCA
+    // substitui direto — assim producao de OUTROS dias continua intacta)
+    var novoLifeT1=Math.max(lifeT1+deltaT1,0);
+    var novoLifeT2=Math.max(lifeT2+deltaT2,0);
+    var novoLifeT3=Math.max(lifeT3+deltaT3,0);
+    var novoLifeReal=novoLifeT1+novoLifeT2+novoLifeT3;
+
+    var perdaMudou = isPCP && (perdaKG!==origPerda);
+
+    // Marca como substituido APENAS o(s) apontamento(s) ativo(s) do turno editado,
+    // NAQUELE dia especifico — mesmo criterio cirurgico do salvarCorrecao (PCP).
+    // Isso e o que impede o lancamento errado de continuar sendo somado no
+    // detalhamento por turno do Dashboard/TV (que le 'apontamentos' direto).
+    var turnosAlterados = isPCP ? [1,2,3] : [turno];
+    var promisesSubst=[];
+    snapApts.forEach(function(c){
+      var a=c.val();
+      if(a.substituido) return;
+      var t=Number(a.turno);
+      if(t<1||t>3) return; // nunca mexe no registro-resumo (turno:0)
+      if(a.data!==dtCtx) return; // fora do dia sendo editado — intocado
+      if(turnosAlterados.indexOf(t)===-1) return; // outro turno do mesmo dia — intocado
+      promisesSubst.push(DB.ref('apontamentos/'+c.key).update({substituido:true}));
+    });
+
+    var writes=promisesSubst.concat([
       DB.ref('ops/'+fbKey).update({
-        t1:t1, t2:t2, t3:t3, real:real,
-        t1sc:t1sc, t2sc:t2sc, t3sc:t3sc,
+        t1:novoLifeT1, t2:novoLifeT2, t3:novoLifeT3, real:novoLifeReal,
+        t1sc:Math.round(novoLifeT1/fator), t2sc:Math.round(novoLifeT2/fator), t3sc:Math.round(novoLifeT3/fator),
         perda:perdaKG,
         realPorData:rpd,
         realPorDataTurno:rpdt
@@ -2646,20 +2678,33 @@ function salvarEdicaoApt(){
       DB.ref('correcoes/'+fbKey).push({
         ts:agora(), usuario:SES.login, perfil:SES.perfil,
         turno:turno, motivo:motivo,
-        t1:t1, t2:t2, t3:t3, real:real, perda:perdaKG,
-        dataContexto:dtCtx, deltaReal:deltaReal
+        dataContexto:dtCtx, deltaReal:deltaReal,
+        t1:novoT1, t2:novoT2, t3:novoT3, perda:perdaKG
       })
-    ];
+    ]);
+    // Registro ativo do valor corrigido, no dia+turno certos — mesmo quando o
+    // valor for 0 (fecha a rastreabilidade e evita o turno ficar "orfao")
+    turnosAlterados.forEach(function(t){
+      var valT = t===1?novoT1:t===2?novoT2:novoT3;
+      writes.push(DB.ref('apontamentos').push({
+        id:uid(), opId:fbKey, data:dtCtx, turno:t,
+        t1:t===1?valT:0, t2:t===2?valT:0, t3:t===3?valT:0, real:valT,
+        perda:0, operador:SES.login, tipo:'correcao_operador', motivo:motivo, ts:agora()
+      }));
+    });
     if(perdaMudou && perdaKG>0) writes.push(DB.ref('perdas_diarias').push({
       opId:fbKey, data:dtCtx, turno:0, perdaKG:perdaKG,
       operador:SES.login, tipo:'correcao_apontamento', motivo:motivo, ts:agora()
     }));
-    return Promise.all(writes);
+
+    return (perdaMudou?arquivarPerdasAntigas(fbKey):Promise.resolve()).then(function(){
+      return Promise.all(writes);
+    });
   }).then(function(){
     ld(false);
     toast('Apontamento do '+(turno>0?'Turno '+turno:'turno')+' editado!','ok');
     fM('meditapt');
-    addLog('EDITAR_APT', op.id+' T'+turno+' | '+motivo);
+    addLog('EDITAR_APT', op.id+' T'+turno+' | '+dtCtx+' | '+motivo);
   }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
 }
 
