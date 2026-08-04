@@ -1271,9 +1271,15 @@ function renderProgramacao(){
     var h='';
     LINHAS.forEach(function(l){
       var nm=l.nome+' ('+l.maq+')';
+      // Programado: soma o.prog SO das OPs ainda ativas nesse dia (fila atual) —
+      // isso continua certo do jeito que era.
       var progOPs=OPS.filter(function(o){return o.linha===nm&&o.data===dt;})
         .reduce(function(a,o){return a+(Number(o.prog)||0);},0);
-      var realOPs=OPS.filter(function(o){return o.linha===nm&&o.data===dt;})
+      // Real: precisa incluir TAMBEM as OPs que ja avancaram pra outro dia mas
+      // produziram neste dia (realPorData[dt]) — mesma logica ja usada em
+      // renderDash() e renderOPs(). Sem isso, o "Real até agora" some do dia
+      // assim que o auto-avanco ou reprogramarOP move a OP pra frente.
+      var realOPs=OPS.filter(function(o){return o.linha===nm&&(o.data===dt||(o.realPorData&&o.realPorData[dt]));})
         .reduce(function(a,o){var rpd=o.realPorData||{};return a+(Number(rpd[dt])||0);},0);
       var m=metas[l.id]||{};
       h+='<div class="card" style="padding:14px">';
