@@ -2931,18 +2931,26 @@ function salvarCorrecao(){
     var opFresh=res[0].val()||{};
     var snapApts=res[1];
 
-    // Passo 1: marca como substituidos os apontamentos das datas que estao
-    // sendo corrigidas agora — de QUALQUER tipo, inclusive correcao_pcp
-    // anterior. Sem isso, corrigir a mesma OP/data duas vezes deixava as duas
-    // correcoes ativas ao mesmo tempo e o dashboard somava as duas (bug real
-    // encontrado em producao: duas correcoes seguidas na mesma OP/turno
-    // dobraram o valor mostrado no "Turno X — Detalhamento").
-    // Apontamentos de qualquer OUTRA data dessa mesma OP ficam intactos.
+    // Passo 1: marca como substituidos APENAS os apontamentos do turno especifico
+    // que esta sendo corrigido, na data especifica que esse turno esta recebendo
+    // agora — nao mais "qualquer coisa datada em qualquer uma das 3 datas envolvidas".
+    // Bug real corrigido aqui: ao mover T1/T2 pra uma data e corrigir T3 em outra,
+    // a versao anterior marcava como substituido TUDO que ja existia nas datas
+    // envolvidas, inclusive turnos que nao tinham nada a ver com esta correcao —
+    // deixando esse turno "orfao" (sem apontamento ativo) quando o passo seguinte
+    // so cria substituto pros turnos com valor > 0. Isso fazia o Dashboard filtrado
+    // por turno especifico mostrar 0kg, mesmo com o valor certo salvo em
+    // realPorDataTurno (por isso o formulario de Corrigir Apontamento continuava
+    // mostrando o numero certo — ele le de outro lugar).
+    var paresEnvolvidos=[[dtC1,1],[dtC2,2],[dtC3,3]];
     var promisesSubst=[];
     snapApts.forEach(function(c){
       var a=c.val();
       if(a.substituido) return; // ja estava marcado, nao precisa reescrever
-      if(datasEnvolvidas.indexOf(a.data)===-1) return; // fora do escopo desta correcao
+      var t=Number(a.turno);
+      if(t<1||t>3) return; // nunca mexe no registro-resumo (turno:0) nem em outros tipos
+      var bate=paresEnvolvidos.some(function(p){return p[0]===a.data&&p[1]===t;});
+      if(!bate) return; // fora do escopo exato (data+turno) desta correcao
       promisesSubst.push(DB.ref('apontamentos/'+c.key).update({substituido:true}));
     });
 
@@ -3000,15 +3008,22 @@ function salvarCorrecao(){
         real:novoT1+novoT2+novoT3, totalProcessado:(novoT1+novoT2+novoT3)+novaPerda
       })
     ]);
-    if(novoT1>0) promises.push(DB.ref('apontamentos').push({
+    // Registros individuais por turno — SEMPRE gravados (mesmo com valor 0), nao
+    // so quando novoT>0. Um turno corrigido pra 0 precisa de um registro ativo
+    // dizendo "corrigido pra 0", senao ele fica sem nenhum apontamento ativo
+    // naquela data+turno e vira exatamente o "orfao" que causava o bug do turno
+    // sumindo na visao filtrada do Dashboard. Registros com real=0 nao entram em
+    // nenhuma soma (o.real<=0 ja e filtrado em todo lugar que le apontamentos),
+    // entao isso e seguro — so fecha a rastreabilidade.
+    promises.push(DB.ref('apontamentos').push({
       id:uid(),opId:fbKey,data:dtC1,turno:1,t1:novoT1,t2:0,t3:0,
       real:novoT1,perda:0,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
     }));
-    if(novoT2>0) promises.push(DB.ref('apontamentos').push({
+    promises.push(DB.ref('apontamentos').push({
       id:uid(),opId:fbKey,data:dtC2,turno:2,t1:0,t2:novoT2,t3:0,
       real:novoT2,perda:0,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
     }));
-    if(novoT3>0) promises.push(DB.ref('apontamentos').push({
+    promises.push(DB.ref('apontamentos').push({
       id:uid(),opId:fbKey,data:dtC3,turno:3,t1:0,t2:0,t3:novoT3,
       real:novoT3,perda:0,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
     }));
