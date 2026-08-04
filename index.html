@@ -847,7 +847,19 @@ var LINHAS = [
 function G(id){ return document.getElementById(id); }
 function fN(n){ return (Number(n)||0).toLocaleString('pt-BR'); }
 function pct(r,p){ return (p&&Number(p))?Math.min(Math.round((Number(r)||0)/Number(p)*100),999):0; }
-function hoje(){ return new Date().toISOString().slice(0,10); }
+// hoje() e horaLocalBR() usam o MESMO deslocamento (-3h) e a MESMA fonte (o instante
+// atual), para nunca divergir entre si. Antes, hoje() usava toISOString() puro (UTC) e
+// dataTurno() recalculava a hora local por fora — entre 21h e 23h59 BRT o campo de data
+// em UTC já tinha virado o dia seguinte, e qualquer +1 dia feito em cima disso pulava 2
+// dias em vez de 1. Ver AUTO_AVANCAR_OP em 04/08/2026 (log) para o caso real que expôs isso.
+function hoje(){
+  var deslocado=new Date(Date.now()-3*60*60*1000); // desloca -3h e lê como se fosse UTC
+  return deslocado.toISOString().slice(0,10);       // => data de calendário correta em Brasília
+}
+function horaLocalBR(){
+  var h=new Date(Date.now()-3*60*60*1000).getUTCHours();
+  return h;
+}
 
 // Calcula a data correta do turno baseado no horário atual (fuso Brasil UTC-3)
 // Turno 1: 21h→05h — data = dia que o turno TERMINA
@@ -856,15 +868,14 @@ function hoje(){ return new Date().toISOString().slice(0,10); }
 // Turno 2: 05h→13h — data = hoje sempre
 // Turno 3: 13h→21h — data = hoje sempre
 function dataTurno(turno){
-  var agora=new Date();
-  var horaLocal=agora.getUTCHours()-3; // UTC-3
-  if(horaLocal<0) horaLocal+=24;
   if(turno===1){
-    if(horaLocal>=21){
-      // Após 21h — turno termina amanhã
-      var amanha=new Date(agora);
-      amanha.setUTCDate(amanha.getUTCDate()+1);
-      return amanha.toISOString().slice(0,10);
+    if(horaLocalBR()>=21){
+      // Após 21h — turno termina amanhã. Soma-se 1 dia SEMPRE a partir de hoje() (data
+      // local já correta), nunca a partir de um Date() bruto em UTC — é essa mistura que
+      // causava o avanço duplo.
+      var d=new Date(hoje()+'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate()+1);
+      return d.toISOString().slice(0,10);
     }
     // Antes das 05h — turno termina hoje
     return hoje();
@@ -1953,7 +1964,23 @@ function renderOpCards(){
     var pb=b.filaPosicao!==undefined?b.filaPosicao:9999;
     return pa-pb;
   });
-  if(!ops.length){
+
+  // HISTORICO DO DIA — OPs que ja avancaram pra outro dia (auto-avanco ou
+  // reprogramarOP) mas TIVERAM apontamento registrado exatamente no dia 'dt'
+  // que esta sendo visualizado. Sem isso, o card simplesmente sumia da tela do
+  // dia em que a producao de fato aconteceu, so porque o.data mudou pra frente.
+  // Fonte: o.realPorData[dt], que ja e gravado a cada apontamento (salvarApt),
+  // nao precisa de nenhuma consulta nova nem de duplicar registro de OP.
+  var opsHistorico=dt?OPS.filter(function(o){
+    if(o.data===dt) return false; // essa ja esta na lista ativa acima
+    if(ln&&o.linha!==ln) return false;
+    if(lote&&(o.lote||'').toLowerCase().indexOf(lote)===-1) return false;
+    var rpd=o.realPorData||{};
+    return Number(rpd[dt])>0;
+  }):[];
+  opsHistorico.sort(function(a,b){return (a.linha||'')>(b.linha||'')?1:(a.linha||'')<(b.linha||'')?-1:0;});
+
+  if(!ops.length && !opsHistorico.length){
     G('opcards').innerHTML='<div style="text-align:center;padding:40px;color:#4a664a">Nenhuma OP liberada no momento.</div>';
     return;
   }
@@ -2018,6 +2045,31 @@ function renderOpCards(){
     if(o.tipo==='KG') h+='<button class="btn bo bsm" data-key="'+fid+'" onclick="abrirSilos(this.dataset.key)">Silos</button>';
     h+='</div></div>';
   }
+
+  // Renderiza os cards de HISTORICO DO DIA — visual claramente distinto (cinza,
+  // sem barra de progresso, sem botoes de acao) pra nao ser confundido com uma
+  // OP ativa que precisa de apontamento. Mostra so o que foi produzido NAQUELE
+  // dia especifico (o.realPorData[dt]), nao o acumulado da OP inteira.
+  if(opsHistorico.length){
+    h+='<div style="font-size:12px;font-weight:700;color:#4a664a;margin:18px 0 6px;padding-top:10px;border-top:1px dashed #ccd6cc">'+
+       '📅 Histórico do dia — OPs que avançaram para outro dia, mas produziram neste dia</div>';
+    for(var j=0;j<opsHistorico.length;j++){
+      var oh=opsHistorico[j];
+      var aptDia=Number((oh.realPorData||{})[dt])||0;
+      var aptDiaDisp=oh.tipo==='SC'?fN(Math.round(aptDia/25))+' sc':oh.tipo==='BG'?fN(Math.round(aptDia/750))+' bag':fN(aptDia)+' kg';
+      h+='<div class="opcard" style="opacity:.75;background:#f4f6f4;border-style:dashed">';
+      h+='<div style="display:flex;justify-content:space-between;align-items:flex-start">';
+      h+='<div><div style="font-weight:700;font-size:14px">'+oh.id+'</div>';
+      h+='<div style="font-size:12px;color:#4a664a;margin-top:2px">'+(oh.desc||oh.cod)+' &middot; '+oh.linha+' &middot; '+oh.tipo+'</div></div>';
+      h+='<span class="badge bcz">Avançou p/ '+(oh.data?oh.data.split('-').reverse().join('/'):'?')+'</span>';
+      h+='</div>';
+      h+='<div style="margin-top:10px;font-size:12px"><span style="color:#739630">Apontado neste dia</span> <strong>'+aptDiaDisp+'</strong></div>';
+      h+='<div style="font-size:11px;color:#4a664a;margin-top:4px">Ordem continua ativa em '+(oh.data?oh.data.split('-').reverse().join('/'):'?')+' &mdash; somente leitura aqui.</div>';
+      h+='<div style="margin-top:10px"><button class="btn bsm" onclick="G(\'op-fdt\').value=\''+oh.data+'\';renderOpCards()">Ir para o dia atual da OP</button></div>';
+      h+='</div>';
+    }
+  }
+
   G('opcards').innerHTML=h;
 }
 
