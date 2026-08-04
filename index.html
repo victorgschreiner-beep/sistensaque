@@ -537,6 +537,25 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="tw"><table><thead><tr><th>OP</th><th>Linha</th><th>Apont. T1</th><th>Apont. T2</th><th>Apont. T3</th><th>Soma Apont.</th><th>realPorData</th><th>Diferença</th></tr></thead><tbody id="aud-body"></tbody></table></div>
   </div>
 
+  <!-- Card de inspecao detalhada por OP — mostra TODAS as datas com producao
+       registrada pra uma OP, lado a lado, ANTES de qualquer correcao. Existe
+       porque o Corrigir Apontamento so mostra 1 data por vez (a que estiver
+       selecionada no campo), e trocar de data ali pra "procurar" onde a
+       producao esta e arriscado: se o PCP salvar sem querer com um turno
+       zerado numa data que na verdade tinha producao real, os dados se perdem.
+       Esta tela e 100% leitura — nao salva nada, so mostra o quadro completo.
+  -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ch"><span class="ct">🔎 Inspecionar Histórico Completo de uma OP</span></div>
+    <div style="font-size:12px;color:#4a664a;margin-bottom:12px">Mostra TODAS as datas com produção registrada pra uma OP (via realPorDataTurno) — use antes de corrigir qualquer coisa no Corrigir Apontamento, pra ver o quadro inteiro e não sobrescrever produção real por engano. Não salva nada, só leitura.</div>
+    <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:12px;flex-wrap:wrap">
+      <div class="fg" style="margin:0;flex:1;min-width:220px"><label class="fl">OP</label><select id="insp-op" style="width:100%"></select></div>
+      <button class="btn bp bsm" onclick="inspecionarOP()">Inspecionar</button>
+    </div>
+    <div id="insp-resumo" style="font-size:12px;color:#4a664a;margin-bottom:10px"></div>
+    <div class="tw"><table><thead><tr><th>Data</th><th>Turno 1</th><th>Turno 2</th><th>Turno 3</th><th>Total do dia</th></tr></thead><tbody id="insp-body"></tbody></table></div>
+  </div>
+
   <!-- Card de configuração das balanças -->
   <div class="card" style="margin-bottom:14px">
     <div class="ch"><span class="ct">Configuração das Balanças</span><button class="btn bsm" onclick="loadBalConfig()">&#8635;</button></div>
@@ -1032,7 +1051,7 @@ function go(s,btn){
       renderOpCards();
     }
     else if(s==='exportar'){ popOPSel(); var m=hoje().slice(0,7); G('xdi').value=m+'-01'; G('xdf').value=hoje(); }
-    else if(s==='admin'){ loadUsers(); loadLog(); loadProds(); loadBalConfig(); }
+    else if(s==='admin'){ loadUsers(); loadLog(); loadProds(); loadBalConfig(); popularInspOP(); }
     else if(s==='envase'){ renderEnvaseFila(); renderEnvaseOPs(); }
     else if(s==='programacao'){ if(!G('progr-dt').value) G('progr-dt').value=hoje(); renderProgramacao(); }
     else if(s==='balancas'){
@@ -5427,6 +5446,62 @@ function auditarConsistencia(){
     });
     G('aud-body').innerHTML=h;
   }).catch(function(e){ toast('Erro na auditoria: '+e.message,'err'); G('aud-resumo').textContent=''; });
+}
+
+// ============================================================
+// INSPECAO DETALHADA DE OP — mostra TODAS as datas de realPorDataTurno,
+// somente leitura, pra dar visao completa antes de qualquer correcao manual.
+// ============================================================
+function popularInspOP(){
+  var sel=G('insp-op');
+  if(!sel) return;
+  var h='<option value="">Selecione uma OP...</option>';
+  OPS.slice().sort(function(a,b){return (a.id||'')<(b.id||'')?1:-1;}).forEach(function(o){
+    h+='<option value="'+o.fbKey+'">'+o.id+' — '+(o.desc||o.cod)+' ('+o.linha+')</option>';
+  });
+  sel.innerHTML=h;
+}
+
+function inspecionarOP(){
+  var fbKey=G('insp-op').value;
+  if(!fbKey){toast('Selecione uma OP','err');return;}
+  var o=OPS.filter(function(x){return x.fbKey===fbKey;})[0];
+  if(!o){toast('OP não encontrada','err');return;}
+  var rpdt=o.realPorDataTurno||{};
+  var rpd=o.realPorData||{};
+  var datas=Object.keys(rpdt).sort();
+  if(!datas.length){
+    G('insp-resumo').textContent='Essa OP não tem nenhum registro em realPorDataTurno (produção granular por data/turno).';
+    G('insp-body').innerHTML='<tr><td colspan="5" style="text-align:center;color:#4a664a;padding:16px">Nenhum histórico encontrado.</td></tr>';
+    return;
+  }
+  var totalGeral=0, totalRPDataSum=0;
+  var h='';
+  datas.forEach(function(d){
+    var t=rpdt[d]||{};
+    var t1=Number(t['1'])||0, t2=Number(t['2'])||0, t3=Number(t['3'])||0;
+    var somaDia=t1+t2+t3;
+    var rpdDia=Number(rpd[d])||0;
+    var bateComRPD=somaDia===rpdDia;
+    totalGeral+=somaDia;
+    totalRPDataSum+=rpdDia;
+    h+='<tr'+(!bateComRPD?' style="background:rgba(192,57,43,.06)"':'')+' title="'+(!bateComRPD?('realPorDataTurno soma '+fN(somaDia)+' mas realPorData guarda '+fN(rpdDia)+' - nao batem'):'')+'">';
+    h+='<td style="font-weight:600">'+d.split('-').reverse().join('/')+'</td>';
+    h+='<td>'+(t1?fN(t1)+' kg':'—')+'</td>';
+    h+='<td>'+(t2?fN(t2)+' kg':'—')+'</td>';
+    h+='<td>'+(t3?fN(t3)+' kg':'—')+'</td>';
+    h+='<td style="font-weight:700">'+fN(somaDia)+' kg'+(!bateComRPD?' <span style="color:#c0392b;font-size:10px">(realPorData: '+fN(rpdDia)+')</span>':'')+'</td>';
+    h+='</tr>';
+  });
+  G('insp-body').innerHTML=h;
+  var lifeTotal=Number(o.real)||0;
+  var progOP=Number(o.prog)||0;
+  var okTotal=totalGeral===lifeTotal;
+  G('insp-resumo').innerHTML=
+    'OP <strong>'+o.id+'</strong> · Programado: <strong>'+fN(progOP)+' kg</strong> · '+
+    'Soma de todas as datas (realPorDataTurno): <strong>'+fN(totalGeral)+' kg</strong> · '+
+    'Total "vida inteira" da OP (op.real): <strong style="color:'+(okTotal?'#024f2b':'#c0392b')+'">'+fN(lifeTotal)+' kg</strong>'+
+    (okTotal?'':' <span style="color:#c0392b">⚠ não bate com a soma das datas!</span>');
 }
 
 function loadBalConfig() {
