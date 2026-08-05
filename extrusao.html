@@ -864,6 +864,16 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     </div>
   </div>
 </div>
+<!-- MODAL FICHA TÉCNICA (consulta somente leitura) -->
+<div class="ov" id="m-ficha-tecnica" style="z-index:300">
+  <div class="modal" style="width:520px;max-width:98vw">
+    <div class="mh">📄 Ficha Técnica — <span id="ft-cod-titulo"></span></div>
+    <div id="ft-corpo" style="max-height:60vh;overflow-y:auto"></div>
+    <div class="mr" style="margin-top:12px">
+      <button class="btn-cancel" onclick="fM('m-ficha-tecnica')">Fechar</button>
+    </div>
+  </div>
+</div>
 <!-- MODAL CONFIRMA TROCA OP -->
 <div class="ov" id="m-confirma-troca" style="z-index:350">
   <div class="modal" style="width:400px">
@@ -1803,6 +1813,7 @@ function renderLinhaCard(linha){
     h+='<div class="op-desc">'+(opAtiva.desc||opAtiva.cod)+'</div>';
     h+='<div class="op-meta">'+(opAtiva.lote?'Lote: '+opAtiva.lote+' · ':'')+'Meta: '+fN(metaH)+' kg/h · Prog: '+fN(progAtivaKg)+' kg</div>';
     h+='</div>';
+    h+='<button data-cod="'+opAtiva.cod+'" data-desc="'+(opAtiva.desc||opAtiva.cod)+'" onclick="consultarFichaTecnica(this.dataset.cod,this.dataset.desc)" style="width:100%;margin-bottom:10px;background:#fff;border:2px solid #739630;color:#739630;padding:7px;font-size:11px;font-weight:700;cursor:pointer;border-radius:8px">📄 Consultar Ficha Técnica</button>';
     h+='<div class="prog-wrap">';
     h+='<div class="prog-label"><span>Extrusão na OP</span><span>'+fN(totalOpExt)+' / '+fN(progAtivaKg)+' kg ('+progExt+'%)</span></div>';
     h+='<div class="prog-bar"><div class="prog-fill '+corProg+'" style="width:'+progExt+'%"></div></div>';
@@ -1864,6 +1875,7 @@ function renderLinhaCard(linha){
         h+='<span class="badge-st '+badgeCls+'">'+o.status+'</span>';
       }
       h+='<div class="fila-op-prog" style="color:'+corPct+'">'+pct+'%</div>';
+      h+='<button data-cod="'+o.cod+'" data-desc="'+(o.desc||o.cod)+'" onclick="event.stopPropagation();consultarFichaTecnica(this.dataset.cod,this.dataset.desc)" title="Consultar Ficha Técnica" style="background:none;border:none;color:#739630;font-size:14px;cursor:pointer;padding:0 4px">📄</button>';
       h+='</div>';
     });
   }
@@ -1957,6 +1969,98 @@ function renderLinhaCard(linha){
 }
 
 // ── SELECIONAR OP ATIVA ───────────────────────────────────
+// ── FICHA TÉCNICA (consulta somente leitura, alimentada por ficha_tecnica.html) ──
+var FT_SECOES_META = [
+  {key:"parametrosMaquina", label:"Parâmetros de Máquina", icone:"⚙️"},
+  {key:"preCondicionador",  label:"Pré-condicionador",     icone:"💧"},
+  {key:"motorPrincipal",    label:"Motor Principal",       icone:"🔌"},
+  {key:"extrusora",         label:"Extrusora",             icone:"🌀"},
+  {key:"secagem",           label:"Secagem",               icone:"🔥"},
+  {key:"misturadorVC",      label:"Misturador VC",         icone:"🧪"}
+];
+
+function consultarFichaTecnica(cod, desc){
+  if(!DB){toast("Firebase não conectado","err");return;}
+  G("ft-cod-titulo").textContent = cod || "—";
+  G("ft-corpo").innerHTML = '<div style="text-align:center;padding:20px;color:#4a664a">Buscando ficha técnica...</div>';
+  aM("m-ficha-tecnica");
+
+  if(!cod){
+    G("ft-corpo").innerHTML = '<div style="text-align:center;padding:20px;color:#c0392b">Produto sem código definido.</div>';
+    return;
+  }
+
+  // fichas_tecnicas/{fichaId}.skusVinculados[cod] === true — precisa varrer, pois
+  // uma ficha pode atender vários SKUs e não é indexada pelo código do produto.
+  DB.ref("fichas_tecnicas").once("value").then(function(s){
+    if(!s.exists()){
+      G("ft-corpo").innerHTML='<div style="text-align:center;padding:24px;color:#4a664a">⚠️ Nenhuma ficha técnica cadastrada ainda no sistema.</div>';
+      return;
+    }
+    var fichas=s.val();
+    var ficha=null;
+    Object.keys(fichas).some(function(id){
+      var f=fichas[id];
+      if(f.skusVinculados && f.skusVinculados[cod]){ ficha=f; return true; }
+      return false;
+    });
+    if(!ficha){
+      G("ft-corpo").innerHTML='<div style="text-align:center;padding:24px;color:#4a664a">'+
+        '⚠️ Nenhuma ficha técnica vinculada ao código <strong>'+cod+'</strong>.<br>'+
+        '<span style="font-size:11px;color:#999">Cadastre no módulo Ficha Técnica.</span></div>';
+      return;
+    }
+    var versao=(ficha.versoes||{})[ficha.versaoAtualKey];
+    renderFichaTecnica(ficha, versao, desc);
+  }).catch(function(e){
+    G("ft-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#c0392b">Erro ao buscar: '+e.message+'</div>';
+  });
+}
+
+function renderFichaTecnica(ficha, versao, desc){
+  var h='<div style="background:#f5f9f2;border-radius:8px;padding:10px 12px;margin-bottom:14px">';
+  h+='<div style="font-size:11px;color:#739630;font-weight:700">PRODUTO</div>';
+  h+='<div style="font-size:14px;font-weight:700;color:#024f2b">'+(ficha.nome||desc||"—")+(ficha.linhaPadrao?' — '+ficha.linhaPadrao:'')+'</div>';
+  if(versao){
+    h+='<div style="font-size:11px;color:#4a664a;margin-top:4px">Revisão nº'+(versao.numero||"—")+' · Atualizada em '+(versao.criadoEm||"—")+(versao.criadoPor?' por '+versao.criadoPor:'')+'</div>';
+  }
+  h+='</div>';
+
+  if(!versao){
+    h+='<div style="text-align:center;padding:16px;color:#4a664a;font-size:12px">Ficha cadastrada, mas sem versão de parâmetros ainda.</div>';
+    G("ft-corpo").innerHTML=h;
+    return;
+  }
+
+  var temAlgumaSecao=false;
+  FT_SECOES_META.forEach(function(sm){
+    var linhas=(versao.secoes&&versao.secoes[sm.key])||[];
+    var preenchidas=linhas.filter(function(row){return row.valor!=null && String(row.valor).trim()!=='';});
+    if(!preenchidas.length) return; // esconde seções vazias na consulta rápida do operador
+    temAlgumaSecao=true;
+    h+='<div style="margin-bottom:14px">';
+    h+='<div style="font-size:12px;font-weight:700;color:#024f2b;margin-bottom:6px">'+(sm.icone||'')+' '+sm.label+'</div>';
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+    preenchidas.forEach(function(row){
+      h+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:6px;padding:8px 10px">';
+      h+='<div style="font-size:10px;color:#739630;font-weight:700">'+row.label+'</div>';
+      h+='<div style="font-size:13px;font-weight:600;color:#1a1a1a">'+row.valor+(row.unidade?' <span style="font-size:11px;color:#999;font-weight:400">'+row.unidade+'</span>':'')+'</div>';
+      if(row.tolerancia) h+='<div style="font-size:10px;color:#c0392b">± '+row.tolerancia+'</div>';
+      h+='</div>';
+    });
+    h+='</div></div>';
+  });
+  if(!temAlgumaSecao){
+    h+='<div style="text-align:center;padding:12px;color:#999;font-size:12px">Ficha e revisão encontradas, mas sem parâmetros preenchidos ainda.</div>';
+  }
+
+  if(versao.observacoes){
+    h+='<div style="background:#fff3cd;border-radius:8px;padding:8px 12px;font-size:12px;color:#856404;margin-top:6px"><strong>Observações:</strong> '+versao.observacoes+'</div>';
+  }
+
+  G("ft-corpo").innerHTML=h;
+}
+
 function abrirSelOp(linha){
   linhaAtiva=linha;
   G("sel-op-linha").textContent=linha;
