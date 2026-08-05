@@ -4073,6 +4073,8 @@ function abrirInspecaoOP(linha, opFbKey){
   G('insp-data').value=dataIni;
   G('insp-turno').value='Turno '+turno;
   G('insp-aviso-dup').style.display='none';
+  G('btn-salvar-insp').disabled=false;
+  INSP_CONTEXTO.duplicatasHora=[];
 
   montarFormularioInspecao(null);
   aM('ov-insp');
@@ -4110,28 +4112,68 @@ function reabrirParaQualidade(opFbKey){
 
 function horaCheiaDe(h){ return h.split(':')[0]+':00'; }
 
+// Verifica se já existem leituras nesta hora cheia para a mesma OP/linha/data.
+// IMPORTANTE: nunca decide sozinho o que fazer — se encontrar qualquer leitura já
+// registrada, bloqueia o Salvar até o analista escolher explicitamente entre
+// "Editar leitura existente" ou "Registrar nova leitura (adicional)". Isso permite
+// múltiplas leituras na mesma hora (ex: 15:20 e 15:50) sem risco de uma sobrescrever
+// a outra silenciosamente.
 function verificarDuplicidadeInspecao(linha, op, data){
   var horaC=horaCheiaDe(G('insp-hora').value);
   DB.ref('qualidade_inspecoes').orderByChild('opFbKey').equalTo(op.fbKey).once('value').then(function(s){
-    var existente=null;
+    var existentes=[];
     if(s.exists()){
       s.forEach(function(c){
         var v=c.val();
         if(v.linha===linha && v.data===data && horaCheiaDe(v.hora||'00:00')===horaC){
-          existente={fbKey:c.key, dados:v};
+          existentes.push({fbKey:c.key, dados:v});
         }
       });
     }
-    if(existente){
-      G('insp-aviso-dup').style.display='block';
-      G('insp-aviso-dup').innerHTML='⚠ Já existe uma inspeção registrada para esta linha/OP nesta hora ('+(existente.dados.hora||'')+
-        ' por '+(existente.dados.analista||'—')+'). Os campos abaixo foram carregados para edição.';
-      INSP_CONTEXTO.editandoFbKey=existente.fbKey;
-      INSP_CONTEXTO.contraprovaExistente=existente.dados.contraprova||null;
-      INSP_CONTEXTO.excecoesExistentes=existente.dados.excecoes||null;
-      montarFormularioInspecao(existente.dados);
+    existentes.sort(function(a,b){ return (a.dados.hora||'').localeCompare(b.dados.hora||''); });
+    INSP_CONTEXTO.duplicatasHora=existentes;
+    if(existentes.length){
+      mostrarEscolhaDuplicidade(existentes);
+    } else {
+      G('insp-aviso-dup').style.display='none';
+      G('btn-salvar-insp').disabled=false;
     }
   });
+}
+
+function mostrarEscolhaDuplicidade(existentes){
+  INSP_CONTEXTO.editandoFbKey=null; // nada é sobrescrito até o analista escolher
+  var lista=existentes.map(function(e){
+    return '<button class="btn bsm" style="margin:3px 6px 3px 0" onclick="escolherEditarInspecao(\''+e.fbKey+'\')">✎ Editar '+
+      (e.dados.hora||'—')+' — '+(e.dados.analistaNome||e.dados.analista||'—')+'</button>';
+  }).join('');
+  G('insp-aviso-dup').style.display='block';
+  G('insp-aviso-dup').innerHTML=
+    '⚠ Já '+(existentes.length>1?'existem '+existentes.length+' leituras registradas':'existe 1 leitura registrada')+' nesta hora para esta OP/linha.<br>'+
+    'Escolha o que fazer antes de salvar:'+
+    '<div style="margin-top:8px">'+lista+
+    '<button class="btn bsm bp" style="margin:3px 0" onclick="escolherNovaInspecao()">+ Registrar nova leitura (adicional)</button></div>';
+  G('btn-salvar-insp').disabled=true;
+}
+
+function escolherEditarInspecao(fbKey){
+  var item=(INSP_CONTEXTO.duplicatasHora||[]).find(function(e){return e.fbKey===fbKey;});
+  if(!item) return;
+  INSP_CONTEXTO.editandoFbKey=item.fbKey;
+  INSP_CONTEXTO.contraprovaExistente=item.dados.contraprova||null;
+  INSP_CONTEXTO.excecoesExistentes=item.dados.excecoes||null;
+  G('insp-hora').value=item.dados.hora||G('insp-hora').value; // evita que o horário da leitura antiga seja trocado pelo horário de agora ao salvar
+  montarFormularioInspecao(item.dados);
+  G('insp-aviso-dup').innerHTML='✎ Editando a leitura das '+(item.dados.hora||'—')+'. Os campos abaixo foram carregados.';
+  G('btn-salvar-insp').disabled=false;
+}
+
+function escolherNovaInspecao(){
+  INSP_CONTEXTO.editandoFbKey=null;
+  INSP_CONTEXTO.contraprovaExistente=null;
+  INSP_CONTEXTO.excecoesExistentes=null;
+  G('insp-aviso-dup').innerHTML='+ Registrando nova leitura adicional nesta hora. As leituras já existentes não serão alteradas.';
+  G('btn-salvar-insp').disabled=false;
 }
 
 </script>
