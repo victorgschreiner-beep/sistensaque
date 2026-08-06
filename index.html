@@ -522,6 +522,23 @@ tr:hover td{background:rgba(2,79,43,.03)}
 <div class="scr" id="scr-admin">
   <h2 style="font-size:16px;font-weight:700;color:#024f2b;margin-bottom:16px">Administracao</h2>
 
+  <!-- Card de migração do índice de busca (idBusca) — dívida técnica registrada:
+       OPs criadas antes desta versão não têm o campo idBusca, usado pela busca
+       rápida indexada (orderByChild+startAt/endAt) em vez de varrer ops/ inteiro.
+       Execução manual, nunca automática — mesmo princípio já adotado para
+       qualquer escrita em massa no Firebase. Idempotente: rodar de novo não
+       tem efeito colateral, só reconfirma/corrige o índice. -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ch"><span class="ct">🔧 Migração — Índice de Busca de OP (idBusca)</span></div>
+    <div style="font-size:12px;color:#4a664a;margin-bottom:12px">OPs criadas antes desta atualização não têm o campo <code>idBusca</code>, usado pela busca rápida de OP (evita varrer todo o histórico). Rode uma vez para preencher as OPs antigas. Pode rodar quantas vezes quiser — só corrige o que estiver faltando ou desatualizado, nunca apaga nada.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn bsm" onclick="migrarIdBusca(true)">👁 Simular (não grava nada)</button>
+      <button class="btn bp bsm" onclick="migrarIdBusca(false)">Migrar OPs antigas</button>
+    </div>
+    <div id="migr-resumo" style="font-size:12px;color:#4a664a;margin-top:10px"></div>
+    <div id="migr-lista" style="font-size:11px;color:#4a664a;margin-top:8px;max-height:220px;overflow-y:auto"></div>
+  </div>
+
   <!-- Card de auditoria de consistencia — compara os dois caminhos de calculo do
        sistema (apontamentos por turno vs realPorData agregado) pra achar exatamente
        qual OP esta com registro duplicado ou orfao numa data, sem precisar testar
@@ -1885,13 +1902,73 @@ function atualizarHintQtdProg(){
   else hintEl.textContent='';
 }
 
+// ============================================================
+// MIGRAÇÃO — idBusca (índice de busca de OP)
+// ============================================================
+// Preenche o campo idBusca em toda OP que não tiver (ou que estiver
+// dessincronizada do id atual). Execução manual, sob demanda — nunca
+// automática. Idempotente: só grava o que precisa, não sobrescreve OPs
+// já corretas, não mexe em nenhum outro campo.
+//
+// dryRun=true: só LÊ ops/ e mostra o que SERIA alterado — nenhuma escrita
+// acontece. Use isso primeiro pra conferir a lista antes de gravar de verdade.
+// A operação de escrita real usa update() com caminhos específicos
+// ("ops/{fbKey}/idBusca") — nunca toca em nenhum outro campo da OP, nunca
+// remove ou sobrescreve o objeto inteiro.
+function migrarIdBusca(dryRun){
+  if(!dryRun && !confirm('Isso vai gravar o campo idBusca nas OPs que estiverem faltando ou desatualizadas.\n\nNenhum outro campo é alterado, nenhuma OP é removida. Recomendado: rode "Simular" antes pra conferir a lista.\n\nConfirma a gravação?')) return;
+
+  ld(true, dryRun?'Simulando...':'Migrando...');
+  DB.ref('ops').once('value').then(function(s){
+    var updates={};
+    var afetadas=[];
+    var total=0;
+    if(s.exists()) s.forEach(function(c){
+      total++;
+      var o=c.val();
+      var esperado=String(o.id||'').toLowerCase();
+      if(esperado && o.idBusca!==esperado){
+        updates['ops/'+c.key+'/idBusca']=esperado;
+        afetadas.push({id:o.id, de:o.idBusca||'(vazio)', para:esperado});
+      }
+    });
+
+    var listaEl=G('migr-lista');
+    if(!afetadas.length){
+      ld(false);
+      G('migr-resumo').textContent='✔ Nenhuma correção necessária — '+total+' OP(s) verificada(s), todas já com idBusca em dia.';
+      listaEl.innerHTML='';
+      return;
+    }
+
+    if(dryRun){
+      ld(false);
+      G('migr-resumo').textContent='👁 Simulação — '+afetadas.length+' de '+total+' OP(s) SERIAM alteradas (nada foi gravado ainda).';
+      listaEl.innerHTML='<table style="width:100%"><thead><tr><th style="text-align:left">OP</th><th style="text-align:left">idBusca atual</th><th style="text-align:left">idBusca novo</th></tr></thead><tbody>'+
+        afetadas.slice(0,200).map(function(a){return '<tr><td>'+a.id+'</td><td>'+a.de+'</td><td>'+a.para+'</td></tr>';}).join('')+
+        '</tbody></table>'+(afetadas.length>200?'<div style="margin-top:6px">... e mais '+(afetadas.length-200)+' OP(s)</div>':'');
+      return;
+    }
+
+    DB.ref().update(updates).then(function(){
+      ld(false);
+      G('migr-resumo').textContent='✔ Migração concluída — '+afetadas.length+' de '+total+' OP(s) corrigida(s).';
+      listaEl.innerHTML='';
+      toast(afetadas.length+' OP(s) migradas com sucesso!','ok');
+      addLog('MIGRAR_IDBUSCA', afetadas.length+' de '+total+' OPs corrigidas');
+    }).catch(function(e){ ld(false); toast('Erro na migração: '+e.message,'err'); });
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
 function salvarOP(){
   var prod=resolveProdutoDigitado();
   if(!prod){toast('Selecione um produto valido da lista de busca','err');return;}
   var cod=prod.cod;
   var nopidVal=G('nopid')&&G('nopid').value.trim()?G('nopid').value.trim():'';
+  var opIdFinal=nopidVal||('OP-'+new Date().getFullYear()+'-'+uid().slice(0,6).toUpperCase());
   var op={
-    id:nopidVal||('OP-'+new Date().getFullYear()+'-'+uid().slice(0,6).toUpperCase()),
+    id:opIdFinal,
+    idBusca:opIdFinal.toLowerCase(), // campo indexado p/ busca rápida (orderByChild + startAt/endAt) — evita full-scan de ops/
     cod:cod,desc:prod?prod.desc:cod,
     lote:G('nopl').value||('LOT-'+Date.now()),
     tipo:G('nopt').value,linha:G('nopln').value,
@@ -1957,6 +2034,7 @@ function salvarEdicao(){
     data:novaData,
     obs:G('edo').value,
     id:novoId,
+    idBusca:novoId.toLowerCase(), // mantém o índice de busca coerente com o novo número da OP
     lote:novoLote
   };
 
