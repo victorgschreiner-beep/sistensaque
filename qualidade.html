@@ -1249,12 +1249,20 @@ function carregarLinhasAtivas(){
         }
       });
 
-      // OPs concluídas na extrusão mas ainda pendentes de confirmação da Qualidade
+      // OPs concluídas na extrusão mas ainda pendentes de confirmação da Qualidade.
+      // IMPORTANTE: o campo op.linha vem gravado por outro módulo (index.html) — se o
+      // valor não bater EXATAMENTE com um dos nomes em LINHAS (espaço a mais, acento,
+      // parênteses diferentes etc.), OPS_ATIVAS[o.linha] fica undefined e a OP some da
+      // tela sem nenhum aviso. Pra nunca mais perder uma OP silenciosamente por isso,
+      // qualquer linha não reconhecida cai num balde "__DESCONHECIDA__" que também é
+      // renderizado (ver renderLinhasGrid), com aviso visível do valor bruto recebido.
       if(concluidasSnap.exists()) concluidasSnap.forEach(function(c){
         var o=c.val(); o.fbKey=c.key; o.pendenteExtrusao=false;
-        if(!qualConcluidas[o.fbKey] && OPS_ATIVAS[o.linha]){
-          var jaTem=OPS_ATIVAS[o.linha].some(function(x){return x.fbKey===o.fbKey;});
-          if(!jaTem) OPS_ATIVAS[o.linha].push(o);
+        if(!qualConcluidas[o.fbKey]){
+          var bucket = OPS_ATIVAS[o.linha] ? o.linha : '__DESCONHECIDA__';
+          if(bucket==='__DESCONHECIDA__' && !OPS_ATIVAS[bucket]) OPS_ATIVAS[bucket]=[];
+          var jaTem=OPS_ATIVAS[bucket].some(function(x){return x.fbKey===o.fbKey;});
+          if(!jaTem) OPS_ATIVAS[bucket].push(o);
         }
       });
 
@@ -1424,6 +1432,29 @@ function renderLinhasGrid(){
     }
   });
 
+  // OPs concluídas cujo campo "linha" não bateu com nenhuma das 4 linhas conhecidas —
+  // antes elas simplesmente desapareciam da tela sem aviso. Agora aparecem aqui, sempre,
+  // com o valor bruto do campo pra facilitar a correção do dado de origem (index.html).
+  var opsDesconhecidas = OPS_ATIVAS['__DESCONHECIDA__']||[];
+  var descFiltradas = opsDesconhecidas.filter(function(op){
+    if(FILTRO_PRODUCAO==='andamento') return op.pendenteExtrusao;
+    if(FILTRO_PRODUCAO==='pendente') return !op.pendenteExtrusao;
+    return true;
+  });
+  if(descFiltradas.length){
+    algumCard=true;
+    descFiltradas.forEach(function(op){
+      h+='<div class="linha-card pendente-qual" style="border:2px solid #c0392b">';
+      h+='<div class="linha-nome">⚠ Linha não reconhecida<span class="badge brd">Verificar cadastro</span></div>';
+      h+='<div class="linha-op">OP '+op.id+'</div>';
+      h+='<div class="linha-prod">'+(op.desc||op.cod)+'</div>';
+      h+='<div style="font-size:11px;color:#c0392b;margin-top:4px">Campo "linha" gravado como: <strong>"'+esc(op.linha||'(vazio)')+'"</strong> — não bate com nenhuma das 4 linhas cadastradas</div>';
+      h+='<button class="btn bxs bp" style="margin-top:8px" onclick="event.stopPropagation();abrirInspecaoOP(\'__DESCONHECIDA__\',\''+esc(op.fbKey)+'\')">📋 Abrir para Inspeção</button>';
+      h+='<button class="btn bxs" style="margin-top:8px" onclick="event.stopPropagation();concluirParaQualidade(\''+esc(op.fbKey)+'\',\''+esc(op.linha||'')+'\')">✔ Concluir para Qualidade</button>';
+      h+='</div>';
+    });
+  }
+
   if(!algumCard){
     var msg = FILTRO_PRODUCAO==='andamento' ? 'Nenhuma linha em produção no momento'
             : FILTRO_PRODUCAO==='pendente' ? 'Nenhuma OP aguardando conclusão da Qualidade — tudo em dia! ✅'
@@ -1436,6 +1467,7 @@ function renderLinhasGrid(){
   // Atualiza o indicador de pendências na aba, mesmo quando ela não está selecionada
   var totalPendentes=0;
   LINHAS.forEach(function(linha){ (OPS_ATIVAS[linha]||[]).forEach(function(op){ if(!op.pendenteExtrusao) totalPendentes++; }); });
+  (OPS_ATIVAS['__DESCONHECIDA__']||[]).forEach(function(op){ if(!op.pendenteExtrusao) totalPendentes++; });
   G('prod-pendente-dot').style.display = totalPendentes>0 ? 'inline-block' : 'none';
 }
 
@@ -3164,6 +3196,15 @@ function montarRastreioOP(op, destacarData, expandido){
       h+='<span>✔ Marcada como <strong>Concluída para Qualidade</strong> em '+(qualConcluida.ts?new Date(qualConcluida.ts).toLocaleString('pt-BR'):'—')+' por '+(qualConcluida.analistaNome||qualConcluida.analista||'—')+'</span>';
       h+='<button class="btn bxs bo" onclick="event.stopPropagation();reabrirParaQualidade(\''+esc(op.fbKey)+'\')">↺ Reabrir para Qualidade</button>';
       h+='</div>';
+    } else if(op.status==='Concluida'){
+      // OP concluída na extrusão, mas nunca fechada pela Qualidade — não há nada pra "reabrir",
+      // mas ela pode não estar aparecendo na fila normal de Produção > Aguardando Qualidade
+      // (ver nota em abrirInspecaoDaRastreabilidade). Este botão dá acesso direto à inspeção
+      // sem depender dessa fila.
+      h+='<div class="ali" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
+      h+='<span style="color:#739630">OP concluída na extrusão, ainda sem confirmação da Qualidade</span>';
+      h+='<button class="btn bxs bp" onclick="event.stopPropagation();abrirInspecaoDaRastreabilidade(\''+esc(op.fbKey)+'\')">📋 Abrir para Inspeção</button>';
+      h+='</div>';
     }
 
     h+='<div class="ct" style="margin-bottom:6px">Produção (Extrusão)</div>';
@@ -4200,6 +4241,24 @@ function abrirInspecaoOP(linha, opFbKey){
   var ops=OPS_ATIVAS[linha]||[];
   var op=ops.find(function(o){return o.fbKey===opFbKey;});
   if(!op){ toast('OP não encontrada','err'); return; }
+  _abrirInspecaoComOP(op.linha||linha, op); // usa o campo linha da própria OP como fonte de verdade
+}
+
+// Atalho vindo da Rastreabilidade: abre a inspeção direto pelo objeto OP já
+// carregado no card, sem depender de OPS_ATIVAS (que só contém OPs que o
+// carregarLinhasAtivas() considerou "ativas" ou "pendentes" — uma OP concluída
+// na extrusão mas ainda sem nenhuma inspeção pode não estar nessa lista por
+// algum motivo específico da linha/turno, mesmo estando com status Concluida
+// no ops/. Isso não "reabre" nada (ela nunca foi fechada pela Qualidade) — só
+// dá acesso direto ao formulário de inspeção pra essa OP.
+function abrirInspecaoDaRastreabilidade(opFbKey){
+  var dados=RAST_CACHE.find(function(d){ return d.op && d.op.fbKey===opFbKey; });
+  var op=dados?dados.op:null;
+  if(!op){ toast('OP não encontrada no resultado da busca — refaça a busca','err'); return; }
+  _abrirInspecaoComOP(op.linha, op);
+}
+
+function _abrirInspecaoComOP(linha, op){
   var pq=PARAMS_QUAL[op.cod];
   var horaIni=horaAtual();
   var turno=turnoDeHora(horaIni);
@@ -4213,7 +4272,7 @@ function abrirInspecaoOP(linha, opFbKey){
   G('insp-op-info').innerHTML='<strong>OP '+op.id+'</strong> — '+(op.desc||op.cod)+
     (op.lote?' &nbsp;|&nbsp; Lote: <strong>'+op.lote+'</strong>':'')+
     ' &nbsp;|&nbsp; Código: '+op.cod+
-    (!op.pendenteExtrusao?' &nbsp;|&nbsp; <span style="color:#d29922;font-weight:700">OP já concluída na extrusão — inspeção retroativa</span>':'');
+    (op.status==='Concluida'?' &nbsp;|&nbsp; <span style="color:#d29922;font-weight:700">OP já concluída na extrusão — inspeção retroativa</span>':'');
   G('insp-hora').value=horaIni;
   G('insp-data').value=dataIni;
   G('insp-turno').value='Turno '+turno;
@@ -4227,6 +4286,7 @@ function abrirInspecaoOP(linha, opFbKey){
   // Verifica se já existe inspeção nesta linha/OP na hora atual (arredondada para hora cheia)
   verificarDuplicidadeInspecao(linha, op, dataIni);
 }
+
 
 // ============================================================
 // CONCLUIR PARA QUALIDADE — marca que a qualidade já terminou de
@@ -4252,6 +4312,7 @@ function reabrirParaQualidade(opFbKey){
   DB.ref('qualidade_op_concluida/'+opFbKey).remove().then(function(){
     toast('OP reaberta para Qualidade!','ok');
     buscarRastreio();
+    carregarLinhasAtivas(); // atualiza o cache da tela de Produção em segundo plano, pra "Aguardando Qualidade" já refletir a reabertura na próxima vez que a aba for aberta
   }).catch(function(e){ toast('Erro: '+e.message,'err'); });
 }
 
