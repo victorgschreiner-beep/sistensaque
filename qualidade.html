@@ -205,6 +205,14 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <button class="tab" id="tab-prod-andamento" onclick="filtrarProducao('andamento')">Em Produção</button>
     <button class="tab" id="tab-prod-pendente" onclick="filtrarProducao('pendente')">Aguardando Qualidade <span class="nc-dot" id="prod-pendente-dot" style="display:none"></span></button>
   </div>
+  <div id="prod-busca-wrap" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:14px;flex-wrap:wrap">
+    <div class="fg" style="flex:1;min-width:220px;margin-bottom:0">
+      <label class="fl">Buscar OP por número (qualquer OP, inclusive já concluídas)</label>
+      <input type="text" id="prod-busca-op" placeholder="Digite o número da OP" onkeydown="if(event.key==='Enter')buscarOrdemProducao()">
+    </div>
+    <button class="btn bxs bp" onclick="buscarOrdemProducao()">🔍 Buscar</button>
+    <button class="btn bxs" id="prod-busca-limpar" style="display:none" onclick="limparBuscaProducao()">✕ Limpar busca</button>
+  </div>
   <div class="linhas-grid" id="linhas-grid">
     <div style="grid-column:1/-1;text-align:center;padding:30px;color:#739630">Carregando linhas...</div>
   </div>
@@ -1262,18 +1270,127 @@ function carregarLinhasAtivas(){
 }
 
 var FILTRO_PRODUCAO='todas'; // 'todas' | 'andamento' | 'pendente'
+var PROD_BUSCA_RESULTADO=null; // null = sem busca ativa; array = resultado da busca por número de OP
 
 function filtrarProducao(modo){
   FILTRO_PRODUCAO=modo;
   document.querySelectorAll('#scr-producao .tab').forEach(function(t){t.classList.remove('on');});
   G('tab-prod-'+(modo==='todas'?'todas':modo==='andamento'?'andamento':'pendente')).classList.add('on');
+  // A busca por número de OP só existe na aba "Todas" — trocar de aba sempre limpa o estado de busca
+  limparBuscaProducao();
+  G('prod-busca-wrap').style.display = (modo==='todas') ? 'flex' : 'none';
   renderLinhasGrid();
+}
+
+// ============================================================
+// BUSCA DE OP POR NÚMERO — aba Produção / Todas
+// ============================================================
+// Objetivo: encontrar QUALQUER OP pelo número, mesmo que ela não esteja mais
+// entre as "linhas ativas" (extrusao_op_ativa) nem entre as pendentes de
+// Qualidade — ou seja, OPs antigas, já totalmente concluídas, com ou sem
+// nenhuma inspeção lançada. Isso cobre o gap identificado na Rastreabilidade
+// (lá, a busca por data depende de existir inspeção; aqui buscamos direto
+// em ops/ por número, igual ao padrão já usado em buscarRastreio()).
+//
+// Enquanto há um termo buscado, o grid normal de linhas some e mostra
+// somente o(s) resultado(s) da busca.
+// Busca de OP por número — usa o índice idBusca (orderByChild + startAt/endAt),
+// que faz o Firebase filtrar no servidor em vez de baixar ops/ inteiro. Como
+// prefixo é case-sensitive no Firebase, normalizamos o termo pra minúsculo
+// (idBusca já é gravado em minúsculo em index.html).
+// Fallback: OPs criadas antes da migração do índice não têm idBusca — se a
+// busca indexada não achar nada, cai pra varredura completa como segurança,
+// só até a migração ser rodada (ver Admin > index.html > "Migrar OPs antigas").
+function buscarOrdemProducao(){
+  var termo=G('prod-busca-op').value.trim();
+  if(!termo){ toast('Digite o número da OP','err'); return; }
+  var termoNorm=termo.toLowerCase();
+
+  var grid=G('linhas-grid');
+  grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:30px;color:#739630">Buscando...</div>';
+
+  DB.ref('ops').orderByChild('idBusca').startAt(termoNorm).endAt(termoNorm+'\uf8ff').once('value').then(function(s){
+    var encontradas=[];
+    if(s.exists()) s.forEach(function(c){ var o=c.val(); o.fbKey=c.key; encontradas.push(o); });
+
+    if(encontradas.length) return finalizarBuscaOrdemProducao(encontradas);
+
+    // Nada no índice — pode ser OP antiga ainda não migrada. Fallback: varredura completa.
+    DB.ref('ops').once('value').then(function(s2){
+      var viaFallback=[];
+      if(s2.exists()) s2.forEach(function(c){
+        var o=c.val(); o.fbKey=c.key;
+        if(String(o.id||'').toLowerCase().indexOf(termoNorm)!==-1) viaFallback.push(o);
+      });
+      finalizarBuscaOrdemProducao(viaFallback);
+    }).catch(function(e){
+      grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:30px;color:#c0392b">Erro: '+e.message+'</div>';
+    });
+  }).catch(function(e){
+    grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:30px;color:#c0392b">Erro: '+e.message+'</div>';
+  });
+}
+
+function finalizarBuscaOrdemProducao(encontradas){
+  if(!encontradas.length){
+    PROD_BUSCA_RESULTADO=[];
+    G('prod-busca-limpar').style.display='';
+    renderLinhasGrid();
+    return;
+  }
+
+  // Para cada OP encontrada, verifica se está marcada como "Concluída para Qualidade"
+  Promise.all(encontradas.map(function(op){
+    return DB.ref('qualidade_op_concluida/'+op.fbKey).once('value');
+  })).then(function(snaps){
+    encontradas.forEach(function(op,i){
+      op.qualConcluida = snaps[i].exists() ? snaps[i].val() : null;
+    });
+    // Mais recentes primeiro (por data da OP, quando existir)
+    encontradas.sort(function(a,b){ return (b.data||'')>(a.data||'')?1:-1; });
+    PROD_BUSCA_RESULTADO=encontradas;
+    G('prod-busca-limpar').style.display='';
+    renderLinhasGrid();
+  });
+}
+
+function limparBuscaProducao(){
+  PROD_BUSCA_RESULTADO=null;
+  var input=G('prod-busca-op'); if(input) input.value='';
+  var btnLimpar=G('prod-busca-limpar'); if(btnLimpar) btnLimpar.style.display='none';
+  renderLinhasGrid();
+}
+
+// Reabre uma OP encontrada pela busca — mesma função usada na Rastreabilidade,
+// reaplicada aqui só para atualizar a tela de busca em vez do card de rastreio.
+function reabrirParaQualidadeDaBusca(opFbKey){
+  if(!confirm('Reabrir esta OP para a Qualidade?\n\nEla voltará a aparecer na tela de Produção, em "Aguardando Qualidade".')) return;
+  DB.ref('qualidade_op_concluida/'+opFbKey).remove().then(function(){
+    toast('OP reaberta para Qualidade!','ok');
+    carregarLinhasAtivas(); // atualiza o cache de linhas ativas em segundo plano
+    if(PROD_BUSCA_RESULTADO){
+      var op=PROD_BUSCA_RESULTADO.find(function(o){return o.fbKey===opFbKey;});
+      if(op) op.qualConcluida=null;
+      renderLinhasGrid();
+    }
+  }).catch(function(e){ toast('Erro: '+e.message,'err'); });
 }
 
 function renderLinhasGrid(){
   var grid=G('linhas-grid');
   var h='';
   var algumCard=false;
+
+  // Modo busca (aba Todas) — mostra somente a(s) OP(s) encontrada(s) pelo número, ignorando o grid normal
+  if(FILTRO_PRODUCAO==='todas' && PROD_BUSCA_RESULTADO!==null){
+    if(!PROD_BUSCA_RESULTADO.length){
+      grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:30px;color:#999">Nenhuma OP encontrada com esse número</div>';
+    } else {
+      grid.innerHTML=PROD_BUSCA_RESULTADO.map(renderCardBuscaOP).join('');
+    }
+    G('prod-pendente-dot').style.display = 'none';
+    return;
+  }
 
   LINHAS.forEach(function(linha){
     var ops=OPS_ATIVAS[linha]||[];
@@ -1320,6 +1437,34 @@ function renderLinhasGrid(){
   var totalPendentes=0;
   LINHAS.forEach(function(linha){ (OPS_ATIVAS[linha]||[]).forEach(function(op){ if(!op.pendenteExtrusao) totalPendentes++; }); });
   G('prod-pendente-dot').style.display = totalPendentes>0 ? 'inline-block' : 'none';
+}
+
+// Card de resultado da busca por número de OP (aba Produção / Todas).
+// Mostra a OP mesmo sem nenhuma inspeção/apontamento lançado. O botão "Reabrir"
+// só aparece se a OP estiver de fato marcada como Concluída para Qualidade.
+function renderCardBuscaOP(op){
+  var h='<div class="linha-card" style="cursor:default">';
+  h+='<div class="linha-nome">OP '+op.id+' <span class="badge bvd">'+(op.status||'—')+'</span></div>';
+  h+='<div class="linha-prod">'+(op.desc||op.cod||'—')+'</div>';
+  h+='<div class="linha-lote" style="margin-top:2px">'+(op.linha||'—')+(op.lote?' · Lote '+op.lote:'')+(op.data?' · '+op.data.split('-').reverse().join('/'):'')+'</div>';
+
+  if(op.qualConcluida){
+    h+='<div style="margin-top:8px;font-size:11px;color:#4a664a">✔ Concluída para Qualidade em '+(op.qualConcluida.ts?new Date(op.qualConcluida.ts).toLocaleString('pt-BR'):'—')+' por '+(op.qualConcluida.analistaNome||op.qualConcluida.analista||'—')+'</div>';
+    h+='<button class="btn bxs bo" style="margin-top:8px" onclick="event.stopPropagation();reabrirParaQualidadeDaBusca(\''+esc(op.fbKey)+'\')">↺ Reabrir para Qualidade</button>';
+  } else {
+    h+='<div style="margin-top:8px;font-size:11px;color:#739630">Ainda não concluída para a Qualidade — nada a reabrir</div>';
+  }
+  h+='<button class="btn bxs" style="margin-top:8px" onclick="event.stopPropagation();verOPNaRastreabilidade(\''+esc(op.id)+'\')">📋 Ver detalhes na Rastreabilidade</button>';
+  h+='</div>';
+  return h;
+}
+
+// Atalho: leva o número da OP buscada aqui direto pra Rastreabilidade, que já é
+// preparada para exibir qualquer OP (ativa, concluída, com ou sem inspeção).
+function verOPNaRastreabilidade(opId){
+  go('rastreio', G('nb-rast'));
+  G('rast-busca').value=opId;
+  buscarRastreio();
 }
 
 function esc(s){return String(s).replace(/'/g,"\\'");}
