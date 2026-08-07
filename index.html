@@ -690,7 +690,20 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <span id="adt3-info" style="font-size:10px;color:#739630;display:block;margin-top:2px"></span>
     </div>
   </div>
-  <div class="fr"><div class="fg"><label class="fl">Perdas / Refugos <span style="color:#739630;font-size:11px">(sempre em KG)</span></label><input type="number" id="ape" min="0" value="0" placeholder="kg"></div><div class="fg"><label class="fl">Operador</label><input type="text" id="aop" readonly style="opacity:.6"></div></div>
+  <div class="fr"><div class="fg"><label class="fl">Reprocesso <span style="color:#d2a922;font-size:11px">(sempre em KG — peso real do saco)</span></label><input type="number" id="arp" min="0" value="0" step="0.1" placeholder="kg" oninput="G('arp-motivo-row').style.display=(parseFloat(this.value)>0?'flex':'none')"></div><div class="fg"><label class="fl">Operador</label><input type="text" id="aop" readonly style="opacity:.6"></div></div>
+  <div class="fr" id="arp-motivo-row" style="display:none">
+    <div class="fg" style="flex:1"><label class="fl">Motivo do reprocesso <span style="color:#c0392b;font-size:11px">*obrigatorio</span></label>
+      <select id="arp-motivo" onchange="G('arp-motivo-outro').style.display=(this.value==='Outro'?'block':'none')">
+        <option value="">Selecione...</option>
+        <option>Saco rasgado</option>
+        <option>Peso incorreto</option>
+        <option>Contaminacao/mistura</option>
+        <option>Erro de programacao</option>
+        <option>Outro</option>
+      </select>
+    </div>
+  </div>
+  <div class="fg" id="arp-motivo-outro" style="display:none"><label class="fl">Descreva o motivo</label><input type="text" id="arp-motivo-txt" placeholder="Detalhe o motivo..."></div>
   <div class="fg"><label class="fl">Observacoes</label><input type="text" id="aob"></div>
   <div class="alw" id="akg" style="display:none">Producao em KG: ao salvar, informe o destino nos silos.</div>
   <input type="hidden" id="aid"><input type="hidden" id="atipo"><input type="hidden" id="adtctx">
@@ -855,6 +868,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.12.3/JsBarcode.all.min.js"></script>
 <script>
 // ============================================================
 // FIREBASE CONFIG
@@ -910,6 +924,102 @@ function hoje(){
 function horaLocalBR(){
   var h=new Date(Date.now()-3*60*60*1000).getUTCHours();
   return h;
+}
+
+// ============================================================
+// ETIQUETA DE REPROCESSO — impressao Zebra ZT231 (40x50mm)
+// ============================================================
+// Estrategia: tenta Zebra Browser Print primeiro (ZPL direto, sem dialogo).
+// Se o agente nao estiver rodando/instalado nesta maquina, cai automaticamente
+// pra impressao via navegador (window.print + @page 40x50mm com JsBarcode).
+// Requer, opcionalmente, o SDK oficial da Zebra auto-hospedado no repositorio
+// (ver comentario em ZEBRA_BROWSERPRINT_SDK_URL) — se nao estiver presente,
+// o sistema usa direto o fallback do navegador, sem quebrar nada.
+var PRINTER_DPI = 203; // ZT231 padrao — trocar pra 300 se a impressora for a versao 300dpi
+var LABEL_W_MM = 40, LABEL_H_MM = 50;
+
+function _mmToDots(mm){ return Math.round(mm * (PRINTER_DPI/25.4)); }
+
+function _buildZPL(dados){
+  var w=_mmToDots(LABEL_W_MM), h=_mmToDots(LABEL_H_MM);
+  var zpl = '^XA';
+  zpl += '^PW'+w+'^LL'+h;
+  zpl += '^CF0,22';
+  zpl += '^FO20,15^FB'+(w-40)+',1,0,C^FDREPROCESSO^FS';
+  zpl += '^FO20,45^GB'+(w-40)+',2,2^FS';
+  zpl += '^CF0,20';
+  zpl += '^FO20,60^FDOP: '+dados.opNumero+'^FS';
+  zpl += '^FO20,85^FDTurno: '+(dados.turno||'—')+'   Data: '+(dados.data||'').split('-').reverse().join('/')+'^FS';
+  zpl += '^CF0,26';
+  zpl += '^FO20,115^FDPeso: '+fN(dados.pesoKg)+' kg^FS';
+  zpl += '^CF0,16';
+  zpl += '^FO20,150^FB'+(w-40)+',2,0,L^FDMotivo: '+(dados.motivo||'—')+'^FS';
+  zpl += '^BY2,2,60';
+  zpl += '^FO20,'+(h-110)+'^BCN,60,Y,N,N^FD'+dados.codigo+'^FS';
+  zpl += '^XZ';
+  return zpl;
+}
+
+function _zebraBrowserPrintDisponivel(){
+  return typeof window.BrowserPrint !== 'undefined';
+}
+
+function _enviarZPLViaBrowserPrint(zpl){
+  return new Promise(function(resolve,reject){
+    if(!_zebraBrowserPrintDisponivel()){ reject(new Error('BrowserPrint indisponivel')); return; }
+    window.BrowserPrint.getDefaultDevice('printer', function(device){
+      if(!device){ reject(new Error('Nenhuma impressora padrao encontrada')); return; }
+      device.send(zpl, function(){ resolve(true); }, function(err){ reject(err); });
+    }, function(err){ reject(err); });
+  });
+}
+
+function _imprimirEtiquetaFallbackNavegador(dados){
+  var w=document.createElement('div');
+  w.id='etiqueta-print-area';
+  w.innerHTML =
+    '<div style="width:'+LABEL_W_MM+'mm;height:'+LABEL_H_MM+'mm;padding:2mm;box-sizing:border-box;font-family:Arial,sans-serif;text-align:center">'+
+      '<div style="font-size:11px;font-weight:700;letter-spacing:.05em">REPROCESSO</div>'+
+      '<div style="border-top:1px solid #000;margin:2px 0"></div>'+
+      '<div style="font-size:9px;text-align:left">OP: '+dados.opNumero+'</div>'+
+      '<div style="font-size:9px;text-align:left">Turno: '+(dados.turno||'—')+' &nbsp; Data: '+(dados.data||'').split('-').reverse().join('/')+'</div>'+
+      '<div style="font-size:13px;font-weight:700;margin:3px 0">'+fN(dados.pesoKg)+' kg</div>'+
+      '<div style="font-size:8px;text-align:left;word-break:break-word">Motivo: '+(dados.motivo||'—')+'</div>'+
+      '<svg id="etiqueta-barcode-svg" style="margin-top:2px;max-width:100%"></svg>'+
+    '</div>';
+  document.body.appendChild(w);
+  try{
+    if(window.JsBarcode) JsBarcode('#etiqueta-barcode-svg', dados.codigo, {format:'CODE128', width:1.4, height:34, fontSize:9, margin:0});
+  }catch(e){ console.warn('Erro gerando codigo de barras:',e); }
+
+  var styleTag=document.createElement('style');
+  styleTag.id='etiqueta-print-style';
+  styleTag.innerHTML =
+    '@media print{'+
+      'body *{visibility:hidden !important}'+
+      '#etiqueta-print-area,#etiqueta-print-area *{visibility:visible !important}'+
+      '#etiqueta-print-area{position:fixed;top:0;left:0}'+
+      '@page{size:'+LABEL_W_MM+'mm '+LABEL_H_MM+'mm;margin:0}'+
+    '}';
+  document.head.appendChild(styleTag);
+
+  setTimeout(function(){
+    window.print();
+    setTimeout(function(){
+      var el=G('etiqueta-print-area'); if(el) el.remove();
+      var st=G('etiqueta-print-style'); if(st) st.remove();
+    },500);
+  },150);
+}
+
+function imprimirEtiquetaReprocesso(dados){
+  var zpl=_buildZPL(dados);
+  _enviarZPLViaBrowserPrint(zpl).then(function(){
+    toast('Etiqueta enviada pra impressora (ZPL)','ok');
+  }).catch(function(){
+    // BrowserPrint indisponivel ou falhou — usa impressao pelo navegador, sem travar o operador
+    _imprimirEtiquetaFallbackNavegador(dados);
+  });
 }
 
 // Calcula a data correta do turno baseado no horário atual (fuso Brasil UTC-3)
@@ -2144,7 +2254,8 @@ function renderOpCards(){
     h+='<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px">';
     h+='<div style="font-size:12px"><span style="color:#739630">Prog.</span> <strong>'+(o.tipo==='SC'?fN(Math.round(progTotalCard/25))+' sc':o.tipo==='BG'?fN(Math.round(progTotalCard/750))+' bag':fN(progTotalCard)+' kg')+'</strong></div>';
     h+='<div style="font-size:12px"><span style="color:#739630">Real.</span> <strong>'+realDisp+'</strong></div>';
-    if(o.perda>0) h+='<div style="font-size:12px"><span style="color:#c0392b">Perda</span> <strong style="color:#c0392b">'+fN(o.perda)+' kg</strong></div>';
+    if(o.perda>0) h+='<div style="font-size:12px"><span style="color:#c0392b">Perda (hist.)</span> <strong style="color:#c0392b">'+fN(o.perda)+' kg</strong></div>';
+    if(o.reprocessado>0) h+='<div style="font-size:12px"><span style="color:#d29922">Reprocessado</span> <strong style="color:#d29922">'+fN(o.reprocessado)+' kg</strong></div>';
     var totProc=(Number(o.real)||0)+(Number(o.perda)||0);
     if(totProc>0) h+='<div style="font-size:12px"><span style="color:#024f2b">Total Proc.</span> <strong style="color:#024f2b">'+fN(totProc)+' kg</strong></div>';
     h+='</div>';
@@ -2245,7 +2356,8 @@ function abrirApt(fbKey){
   var v3=op.t3sc!==undefined?op.t3sc:Math.round((op.t3||0)/fator);
   // Campo zerado para novo lancamento — sistema vai SOMAR
   G('at1').value=0; G('at2').value=0; G('at3').value=0;
-  G('ape').value=0;
+  G('arp').value=0; G('arp-motivo').value=''; G('arp-motivo-txt').value='';
+  G('arp-motivo-row').style.display='none'; G('arp-motivo-outro').style.display='none';
   // Mostra acumulado atual como informacao
   var acumEl=G('apt-acum');
   var unid=tipo==='SC'?'SC':tipo==='BG'?'BG':'kg';
@@ -2255,8 +2367,10 @@ function abrirApt(fbKey){
     if(turno===0||turno===2) partes.push('T2: '+fN(v2)+' '+unid);
     if(turno===0||turno===3) partes.push('T3: '+fN(v3)+' '+unid);
     var ultData=op.ultimoApt?(' | Ult. apt: '+op.ultimoApt):'';
-    acumEl.textContent='Ja apontado: '+partes.join(' | ')+' | Perda: '+fN(op.perda||0)+' kg'+ultData;
-    acumEl.style.display=(v1+v2+v3>0||(op.perda||0)>0)?'block':'none';
+    var reprocStr=(op.reprocessado>0)?(' | Reprocessado: '+fN(op.reprocessado)+' kg'):'';
+    var perdaHistStr=(op.perda>0)?(' | Perda (hist.): '+fN(op.perda)+' kg'):'';
+    acumEl.textContent='Ja apontado: '+partes.join(' | ')+reprocStr+perdaHistStr+ultData;
+    acumEl.style.display=(v1+v2+v3>0||(op.perda||0)>0||(op.reprocessado||0)>0)?'block':'none';
   }
 
   // Controle de turno
@@ -2303,7 +2417,20 @@ function salvarApt(){
   var novoT1sc=turno===1||turno===0?parseInt(G('at1').value)||0:0;
   var novoT2sc=turno===2||turno===0?parseInt(G('at2').value)||0:0;
   var novoT3sc=turno===3||turno===0?parseInt(G('at3').value)||0:0;
-  var perdaKG=parseInt(G('ape').value)||0;
+
+  // REPROCESSO: peso manual em KG (saco pode ser parcial/quebrado, nao segue o fator SC/BG).
+  // Soma direto no total produzido da OP (bom + reprocesso = total da ordem), por fora do fator.
+  var reprocessoKG=parseFloat(G('arp').value)||0;
+  var motivoReprocesso='';
+  if(reprocessoKG>0){
+    motivoReprocesso=G('arp-motivo').value;
+    if(!motivoReprocesso){ toast('Selecione o motivo do reprocesso','err'); return; }
+    if(motivoReprocesso==='Outro'){
+      var motivoTxt=(G('arp-motivo-txt').value||'').trim();
+      if(!motivoTxt){ toast('Descreva o motivo do reprocesso','err'); return; }
+      motivoReprocesso='Outro: '+motivoTxt;
+    }
+  }
 
   // Valores anteriores do turno (em SC/BG/KG)
   var antT1sc=op?Math.round((op.t1||0)/fator):0;
@@ -2322,14 +2449,18 @@ function salvarApt(){
     t3sc = turno===3 ? antT3sc+novoT3sc : antT3sc;
   }
 
-  var antPerda=op?Number(op.perda)||0:0;
-  var totalPerda=antPerda+perdaKG; // soma perda tambem
+  // REPROCESSO substitui PERDA a partir de agora (corte limpo — historico de
+  // perda gravado antes desta mudanca fica intocado/congelado em op.perda,
+  // simplesmente nao recebe mais gravacoes novas). Reprocesso SOMA no total
+  // produzido da OP, ao contrario de perda (que era descontada a parte).
+  var antReprocessado=op?Number(op.reprocessado)||0:0;
+  var totalReprocessado=antReprocessado+reprocessoKG;
 
   var t1=t1sc*fator, t2=t2sc*fator, t3=t3sc*fator;
-  var real=t1+t2+t3;
+  var real=t1+t2+t3+totalReprocessado;
   var novosStr=tipo==='SC'?fN(novoT1sc+novoT2sc+novoT3sc)+' SC':tipo==='BG'?fN(novoT1sc+novoT2sc+novoT3sc)+' BG':fN((novoT1sc+novoT2sc+novoT3sc)*fator)+' kg';
-  var totalStr=tipo==='SC'?fN(t1sc+t2sc+t3sc)+' SC = '+fN(real)+' kg':tipo==='BG'?fN(t1sc+t2sc+t3sc)+' BG = '+fN(real)+' kg':fN(real)+' kg';
-  var fatorStr=' (+'+novosStr+' | Total: '+totalStr+')';
+  var totalStr=tipo==='SC'?fN(t1sc+t2sc+t3sc)+' SC = '+fN(t1+t2+t3)+' kg':tipo==='BG'?fN(t1sc+t2sc+t3sc)+' BG = '+fN(t1+t2+t3)+' kg':fN(t1+t2+t3)+' kg';
+  var fatorStr=' (+'+novosStr+(reprocessoKG>0?' | +Reprocesso: '+fN(reprocessoKG)+' kg':'')+' | Total OP: '+fN(real)+' kg)';
 
   // Data do apontamento = data do filtro selecionado na tela (Cards do Operador),
   // capturada em abrirApt() e guardada no campo hidden 'adtctx'.
@@ -2339,6 +2470,9 @@ function salvarApt(){
   var dtCtx=G('adtctx')&&G('adtctx').value?G('adtctx').value:(SES.dataOperacional||hoje());
   var dtT1=dtCtx, dtT2=dtCtx, dtT3=dtCtx;
   var dtApt=dtCtx;
+
+  // Codigo unico da etiqueta de reprocesso — gerado agora que dtApt ja existe
+  var codigoEtiqueta=reprocessoKG>0?('RPZ-'+dtApt.replace(/-/g,'')+'-T'+(turno||0)+'-'+uid().toUpperCase()):null;
 
   // Recalcula totais acumulados por data
   // Busca apontamentos anteriores desta OP para calcular real total por data
@@ -2359,46 +2493,57 @@ function salvarApt(){
     if(novoT1sc>0){ rpd[dtT1]=(rpd[dtT1]||0)+novoT1sc*fator; rpdt[dtT1]=rpdt[dtT1]||{}; rpdt[dtT1]['1']=(rpdt[dtT1]['1']||0)+novoT1sc*fator; }
     if(novoT2sc>0){ rpd[dtT2]=(rpd[dtT2]||0)+novoT2sc*fator; rpdt[dtT2]=rpdt[dtT2]||{}; rpdt[dtT2]['2']=(rpdt[dtT2]['2']||0)+novoT2sc*fator; }
     if(novoT3sc>0){ rpd[dtT3]=(rpd[dtT3]||0)+novoT3sc*fator; rpdt[dtT3]=rpdt[dtT3]||{}; rpdt[dtT3]['3']=(rpdt[dtT3]['3']||0)+novoT3sc*fator; }
+    // Reprocesso soma no total do dia da OP tambem (mesmo criterio de bom/produzido)
+    if(reprocessoKG>0){
+      rpd[dtApt]=(rpd[dtApt]||0)+reprocessoKG;
+      if(turno>=1&&turno<=3){ rpdt[dtApt]=rpdt[dtApt]||{}; rpdt[dtApt][String(turno)]=(rpdt[dtApt][String(turno)]||0)+reprocessoKG; }
+    }
 
-    var promises=[
-      DB.ref('ops/'+fbKey).update({
-        t1:t1, t2:t2, t3:t3, real:real,
-        t1sc:t1sc, t2sc:t2sc, t3sc:t3sc,
-        perda:totalPerda, ultimoApt:dtApt, status:'Em andamento',
-        realPorData:rpd, realPorDataTurno:rpdt
-      })
-    ];
+    var opUpdate={
+      t1:t1, t2:t2, t3:t3, real:real,
+      t1sc:t1sc, t2sc:t2sc, t3sc:t3sc,
+      ultimoApt:dtApt, status:'Em andamento',
+      realPorData:rpd, realPorDataTurno:rpdt
+    };
+    // op.perda NAO recebe mais gravacoes a partir de agora (corte limpo) — historico
+    // anterior fica congelado, so nao escrevemos essa chave no update.
+    if(reprocessoKG>0) opUpdate.reprocessado=totalReprocessado;
+
+    var promises=[ DB.ref('ops/'+fbKey).update(opUpdate) ];
   // Apontamento T1
   if(novoT1sc>0) promises.push(DB.ref('apontamentos').push({
     id:uid(), opId:fbKey, data:dtT1, turno:1,
     t1:novoT1sc*fator, t2:0, t3:0, real:novoT1sc*fator,
-    perda:turno===1?perdaKG:0, obs:G('aob').value, operador:SES.login, ts:agora()
+    obs:G('aob').value, operador:SES.login, ts:agora()
   }));
   // Apontamento T2
   if(novoT2sc>0) promises.push(DB.ref('apontamentos').push({
     id:uid(), opId:fbKey, data:dtT2, turno:2,
     t1:0, t2:novoT2sc*fator, t3:0, real:novoT2sc*fator,
-    perda:turno===2?perdaKG:0, obs:G('aob').value, operador:SES.login, ts:agora()
+    obs:G('aob').value, operador:SES.login, ts:agora()
   }));
   // Apontamento T3
   if(novoT3sc>0) promises.push(DB.ref('apontamentos').push({
     id:uid(), opId:fbKey, data:dtT3, turno:3,
     t1:0, t2:0, t3:novoT3sc*fator, real:novoT3sc*fator,
-    perda:turno===3?perdaKG:0, obs:G('aob').value, operador:SES.login, ts:agora()
-  }));
-  // Se nenhum turno especifico tem producao nova, salva um registro geral
-  if(novoT1sc===0&&novoT2sc===0&&novoT3sc===0) promises.push(DB.ref('apontamentos').push({
-    id:uid(), opId:fbKey, data:dtApt, turno:turno,
-    t1:0, t2:0, t3:0, real:0, perda:perdaKG,
     obs:G('aob').value, operador:SES.login, ts:agora()
   }));
-    // Perda gravada na data da OP — nao na data atual do turno
-    // Evita perda aparecer no dashboard de outro dia quando OP e de data anterior
-    var dtPerda=op?op.data:dtApt;
-    if(perdaKG>0) promises.push(DB.ref('perdas_diarias').push({
-      opId:fbKey, data:dtPerda, turno:turno,
-      perdaKG:perdaKG, operador:SES.login, ts:agora()
-    }));
+  // Apontamento de REPROCESSO — evento proprio, imutavel, gera etiqueta.
+  // Nao mistura com t1/t2/t3 (que ficam reservados pro fator SC/BG), soma so no 'real'.
+  if(reprocessoKG>0) promises.push(DB.ref('apontamentos').push({
+    id:uid(), opId:fbKey, data:dtApt, turno:turno||0,
+    t1:0, t2:0, t3:0, real:reprocessoKG,
+    origem:'reprocesso', motivoReprocesso:motivoReprocesso, codigoEtiqueta:codigoEtiqueta,
+    obs:G('aob').value, operador:SES.login, ts:agora()
+  }));
+  // Se nenhum turno especifico tem producao nova, salva um registro geral
+  if(novoT1sc===0&&novoT2sc===0&&novoT3sc===0&&reprocessoKG===0) promises.push(DB.ref('apontamentos').push({
+    id:uid(), opId:fbKey, data:dtApt, turno:turno,
+    t1:0, t2:0, t3:0, real:0,
+    obs:G('aob').value, operador:SES.login, ts:agora()
+  }));
+  // perdas_diarias NAO recebe mais gravacoes novas a partir de agora — reprocesso
+  // substitui esse fluxo (ver bloco de reprocesso acima, ja gravado em 'apontamentos').
 
     return Promise.all(promises);
   }).then(function(){
@@ -2410,9 +2555,22 @@ function salvarApt(){
     toast('Apontamento salvo!'+fatorStr+dtsStr,'ok');
     if(turno===1)G('at1').value=0; else if(turno===2)G('at2').value=0; else if(turno===3)G('at3').value=0;
     else{G('at1').value=0;G('at2').value=0;G('at3').value=0;}
-    G('ape').value=0;
+    G('arp').value=0; G('arp-motivo').value=''; G('arp-motivo-txt').value='';
+    G('arp-motivo-row').style.display='none'; G('arp-motivo-outro').style.display='none';
     fM('mapt');
-    addLog('APONTAMENTO', fbKey+' '+dtApt+' T'+turno+' '+fN(real)+'kg');
+    addLog('APONTAMENTO', fbKey+' '+dtApt+' T'+turno+' '+fN(real)+'kg'+(reprocessoKG>0?' (reprocesso: '+fN(reprocessoKG)+'kg — '+codigoEtiqueta+')':''));
+    if(reprocessoKG>0){
+      var opAtualizada=null;
+      for(var ix=0;ix<OPS.length;ix++){if(OPS[ix].fbKey===fbKey){opAtualizada=OPS[ix];break;}}
+      imprimirEtiquetaReprocesso({
+        opNumero: opAtualizada?opAtualizada.id:fbKey,
+        codigo: codigoEtiqueta,
+        turno: turno||0,
+        data: dtApt,
+        pesoKg: reprocessoKG,
+        motivo: motivoReprocesso
+      });
+    }
     if(tipo==='KG') setTimeout(function(){abrirSilos(fbKey);},400);
   }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
 }
