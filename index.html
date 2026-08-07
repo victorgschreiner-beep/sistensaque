@@ -936,13 +936,20 @@ function horaLocalBR(){
 // (ver comentario em ZEBRA_BROWSERPRINT_SDK_URL) — se nao estiver presente,
 // o sistema usa direto o fallback do navegador, sem quebrar nada.
 var PRINTER_DPI = 203; // ZT231 padrao — trocar pra 300 se a impressora for a versao 300dpi
-var LABEL_W_MM = 95, LABEL_H_MM = 100; // etiqueta real confirmada em 07/08/2026 — ajustar aqui se trocar o rolo
+var LABEL_W_MM = 95, LABEL_H_MM = 100; // usado so pro fallback via navegador (CSS @page)
+// Config real lida direto no visor da impressora em 07/08/2026 — fonte de verdade pro ZPL,
+// sem depender de conversao mm->dots (elimina qualquer arredondamento).
+var PRINTER_W_DOTS = 800, PRINTER_H_DOTS = 802;
+var PRINTER_MEDIA_TIPO = 'transferencia_termica'; // Tipo de impressao: Transf. Term (visor)
+var PRINTER_MEDIA_SENSOR = 'espaco_ranhura';       // Tipo de midia: Espaco/Ranhura (visor)
 
 function _mmToDots(mm){ return Math.round(mm * (PRINTER_DPI/25.4)); }
 
 function _buildZPL(dados){
-  var w=_mmToDots(LABEL_W_MM), h=_mmToDots(LABEL_H_MM);
+  var w=PRINTER_W_DOTS, h=PRINTER_H_DOTS;
   var zpl = '^XA';
+  zpl += '^MTT';  // Transferencia Termica — bate com "Tipo de impressao: Transf. Term" no visor
+  zpl += '^MNY';  // Sensor de Espaco/Ranhura — bate com "Tipo de midia: Espaco/Ranhura" no visor
   zpl += '^PW'+w+'^LL'+h;
   // Titulo
   zpl += '^CF0,50';
@@ -998,7 +1005,7 @@ function _imprimirEtiquetaFallbackNavegador(dados){
     '</div>';
   document.body.appendChild(w);
   try{
-    if(window.JsBarcode) JsBarcode('#etiqueta-barcode-svg', dados.codigo, {format:'CODE128', width:2.2, height:70, fontSize:14, margin:0});
+    if(window.JsBarcode) JsBarcode('#etiqueta-barcode-svg', dados.codigo, {format:'CODE128', width:2.2, height:70, fontSize:14, margin:14});
   }catch(e){ console.warn('Erro gerando codigo de barras:',e); }
 
   var styleTag=document.createElement('style');
