@@ -212,9 +212,50 @@ tr:hover td{background:rgba(2,79,43,.03)}
 </div>
 </div>
 
+<!-- MODAL EDITAR APONTAMENTO -->
+<div class="ov" id="medit">
+  <div class="modal">
+    <div class="mt" id="edit-titulo">Editar Apontamento</div>
+    <input type="hidden" id="edit-fbkey">
+    <div class="fr">
+      <div class="fg"><label class="fl">Embalagens realizadas</label><input type="number" min="0" id="edit-emb" oninput="calcEditPreview()"></div>
+      <div class="fg"><label class="fl">Perda (kg)</label><input type="number" min="0" id="edit-perda"></div>
+    </div>
+    <div class="fg"><label class="fl">Motivo da correcao</label><input type="text" id="edit-motivo" placeholder="Ex: erro de digitacao, apontamento em duplicidade..."></div>
+    <div class="ali" id="edit-preview" style="font-size:12px"></div>
+    <div class="mfoot">
+      <button class="btn bsm" onclick="fM('medit')">Cancelar</button>
+      <button class="btn bp bsm" onclick="salvarEdicaoEnvase()">Salvar Correcao</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PASSAR PRA OUTRO DIA -->
+<div class="ov" id="mpassardia">
+  <div class="modal">
+    <div class="mt">Passar ordem para outro dia</div>
+    <input type="hidden" id="pd-fbkey">
+    <div id="pd-info" style="font-size:13px;margin-bottom:14px"></div>
+    <div style="margin-bottom:6px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#4a664a;margin-bottom:3px"><span>Feito</span><span id="pd-feito-lbl"></span></div>
+      <div style="background:#eef2ee;border-radius:3px;height:10px;overflow:hidden"><div id="pd-bar-feito" style="height:100%;background:#024f2b;border-radius:3px"></div></div>
+    </div>
+    <div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#4a664a;margin-bottom:3px"><span>Restante</span><span id="pd-restante-lbl"></span></div>
+      <div style="background:#eef2ee;border-radius:3px;height:10px;overflow:hidden"><div id="pd-bar-restante" style="height:100%;background:#d29922;border-radius:3px"></div></div>
+    </div>
+    <div class="alw" style="font-size:12px">A ordem continua sendo a MESMA (mesmo numero, mesmo historico). O que ja foi produzido fica preservado — so a data passa a valer para o dia seguinte.</div>
+    <div class="mfoot">
+      <button class="btn bsm" onclick="fM('mpassardia')">Cancelar</button>
+      <button class="btn bp bsm" onclick="confirmarPassarDiaEnvase()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 // ============================================================
 // FIREBASE CONFIG — mesmo projeto/banco do restante do sistema.
@@ -525,10 +566,15 @@ function renderApontamento(){
       h+='<div class="fg" style="flex:1;min-width:120px;margin-bottom:0"><label class="fl">Perda agora (kg)</label><input type="number" min="0" id="aptperda-'+o.fbKey+'"></div>';
       h+='<button class="btn bp bsm" data-key="'+o.fbKey+'" onclick="registrarProducaoEnvase(this.dataset.key)">Registrar</button>';
       h+='<button class="btn bsm" style="color:#739630;border-color:#739630" data-key="'+o.fbKey+'" onclick="finalizarEnvase(this.dataset.key)">Finalizar</button>';
+      h+='<button class="btn bsm" style="color:#024f2b;border-color:#024f2b" data-key="'+o.fbKey+'" onclick="abrirEditarEnvase(this.dataset.key)">Editar Apontamento</button>';
+      h+='<button class="btn bsm" style="color:#1a73e8;border-color:#1a73e8" data-key="'+o.fbKey+'" onclick="abrirPassarDiaEnvase(this.dataset.key)">Passar p/ outro dia</button>';
+      h+='<button class="btn bsm" data-key="'+o.fbKey+'" onclick="gerarPDFEnvase(this.dataset.key)">PDF</button>';
       h+='</div>';
     } else {
       h+='<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">';
       h+='<button class="btn bsm" style="color:#1a73e8;border-color:#1a73e8" data-key="'+o.fbKey+'" onclick="reabrirEnvase(this.dataset.key)">&#8635; Reabrir</button>';
+      h+='<button class="btn bsm" style="color:#024f2b;border-color:#024f2b" data-key="'+o.fbKey+'" onclick="abrirEditarEnvase(this.dataset.key)">Editar Apontamento</button>';
+      h+='<button class="btn bsm" data-key="'+o.fbKey+'" onclick="gerarPDFEnvase(this.dataset.key)">PDF</button>';
       h+='</div>';
     }
     h+='</div>';
@@ -585,6 +631,206 @@ function reabrirEnvase(fbKey){
     ld(false); toast('Ordem reaberta','ok');
     addLog('REABRIR_ENVASE_PET', o.id);
   }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
+// ============================================================
+// EDITAR APONTAMENTO — correcao direta do total acumulado da
+// ordem (nao existe log individual por lancamento no Envase PET,
+// entao a correcao sobrescreve realEmbalagens/real/perda e grava
+// um registro de auditoria em envase_pet_correcoes/, preservando
+// pelo menos o rastro de quem corrigiu, quando e o valor anterior).
+// Liberado pra qualquer perfil, em qualquer status (inclusive
+// Concluida), por decisao explicita do usuario.
+// ============================================================
+function abrirEditarEnvase(fbKey){
+  var o=null;
+  for(var i=0;i<ENVASE_OPS.length;i++){ if(ENVASE_OPS[i].fbKey===fbKey){ o=ENVASE_OPS[i]; break; } }
+  if(!o){ toast('Ordem nao encontrada','err'); return; }
+  G('edit-fbkey').value=fbKey;
+  G('edit-titulo').textContent='Editar Apontamento — '+o.id;
+  G('edit-emb').value=Number(o.realEmbalagens)||0;
+  G('edit-perda').value=Number(o.perda)||0;
+  G('edit-motivo').value='';
+  calcEditPreview();
+  G('medit').classList.add('on');
+}
+
+function calcEditPreview(){
+  var fbKey=G('edit-fbkey').value;
+  var o=null;
+  for(var i=0;i<ENVASE_OPS.length;i++){ if(ENVASE_OPS[i].fbKey===fbKey){ o=ENVASE_OPS[i]; break; } }
+  if(!o) return;
+  var novaEmb=parseFloat(G('edit-emb').value)||0;
+  var novoReal=novaEmb*(Number(o.pesoUnit)||0);
+  G('edit-preview').textContent='Equivale a '+fN(novoReal)+' kg (peso unit. '+fN(o.pesoUnit)+' kg). Valor atual: '+fN(o.realEmbalagens||0)+' emb. ('+fN(o.real||0)+' kg).';
+}
+
+function salvarEdicaoEnvase(){
+  var fbKey=G('edit-fbkey').value;
+  var o=null;
+  for(var i=0;i<ENVASE_OPS.length;i++){ if(ENVASE_OPS[i].fbKey===fbKey){ o=ENVASE_OPS[i]; break; } }
+  if(!o){ toast('Ordem nao encontrada','err'); return; }
+
+  var novaEmb=parseFloat(G('edit-emb').value);
+  var novaPerda=parseFloat(G('edit-perda').value);
+  if(isNaN(novaEmb)||novaEmb<0){ toast('Informe uma quantidade de embalagens valida','err'); return; }
+  if(isNaN(novaPerda)||novaPerda<0){ toast('Informe uma perda valida','err'); return; }
+  var motivo=(G('edit-motivo').value||'').trim();
+  if(!motivo){ toast('Informe o motivo da correcao','err'); return; }
+
+  var embAntiga=Number(o.realEmbalagens)||0;
+  var perdaAntiga=Number(o.perda)||0;
+  var novoReal=novaEmb*(Number(o.pesoUnit)||0);
+
+  if(!confirm('Confirmar correcao da ordem '+o.id+'?\n\nEmbalagens: '+fN(embAntiga)+' -> '+fN(novaEmb)+'\nPerda: '+fN(perdaAntiga)+' kg -> '+fN(novaPerda)+' kg')) return;
+
+  ld(true,'Salvando correcao...');
+  DB.ref('envase_pet_ops/'+fbKey).update({
+    realEmbalagens:novaEmb, real:novoReal, perda:novaPerda,
+    editadoPor:SES.login, editadoEm:agora()
+  }).then(function(){
+    return DB.ref('envase_pet_correcoes').push({
+      opFbKey:fbKey, opId:o.id,
+      embAntiga:embAntiga, embNova:novaEmb,
+      perdaAntiga:perdaAntiga, perdaNova:novaPerda,
+      motivo:motivo, usuario:SES.login, ts:agora()
+    });
+  }).then(function(){
+    ld(false); toast('Correcao salva!','ok'); fM('medit');
+    addLog('EDITAR_APONTAMENTO_ENVASE_PET', o.id+' | emb '+embAntiga+'->'+novaEmb+' | perda '+perdaAntiga+'->'+novaPerda+' | motivo: '+motivo);
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
+// ============================================================
+// PASSAR PRA OUTRO DIA (manual) — move a MESMA ordem pro dia
+// seguinte, preservando prog/real (modelo continuo, sem split
+// de registro). Mostra feito x restante antes de confirmar.
+// ============================================================
+function abrirPassarDiaEnvase(fbKey){
+  var o=null;
+  for(var i=0;i<ENVASE_OPS.length;i++){ if(ENVASE_OPS[i].fbKey===fbKey){ o=ENVASE_OPS[i]; break; } }
+  if(!o){ toast('Ordem nao encontrada','err'); return; }
+  if(o.status==='Concluida'){ toast('Ordem ja concluida','err'); return; }
+
+  G('pd-fbkey').value=fbKey;
+  var p=pct(o.real,o.prog);
+  var pRestante=Math.max(0,100-p);
+  var restanteKg=Math.max(0,(Number(o.prog)||0)-(Number(o.real)||0));
+  var restanteEmb=(Number(o.pesoUnit)||0)>0?Math.round(restanteKg/Number(o.pesoUnit)):0;
+
+  var dtAtual=o.data||hoje();
+  var dtProx=new Date(dtAtual+'T12:00:00'); dtProx.setDate(dtProx.getDate()+1);
+  var dtNova=dtProx.toISOString().slice(0,10);
+
+  G('pd-info').innerHTML='<strong>'+o.id+'</strong> — '+(o.desc||o.cod)+'<br>'+
+    'De '+dtAtual.split('-').reverse().join('/')+' para <strong>'+dtNova.split('-').reverse().join('/')+'</strong>';
+  G('pd-feito-lbl').textContent=fN(o.realEmbalagens||0)+' emb. ('+fN(o.real||0)+' kg) · '+p+'%';
+  G('pd-restante-lbl').textContent=fN(restanteEmb)+' emb. ('+fN(restanteKg)+' kg) · '+pRestante+'%';
+  G('pd-bar-feito').style.width=Math.min(p,100)+'%';
+  G('pd-bar-restante').style.width=Math.min(pRestante,100)+'%';
+
+  G('mpassardia').classList.add('on');
+}
+
+function confirmarPassarDiaEnvase(){
+  var fbKey=G('pd-fbkey').value;
+  var o=null;
+  for(var i=0;i<ENVASE_OPS.length;i++){ if(ENVASE_OPS[i].fbKey===fbKey){ o=ENVASE_OPS[i]; break; } }
+  if(!o){ toast('Ordem nao encontrada','err'); return; }
+
+  var dtAtual=o.data||hoje();
+  var dtProx=new Date(dtAtual+'T12:00:00'); dtProx.setDate(dtProx.getDate()+1);
+  var dtNova=dtProx.toISOString().slice(0,10);
+
+  ld(true,'Movendo ordem...');
+  DB.ref('envase_pet_ops/'+fbKey).update({
+    data:dtNova, movidaEm:agora(), movidaPor:SES.login,
+    diasAnteriores:(o.diasAnteriores||[]).concat([dtAtual])
+  }).then(function(){
+    ld(false); toast('Ordem '+o.id+' movida para '+dtNova,'ok'); fM('mpassardia');
+    addLog('MOVER_ENVASE_DIA', o.id+' | '+dtAtual+' -> '+dtNova);
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
+// ============================================================
+// PDF POR ORDEM — resumo do estado atual (nao ha log por
+// lancamento no Envase PET, entao o PDF reflete os totais
+// vigentes, nao um historico de apontamentos individuais).
+// ============================================================
+function gerarPDFEnvase(fbKey){
+  var o=null;
+  for(var i=0;i<ENVASE_OPS.length;i++){ if(ENVASE_OPS[i].fbKey===fbKey){ o=ENVASE_OPS[i]; break; } }
+  if(!o){ toast('Ordem nao encontrada','err'); return; }
+  if(typeof jspdf==='undefined'){ toast('jsPDF nao disponivel','err'); return; }
+
+  var jsPDF=jspdf.jsPDF;
+  var doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  var W=190, ML=10, y=16;
+  var p=pct(o.real,o.prog);
+  var realEmb=Number(o.realEmbalagens)||0, progEmb=Number(o.qtdEmbalagens)||0;
+
+  doc.setDrawColor(2,79,43); doc.setLineWidth(0.6); doc.line(ML,y,ML+W,y); y+=6;
+  doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(2,79,43);
+  doc.text('RESUMO DE APONTAMENTO — ENVASE PET',ML,y);
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(115,150,48);
+  doc.text('Raguife',ML+W,y,{align:'right'}); y+=8;
+
+  doc.setDrawColor(200,216,200); doc.setLineWidth(0.2); doc.line(ML,y,ML+W,y); y+=8;
+
+  function linha(label,valor){
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(74,102,74);
+    doc.text(label,ML,y);
+    doc.setFont('helvetica','normal'); doc.setTextColor(26,46,26);
+    doc.text(String(valor),ML+45,y);
+    y+=7;
+  }
+  linha('Ordem:',o.id);
+  linha('Produto:',(o.desc||o.cod||'-'));
+  linha('Lote:',(o.lote||'-'));
+  linha('Maquina:',(o.maquina||'-'));
+  linha('Tipo:',o.tipo||'-');
+  linha('Data:',(o.data||'-').split('-').reverse().join('/'));
+  linha('Origem:',(o.origemOpId||'-'));
+  linha('Status:',o.status||'-');
+  y+=3;
+
+  doc.setDrawColor(200,216,200); doc.line(ML,y,ML+W,y); y+=8;
+
+  var cols=[
+    ['Programado', fN(progEmb)+' emb. ('+fN(o.prog||0)+' kg)'],
+    ['Realizado', fN(realEmb)+' emb. ('+fN(o.real||0)+' kg)'],
+    ['Peso unit.', fN(o.pesoUnit||0)+' kg'],
+    ['Perda', fN(o.perda||0)+' kg']
+  ];
+  var colW=W/cols.length;
+  cols.forEach(function(c,i){
+    var x=ML+i*colW;
+    doc.setFillColor(234,245,234); doc.rect(x,y,colW-3,18,'F');
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(102,102,102);
+    doc.text(c[0].toUpperCase(),x+3,y+6);
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(2,79,43);
+    doc.text(c[1],x+3,y+13);
+  });
+  y+=26;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(74,102,74);
+  doc.text('% Realizado: '+p+'%',ML,y); y+=4;
+  doc.setFillColor(230,240,230); doc.rect(ML,y,W,5,'F');
+  var cor=p>=90?[2,79,43]:p>=60?[210,153,34]:[192,57,43];
+  doc.setFillColor(cor[0],cor[1],cor[2]); doc.rect(ML,y,Math.min(p,100)/100*W,5,'F');
+  y+=14;
+
+  if(o.editadoPor){
+    doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(140,140,140);
+    doc.text('Ultima correcao: '+o.editadoPor+' em '+(o.editadoEm?new Date(o.editadoEm).toLocaleString('pt-BR'):'-'),ML,y);
+    y+=6;
+  }
+
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(160,160,160);
+  doc.text('Gerado em '+new Date().toLocaleString('pt-BR'),ML,285);
+
+  doc.save('Envase_'+o.id+'.pdf');
+  addLog('PDF_ENVASE_PET', o.id);
 }
 </script>
 </body>
