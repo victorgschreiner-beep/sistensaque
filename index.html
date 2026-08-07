@@ -936,7 +936,7 @@ function horaLocalBR(){
 // (ver comentario em ZEBRA_BROWSERPRINT_SDK_URL) — se nao estiver presente,
 // o sistema usa direto o fallback do navegador, sem quebrar nada.
 var PRINTER_DPI = 203; // ZT231 padrao — trocar pra 300 se a impressora for a versao 300dpi
-var LABEL_W_MM = 40, LABEL_H_MM = 50;
+var LABEL_W_MM = 95, LABEL_H_MM = 100; // etiqueta real confirmada em 07/08/2026 — ajustar aqui se trocar o rolo
 
 function _mmToDots(mm){ return Math.round(mm * (PRINTER_DPI/25.4)); }
 
@@ -944,18 +944,24 @@ function _buildZPL(dados){
   var w=_mmToDots(LABEL_W_MM), h=_mmToDots(LABEL_H_MM);
   var zpl = '^XA';
   zpl += '^PW'+w+'^LL'+h;
-  zpl += '^CF0,22';
-  zpl += '^FO20,15^FB'+(w-40)+',1,0,C^FDREPROCESSO^FS';
-  zpl += '^FO20,45^GB'+(w-40)+',2,2^FS';
-  zpl += '^CF0,20';
-  zpl += '^FO20,60^FDOP: '+dados.opNumero+'^FS';
-  zpl += '^FO20,85^FDTurno: '+(dados.turno||'—')+'   Data: '+(dados.data||'').split('-').reverse().join('/')+'^FS';
+  // Titulo
+  zpl += '^CF0,50';
+  zpl += '^FO0,40^FB'+w+',1,0,C^FDREPROCESSO^FS';
+  zpl += '^FO40,105^GB'+(w-80)+',3,3^FS';
+  // Dados da OP
+  zpl += '^CF0,32';
+  zpl += '^FO50,140^FDOP: '+dados.opNumero+'^FS';
+  zpl += '^FO50,185^FDTurno: '+(dados.turno||'—')+'     Data: '+(dados.data||'').split('-').reverse().join('/')+'^FS';
+  if(dados.produto) zpl += '^FO50,230^FB'+(w-100)+',2,4,L^FDProduto: '+dados.produto+'^FS';
+  // Peso em destaque
+  zpl += '^CF0,80';
+  zpl += '^FO0,320^FB'+w+',1,0,C^FD'+fN(dados.pesoKg)+' kg^FS';
+  // Motivo
   zpl += '^CF0,26';
-  zpl += '^FO20,115^FDPeso: '+fN(dados.pesoKg)+' kg^FS';
-  zpl += '^CF0,16';
-  zpl += '^FO20,150^FB'+(w-40)+',2,0,L^FDMotivo: '+(dados.motivo||'—')+'^FS';
-  zpl += '^BY2,2,60';
-  zpl += '^FO20,'+(h-110)+'^BCN,60,Y,N,N^FD'+dados.codigo+'^FS';
+  zpl += '^FO50,430^FB'+(w-100)+',2,4,L^FDMotivo: '+(dados.motivo||'—')+'^FS';
+  // Codigo de barras, centralizado, grande
+  zpl += '^BY3,3,120';
+  zpl += '^FO'+Math.round(w*0.10)+','+(h-220)+'^BCN,120,Y,N,N^FD'+dados.codigo+'^FS';
   zpl += '^XZ';
   return zpl;
 }
@@ -978,18 +984,21 @@ function _imprimirEtiquetaFallbackNavegador(dados){
   var w=document.createElement('div');
   w.id='etiqueta-print-area';
   w.innerHTML =
-    '<div style="width:'+LABEL_W_MM+'mm;height:'+LABEL_H_MM+'mm;padding:2mm;box-sizing:border-box;font-family:Arial,sans-serif;text-align:center">'+
-      '<div style="font-size:11px;font-weight:700;letter-spacing:.05em">REPROCESSO</div>'+
-      '<div style="border-top:1px solid #000;margin:2px 0"></div>'+
-      '<div style="font-size:9px;text-align:left">OP: '+dados.opNumero+'</div>'+
-      '<div style="font-size:9px;text-align:left">Turno: '+(dados.turno||'—')+' &nbsp; Data: '+(dados.data||'').split('-').reverse().join('/')+'</div>'+
-      '<div style="font-size:13px;font-weight:700;margin:3px 0">'+fN(dados.pesoKg)+' kg</div>'+
-      '<div style="font-size:8px;text-align:left;word-break:break-word">Motivo: '+(dados.motivo||'—')+'</div>'+
-      '<svg id="etiqueta-barcode-svg" style="margin-top:2px;max-width:100%"></svg>'+
+    '<div style="width:'+LABEL_W_MM+'mm;height:'+LABEL_H_MM+'mm;padding:4mm;box-sizing:border-box;font-family:Arial,sans-serif;text-align:center;display:flex;flex-direction:column;justify-content:flex-start">'+
+      '<div style="font-size:22px;font-weight:800;letter-spacing:.06em">REPROCESSO</div>'+
+      '<div style="border-top:2px solid #000;margin:4px 12px"></div>'+
+      '<div style="font-size:15px;text-align:left;margin-top:6px">OP: '+dados.opNumero+'</div>'+
+      '<div style="font-size:15px;text-align:left">Turno: '+(dados.turno||'—')+' &nbsp;&nbsp; Data: '+(dados.data||'').split('-').reverse().join('/')+'</div>'+
+      (dados.produto?('<div style="font-size:14px;text-align:left;margin-top:2px;word-break:break-word">Produto: '+dados.produto+'</div>'):'')+
+      '<div style="font-size:40px;font-weight:800;margin:14px 0">'+fN(dados.pesoKg)+' kg</div>'+
+      '<div style="font-size:13px;text-align:left;word-break:break-word;margin-bottom:10px">Motivo: '+(dados.motivo||'—')+'</div>'+
+      '<div style="flex:1;display:flex;align-items:flex-end;justify-content:center">'+
+        '<svg id="etiqueta-barcode-svg" style="max-width:90%"></svg>'+
+      '</div>'+
     '</div>';
   document.body.appendChild(w);
   try{
-    if(window.JsBarcode) JsBarcode('#etiqueta-barcode-svg', dados.codigo, {format:'CODE128', width:1.4, height:34, fontSize:9, margin:0});
+    if(window.JsBarcode) JsBarcode('#etiqueta-barcode-svg', dados.codigo, {format:'CODE128', width:2.2, height:70, fontSize:14, margin:0});
   }catch(e){ console.warn('Erro gerando codigo de barras:',e); }
 
   var styleTag=document.createElement('style');
@@ -2564,6 +2573,7 @@ function salvarApt(){
       for(var ix=0;ix<OPS.length;ix++){if(OPS[ix].fbKey===fbKey){opAtualizada=OPS[ix];break;}}
       imprimirEtiquetaReprocesso({
         opNumero: opAtualizada?opAtualizada.id:fbKey,
+        produto: opAtualizada?(opAtualizada.desc||opAtualizada.cod||''):'',
         codigo: codigoEtiqueta,
         turno: turno||0,
         data: dtApt,
