@@ -98,8 +98,8 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;height:1
   <div class="cards-row" id="cards-row">
     <div class="card"><div class="card-lbl">Programado</div><div class="card-val val-or" id="c-prog">0</div><div class="card-sub">meta PCP</div></div>
     <div class="card"><div class="card-lbl">Prod. BOM</div><div class="card-val val-rd" id="c-bom">0</div><div class="card-sub" id="c-bom-pct">% do prog.</div></div>
-    <div class="card"><div class="card-lbl">Perda no Dia</div><div class="card-val val-rd" id="c-perda">0</div><div class="card-sub">kg perdidos</div></div>
-    <div class="card"><div class="card-lbl">Total Processado</div><div class="card-val val-gr" id="c-total">0</div><div class="card-sub">bom + perda</div></div>
+    <div class="card"><div class="card-lbl">Reprocesso no Dia</div><div class="card-val val-rd" id="c-perda">0</div><div class="card-sub">kg reprocessados</div></div>
+    <div class="card"><div class="card-lbl">Total Processado</div><div class="card-val val-gr" id="c-total">0</div><div class="card-sub">bom + reprocesso</div></div>
     <div class="card"><div class="card-lbl">OPs Programadas</div><div class="card-val val-gr" id="c-ops">0</div><div class="card-sub" id="c-ops-sub">em andamento</div></div>
     <div class="card"><div class="card-lbl">Concluídas</div><div class="card-val val-gr" id="c-conc">0</div><div class="card-sub" id="c-conc-sub">de 0 OPs</div></div>
   </div>
@@ -235,17 +235,30 @@ function renderTudo(){
   // Perda total do dia — exclui registros marcados substituido (arquivados por
   // correcao do PCP), igual ao Dashboard. Sem esse filtro a TV contava a perda
   // antiga E a nova depois de uma correcao, duplicando o valor.
+  // Fica congelada/legada — reprocesso substituiu esse fluxo de gravacao (ver abaixo),
+  // mas a formula do Total Processado continua somando essa variavel pra nao quebrar
+  // OPs antigas que ainda tem perda registrada.
   var totalPerda=PERDAS.filter(function(p){return !p.substituido;}).reduce(function(a,p){return a+(Number(p.perdaKG)||Number(p.quantidade)||0);},0);
-  var totalProc=totalBom+totalPerda;
+  // Reprocesso — mesma fonte e mesmo criterio que o Dashboard usa (apontamentos do
+  // dia com origem:'reprocesso'). Ja vem embutido dentro de totalBom (nao soma de novo
+  // no Total Processado, senao conta em dobro).
+  var totalReprocessado=APTS.filter(function(a){return a.origem==='reprocesso'&&!a.substituido;})
+    .reduce(function(a,ap){return a+(Number(ap.real)||0);},0);
+  // "Prod. Bom" agora e producao pura, SEM reprocesso (evita contar em dobro no
+  // Total Processado). A % de aderencia tambem passa a refletir so o bom puro.
+  var totalBomPuro=totalBom-totalReprocessado;
+  // Total Processado = Bom puro + Reprocesso do dia + Perda legada (historico
+  // congelado — soma 0 pra qualquer data a partir do corte, sem quebrar datas antigas)
+  var totalProc=totalBomPuro+totalReprocessado+totalPerda;
   var nAndamento=OPS.filter(function(o){return o.status==="Em andamento";}).length;
   var nConc=OPS.filter(function(o){return o.status==="Concluida";}).length;
-  var adhGeral=totalProg?Math.min(Math.round(totalBom/totalProg*100),999):0;
+  var adhGeral=totalProg?Math.min(Math.round(totalBomPuro/totalProg*100),999):0;
 
   G("c-prog").textContent=fN(totalProg);
-  G("c-bom").textContent=fN(totalBom);
-  G("c-bom-pct").textContent=adhGeral+"% do prog.";
+  G("c-bom").textContent=fN(totalBomPuro);
+  G("c-bom-pct").textContent=adhGeral+"% do prog. (sem reprocesso)";
   G("c-bom").className="card-val "+(adhGeral>=90?"val-gr":adhGeral>=60?"val-or":"val-rd");
-  G("c-perda").textContent=fN(totalPerda);
+  G("c-perda").textContent=fN(totalReprocessado);
   G("c-total").textContent=fN(totalProc);
   G("c-ops").textContent=OPS.length;
   G("c-ops-sub").textContent=nAndamento+" em andamento";
@@ -295,11 +308,8 @@ function renderTudo(){
     var real=a.real!==undefined?(Number(a.real)||0):((Number(a.t1)||0)+(Number(a.t2)||0)+(Number(a.t3)||0));
     if(real<=0) return;
     porTurno[t].real+=real;
-  });
-  PERDAS.forEach(function(p){
-    if(p.substituido) return; // mesmo filtro do Dashboard — nao conta perda arquivada
-    var ti=Number(p.turno)||0;
-    if(ti>=1&&ti<=3) porTurno[ti].perda+=Number(p.perdaKG)||Number(p.quantidade)||0;
+    // Reprocesso substitui perda como origem desse numero por turno (ver nota acima)
+    if(a.origem==='reprocesso') porTurno[t].perda+=real;
   });
   // Aderencia por turno = producao do turno vs o PROGRAMADO TOTAL DO DIA (nao
   // dividido por 3) — mesma conta que o Dashboard faz no detalhamento por turno
@@ -310,15 +320,16 @@ function renderTudo(){
   var nomes={1:"Turno 1  (21h — 05h)",2:"Turno 2  (05h — 13h)",3:"Turno 3  (13h — 21h)"};
   var h="";
   [1,2,3].forEach(function(ti){
-    var realT=porTurno[ti].real, perdaT=porTurno[ti].perda;
-    var adh=progPorTurno?Math.min(Math.round(realT/progPorTurno*100),999):0;
+    var realT=porTurno[ti].real, reprocT=porTurno[ti].perda;
+    var bomPuroT=realT-reprocT;
+    var adh=progPorTurno?Math.min(Math.round(bomPuroT/progPorTurno*100),999):0;
     var corCls=adh>=90?"fill-ok":adh>=60?"fill-warn":"fill-bad";
     var atual=ti===t;
     h+='<div class="turno-card'+(atual?" atual":"")+'">';
     h+='<div class="turno-nome">'+nomes[ti]+(atual?' <span style="background:#024f2b;color:#fff;padding:1px 6px;border-radius:10px;font-size:9px">ATUAL</span>':'')+'</div>';
-    h+='<div><div class="turno-mc-lbl">Prod. Bom</div><div class="turno-mc-val '+corCls+'">'+fN(realT)+'</div><div class="turno-mc-sub">kg</div></div>';
-    h+='<div><div class="turno-mc-lbl">Aderência</div><div class="turno-mc-val '+corCls+'">'+adh+'%</div><div class="turno-mc-sub">vs prog.</div></div>';
-    h+='<div><div class="turno-mc-lbl">Perda</div><div class="turno-mc-val fill-bad">'+fN(perdaT)+'</div><div class="turno-mc-sub">kg perdidos</div></div>';
+    h+='<div><div class="turno-mc-lbl">Prod. Bom</div><div class="turno-mc-val '+corCls+'">'+fN(bomPuroT)+'</div><div class="turno-mc-sub">kg</div></div>';
+    h+='<div><div class="turno-mc-lbl">Aderência</div><div class="turno-mc-val '+corCls+'">'+adh+'%</div><div class="turno-mc-sub">vs prog. (sem reproc.)</div></div>';
+    h+='<div><div class="turno-mc-lbl">Reprocesso</div><div class="turno-mc-val fill-bad">'+fN(reprocT)+'</div><div class="turno-mc-sub">kg reprocessados</div></div>';
     h+='</div>';
   });
   G("turnos-row").innerHTML=h;
@@ -352,14 +363,15 @@ function renderTudo(){
   var nomesTurno={1:"TURNO 1 · 21h-05h",2:"TURNO 2 · 05h-13h",3:"TURNO 3 · 13h-21h"};
   var tdH="";
   [1,2,3].forEach(function(ti){
-    var realT=porTurno[ti].real, perdaT=porTurno[ti].perda;
-    var adhT=progPorTurno?Math.min(Math.round(realT/progPorTurno*100),999):0;
+    var realT=porTurno[ti].real, reprocT=porTurno[ti].perda;
+    var bomPuroT=realT-reprocT;
+    var adhT=progPorTurno?Math.min(Math.round(bomPuroT/progPorTurno*100),999):0;
     var cor=adhT>=90?"#2ea043":adhT>=60?"#f39c12":"#e74c3c";
     tdH+='<span class="td-item">';
     tdH+='<span class="td-turno">'+nomesTurno[ti]+(ti===t?" ◀":"")+'</span>';
-    tdH+='<span style="color:#e8f0e8;font-weight:600">'+fN(realT)+' kg</span>';
+    tdH+='<span style="color:#e8f0e8;font-weight:600">'+fN(bomPuroT)+' kg</span>';
     tdH+='<span style="color:'+cor+';font-weight:700">'+adhT+'%</span>';
-    if(perdaT>0) tdH+='<span style="color:#e74c3c">Perda: '+fN(perdaT)+' kg</span>';
+    if(reprocT>0) tdH+='<span style="color:#e74c3c">Reprocesso: '+fN(reprocT)+' kg</span>';
     tdH+='</span>';
   });
   var tdEl=G("td-scroll");

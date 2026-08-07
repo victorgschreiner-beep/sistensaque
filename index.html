@@ -1572,9 +1572,9 @@ function renderDash(){
     var fbKeyToLinhaLocal={};
     OPS.forEach(function(o){fbKeyToLinhaLocal[o.fbKey]=o.linha;});
     var dadosPorTurno={
-      1:{real:0,perda:0,sc:0,bg:0,kg:0},
-      2:{real:0,perda:0,sc:0,bg:0,kg:0},
-      3:{real:0,perda:0,sc:0,bg:0,kg:0}
+      1:{real:0,perda:0,reprocessado:0,sc:0,bg:0,kg:0},
+      2:{real:0,perda:0,reprocessado:0,sc:0,bg:0,kg:0},
+      3:{real:0,perda:0,reprocessado:0,sc:0,bg:0,kg:0}
     };
     var aptsPorOpTurno={};
     var treprocessado=0;
@@ -1586,7 +1586,7 @@ function renderDash(){
       if(t<1||t>3) return;
       var real=a.real!==undefined?(Number(a.real)||0):((Number(a.t1)||0)+(Number(a.t2)||0)+(Number(a.t3)||0));
       if(real<=0) return;
-      if(a.origem==='reprocesso') treprocessado+=real;
+      if(a.origem==='reprocesso'){ treprocessado+=real; dadosPorTurno[t].reprocessado+=real; }
       var opRef=OPS.filter(function(o){return o.fbKey===a.opId;})[0];
       var tipo=opRef?opRef.tipo:'KG';
       dadosPorTurno[t].real+=real;
@@ -1623,14 +1623,20 @@ function renderDash(){
     });
 
     if(turnoFiltro>0) tr=dadosPorTurno[turnoFiltro].real;
-    var adh=tp?Math.min(Math.round(tr/tp*100),999):0;
-    var ttotal=tr+tperda;
+    var reprocFiltrado=turnoFiltro>0?dadosPorTurno[turnoFiltro].reprocessado:treprocessado;
+    // "Prod. Bom" agora e producao pura, SEM reprocesso (evita contar em dobro
+    // no Total Processado). A % de aderencia tambem passa a refletir so o bom puro.
+    var trBomPuro=tr-reprocFiltrado;
+    var adh=tp?Math.min(Math.round(trBomPuro/tp*100),999):0;
+    // Total Processado = Bom puro + Reprocesso do dia + Perda legada (historico
+    // congelado — soma 0 pra qualquer data a partir do corte, sem quebrar datas antigas)
+    var ttotal=trBomPuro+reprocFiltrado+tperda;
 
     G('dmetrics').innerHTML=
       '<div class="mc"><div class="ml">Programado</div><div class="mv cb">'+fN(tp)+'</div><div class="ms">'+(tp?('meta PCP'+(ln?'':' — todas linhas')):'sem meta cadastrada')+'</div></div>'+
-      '<div class="mc"><div class="ml">Prod. Bom</div><div class="mv '+(adh>=90?'cg':adh>=60?'co':'cr')+'">'+fN(tr)+'</div><div class="ms">'+adh+'% do prog.</div></div>'+
-      '<div class="mc"><div class="ml">Reprocesso no dia</div><div class="mv co">'+fN(treprocessado)+'</div><div class="ms">kg reprocessados</div></div>'+
-      '<div class="mc"><div class="ml">Total Processado</div><div class="mv cg">'+fN(ttotal)+'</div><div class="ms">bom + perda</div></div>'+
+      '<div class="mc"><div class="ml">Prod. Bom</div><div class="mv '+(adh>=90?'cg':adh>=60?'co':'cr')+'">'+fN(trBomPuro)+'</div><div class="ms">'+adh+'% do prog. (sem reprocesso)</div></div>'+
+      '<div class="mc"><div class="ml">Reprocesso no dia</div><div class="mv co">'+fN(reprocFiltrado)+'</div><div class="ms">kg reprocessados</div></div>'+
+      '<div class="mc"><div class="ml">Total Processado</div><div class="mv cg">'+fN(ttotal)+'</div><div class="ms">bom + reprocesso</div></div>'+
       '<div class="mc"><div class="ml">OPs programadas</div><div class="mv">'+ops.length+'</div><div class="ms">'+ops.filter(function(o){return o.status==='Em andamento';}).length+' andamento</div></div>'+
       '<div class="mc"><div class="ml">Concluidas</div><div class="mv cg">'+ops.filter(function(o){return o.status==='Concluida';}).length+'</div><div class="ms">de '+ops.length+' OPs</div></div>';
 
@@ -1641,10 +1647,11 @@ function renderDash(){
       if(G('dash-turno-titulo')) G('dash-turno-titulo').textContent='Turno '+turnoFiltro+' — Detalhamento';
       if(G('dash-turno-data')) G('dash-turno-data').textContent=dt;
       var d=dadosPorTurno[turnoFiltro];
-      var pctT=tp?Math.round(d.real/tp*100):0;
+      var dBomPuro=d.real-d.reprocessado;
+      var pctT=tp?Math.round(dBomPuro/tp*100):0;
       var h='';
-      h+='<div class="mc"><div class="ml">Prod. Bom T'+turnoFiltro+'</div><div class="mv '+(pctT>=90?'cg':pctT>=60?'co':'cr')+'">'+fN(d.real)+'</div><div class="ms">kg &bull; '+pctT+'% do prog.</div></div>';
-      h+='<div class="mc"><div class="ml">Perda T'+turnoFiltro+'</div><div class="mv cr">'+fN(d.perda)+'</div><div class="ms">kg perdidos</div></div>';
+      h+='<div class="mc"><div class="ml">Prod. Bom T'+turnoFiltro+'</div><div class="mv '+(pctT>=90?'cg':pctT>=60?'co':'cr')+'">'+fN(dBomPuro)+'</div><div class="ms">kg &bull; '+pctT+'% do prog. (sem reprocesso)</div></div>';
+      h+='<div class="mc"><div class="ml">Reprocesso T'+turnoFiltro+'</div><div class="mv co">'+fN(d.reprocessado)+'</div><div class="ms">kg reprocessados</div></div>';
       if(d.sc>0) h+='<div class="mc"><div class="ml">SC T'+turnoFiltro+'</div><div class="mv">'+fN(d.sc)+'</div><div class="ms">sacas</div></div>';
       if(d.kg>0) h+='<div class="mc"><div class="ml">KG T'+turnoFiltro+'</div><div class="mv">'+fN(d.kg)+'</div><div class="ms">kg</div></div>';
       metricsTurno.innerHTML=h;
