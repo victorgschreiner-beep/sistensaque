@@ -869,6 +869,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.12.3/JsBarcode.all.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 // ============================================================
 // FIREBASE CONFIG
@@ -966,9 +967,11 @@ function _buildZPL(dados){
   // Motivo
   zpl += '^CF0,26';
   zpl += '^FO50,430^FB'+(w-100)+',2,4,L^FDMotivo: '+(dados.motivo||'—')+'^FS';
-  // Codigo de barras, centralizado, grande
+  // Codigo de barras, lado esquerdo
   zpl += '^BY3,3,120';
-  zpl += '^FO'+Math.round(w*0.10)+','+(h-220)+'^BCN,120,Y,N,N^FD'+dados.codigo+'^FS';
+  zpl += '^FO50,'+(h-220)+'^BCN,120,Y,N,N^FD'+dados.codigo+'^FS';
+  // QR Code, lado direito — mesma informacao, redundancia de leitura
+  zpl += '^FO'+(w-260)+','+(h-260)+'^BQN,2,6^FDQA,'+dados.codigo+'^FS';
   zpl += '^XZ';
   return zpl;
 }
@@ -987,14 +990,38 @@ function _enviarZPLViaBrowserPrint(zpl){
   });
 }
 
+function _gerarQRCodeDataURL(texto, tamanhoPx){
+  // qrcodejs precisa de um elemento realmente no DOM pra desenhar — usa um
+  // container temporario fora da tela, extrai o PNG em alta resolucao e remove.
+  var tmp=document.createElement('div');
+  tmp.style.cssText='position:fixed;left:-9999px;top:-9999px';
+  document.body.appendChild(tmp);
+  var dataUrl='';
+  try{
+    if(window.QRCode){
+      new QRCode(tmp, {text:texto, width:tamanhoPx, height:tamanhoPx, correctLevel:QRCode.CorrectLevel.H});
+      var canvas=tmp.querySelector('canvas');
+      if(canvas) dataUrl=canvas.toDataURL('image/png');
+    }
+  }catch(e){ console.warn('Erro gerando QR Code:',e); }
+  tmp.remove();
+  return dataUrl;
+}
+
 function _imprimirEtiquetaFallbackNavegador(dados){
   // Gera o codigo de barras num SVG "solto" (fora do DOM da aplicacao) — evita
-  // tocar em qualquer elemento do documento principal.
+  // tocar em qualquer elemento do documento principal. Resolucao aumentada
+  // (mais largura de modulo e altura) pra ficar nitido mesmo impresso pequeno.
   var svgBarcode=document.createElementNS('http://www.w3.org/2000/svg','svg');
   try{
-    if(window.JsBarcode) JsBarcode(svgBarcode, dados.codigo, {format:'CODE128', width:3, height:110, fontSize:20, margin:16});
+    if(window.JsBarcode) JsBarcode(svgBarcode, dados.codigo, {format:'CODE128', width:4, height:130, fontSize:22, margin:10});
   }catch(e){ console.warn('Erro gerando codigo de barras:',e); }
   var barcodeMarkup=svgBarcode.outerHTML||'';
+
+  // QR Code em alta resolucao (500x500px de origem, reduzido na impressao —
+  // fica nitido mesmo pequeno). Mesmo conteudo do codigo de barras.
+  var qrDataUrl=_gerarQRCodeDataURL(dados.codigo, 500);
+  var qrMarkup=qrDataUrl?('<img src="'+qrDataUrl+'" style="width:100%;height:100%;object-fit:contain">'):'';
 
   var labelHtml =
     '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+
@@ -1007,8 +1034,10 @@ function _imprimirEtiquetaFallbackNavegador(dados){
       '.linha{font-size:19px;text-align:left;margin-bottom:4px}'+
       '.peso{font-size:64px;font-weight:800;margin:16px 0;flex:0 0 auto}'+
       '.motivo{font-size:17px;text-align:left;word-break:break-word;margin-bottom:8px}'+
-      '.bcwrap{flex:1;display:flex;align-items:flex-end;justify-content:center;padding-bottom:4mm}'+
-      '.bcwrap svg{width:90%;height:auto}'+
+      '.codigosrow{flex:1;display:flex;align-items:flex-end;justify-content:center;gap:6mm;padding-bottom:4mm}'+
+      '.qrbox{width:26mm;height:26mm;flex:0 0 auto}'+
+      '.bcbox{flex:1;display:flex;align-items:flex-end;justify-content:center}'+
+      '.bcbox svg{width:100%;height:auto}'+
     '</style></head><body>'+
       '<div class="label">'+
         '<div class="tit">REPROCESSO</div>'+
@@ -1018,7 +1047,10 @@ function _imprimirEtiquetaFallbackNavegador(dados){
         (dados.produto?('<div class="linha">Produto: '+dados.produto+'</div>'):'')+
         '<div class="peso">'+fN(dados.pesoKg)+' kg</div>'+
         '<div class="motivo">Motivo: '+(dados.motivo||'—')+'</div>'+
-        '<div class="bcwrap">'+barcodeMarkup+'</div>'+
+        '<div class="codigosrow">'+
+          '<div class="qrbox">'+qrMarkup+'</div>'+
+          '<div class="bcbox">'+barcodeMarkup+'</div>'+
+        '</div>'+
       '</div>'+
       '<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},80);};<\/script>'+
     '</body></html>';
