@@ -988,44 +988,53 @@ function _enviarZPLViaBrowserPrint(zpl){
 }
 
 function _imprimirEtiquetaFallbackNavegador(dados){
-  var w=document.createElement('div');
-  w.id='etiqueta-print-area';
-  w.innerHTML =
-    '<div style="width:'+LABEL_W_MM+'mm;height:'+LABEL_H_MM+'mm;padding:4mm;box-sizing:border-box;font-family:Arial,sans-serif;text-align:center;display:flex;flex-direction:column;justify-content:flex-start">'+
-      '<div style="font-size:22px;font-weight:800;letter-spacing:.06em">REPROCESSO</div>'+
-      '<div style="border-top:2px solid #000;margin:4px 12px"></div>'+
-      '<div style="font-size:15px;text-align:left;margin-top:6px">OP: '+dados.opNumero+'</div>'+
-      '<div style="font-size:15px;text-align:left">Turno: '+(dados.turno||'—')+' &nbsp;&nbsp; Data: '+(dados.data||'').split('-').reverse().join('/')+'</div>'+
-      (dados.produto?('<div style="font-size:14px;text-align:left;margin-top:2px;word-break:break-word">Produto: '+dados.produto+'</div>'):'')+
-      '<div style="font-size:40px;font-weight:800;margin:14px 0">'+fN(dados.pesoKg)+' kg</div>'+
-      '<div style="font-size:13px;text-align:left;word-break:break-word;margin-bottom:10px">Motivo: '+(dados.motivo||'—')+'</div>'+
-      '<div style="flex:1;display:flex;align-items:flex-end;justify-content:center">'+
-        '<svg id="etiqueta-barcode-svg" style="max-width:90%"></svg>'+
-      '</div>'+
-    '</div>';
-  document.body.appendChild(w);
+  // Gera o codigo de barras num SVG "solto" (fora do DOM da aplicacao) — evita
+  // tocar em qualquer elemento do documento principal.
+  var svgBarcode=document.createElementNS('http://www.w3.org/2000/svg','svg');
   try{
-    if(window.JsBarcode) JsBarcode('#etiqueta-barcode-svg', dados.codigo, {format:'CODE128', width:2.2, height:70, fontSize:14, margin:14});
+    if(window.JsBarcode) JsBarcode(svgBarcode, dados.codigo, {format:'CODE128', width:3, height:110, fontSize:20, margin:16});
   }catch(e){ console.warn('Erro gerando codigo de barras:',e); }
+  var barcodeMarkup=svgBarcode.outerHTML||'';
 
-  var styleTag=document.createElement('style');
-  styleTag.id='etiqueta-print-style';
-  styleTag.innerHTML =
-    '@media print{'+
-      'body>*{display:none !important}'+
-      'body>#etiqueta-print-area{display:block !important;position:static !important}'+
+  var labelHtml =
+    '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+
       '@page{size:'+LABEL_W_MM+'mm '+LABEL_H_MM+'mm;margin:0}'+
-      'html,body{margin:0 !important;padding:0 !important;height:auto !important}'+
-    '}';
-  document.head.appendChild(styleTag);
+      'html,body{margin:0;padding:0;width:'+LABEL_W_MM+'mm;height:'+LABEL_H_MM+'mm}'+
+      '*{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}'+
+      '.label{width:'+LABEL_W_MM+'mm;height:'+LABEL_H_MM+'mm;padding:5mm;display:flex;flex-direction:column;text-align:center}'+
+      '.tit{font-size:34px;font-weight:800;letter-spacing:.06em}'+
+      '.hr{border-top:3px solid #000;margin:6px 4mm 8px}'+
+      '.linha{font-size:19px;text-align:left;margin-bottom:4px}'+
+      '.peso{font-size:64px;font-weight:800;margin:16px 0;flex:0 0 auto}'+
+      '.motivo{font-size:17px;text-align:left;word-break:break-word;margin-bottom:8px}'+
+      '.bcwrap{flex:1;display:flex;align-items:flex-end;justify-content:center;padding-bottom:4mm}'+
+      '.bcwrap svg{width:90%;height:auto}'+
+    '</style></head><body>'+
+      '<div class="label">'+
+        '<div class="tit">REPROCESSO</div>'+
+        '<div class="hr"></div>'+
+        '<div class="linha">OP: '+dados.opNumero+'</div>'+
+        '<div class="linha">Turno: '+(dados.turno||'—')+' &nbsp;&nbsp; Data: '+(dados.data||'').split('-').reverse().join('/')+'</div>'+
+        (dados.produto?('<div class="linha">Produto: '+dados.produto+'</div>'):'')+
+        '<div class="peso">'+fN(dados.pesoKg)+' kg</div>'+
+        '<div class="motivo">Motivo: '+(dados.motivo||'—')+'</div>'+
+        '<div class="bcwrap">'+barcodeMarkup+'</div>'+
+      '</div>'+
+      '<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},80);};<\/script>'+
+    '</body></html>';
 
+  var iframe=document.createElement('iframe');
+  iframe.id='etiqueta-print-frame';
+  iframe.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+  document.body.appendChild(iframe);
+  iframe.srcdoc=labelHtml;
+
+  // Remove o iframe depois de dar tempo do dialogo de impressao abrir — nao
+  // interfere em mais nada do documento principal, e some sozinho.
   setTimeout(function(){
-    window.print();
-    setTimeout(function(){
-      var el=G('etiqueta-print-area'); if(el) el.remove();
-      var st=G('etiqueta-print-style'); if(st) st.remove();
-    },500);
-  },150);
+    var el=G('etiqueta-print-frame');
+    if(el) el.remove();
+  },4000);
 }
 
 function imprimirEtiquetaReprocesso(dados){
