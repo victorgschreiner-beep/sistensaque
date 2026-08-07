@@ -1012,10 +1012,10 @@ function _imprimirEtiquetaFallbackNavegador(dados){
   styleTag.id='etiqueta-print-style';
   styleTag.innerHTML =
     '@media print{'+
-      'body *{visibility:hidden !important}'+
-      '#etiqueta-print-area,#etiqueta-print-area *{visibility:visible !important}'+
-      '#etiqueta-print-area{position:fixed;top:0;left:0}'+
+      'body>*{display:none !important}'+
+      'body>#etiqueta-print-area{display:block !important;position:static !important}'+
       '@page{size:'+LABEL_W_MM+'mm '+LABEL_H_MM+'mm;margin:0}'+
+      'html,body{margin:0 !important;padding:0 !important;height:auto !important}'+
     '}';
   document.head.appendChild(styleTag);
 
@@ -1577,6 +1577,7 @@ function renderDash(){
       3:{real:0,perda:0,sc:0,bg:0,kg:0}
     };
     var aptsPorOpTurno={};
+    var treprocessado=0;
     if(snapApts.exists()) snapApts.forEach(function(c){
       var a=c.val();
       if(a.substituido) return;
@@ -1585,6 +1586,7 @@ function renderDash(){
       if(t<1||t>3) return;
       var real=a.real!==undefined?(Number(a.real)||0):((Number(a.t1)||0)+(Number(a.t2)||0)+(Number(a.t3)||0));
       if(real<=0) return;
+      if(a.origem==='reprocesso') treprocessado+=real;
       var opRef=OPS.filter(function(o){return o.fbKey===a.opId;})[0];
       var tipo=opRef?opRef.tipo:'KG';
       dadosPorTurno[t].real+=real;
@@ -1627,7 +1629,7 @@ function renderDash(){
     G('dmetrics').innerHTML=
       '<div class="mc"><div class="ml">Programado</div><div class="mv cb">'+fN(tp)+'</div><div class="ms">'+(tp?('meta PCP'+(ln?'':' — todas linhas')):'sem meta cadastrada')+'</div></div>'+
       '<div class="mc"><div class="ml">Prod. Bom</div><div class="mv '+(adh>=90?'cg':adh>=60?'co':'cr')+'">'+fN(tr)+'</div><div class="ms">'+adh+'% do prog.</div></div>'+
-      '<div class="mc"><div class="ml">Perda no dia</div><div class="mv cr">'+fN(tperda)+'</div><div class="ms">kg perdidos</div></div>'+
+      '<div class="mc"><div class="ml">Reprocesso no dia</div><div class="mv co">'+fN(treprocessado)+'</div><div class="ms">kg reprocessados</div></div>'+
       '<div class="mc"><div class="ml">Total Processado</div><div class="mv cg">'+fN(ttotal)+'</div><div class="ms">bom + perda</div></div>'+
       '<div class="mc"><div class="ml">OPs programadas</div><div class="mv">'+ops.length+'</div><div class="ms">'+ops.filter(function(o){return o.status==='Em andamento';}).length+' andamento</div></div>'+
       '<div class="mc"><div class="ml">Concluidas</div><div class="mv cg">'+ops.filter(function(o){return o.status==='Concluida';}).length+'</div><div class="ms">de '+ops.length+' OPs</div></div>';
