@@ -170,6 +170,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <button class="nb" id="nb-exp" onclick="go('exportar',this)">Exportar</button>
     <button class="nb" id="nb-bal" onclick="go('balancas',this)">⚖️ Balanças</button>
     <button class="nb" id="nb-envase" onclick="go('envase',this)">Envase PET</button>
+    <button class="nb" id="nb-geral" onclick="go('geral',this)">Finos / Reprocesso Geral</button>
     <button class="nb" id="nb-adm" onclick="go('admin',this)">Admin</button>
   </div>
   <div class="ubar">
@@ -314,6 +315,24 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <tbody id="envaseopsbody"></tbody>
     </table></div></div>
   </div>
+</div>
+
+<!-- FINOS / REPROCESSO GERAL / VARREDURA — sem vinculo com OP, vem da limpeza do setor -->
+<div class="scr" id="scr-geral">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Finos / Reprocesso Geral / Varredura <span style="font-size:11px;color:#739630;font-weight:500">— sem vinculo com OP, limpeza do setor</span></h2>
+    <button class="btn bp" onclick="abrirApontamentoGeral()">+ Novo apontamento</button>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    <input type="date" id="ger-fdt" style="width:auto" onchange="renderApontamentosGerais()">
+    <select id="ger-ftipo" style="width:auto" onchange="renderApontamentosGerais()"><option value="">Todos os tipos</option><option>Finos</option><option>Reprocesso Geral</option><option>Varredura</option></select>
+    <select id="ger-fln" style="width:auto" onchange="renderApontamentosGerais()"><option value="">Todas as linhas</option><option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option><option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option></select>
+  </div>
+  <div id="ger-metrics" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px"></div>
+  <div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr><th>Data</th><th>Turno</th><th>Tipo</th><th>Linha</th><th style="text-align:right">Quantidade</th><th>Motivo</th><th>Operador</th><th>Codigo</th><th>Acoes</th></tr></thead>
+    <tbody id="ger-body"></tbody>
+  </table></div></div>
 </div>
 
 <!-- EXPORTAR -->
@@ -699,6 +718,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
         <option>Peso incorreto</option>
         <option>Contaminacao/mistura</option>
         <option>Erro de programacao</option>
+        <option>Limpeza de linha</option>
         <option>Outro</option>
       </select>
     </div>
@@ -708,6 +728,36 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div class="alw" id="akg" style="display:none">Producao em KG: ao salvar, informe o destino nos silos.</div>
   <input type="hidden" id="aid"><input type="hidden" id="atipo"><input type="hidden" id="adtctx">
   <div class="mfoot"><button class="btn bsm" onclick="fM('mapt')">Cancelar</button><button class="btn bsm bg2" onclick="salvarApt()">Salvar Apontamento</button></div>
+</div></div>
+
+<!-- Modal Finos / Reprocesso Geral / Varredura — sem OP, limpeza do setor -->
+<div class="ov" id="mgeral"><div class="modal">
+  <div class="mt">Apontamento Geral — Limpeza do Setor</div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Tipo <span style="color:#c0392b;font-size:11px">*obrigatorio</span></label>
+      <select id="ger-tipo">
+        <option value="">Selecione...</option>
+        <option>Finos</option>
+        <option>Reprocesso Geral</option>
+        <option>Varredura</option>
+      </select>
+    </div>
+    <div class="fg"><label class="fl">Linha</label>
+      <select id="ger-linha">
+        <option value="">Selecione...</option>
+        <option>Linha 1 (E-240)</option>
+        <option>Linha 2 (E-200)</option>
+        <option>Linha 4 (Andritz I)</option>
+        <option>Linha 5 (Andritz II)</option>
+      </select>
+    </div>
+  </div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Quantidade (kg) <span style="color:#c0392b;font-size:11px">*obrigatorio</span></label><input type="number" id="ger-qtd" min="0" value="0" step="0.1" placeholder="kg"></div>
+    <div class="fg"><label class="fl">Operador</label><input type="text" id="ger-op" readonly style="opacity:.6"></div>
+  </div>
+  <div style="font-size:11px;color:#739630;margin-bottom:10px">Motivo fixo: Limpeza de setor — sem vinculo com nenhuma OP.</div>
+  <div class="mfoot"><button class="btn bsm" onclick="fM('mgeral')">Cancelar</button><button class="btn bsm bg2" onclick="salvarApontamentoGeral()">Salvar e Imprimir Etiqueta</button></div>
 </div></div>
 
 <div class="ov" id="mcorr"><div class="modal">
@@ -954,25 +1004,29 @@ function _mmToDots(mm){ return Math.round(mm * (PRINTER_DPI/25.4)); }
 
 function _buildZPL(dados){
   var w=PRINTER_W_DOTS, h=PRINTER_H_DOTS;
+  var titulo=dados.titulo||'REPROCESSO';
   var zpl = '^XA';
   zpl += '^MTT';  // Transferencia Termica — bate com "Tipo de impressao: Transf. Term" no visor
   zpl += '^MNY';  // Sensor de Espaco/Ranhura — bate com "Tipo de midia: Espaco/Ranhura" no visor
   zpl += '^PW'+w+'^LL'+h;
   // Titulo
   zpl += '^CF0,50';
-  zpl += '^FO0,40^FB'+w+',1,0,C^FDREPROCESSO^FS';
+  zpl += '^FO0,40^FB'+w+',1,0,C^FD'+titulo+'^FS';
   zpl += '^FO40,105^GB'+(w-80)+',3,3^FS';
-  // Dados da OP
+  // Dados da OP (se houver — apontamentos gerais como Finos/Varredura nao tem OP)
   zpl += '^CF0,32';
-  zpl += '^FO50,140^FDOP: '+dados.opNumero+'^FS';
-  zpl += '^FO50,185^FDTurno: '+(dados.turno||'—')+'     Data: '+(dados.data||'').split('-').reverse().join('/')+'^FS';
-  if(dados.produto) zpl += '^FO50,230^FB'+(w-100)+',2,4,L^FDProduto: '+dados.produto+'^FS';
+  var yLinha=140;
+  if(dados.opNumero){ zpl += '^FO50,'+yLinha+'^FDOP: '+dados.opNumero+'^FS'; yLinha+=45; }
+  zpl += '^FO50,'+yLinha+'^FDTurno: '+(dados.turno||'—')+'     Data: '+(dados.data||'').split('-').reverse().join('/')+'^FS';
+  yLinha+=45;
+  if(dados.produto){ zpl += '^FO50,'+yLinha+'^FB'+(w-100)+',2,4,L^FDProduto: '+dados.produto+'^FS'; yLinha+=90; }
+  if(dados.linha){ zpl += '^FO50,'+yLinha+'^FDLinha: '+dados.linha+'^FS'; yLinha+=45; }
   // Peso em destaque
   zpl += '^CF0,80';
-  zpl += '^FO0,320^FB'+w+',1,0,C^FD'+fN(dados.pesoKg)+' kg^FS';
+  zpl += '^FO0,'+(yLinha+40)+'^FB'+w+',1,0,C^FD'+fN(dados.pesoKg)+' kg^FS';
   // Motivo
   zpl += '^CF0,26';
-  zpl += '^FO50,430^FB'+(w-100)+',2,4,L^FDMotivo: '+(dados.motivo||'—')+'^FS';
+  zpl += '^FO50,'+(yLinha+150)+'^FB'+(w-100)+',2,4,L^FDMotivo: '+(dados.motivo||'—')+'^FS';
   // Codigo de barras, lado esquerdo
   zpl += '^BY3,3,120';
   zpl += '^FO50,'+(h-220)+'^BCN,120,Y,N,N^FD'+dados.codigo+'^FS';
@@ -1051,11 +1105,12 @@ function _imprimirEtiquetaFallbackNavegador(dados){
       '.bcbox svg{width:100%;height:auto;max-height:20mm}'+
     '</style></head><body>'+
       '<div class="label">'+
-        '<div class="tit">REPROCESSO</div>'+
+        '<div class="tit">'+(dados.titulo||'REPROCESSO')+'</div>'+
         '<div class="hr"></div>'+
-        '<div class="linha">OP: '+dados.opNumero+'</div>'+
+        (dados.opNumero?('<div class="linha">OP: '+dados.opNumero+'</div>'):'')+
         '<div class="linha">Turno: '+(dados.turno||'—')+' &nbsp;&nbsp; Data: '+(dados.data||'').split('-').reverse().join('/')+'</div>'+
         (dados.produto?('<div class="linha">Produto: '+dados.produto+'</div>'):'')+
+        (dados.linha?('<div class="linha">Linha: '+dados.linha+'</div>'):'')+
         '<div class="peso">'+fN(dados.pesoKg)+' kg</div>'+
         '<div class="motivo">Motivo: '+(dados.motivo||'—')+'</div>'+
         '<div class="codigosrow">'+
@@ -1255,6 +1310,7 @@ function go(s,btn){
       renderBalCards();
       renderBalHistorico();
     }
+    else if(s==='geral'){ if(!G('ger-fdt').value) G('ger-fdt').value=hoje(); renderApontamentosGerais(); }
   }
   var needsOPS = (s==='dashboard'||s==='ops'||s==='fila'||s==='fila-op'||s==='operador'||s==='exportar'||s==='envase'||s==='programacao');
   if(needsOPS && OPS.length===0){
@@ -2654,8 +2710,84 @@ function salvarApt(){
 }
 
 // ============================================================
-// SILOS
+// FINOS / REPROCESSO GERAL / VARREDURA — sem vinculo com OP,
+// vem da limpeza do setor. Nao mexe em nada do fluxo de OP/apontamento.
 // ============================================================
+function abrirApontamentoGeral(){
+  G('ger-tipo').value='';
+  G('ger-linha').value='';
+  G('ger-qtd').value=0;
+  G('ger-op').value=SES.nome;
+  G('mgeral').classList.add('on');
+}
+
+function salvarApontamentoGeral(){
+  var tipo=G('ger-tipo').value;
+  var linha=G('ger-linha').value;
+  var qtd=parseFloat(G('ger-qtd').value)||0;
+  if(!tipo){ toast('Selecione o tipo','err'); return; }
+  if(qtd<=0){ toast('Informe a quantidade (kg)','err'); return; }
+
+  var turno=SES.turno||0;
+  var dt=SES.dataOperacional||hoje();
+  var motivo='Limpeza de setor';
+  var sigla=tipo==='Finos'?'FIN':tipo==='Reprocesso Geral'?'RPG':'VAR';
+  var codigoEtiqueta=sigla+'-'+dt.replace(/-/g,'')+'-T'+turno+'-'+uid().toUpperCase();
+
+  ld(true,'Salvando...');
+  DB.ref('apontamentos_gerais').push({
+    id:uid(), tipo:tipo, linha:linha, turno:turno, data:dt,
+    quantidadeKg:qtd, motivo:motivo, codigoEtiqueta:codigoEtiqueta,
+    operador:SES.login, ts:agora()
+  }).then(function(){
+    ld(false);
+    toast(tipo+' salvo — '+fN(qtd)+' kg','ok');
+    addLog('APONTAMENTO_GERAL', tipo+' '+dt+' T'+turno+' '+fN(qtd)+'kg — '+codigoEtiqueta);
+    fM('mgeral');
+    imprimirEtiquetaReprocesso({
+      titulo: tipo.toUpperCase(),
+      linha: linha,
+      codigo: codigoEtiqueta,
+      turno: turno,
+      data: dt,
+      pesoKg: qtd,
+      motivo: motivo
+    });
+    renderApontamentosGerais();
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
+function renderApontamentosGerais(){
+  var dt=G('ger-fdt').value;
+  var ftipo=G('ger-ftipo').value;
+  var fln=G('ger-fln').value;
+  if(!dt) return;
+  DB.ref('apontamentos_gerais').orderByChild('data').equalTo(dt).once('value').then(function(snap){
+    var lista=[];
+    if(snap.exists()) snap.forEach(function(c){ var v=c.val(); v.fbKey=c.key; lista.push(v); });
+    if(ftipo) lista=lista.filter(function(v){return v.tipo===ftipo;});
+    if(fln) lista=lista.filter(function(v){return v.linha===fln;});
+    lista.sort(function(a,b){return (b.ts||0)-(a.ts||0);});
+
+    var totais={'Finos':0,'Reprocesso Geral':0,'Varredura':0};
+    lista.forEach(function(v){ totais[v.tipo]=(totais[v.tipo]||0)+(Number(v.quantidadeKg)||0); });
+    G('ger-metrics').innerHTML=
+      '<div class="mc"><div class="ml">Finos no dia</div><div class="mv co">'+fN(totais['Finos'])+'</div><div class="ms">kg</div></div>'+
+      '<div class="mc"><div class="ml">Reprocesso Geral no dia</div><div class="mv co">'+fN(totais['Reprocesso Geral'])+'</div><div class="ms">kg</div></div>'+
+      '<div class="mc"><div class="ml">Varredura no dia</div><div class="mv co">'+fN(totais['Varredura'])+'</div><div class="ms">kg</div></div>';
+
+    var h='';
+    lista.forEach(function(v){
+      h+='<tr><td>'+(v.data||'').split('-').reverse().join('/')+'</td><td>T'+v.turno+'</td><td>'+v.tipo+'</td><td>'+(v.linha||'—')+'</td>';
+      h+='<td style="text-align:right">'+fN(v.quantidadeKg)+' kg</td><td>'+v.motivo+'</td><td>'+(v.operador||'—')+'</td>';
+      h+='<td style="font-size:10px;color:#739630">'+(v.codigoEtiqueta||'—')+'</td>';
+      h+='<td><button class="btn bsm" onclick="imprimirEtiquetaReprocesso({titulo:\''+v.tipo.toUpperCase()+'\',linha:\''+(v.linha||'')+'\',codigo:\''+v.codigoEtiqueta+'\',turno:'+v.turno+',data:\''+v.data+'\',pesoKg:'+v.quantidadeKg+',motivo:\''+v.motivo+'\'})">Reimprimir</button></td></tr>';
+    });
+    G('ger-body').innerHTML=h||'<tr><td colspan="9" style="text-align:center;color:#739630">Nenhum apontamento nessa data</td></tr>';
+  }).catch(function(e){ toast('Erro ao carregar: '+e.message,'err'); });
+}
+
+
 var SILOS=[
   '1-A','1-B','1-C','1-D',
   '2-A','2-B','2-C','2-D',
