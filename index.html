@@ -1032,21 +1032,23 @@ function _imprimirEtiquetaFallbackNavegador(dados){
   var labelHtml =
     '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+
       '@page{size:'+LABEL_W_MM+'mm '+LABEL_H_MM+'mm;margin:0}'+
-      'html,body{margin:0;padding:0;width:100%;height:100%}'+
+      'html,body{margin:0;padding:0;width:'+LABEL_W_MM+'mm;height:'+LABEL_H_MM+'mm}'+
       '*{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}'+
-      // Preenche 100% da area impressa de verdade (nao um mm fixo) — assim, mesmo
-      // que o driver da impressora use uma pagina diferente de 95x100mm, o
-      // conteudo estica pra preencher tudo, sem sobrar espaco em branco.
-      '.label{width:100vw;height:100vh;padding:5%;display:flex;flex-direction:column;text-align:center}'+
-      '.tit{font-size:5vh;font-weight:800;letter-spacing:.06em}'+
-      '.hr{border-top:.6vh solid #000;margin:1vh 4% 1.5vh}'+
-      '.linha{font-size:2.8vh;text-align:left;margin-bottom:.6vh}'+
-      '.peso{font-size:9.5vh;font-weight:800;margin:2.4vh 0;flex:0 0 auto}'+
-      '.motivo{font-size:2.5vh;text-align:left;word-break:break-word;margin-bottom:1.2vh}'+
-      '.codigosrow{flex:1;display:flex;align-items:flex-end;justify-content:center;gap:6%;padding-bottom:2vh}'+
-      '.qrbox{width:27%;aspect-ratio:1/1;flex:0 0 auto}'+
-      '.bcbox{flex:1;display:flex;align-items:flex-end;justify-content:center;height:70%}'+
-      '.bcbox svg{width:100%;height:auto;max-height:100%}'+
+      // body centraliza o rotulo dentro da pagina inteira — cria uma margem igual
+      // nos 4 lados (3% do tamanho da etiqueta), disfarçando qualquer pequeno
+      // desvio de calibracao fisica da impressora em vez de deixar tudo colado
+      // numa borda so.
+      'body{display:flex;align-items:center;justify-content:center}'+
+      '.label{width:94%;height:94%;padding:4mm;display:flex;flex-direction:column;text-align:center}'+
+      '.tit{font-size:34px;font-weight:800;letter-spacing:.06em}'+
+      '.hr{border-top:3px solid #000;margin:6px 4mm 8px}'+
+      '.linha{font-size:19px;text-align:left;margin-bottom:4px}'+
+      '.peso{font-size:64px;font-weight:800;margin:16px 0;flex:0 0 auto}'+
+      '.motivo{font-size:17px;text-align:left;word-break:break-word;margin-bottom:8px}'+
+      '.codigosrow{flex:1;display:flex;align-items:flex-end;justify-content:center;gap:6mm;padding-bottom:4mm;min-height:0}'+
+      '.qrbox{width:26mm;height:26mm;flex:0 0 auto}'+
+      '.bcbox{flex:1;display:flex;align-items:flex-end;justify-content:center;max-width:60%}'+
+      '.bcbox svg{width:100%;height:auto}'+
     '</style></head><body>'+
       '<div class="label">'+
         '<div class="tit">REPROCESSO</div>'+
