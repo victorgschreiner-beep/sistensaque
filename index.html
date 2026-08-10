@@ -937,12 +937,18 @@ function horaLocalBR(){
 // (ver comentario em ZEBRA_BROWSERPRINT_SDK_URL) — se nao estiver presente,
 // o sistema usa direto o fallback do navegador, sem quebrar nada.
 var PRINTER_DPI = 203; // ZT231 padrao — trocar pra 300 se a impressora for a versao 300dpi
-var LABEL_W_MM = 95, LABEL_H_MM = 100; // usado so pro fallback via navegador (CSS @page)
 // Config real lida direto no visor da impressora em 07/08/2026 — fonte de verdade pro ZPL,
 // sem depender de conversao mm->dots (elimina qualquer arredondamento).
 var PRINTER_W_DOTS = 800, PRINTER_H_DOTS = 802;
 var PRINTER_MEDIA_TIPO = 'transferencia_termica'; // Tipo de impressao: Transf. Term (visor)
 var PRINTER_MEDIA_SENSOR = 'espaco_ranhura';       // Tipo de midia: Espaco/Ranhura (visor)
+// Tamanho da etiqueta pro fallback via navegador (CSS @page, em mm) — calculado
+// direto a partir dos pontos que a PROPRIA impressora reportou (800 x 802,
+// visor em 07/08/2026), nao um numero digitado solto. Mesma fonte que o ZPL usa
+// acima (PRINTER_W_DOTS/PRINTER_H_DOTS), garantindo que os dois caminhos
+// de impressao nunca fiquem dessincronizados.
+var LABEL_W_MM = PRINTER_W_DOTS/PRINTER_DPI*25.4;
+var LABEL_H_MM = PRINTER_H_DOTS/PRINTER_DPI*25.4;
 
 function _mmToDots(mm){ return Math.round(mm * (PRINTER_DPI/25.4)); }
 
@@ -1026,18 +1032,21 @@ function _imprimirEtiquetaFallbackNavegador(dados){
   var labelHtml =
     '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+
       '@page{size:'+LABEL_W_MM+'mm '+LABEL_H_MM+'mm;margin:0}'+
-      'html,body{margin:0;padding:0;width:'+LABEL_W_MM+'mm;height:'+LABEL_H_MM+'mm}'+
+      'html,body{margin:0;padding:0;width:100%;height:100%}'+
       '*{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}'+
-      '.label{width:'+LABEL_W_MM+'mm;height:'+LABEL_H_MM+'mm;padding:5mm;display:flex;flex-direction:column;text-align:center}'+
-      '.tit{font-size:34px;font-weight:800;letter-spacing:.06em}'+
-      '.hr{border-top:3px solid #000;margin:6px 4mm 8px}'+
-      '.linha{font-size:19px;text-align:left;margin-bottom:4px}'+
-      '.peso{font-size:64px;font-weight:800;margin:16px 0;flex:0 0 auto}'+
-      '.motivo{font-size:17px;text-align:left;word-break:break-word;margin-bottom:8px}'+
-      '.codigosrow{flex:1;display:flex;align-items:flex-end;justify-content:center;gap:6mm;padding-bottom:4mm}'+
-      '.qrbox{width:26mm;height:26mm;flex:0 0 auto}'+
-      '.bcbox{flex:1;display:flex;align-items:flex-end;justify-content:center}'+
-      '.bcbox svg{width:100%;height:auto}'+
+      // Preenche 100% da area impressa de verdade (nao um mm fixo) — assim, mesmo
+      // que o driver da impressora use uma pagina diferente de 95x100mm, o
+      // conteudo estica pra preencher tudo, sem sobrar espaco em branco.
+      '.label{width:100vw;height:100vh;padding:5%;display:flex;flex-direction:column;text-align:center}'+
+      '.tit{font-size:5vh;font-weight:800;letter-spacing:.06em}'+
+      '.hr{border-top:.6vh solid #000;margin:1vh 4% 1.5vh}'+
+      '.linha{font-size:2.8vh;text-align:left;margin-bottom:.6vh}'+
+      '.peso{font-size:9.5vh;font-weight:800;margin:2.4vh 0;flex:0 0 auto}'+
+      '.motivo{font-size:2.5vh;text-align:left;word-break:break-word;margin-bottom:1.2vh}'+
+      '.codigosrow{flex:1;display:flex;align-items:flex-end;justify-content:center;gap:6%;padding-bottom:2vh}'+
+      '.qrbox{width:27%;aspect-ratio:1/1;flex:0 0 auto}'+
+      '.bcbox{flex:1;display:flex;align-items:flex-end;justify-content:center;height:70%}'+
+      '.bcbox svg{width:100%;height:auto;max-height:100%}'+
     '</style></head><body>'+
       '<div class="label">'+
         '<div class="tit">REPROCESSO</div>'+
