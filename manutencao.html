@@ -105,6 +105,20 @@ tr:hover td{background:rgba(2,79,43,.03)}
 .tab.on{background:#024f2b;color:#fff}
 .ali{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:12px;background:rgba(2,79,43,.08);border:1px solid rgba(2,79,43,.2);color:#024f2b}
 
+/* VIDA ÚTIL */
+.bpx{background:rgba(210,153,34,.25);color:#a15c00}
+.vu-prog-wrap{width:100%;min-width:90px}
+.vu-prog-bar{background:#eef2ee;border-radius:6px;height:7px;overflow:hidden;margin-top:3px}
+.vu-prog-fill{height:100%;border-radius:6px;transition:width .4s}
+.vu-prog-pct{font-size:11px;font-weight:700}
+.vu-alert-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--r);margin-bottom:10px;border-left:4px solid}
+.vu-alert-card.st-atencao{background:rgba(210,153,34,.08);border-color:#d29922}
+.vu-alert-card.st-proximo{background:rgba(210,153,34,.15);border-color:#a15c00}
+.vu-alert-card.st-vencida{background:rgba(192,57,43,.1);border-color:#c0392b}
+.vu-alert-title{font-weight:700;font-size:13px}
+.vu-alert-sub{font-size:12px;color:#4a664a;margin-top:2px}
+.vu-hist-item{padding:8px 10px;border-radius:6px;background:#f7faf7;margin-bottom:5px;font-size:12px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+
 /* DASHBOARD */
 .dash-filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end}
 .dash-filters .fg{margin-bottom:0;min-width:150px;flex:1}
@@ -157,6 +171,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <button class="nb" id="nb-dash" onclick="go('dash',this)">Dashboard</button>
     <button class="nb" id="nb-fila" onclick="go('fila',this)">Fila de Chamados <span class="nc-dot" id="fila-dot" style="display:none"></span></button>
     <button class="nb" id="nb-abrir" onclick="go('abrir',this)">Abrir Chamado</button>
+    <button class="nb" id="nb-vu" style="display:none" onclick="go('vu',this)">Vida Útil <span class="nc-dot" id="vu-dot" style="display:none"></span></button>
     <button class="nb" id="nb-usr" style="display:none" onclick="go('usr',this)">Administrador</button>
   </div>
   <div class="ubar">
@@ -380,6 +395,91 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
 </div>
 
+<!-- ============ TELA: GESTÃO DE VIDA ÚTIL DE COMPONENTES ============ -->
+<div class="scr" id="scr-vu">
+  <div class="ch">
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Gestão de Vida Útil</h2>
+    <div style="display:flex;gap:6px">
+      <button class="btn bsm" onclick="vuAtualizar()">↻ Atualizar</button>
+      <button class="btn bp bsm" id="btn-vu-novo-componente" style="display:none" onclick="vuAbrirNovoComponente()">+ Cadastrar Componente</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab on" id="vutab-comp" onclick="vuTab('comp')">Componentes</button>
+    <button class="tab" id="vutab-alertas" onclick="vuTab('alertas')">Alertas / Pendências <span class="nc-dot" id="vu-alertas-dot" style="display:none"></span></button>
+    <button class="tab" id="vutab-hist" onclick="vuTab('hist')">Histórico de Trocas</button>
+  </div>
+
+  <!-- SUB-ABA: COMPONENTES -->
+  <div id="vu-view-comp">
+    <div class="card">
+      <div class="dash-filters">
+        <div class="fg"><label class="fl">Equipamento</label>
+          <select id="vuf-equip" onchange="vuRenderLista()"><option value="">Todos</option></select>
+        </div>
+        <div class="fg"><label class="fl">Componente</label>
+          <input type="text" id="vuf-componente" placeholder="buscar..." oninput="vuRenderLista()">
+        </div>
+        <div class="fg"><label class="fl">Critério</label>
+          <select id="vuf-criterio" onchange="vuRenderLista()">
+            <option value="">Todos</option>
+            <option value="dias">Por Dias</option>
+            <option value="toneladas">Por Toneladas</option>
+            <option value="combinacao">O que ocorrer primeiro</option>
+          </select>
+        </div>
+        <div class="fg"><label class="fl">Status</label>
+          <select id="vuf-status" onchange="vuRenderLista()">
+            <option value="">Todos</option>
+            <option value="normal">🟢 Normal</option>
+            <option value="atencao">🟡 Atenção</option>
+            <option value="proximo">🟠 Próximo da troca</option>
+            <option value="vencida">🔴 Troca vencida</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="tw"><table>
+        <thead><tr>
+          <th>Equipamento</th><th>Componente</th><th>Critério</th><th>Vida útil</th>
+          <th>Consumido / Restante</th><th>Previsão</th><th>Status</th><th></th>
+        </tr></thead>
+        <tbody id="vu-lista-corpo"><tr><td colspan="8" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- SUB-ABA: ALERTAS / PENDÊNCIAS -->
+  <div id="vu-view-alertas" style="display:none">
+    <div class="card">
+      <div class="ct" style="margin-bottom:10px">Componentes que precisam de atenção (Atenção, Próximo da troca ou Vencidos)</div>
+      <div id="vu-alertas-corpo"><div style="text-align:center;padding:20px;color:#739630">Carregando...</div></div>
+    </div>
+  </div>
+
+  <!-- SUB-ABA: HISTÓRICO -->
+  <div id="vu-view-hist" style="display:none">
+    <div class="card">
+      <div class="dash-filters">
+        <div class="fg"><label class="fl">Equipamento</label>
+          <select id="vuh-equip" onchange="vuRenderHistorico()"><option value="">Todos</option></select>
+        </div>
+        <div class="fg"><label class="fl">Componente</label>
+          <input type="text" id="vuh-componente" placeholder="buscar..." oninput="vuRenderHistorico()">
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="tw"><table>
+        <thead><tr><th>Data da troca</th><th>Equipamento</th><th>Componente</th><th>Consumido na troca</th><th>Vida útil</th><th>Motivo</th><th>Responsável</th></tr></thead>
+        <tbody id="vu-hist-corpo"><tr><td colspan="7" style="text-align:center;padding:20px;color:#739630">Carregando...</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+</div>
+
 </div>
 </div>
 
@@ -480,6 +580,123 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="mfoot">
       <button class="btn bsm" onclick="fM('ov-motivo')">Cancelar</button>
       <button class="btn bsm bp" id="btn-salvar-motivo" onclick="salvarMotivoConfig()">Criar Motivo</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CADASTRO/EDIÇÃO DE COMPONENTE (Vida Útil) -->
+<div class="ov" id="ov-vu-componente">
+  <div class="modal">
+    <div class="mt" id="vu-comp-titulo">Cadastrar Componente</div>
+    <div class="fg">
+      <label class="fl">Equipamento</label>
+      <div style="display:flex;gap:6px">
+        <select id="vuc-equip" style="flex:1" onchange="vuAoTrocarEquipamento()"></select>
+        <button class="btn bsm" type="button" onclick="vuAbrirNovoEquipamento()">+ Novo</button>
+      </div>
+    </div>
+    <div class="fr">
+      <div class="fg" style="margin-bottom:0">
+        <label class="fl">Componente</label>
+        <input type="text" id="vuc-componente" list="vuc-componente-sugestoes" placeholder="ex: Tela, Faca, Rolamento...">
+        <datalist id="vuc-componente-sugestoes">
+          <option value="Rolamento"><option value="Correia"><option value="Faca">
+          <option value="Matriz"><option value="Tela"><option value="Resistência">
+          <option value="Mancal"><option value="Rosca"><option value="Camisa"><option value="Filtro">
+        </datalist>
+      </div>
+      <div class="fg" style="margin-bottom:0">
+        <label class="fl">Código da peça (opcional)</label>
+        <input type="text" id="vuc-codigo">
+      </div>
+    </div>
+    <div class="fg">
+      <label class="fl">Critério de vida útil</label>
+      <select id="vuc-criterio" onchange="vuAoTrocarCriterio()">
+        <option value="dias">Por dias</option>
+        <option value="toneladas">Por toneladas (requer equipamento vinculado a uma linha)</option>
+        <option value="combinacao">O que ocorrer primeiro (dias + toneladas)</option>
+      </select>
+      <div class="hint" id="vuc-criterio-hint"></div>
+    </div>
+    <div class="fr" id="vuc-linha-dias">
+      <div class="fg" style="margin-bottom:0">
+        <label class="fl">Vida útil (dias)</label>
+        <input type="number" id="vuc-vidadias" min="1" placeholder="ex: 90">
+      </div>
+    </div>
+    <div class="fr" id="vuc-linha-ton" style="display:none">
+      <div class="fg" style="margin-bottom:0">
+        <label class="fl">Vida útil (toneladas)</label>
+        <input type="number" id="vuc-vidaton" min="0.1" step="0.1" placeholder="ex: 500">
+      </div>
+    </div>
+    <div class="fg">
+      <label class="fl">Data da instalação / última troca</label>
+      <input type="date" id="vuc-datatroca">
+    </div>
+    <div class="fg">
+      <label class="fl">Observação (opcional)</label>
+      <textarea id="vuc-obs"></textarea>
+    </div>
+    <input type="hidden" id="vuc-fbkey">
+    <div class="mfoot">
+      <button class="btn bsm" onclick="fM('ov-vu-componente')">Cancelar</button>
+      <button class="btn bsm bp" id="btn-salvar-vu-componente" onclick="vuSalvarComponente()">Cadastrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: NOVO EQUIPAMENTO (rápido, dentro do cadastro de componente) -->
+<div class="ov" id="ov-vu-equipamento">
+  <div class="modal">
+    <div class="mt">Novo Equipamento</div>
+    <div class="fg">
+      <label class="fl">Nome do equipamento</label>
+      <input type="text" id="vue-nome" placeholder="ex: Extrusora 04, Moinho 01, Secador Andritz...">
+    </div>
+    <div class="fg">
+      <label class="fl">Vincular a uma linha de extrusão (opcional)</label>
+      <select id="vue-linha">
+        <option value="">Nenhuma — sem integração automática de toneladas</option>
+        <option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option>
+        <option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option>
+      </select>
+      <div class="hint">Só equipamentos vinculados a uma linha calculam toneladas produzidas automaticamente a partir da Extrusão. Sem vínculo, use apenas o critério "Por dias".</div>
+    </div>
+    <div class="mfoot">
+      <button class="btn bsm" onclick="fM('ov-vu-equipamento')">Cancelar</button>
+      <button class="btn bsm bp" onclick="vuSalvarEquipamento()">Criar Equipamento</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: REGISTRAR TROCA -->
+<div class="ov" id="ov-vu-troca">
+  <div class="modal">
+    <div class="mt">Registrar Troca</div>
+    <div class="info-box" id="vu-troca-resumo"></div>
+    <div class="fg">
+      <label class="fl">Data da troca</label>
+      <input type="date" id="vut-data">
+    </div>
+    <div class="fg">
+      <label class="fl">Motivo</label>
+      <select id="vut-motivo">
+        <option value="Vida útil atingida">Vida útil atingida</option>
+        <option value="Preventiva">Preventiva</option>
+        <option value="Quebra">Quebra</option>
+        <option value="Outro">Outro</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label class="fl">Observação (opcional)</label>
+      <textarea id="vut-obs"></textarea>
+    </div>
+    <input type="hidden" id="vut-fbkey">
+    <div class="mfoot">
+      <button class="btn bsm" onclick="fM('ov-vu-troca')">Cancelar</button>
+      <button class="btn bsm bp" onclick="vuConfirmarTroca()">Confirmar Troca</button>
     </div>
   </div>
 </div>
@@ -657,6 +874,7 @@ function aplicarSessao(){
   G('pfil').textContent=setorLabel(SES.perfil);
   G('nb-fila').style.display=podeVerFila()?'':'none';
   G('nb-dash').style.display=podeVerFila()?'':'none';
+  G('nb-vu').style.display=podeVerFila()?'':'none';
   G('nb-usr').style.display=podeAdmin()?'':'none';
 }
 
@@ -738,6 +956,7 @@ function go(tela,btn){
   if(btn) btn.classList.add('on');
   if(tela==='usr') adminTab('usuarios');
   if(tela==='dash'){ monitorarFila(); renderDashboard(); }
+  if(tela==='vu'){ vuAtualizar(); }
 }
 
 // ============================================================
@@ -1243,6 +1462,513 @@ function excluirMotivo(fbKey){
     toast('Motivo excluído!','ok');
     renderMotivosAdmin();
     montarSelectMotivo();
+  }).catch(function(e){toast('Erro: '+e.message,'err');});
+}
+
+// ============================================================
+// GESTÃO DE VIDA ÚTIL DE COMPONENTES
+// ============================================================
+// Constantes centralizadas (evita "constante implícita" espalhada pelo código)
+var VU_LIM_ATENCAO=70;   // % consumido a partir do qual vira 🟡 Atenção
+var VU_LIM_PROXIMO=90;   // % consumido a partir do qual vira 🟠 Próximo da troca
+var VU_LIM_VENCIDO=100;  // % consumido a partir do qual vira 🔴 Troca vencida
+var VU_LINHAS_EXTRUSAO=["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
+
+var EQUIPAMENTOS_VU=[];
+var VU_COMPONENTES_CACHE=[];
+var VU_HISTORICO_CACHE=[];
+var VU_ABA_ATUAL='comp';
+
+function fN(n,dec){
+  if(n===null||n===undefined||isNaN(n)) return '—';
+  return Number(n).toLocaleString('pt-BR',{minimumFractionDigits:dec||0,maximumFractionDigits:dec||0});
+}
+function diasEntreDatas(dIniStr,dFimStr){
+  if(!dIniStr||!dFimStr) return 0;
+  var a=dIniStr.split('-').map(Number), b=dFimStr.split('-').map(Number);
+  var ini=Date.UTC(a[0],a[1]-1,a[2]), fim=Date.UTC(b[0],b[1]-1,b[2]);
+  return Math.round((fim-ini)/86400000);
+}
+function addDiasData(dStr,n){
+  var p=dStr.split('-').map(Number);
+  var d=new Date(Date.UTC(p[0],p[1]-1,p[2]));
+  d.setUTCDate(d.getUTCDate()+Math.max(0,Math.round(n)));
+  return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate());
+}
+function fmtDataBR(dStr){ return dStr?dStr.split('-').reverse().join('/'):'—'; }
+
+function podeGerenciarVU(){ return podeAdmin(); } // cadastrar/editar/excluir componente e equipamento
+// Registrar troca e gerar OM: qualquer usuário que vê a fila (manutenção + admin) — já coberto por podeVerFila()
+
+// ---------- EQUIPAMENTOS (config administrável) ----------
+function carregarEquipamentosVU(){
+  return DB.ref('manutencao_config/equipamentos_vida_util').once('value').then(function(s){
+    EQUIPAMENTOS_VU=[];
+    if(s.exists()) s.forEach(function(c){ var v=c.val(); v.fbKey=c.key; EQUIPAMENTOS_VU.push(v); });
+    EQUIPAMENTOS_VU.sort(function(a,b){return (a.nome||'').localeCompare(b.nome||'');});
+  });
+}
+function equipamentoPorFbKey(fk){ return EQUIPAMENTOS_VU.find(function(e){return e.fbKey===fk;}); }
+
+function montarSelectsEquipamentoVU(){
+  var opts='<option value="">Selecione...</option>';
+  EQUIPAMENTOS_VU.forEach(function(e){
+    opts+='<option value="'+e.fbKey+'">'+e.nome+(e.linhaVinculada?' — vinculado a '+e.linhaVinculada:'')+'</option>';
+  });
+  if(G('vuc-equip')) G('vuc-equip').innerHTML=opts;
+  var optsTodos='<option value="">Todos</option>';
+  EQUIPAMENTOS_VU.forEach(function(e){ optsTodos+='<option value="'+e.fbKey+'">'+e.nome+'</option>'; });
+  if(G('vuf-equip')) G('vuf-equip').innerHTML=optsTodos;
+  if(G('vuh-equip')) G('vuh-equip').innerHTML=optsTodos;
+}
+
+function vuAbrirNovoEquipamento(){
+  G('vue-nome').value=''; G('vue-linha').value='';
+  aM('ov-vu-equipamento');
+}
+function vuSalvarEquipamento(){
+  var nome=G('vue-nome').value.trim();
+  var linha=G('vue-linha').value||null;
+  if(!nome){toast('Informe o nome do equipamento','err');return;}
+  if(EQUIPAMENTOS_VU.some(function(e){return (e.nome||'').toLowerCase()===nome.toLowerCase();})){
+    toast('Já existe um equipamento com esse nome','err');return;
+  }
+  DB.ref('manutencao_config/equipamentos_vida_util').push({nome:nome,linhaVinculada:linha}).then(function(ref){
+    EQUIPAMENTOS_VU.push({fbKey:ref.key,nome:nome,linhaVinculada:linha});
+    montarSelectsEquipamentoVU();
+    G('vuc-equip').value=ref.key;
+    vuAoTrocarEquipamento();
+    toast('Equipamento criado!','ok');
+    fM('ov-vu-equipamento');
+  }).catch(function(e){toast('Erro: '+e.message,'err');});
+}
+
+// ---------- CADASTRO / EDIÇÃO DE COMPONENTE ----------
+function vuAoTrocarEquipamento(){
+  var eq=equipamentoPorFbKey(G('vuc-equip').value);
+  var vinculado=!!(eq&&eq.linhaVinculada);
+  var selCrit=G('vuc-criterio');
+  Array.prototype.forEach.call(selCrit.options,function(o){
+    if(o.value==='toneladas'||o.value==='combinacao') o.disabled=!vinculado;
+  });
+  if(!vinculado&&(selCrit.value==='toneladas'||selCrit.value==='combinacao')){ selCrit.value='dias'; }
+  vuAoTrocarCriterio();
+}
+function vuAoTrocarCriterio(){
+  var crit=G('vuc-criterio').value;
+  G('vuc-linha-dias').style.display=(crit==='dias'||crit==='combinacao')?'':'none';
+  G('vuc-linha-ton').style.display=(crit==='toneladas'||crit==='combinacao')?'':'none';
+  var eq=equipamentoPorFbKey(G('vuc-equip').value);
+  var hint=G('vuc-criterio-hint');
+  if((crit==='toneladas'||crit==='combinacao')&&!(eq&&eq.linhaVinculada)){
+    hint.textContent='Este equipamento não está vinculado a uma linha de extrusão — cadastre o vínculo antes de usar toneladas.';
+    hint.className='hint err2';
+  } else { hint.textContent=''; hint.className='hint'; }
+}
+
+function vuAbrirNovoComponente(){
+  if(!podeGerenciarVU()) return;
+  montarSelectsEquipamentoVU();
+  G('vu-comp-titulo').textContent='Cadastrar Componente';
+  G('vuc-equip').value=''; G('vuc-componente').value=''; G('vuc-codigo').value='';
+  G('vuc-criterio').value='dias'; G('vuc-vidadias').value=''; G('vuc-vidaton').value='';
+  G('vuc-datatroca').value=hoje(); G('vuc-obs').value=''; G('vuc-fbkey').value='';
+  vuAoTrocarEquipamento();
+  G('btn-salvar-vu-componente').textContent='Cadastrar';
+  aM('ov-vu-componente');
+}
+function vuAbrirEditarComponente(fbKey){
+  if(!podeGerenciarVU()) return;
+  var c=VU_COMPONENTES_CACHE.find(function(x){return x.fbKey===fbKey;});
+  if(!c) return;
+  montarSelectsEquipamentoVU();
+  G('vu-comp-titulo').textContent='Editar Componente';
+  G('vuc-equip').value=c.equipFbKey||'';
+  G('vuc-componente').value=c.componente||'';
+  G('vuc-codigo').value=c.codigoPeca||'';
+  G('vuc-criterio').value=c.criterio||'dias';
+  G('vuc-vidadias').value=c.vidaUtilDias||'';
+  G('vuc-vidaton').value=c.vidaUtilToneladas||'';
+  G('vuc-datatroca').value=c.dataTroca||hoje();
+  G('vuc-obs').value=c.obs||'';
+  G('vuc-fbkey').value=fbKey;
+  vuAoTrocarEquipamento();
+  G('vuc-criterio').value=c.criterio||'dias'; // reaplica após o reset feito por vuAoTrocarEquipamento
+  vuAoTrocarCriterio();
+  G('btn-salvar-vu-componente').textContent='Salvar Alterações';
+  aM('ov-vu-componente');
+}
+function vuSalvarComponente(){
+  var equipFbKey=G('vuc-equip').value;
+  var componente=G('vuc-componente').value.trim();
+  var criterio=G('vuc-criterio').value;
+  var vidaDias=parseFloat(G('vuc-vidadias').value)||0;
+  var vidaTon=parseFloat(G('vuc-vidaton').value)||0;
+  var dataTroca=G('vuc-datatroca').value;
+  var fbKey=G('vuc-fbkey').value;
+  if(!equipFbKey){toast('Selecione o equipamento','err');return;}
+  if(!componente){toast('Informe o nome do componente','err');return;}
+  if(!dataTroca){toast('Informe a data da instalação/troca','err');return;}
+  if((criterio==='dias'||criterio==='combinacao')&&vidaDias<=0){toast('Informe a vida útil em dias','err');return;}
+  if((criterio==='toneladas'||criterio==='combinacao')&&vidaTon<=0){toast('Informe a vida útil em toneladas','err');return;}
+  var eq=equipamentoPorFbKey(equipFbKey);
+  if((criterio==='toneladas'||criterio==='combinacao')&&!(eq&&eq.linhaVinculada)){
+    toast('Este equipamento não está vinculado a uma linha de extrusão','err');return;
+  }
+  var dados={
+    equipFbKey:equipFbKey,
+    equipamento:eq?eq.nome:'',
+    linhaVinculada:eq?(eq.linhaVinculada||null):null,
+    componente:componente,
+    codigoPeca:G('vuc-codigo').value.trim()||null,
+    criterio:criterio,
+    vidaUtilDias:(criterio==='dias'||criterio==='combinacao')?vidaDias:null,
+    vidaUtilToneladas:(criterio==='toneladas'||criterio==='combinacao')?vidaTon:null,
+    dataTroca:dataTroca,
+    obs:G('vuc-obs').value.trim()||null,
+    ativo:true
+  };
+  ld(true,'Salvando...');
+  if(fbKey){
+    DB.ref('manutencao_vida_util/'+fbKey).update(dados).then(function(){
+      ld(false); toast('Componente atualizado!','ok'); fM('ov-vu-componente'); vuAtualizar();
+    }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
+  } else {
+    dados.criadoPor=SES.login; dados.criadoTs=agora();
+    DB.ref('manutencao_vida_util').push(dados).then(function(){
+      ld(false); toast('Componente cadastrado!','ok'); fM('ov-vu-componente'); vuAtualizar();
+    }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
+  }
+}
+function vuExcluirComponente(fbKey){
+  if(!podeGerenciarVU()) return;
+  var c=VU_COMPONENTES_CACHE.find(function(x){return x.fbKey===fbKey;});
+  if(!c) return;
+  if(!confirm('Excluir o componente "'+c.componente+'" ('+c.equipamento+')? O histórico de trocas já registrado NÃO é apagado.')) return;
+  DB.ref('manutencao_vida_util/'+fbKey).remove().then(function(){
+    toast('Componente excluído!','ok'); vuAtualizar();
+  }).catch(function(e){toast('Erro: '+e.message,'err');});
+}
+
+// ---------- CÁLCULO (sempre dinâmico — nunca salva produção acumulada) ----------
+function vuCarregarComponentes(){
+  return DB.ref('manutencao_vida_util').once('value').then(function(s){
+    VU_COMPONENTES_CACHE=[];
+    if(s.exists()) s.forEach(function(c){ var v=c.val(); v.fbKey=c.key; VU_COMPONENTES_CACHE.push(v); });
+  });
+}
+// Busca produção (extrusao_apts) só para os pares únicos (linha + dataTroca) realmente usados,
+// evitando ler o mesmo intervalo mais de uma vez quando vários componentes compartilham a linha.
+function vuCalcularProducao(){
+  var pares={};
+  VU_COMPONENTES_CACHE.forEach(function(c){
+    if((c.criterio==='toneladas'||c.criterio==='combinacao')&&c.linhaVinculada&&c.dataTroca){
+      pares[c.linhaVinculada+'|'+c.dataTroca]=true;
+    }
+  });
+  var chaves=Object.keys(pares);
+  if(!chaves.length) return Promise.resolve({});
+  var proms=chaves.map(function(k){
+    var partes=k.split('|'), linha=partes[0], dataTroca=partes[1];
+    return DB.ref('extrusao_apts').orderByChild('data').startAt(dataTroca).once('value').then(function(s){
+      var totalKg=0;
+      if(s.exists()) s.forEach(function(c){ var a=c.val(); if(a.linha===linha) totalKg+=(Number(a.real)||0); });
+      return {chave:k,toneladas:totalKg/1000};
+    });
+  });
+  return Promise.all(proms).then(function(resultados){
+    var mapa={};
+    resultados.forEach(function(r){ mapa[r.chave]=r.toneladas; });
+    return mapa;
+  });
+}
+function vuStatusDe(pct){
+  if(pct>=VU_LIM_VENCIDO) return 'vencida';
+  if(pct>=VU_LIM_PROXIMO) return 'proximo';
+  if(pct>=VU_LIM_ATENCAO) return 'atencao';
+  return 'normal';
+}
+function vuStatusBadge(st){
+  if(st==='vencida') return '<span class="badge brd">🔴 Troca vencida</span>';
+  if(st==='proximo') return '<span class="badge bpx">🟠 Próximo da troca</span>';
+  if(st==='atencao') return '<span class="badge bam">🟡 Atenção</span>';
+  return '<span class="badge bvd">🟢 Normal</span>';
+}
+function vuStatusCor(st){
+  if(st==='vencida') return '#c0392b';
+  if(st==='proximo') return '#a15c00';
+  if(st==='atencao') return '#d29922';
+  return '#024f2b';
+}
+function vuCalcularComponente(c,mapaProducao){
+  var hojeStr=hoje();
+  var diasDecorridos=Math.max(0,diasEntreDatas(c.dataTroca,hojeStr));
+  var out={diasDecorridos:diasDecorridos,toneladasAcumuladas:0,percDias:0,percTon:0,
+           previsaoData:null,previsaoLabel:'—',motivoDominante:''};
+  if(c.criterio==='dias'||c.criterio==='combinacao'){
+    out.percDias=c.vidaUtilDias?Math.min(999,(diasDecorridos/c.vidaUtilDias)*100):0;
+  }
+  if(c.criterio==='toneladas'||c.criterio==='combinacao'){
+    var ton=mapaProducao[c.linhaVinculada+'|'+c.dataTroca]||0;
+    out.toneladasAcumuladas=ton;
+    out.percTon=c.vidaUtilToneladas?Math.min(999,(ton/c.vidaUtilToneladas)*100):0;
+  }
+  if(c.criterio==='dias'){
+    out.percentual=out.percDias;
+    out.previsaoData=addDiasData(c.dataTroca,c.vidaUtilDias);
+    out.motivoDominante='dias';
+  } else if(c.criterio==='toneladas'){
+    out.percentual=out.percTon;
+    var restanteTon=Math.max(0,c.vidaUtilToneladas-out.toneladasAcumuladas);
+    var mediaDiaria=diasDecorridos>0?out.toneladasAcumuladas/diasDecorridos:0;
+    out.previsaoData=mediaDiaria>0?addDiasData(hojeStr,restanteTon/mediaDiaria):null;
+    out.motivoDominante='toneladas';
+  } else { // combinacao — o que ocorrer primeiro
+    if(out.percDias>=out.percTon){ out.percentual=out.percDias; out.motivoDominante='dias'; }
+    else { out.percentual=out.percTon; out.motivoDominante='toneladas'; }
+    var prevDias=addDiasData(c.dataTroca,c.vidaUtilDias);
+    var restanteTon2=Math.max(0,c.vidaUtilToneladas-out.toneladasAcumuladas);
+    var mediaDiaria2=diasDecorridos>0?out.toneladasAcumuladas/diasDecorridos:0;
+    var prevTon=mediaDiaria2>0?addDiasData(hojeStr,restanteTon2/mediaDiaria2):null;
+    if(prevTon&&prevTon<prevDias) out.previsaoData=prevTon; else out.previsaoData=prevDias;
+  }
+  out.status=vuStatusDe(out.percentual);
+  if(out.previsaoData){
+    out.previsaoLabel=fmtDataBR(out.previsaoData)+(out.motivoDominante==='toneladas'&&c.criterio==='combinacao'?' (por tonelada)':(out.motivoDominante==='dias'&&c.criterio==='combinacao'?' (por dias)':'')); 
+  } else if(c.criterio!=='dias'){
+    out.previsaoLabel='sem dados suficientes';
+  }
+  return out;
+}
+function vuRecalcularTudo(mapaProducao){
+  VU_COMPONENTES_CACHE.forEach(function(c){ c._calc=vuCalcularComponente(c,mapaProducao); });
+}
+
+// ---------- ORQUESTRAÇÃO / ATUALIZAÇÃO ----------
+function vuAtualizar(){
+  if(!podeVerFila()) return;
+  G('btn-vu-novo-componente').style.display=podeGerenciarVU()?'':'none';
+  Promise.all([carregarEquipamentosVU(),vuCarregarComponentes()]).then(function(){
+    montarSelectsEquipamentoVU();
+    return vuCalcularProducao();
+  }).then(function(mapa){
+    vuRecalcularTudo(mapa);
+    vuRenderLista();
+    vuRenderAlertas();
+    vuCarregarHistorico();
+  }).catch(function(e){toast('Erro ao carregar Vida Útil: '+e.message,'err');});
+}
+function vuTab(nome){
+  VU_ABA_ATUAL=nome;
+  ['comp','alertas','hist'].forEach(function(n){
+    G('vutab-'+n).classList.toggle('on',n===nome);
+    G('vu-view-'+n).style.display=(n===nome)?'':'none';
+  });
+}
+
+// ---------- RENDER: LISTA PRINCIPAL ----------
+function vuRenderLista(){
+  var fEquip=G('vuf-equip')?G('vuf-equip').value:'';
+  var fComp=(G('vuf-componente')?G('vuf-componente').value:'').toLowerCase().trim();
+  var fCrit=G('vuf-criterio')?G('vuf-criterio').value:'';
+  var fStatus=G('vuf-status')?G('vuf-status').value:'';
+  var lista=VU_COMPONENTES_CACHE.filter(function(c){
+    if(fEquip&&c.equipFbKey!==fEquip) return false;
+    if(fComp&&(c.componente||'').toLowerCase().indexOf(fComp)===-1) return false;
+    if(fCrit&&c.criterio!==fCrit) return false;
+    if(fStatus&&c._calc&&c._calc.status!==fStatus) return false;
+    return true;
+  });
+  lista.sort(function(a,b){ return (b._calc?b._calc.percentual:0)-(a._calc?a._calc.percentual:0); });
+  if(!lista.length){
+    G('vu-lista-corpo').innerHTML='<tr><td colspan="8" style="text-align:center;padding:20px;color:#739630">Nenhum componente encontrado</td></tr>';
+    return;
+  }
+  var h='';
+  lista.forEach(function(c){
+    var k=c._calc||{}; var pct=Math.min(100,k.percentual||0);
+    var critLbl=c.criterio==='dias'?'Dias':c.criterio==='toneladas'?'Toneladas':'O que ocorrer primeiro';
+    var vidaLbl=c.criterio==='dias'?fN(c.vidaUtilDias)+' dias':
+                c.criterio==='toneladas'?fN(c.vidaUtilToneladas,1)+' t':
+                fN(c.vidaUtilDias)+' dias / '+fN(c.vidaUtilToneladas,1)+' t';
+    var consumidoLbl=c.criterio==='dias'?fN(k.diasDecorridos)+' / '+fN(c.vidaUtilDias)+' dias':
+                      c.criterio==='toneladas'?fN(k.toneladasAcumuladas,1)+' / '+fN(c.vidaUtilToneladas,1)+' t':
+                      fN(k.diasDecorridos)+'d / '+fN(k.toneladasAcumuladas,1)+'t';
+    var acoes='<button class="btn bxs bo" data-fk="'+c.fbKey+'" onclick="vuAbrirTroca(this.dataset.fk)">Registrar Troca</button>';
+    if(k.status==='proximo'||k.status==='vencida'){
+      acoes+=' <button class="btn bxs" data-fk="'+c.fbKey+'" onclick="vuGerarOM(this.dataset.fk)">Gerar O.M.</button>';
+    }
+    if(podeGerenciarVU()){
+      acoes+=' <button class="btn bxs" data-fk="'+c.fbKey+'" onclick="vuAbrirEditarComponente(this.dataset.fk)">Editar</button>';
+      acoes+=' <button class="btn bxs" style="color:#c0392b;border-color:#c0392b" data-fk="'+c.fbKey+'" onclick="vuExcluirComponente(this.dataset.fk)">Excluir</button>';
+    }
+    h+='<tr>';
+    h+='<td style="font-weight:600">'+(c.equipamento||'—')+'</td>';
+    h+='<td>'+c.componente+(c.codigoPeca?' <span style="color:#739630;font-size:11px">('+c.codigoPeca+')</span>':'')+'</td>';
+    h+='<td>'+critLbl+'</td>';
+    h+='<td>'+vidaLbl+'</td>';
+    h+='<td><div class="vu-prog-wrap"><span class="vu-prog-pct" style="color:'+vuStatusCor(k.status)+'">'+consumidoLbl+' ('+fN(pct)+'%)</span>';
+    h+='<div class="vu-prog-bar"><div class="vu-prog-fill" style="width:'+pct+'%;background:'+vuStatusCor(k.status)+'"></div></div></div></td>';
+    h+='<td style="font-size:12px">'+(k.previsaoLabel||'—')+'</td>';
+    h+='<td>'+vuStatusBadge(k.status)+'</td>';
+    h+='<td style="white-space:nowrap">'+acoes+'</td>';
+    h+='</tr>';
+  });
+  G('vu-lista-corpo').innerHTML=h;
+}
+
+// ---------- RENDER: ALERTAS / PENDÊNCIAS ----------
+function vuRenderAlertas(){
+  var pendentes=VU_COMPONENTES_CACHE.filter(function(c){ return c._calc&&c._calc.status!=='normal'; });
+  pendentes.sort(function(a,b){ return b._calc.percentual-a._calc.percentual; });
+  G('vu-alertas-dot').style.display=pendentes.some(function(c){return c._calc.status==='vencida'||c._calc.status==='proximo';})?'inline-block':'none';
+  if(!pendentes.length){
+    G('vu-alertas-corpo').innerHTML='<div style="text-align:center;padding:20px;color:#739630">Nenhum componente em atenção — tudo dentro do esperado 🟢</div>';
+    return;
+  }
+  var h='';
+  pendentes.forEach(function(c){
+    var k=c._calc;
+    var consumidoLbl=c.criterio==='dias'?fN(k.diasDecorridos)+' / '+fN(c.vidaUtilDias)+' dias':
+                      c.criterio==='toneladas'?fN(k.toneladasAcumuladas,1)+' / '+fN(c.vidaUtilToneladas,1)+' t':
+                      fN(k.diasDecorridos)+'d / '+fN(k.toneladasAcumuladas,1)+'t';
+    h+='<div class="vu-alert-card st-'+k.status+'">';
+    h+='<div style="flex:1">';
+    h+='<div class="vu-alert-title">'+vuStatusBadge(k.status)+' &nbsp; '+c.equipamento+' — '+c.componente+'</div>';
+    h+='<div class="vu-alert-sub">Consumido: '+consumidoLbl+' ('+fN(Math.min(100,k.percentual))+'%) · Previsão: '+(k.previsaoLabel||'—')+'</div>';
+    h+='</div>';
+    h+='<div style="display:flex;gap:6px;flex-shrink:0">';
+    h+='<button class="btn bxs bo" data-fk="'+c.fbKey+'" onclick="vuAbrirTroca(this.dataset.fk)">Registrar Troca</button>';
+    h+='<button class="btn bxs" data-fk="'+c.fbKey+'" onclick="vuGerarOM(this.dataset.fk)">Gerar O.M.</button>';
+    h+='</div></div>';
+  });
+  G('vu-alertas-corpo').innerHTML=h;
+}
+
+// ---------- TROCA DE COMPONENTE ----------
+function vuAbrirTroca(fbKey){
+  var c=VU_COMPONENTES_CACHE.find(function(x){return x.fbKey===fbKey;});
+  if(!c) return;
+  var k=c._calc||{};
+  var consumidoLbl=c.criterio==='dias'?fN(k.diasDecorridos)+' dias de '+fN(c.vidaUtilDias):
+                    c.criterio==='toneladas'?fN(k.toneladasAcumuladas,1)+' t de '+fN(c.vidaUtilToneladas,1):
+                    fN(k.diasDecorridos)+' dias / '+fN(k.toneladasAcumuladas,1)+' t';
+  G('vu-troca-resumo').innerHTML='<div class="ib-num">'+c.equipamento+'</div><div class="ib-desc">'+c.componente+'</div><div class="ib-sub">Consumido até agora: '+consumidoLbl+' ('+fN(Math.min(100,k.percentual||0))+'%)</div>';
+  G('vut-data').value=hoje();
+  G('vut-motivo').value=(k.status==='vencida'?'Vida útil atingida':'Preventiva');
+  G('vut-obs').value='';
+  G('vut-fbkey').value=fbKey;
+  aM('ov-vu-troca');
+}
+function vuConfirmarTroca(){
+  var fbKey=G('vut-fbkey').value;
+  var c=VU_COMPONENTES_CACHE.find(function(x){return x.fbKey===fbKey;});
+  if(!c) return;
+  var novaData=G('vut-data').value;
+  if(!novaData){toast('Informe a data da troca','err');return;}
+  var k=c._calc||{};
+  var hist={
+    componenteFbKey:fbKey,
+    equipamento:c.equipamento,
+    componente:c.componente,
+    criterio:c.criterio,
+    dataTrocaAnterior:c.dataTroca,
+    dataTroca:novaData,
+    consumidoDias:c.criterio!=='toneladas'?k.diasDecorridos:null,
+    consumidoToneladas:c.criterio!=='dias'?k.toneladasAcumuladas:null,
+    vidaUtilDias:c.vidaUtilDias||null,
+    vidaUtilToneladas:c.vidaUtilToneladas||null,
+    percentualNaTroca:Math.min(100,k.percentual||0),
+    motivo:G('vut-motivo').value,
+    observacao:G('vut-obs').value.trim()||null,
+    responsavelLogin:SES.login,
+    responsavelNome:SES.nome||SES.login,
+    ts:agora()
+  };
+  ld(true,'Registrando troca...');
+  DB.ref('manutencao_vida_util_historico').push(hist).then(function(){
+    // Inicia novo ciclo de vida — histórico anterior nunca é apagado
+    return DB.ref('manutencao_vida_util/'+fbKey).update({dataTroca:novaData});
+  }).then(function(){
+    ld(false);
+    toast('Troca registrada — novo ciclo de vida iniciado!','ok');
+    fM('ov-vu-troca');
+    vuAtualizar();
+  }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
+}
+
+// ---------- HISTÓRICO ----------
+function vuCarregarHistorico(){
+  return DB.ref('manutencao_vida_util_historico').once('value').then(function(s){
+    VU_HISTORICO_CACHE=[];
+    if(s.exists()) s.forEach(function(c){ var v=c.val(); v.fbKey=c.key; VU_HISTORICO_CACHE.push(v); });
+    VU_HISTORICO_CACHE.sort(function(a,b){ return (b.ts||'')>(a.ts||'')?1:-1; });
+    vuRenderHistorico();
+  });
+}
+function vuRenderHistorico(){
+  var fEquipFk=G('vuh-equip')?G('vuh-equip').value:'';
+  var fComp=(G('vuh-componente')?G('vuh-componente').value:'').toLowerCase().trim();
+  var fEquipNome=fEquipFk?(equipamentoPorFbKey(fEquipFk)||{}).nome:'';
+  var lista=VU_HISTORICO_CACHE.filter(function(h){
+    if(fEquipNome&&h.equipamento!==fEquipNome) return false;
+    if(fComp&&(h.componente||'').toLowerCase().indexOf(fComp)===-1) return false;
+    return true;
+  });
+  if(!lista.length){
+    G('vu-hist-corpo').innerHTML='<tr><td colspan="7" style="text-align:center;padding:20px;color:#739630">Nenhuma troca registrada</td></tr>';
+    return;
+  }
+  var h='';
+  lista.forEach(function(x){
+    var consumidoLbl=x.criterio==='dias'?fN(x.consumidoDias)+' dias':
+                      x.criterio==='toneladas'?fN(x.consumidoToneladas,1)+' t':
+                      fN(x.consumidoDias)+'d / '+fN(x.consumidoToneladas,1)+'t';
+    var vidaLbl=x.criterio==='dias'?fN(x.vidaUtilDias)+' dias':
+                x.criterio==='toneladas'?fN(x.vidaUtilToneladas,1)+' t':
+                fN(x.vidaUtilDias)+'d / '+fN(x.vidaUtilToneladas,1)+'t';
+    h+='<tr>';
+    h+='<td>'+fmtDataBR(x.dataTrocaAnterior)+' → '+fmtDataBR(x.dataTroca)+'</td>';
+    h+='<td>'+(x.equipamento||'—')+'</td>';
+    h+='<td>'+(x.componente||'—')+'</td>';
+    h+='<td>'+consumidoLbl+' ('+fN(x.percentualNaTroca)+'%)</td>';
+    h+='<td>'+vidaLbl+'</td>';
+    h+='<td>'+(x.motivo||'—')+'</td>';
+    h+='<td>'+(x.responsavelNome||x.responsavelLogin||'—')+'</td>';
+    h+='</tr>';
+  });
+  G('vu-hist-corpo').innerHTML=h;
+}
+
+// ---------- GERAÇÃO DE ORDEM DE MANUTENÇÃO ----------
+function vuGerarOM(fbKey){
+  var c=VU_COMPONENTES_CACHE.find(function(x){return x.fbKey===fbKey;});
+  if(!c) return;
+  DB.ref('manutencao_os').orderByChild('componenteFbKey').equalTo(fbKey).once('value').then(function(s){
+    var jaAberta=false;
+    if(s.exists()) s.forEach(function(x){ var v=x.val(); if(v.status!=='finalizada') jaAberta=true; });
+    if(jaAberta){ toast('Já existe uma Ordem de Manutenção aberta para este componente','err'); return; }
+    var k=c._calc||{};
+    var consumidoTxt=c.criterio==='dias'?fN(k.diasDecorridos)+' de '+fN(c.vidaUtilDias)+' dias':
+                      c.criterio==='toneladas'?fN(k.toneladasAcumuladas,1)+' de '+fN(c.vidaUtilToneladas,1)+' t':
+                      fN(k.diasDecorridos)+'d/'+fN(c.vidaUtilDias)+'d — '+fN(k.toneladasAcumuladas,1)+'t/'+fN(c.vidaUtilToneladas,1)+'t';
+    var dados={
+      origem:'vida_util',
+      componenteFbKey:fbKey,
+      setor:'manutencao',
+      linha:c.equipamento,
+      motivo:'Vida útil — '+c.componente,
+      descricao:'Troca programada por vida útil. Instalado em '+fmtDataBR(c.dataTroca)+'. Consumido: '+consumidoTxt+' ('+fN(Math.min(100,k.percentual||0))+'%).',
+      solicitanteLogin:SES.login,
+      solicitanteNome:SES.nome||SES.login,
+      dataAbertura:hoje(),
+      horaAbertura:horaAtual(),
+      aberturaTs:agora(),
+      status:'aberta'
+    };
+    DB.ref('manutencao_os').push(dados).then(function(){
+      toast('Ordem de Manutenção gerada!','ok');
+    }).catch(function(e){toast('Erro: '+e.message,'err');});
   }).catch(function(e){toast('Erro: '+e.message,'err');});
 }
 
