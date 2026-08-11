@@ -186,6 +186,7 @@ table.pt input{padding:6px 8px;font-size:12px}
     <div class="ubar">
       <div class="av" id="av-ini">?</div>
       <span id="nome-user">—</span>
+      <button class="btn bsm" onclick="abrirMigracaoModal()" style="background:rgba(255,255,255,.15);color:#fff;border:none">🔧 Migração</button>
       <button class="btn bsm" onclick="doLogout()" style="background:rgba(255,255,255,.15);color:#fff;border:none">Sair</button>
     </div>
   </div>
@@ -214,6 +215,7 @@ table.pt input{padding:6px 8px;font-size:12px}
         <div id="ficha-skus"></div>
       </div>
 
+      <div id="ficha-linha-tabs"></div>
       <div id="banner-versao-antiga"></div>
 
       <div class="card">
@@ -237,12 +239,13 @@ table.pt input{padding:6px 8px;font-size:12px}
   <div class="modal">
     <div class="mh">📄 Nova Ficha Técnica</div>
     <div class="fld"><label>Nome do produto</label><input id="nf-nome"></div>
-    <div class="fld"><label>Linha padrão</label>
+    <div class="fld"><label>Linha de produção (cria a primeira ficha de processo desta linha)</label>
       <select id="nf-linha">
         <option value="">—</option>
         <option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option>
         <option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option>
       </select>
+      <div class="hint">Depois é possível adicionar outras linhas ao mesmo produto.</div>
     </div>
     <div class="fld">
       <label>Códigos de SKU vinculados</label>
@@ -262,13 +265,6 @@ table.pt input{padding:6px 8px;font-size:12px}
   <div class="modal">
     <div class="mh">🔗 Vínculos de SKU — <span id="vinc-nome-tit"></span></div>
     <div class="fld"><label>Nome do produto</label><input id="vinc-nome"></div>
-    <div class="fld"><label>Linha padrão</label>
-      <select id="vinc-linha">
-        <option value="">—</option>
-        <option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option>
-        <option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option>
-      </select>
-    </div>
     <div class="fld">
       <label>Códigos de SKU vinculados</label>
       <input id="vc-cat-busca" placeholder="Buscar código ou descrição..." oninput="renderCatalogoBusca('vc')">
@@ -278,6 +274,34 @@ table.pt input{padding:6px 8px;font-size:12px}
     <div class="mr">
       <button class="btn bfw" onclick="fM('ov-vinculos')">Cancelar</button>
       <button class="btn bp bfw" onclick="salvarVinculos()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ADICIONAR LINHA -->
+<div class="ov" id="ov-add-linha">
+  <div class="modal">
+    <div class="mh">➕ Adicionar Linha de Produção</div>
+    <div class="fld"><label>Linha</label><select id="al-linha"><option value="">—</option></select></div>
+    <div class="hint">Cria uma ficha de processo nova e independente para esta linha (histórico de revisões próprio).</div>
+    <div class="mr">
+      <button class="btn bfw" onclick="fM('ov-add-linha')">Cancelar</button>
+      <button class="btn bp bfw" onclick="salvarNovaLinha()">Adicionar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL MIGRAÇÃO DE DADOS ANTIGOS -->
+<div class="ov" id="ov-migracao">
+  <div class="modal wide">
+    <div class="mh">🔧 Migração de Fichas — Formato Antigo → Por Linha</div>
+    <div class="hint" style="margin-bottom:10px">Fichas criadas antes da separação por linha. Escolha para qual linha cada uma deve ir (usamos a "linha padrão" antiga como sugestão quando reconhecida). Simule antes de aplicar — nada é gravado até você confirmar.</div>
+    <div id="migr-lista"></div>
+    <div id="migr-resultado" style="margin-top:10px"></div>
+    <div class="mr">
+      <button class="btn bfw" onclick="fM('ov-migracao')">Fechar</button>
+      <button class="btn bo bfw" onclick="simularMigracao()">Simular</button>
+      <button class="btn br bfw" onclick="aplicarMigracao()">Aplicar migração</button>
     </div>
   </div>
 </div>
@@ -313,7 +337,25 @@ var DB = firebase.database();
 // GLOBAIS
 // ============================================================
 var SES = null;
-var SECOES_META = [
+
+// ============================================================
+// LINHAS — cada linha tem seu proprio formato de secoes e template
+// encId() replica o mesmo padrao de normalizacao usado em extrusao.html
+// (extrusao_op_ativa/{encId(linha)}/...) para manter chaves consistentes
+// entre modulos.
+// ============================================================
+function encId(s){return String(s||"").replace(/[^a-zA-Z0-9]/g,"_");}
+var LINHAS = ["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
+
+// --- Estrutura de secoes: Ferraz (L1/L2) tem 5 secoes; Andritz (L4/L5) tem 6 ---
+var SECOES_FERRAZ = [
+  {key:"parametrosMaquina", label:"Parâmetros de Máquina", icone:"⚙️"},
+  {key:"condicionador",     label:"Condicionador",         icone:"💧"},
+  {key:"telaPrincipal",     label:"Tela Principal",        icone:"🖥️"},
+  {key:"secador",           label:"Secador",               icone:"🔥"},
+  {key:"misturadorVC",      label:"Misturador VC",         icone:"🧪"}
+];
+var SECOES_ANDRITZ = [
   {key:"parametrosMaquina", label:"Parâmetros de Máquina", icone:"⚙️"},
   {key:"preCondicionador",  label:"Pré-condicionador",     icone:"💧"},
   {key:"motorPrincipal",    label:"Motor Principal",       icone:"🔌"},
@@ -321,9 +363,76 @@ var SECOES_META = [
   {key:"secagem",           label:"Secagem",               icone:"🔥"},
   {key:"misturadorVC",      label:"Misturador VC",         icone:"🧪"}
 ];
-// Template padrão — rótulo e unidade travados na tela de edição (só o valor é digitado).
-// Pode sempre adicionar campos extras livres além destes, ou restaurar o padrão se remover algum.
-var TEMPLATE_PADRAO = {
+
+// --- Templates padrao por linha — rotulo/unidade travados na edicao (so o valor e digitado) ---
+var TEMPLATE_L1 = {
+  parametrosMaquina: [
+    {label:"Nome da matriz",   unidade:""},
+    {label:"Mancal",           unidade:""},
+    {label:"Produtividade",    unidade:"kg/h"}
+  ],
+  condicionador: [
+    {label:"Água condicionador", unidade:"l/h"},
+    {label:"Água",               unidade:"%"},
+    {label:"Vapor",              unidade:"%"}
+  ],
+  telaPrincipal: [
+    {label:"Alimentador",  unidade:"Hz"},
+    {label:"Condicionador",unidade:"%"},
+    {label:"Extrusora",    unidade:"%"},
+    {label:"Faca",         unidade:"%"},
+    {label:"Amperagem",    unidade:"A"}
+  ],
+  secador: [
+    {label:"Temp. Zona 1", unidade:"°C"},
+    {label:"Temp. Zona 2", unidade:"°C"},
+    {label:"Temp. Zona 3", unidade:"°C"},
+    {label:"Temp. Zona 4", unidade:"°C"},
+    {label:"Temp. Zona 5", unidade:"°C"},
+    {label:"Temp. Zona 6", unidade:"°C"},
+    {label:"Tempo de retenção — Zona 1 a 3", unidade:"Hz"},
+    {label:"Tempo de retenção — Zona 4 a 6", unidade:"Hz"}
+  ],
+  misturadorVC: [
+    {label:"Sólidos",             unidade:"kg"},
+    {label:"Vísceras",            unidade:"%"},
+    {label:"Tempo de mistura",    unidade:"seg"}
+  ]
+};
+var TEMPLATE_L2 = {
+  parametrosMaquina: [
+    {label:"Nome da matriz",   unidade:""},
+    {label:"Mancal",           unidade:""},
+    {label:"Produtividade",    unidade:"kg/h"}
+  ],
+  condicionador: [
+    {label:"Água condicionador", unidade:"l/h"},
+    {label:"Água",               unidade:"%"},
+    {label:"Vapor",              unidade:"%"}
+  ],
+  telaPrincipal: [
+    {label:"Alimentador",  unidade:"Hz"},
+    {label:"Condicionador",unidade:"%"},
+    {label:"Extrusora",    unidade:"%"},
+    {label:"Faca",         unidade:"%"},
+    {label:"Amperagem",    unidade:"A"}
+  ],
+  secador: [
+    {label:"Temp. Zona 1", unidade:"°C"},
+    {label:"Temp. Zona 2", unidade:"°C"},
+    {label:"Temp. Zona 3", unidade:"°C"},
+    {label:"Temp. Zona 4", unidade:"°C"},
+    {label:"Tempo de retenção — Zona 1 e 2", unidade:"Hz"},
+    {label:"Tempo de retenção — Zona 3 e 4", unidade:"Hz"}
+  ],
+  misturadorVC: [
+    {label:"Sólidos",             unidade:"kg"},
+    {label:"Vísceras",            unidade:"%"},
+    {label:"Tempo de mistura",    unidade:"seg"}
+  ]
+};
+// Andritz (L4/L5) — template original do sistema, inalterado por decisao do usuario.
+var TEMPLATE_ANDRITZ = {
   parametrosMaquina: [
     {label:"Matriz",                unidade:""},
     {label:"Venturi",               unidade:"mm"},
@@ -373,6 +482,17 @@ var TEMPLATE_PADRAO = {
     {label:"Temperatura Tanque de óleo", unidade:"°C"}
   ]
 };
+
+var SECOES_META_POR_LINHA = {};
+var TEMPLATE_PADRAO_POR_LINHA = {};
+SECOES_META_POR_LINHA[encId("Linha 1 (E-240)")]     = SECOES_FERRAZ;
+SECOES_META_POR_LINHA[encId("Linha 2 (E-200)")]     = SECOES_FERRAZ;
+SECOES_META_POR_LINHA[encId("Linha 4 (Andritz I)")] = SECOES_ANDRITZ;
+SECOES_META_POR_LINHA[encId("Linha 5 (Andritz II)")]= SECOES_ANDRITZ;
+TEMPLATE_PADRAO_POR_LINHA[encId("Linha 1 (E-240)")]     = TEMPLATE_L1;
+TEMPLATE_PADRAO_POR_LINHA[encId("Linha 2 (E-200)")]     = TEMPLATE_L2;
+TEMPLATE_PADRAO_POR_LINHA[encId("Linha 4 (Andritz I)")] = TEMPLATE_ANDRITZ;
+TEMPLATE_PADRAO_POR_LINHA[encId("Linha 5 (Andritz II)")]= TEMPLATE_ANDRITZ;
 var QUAL_CAMPOS = [
   {k:"umidMin",l:"Umidade Mín"},{k:"umidMax",l:"Umidade Máx"},
   {k:"awMin",l:"AW Mín"},{k:"awMax",l:"AW Máx"},
@@ -391,7 +511,10 @@ var FICHAS = {};          // id -> objeto completo carregado do Firebase (dadosG
 var VINCULADOS_SET = {};  // cod -> id da ficha que já usa esse cod (p/ evitar vínculo duplicado)
 var QUAL_CACHE = {};      // cod -> qualidade_params[cod] (ou null se ausente)
 var FICHA_ATUAL = null;   // id da ficha aberta
+var LINHA_ATUAL = null;   // encId(linha) sendo exibida dentro da ficha aberta
 var VERSAO_VISTA = null;  // fbKey da versão sendo exibida (pode não ser a mais atual)
+var MIGR_ALVO = {};       // id ficha antiga -> nome de linha escolhido na migração
+var MIGR_SIMULADO = false;
 var CAT_SEL_NOVA = {};    // seleção temporária de códigos no modal nova ficha
 var CAT_SEL_VINC = {};    // seleção temporária de códigos no modal editar vínculos
 var EDIT_SECOES = null;   // cópia de trabalho das seções durante edição de nova revisão
@@ -477,6 +600,14 @@ function reconstruirIndiceVinculos(){
     }
   });
 }
+// Conta linhas cadastradas e total de revisões de uma ficha (novo formato).
+// Fichas no formato antigo (versoes direto, sem linhas) retornam nLinhas=0 e legado=true.
+function contarInfo(f){
+  var linhas=f.linhas||{};
+  var chaves=Object.keys(linhas);
+  var nVersoesTotal=chaves.reduce(function(s,lk){return s+Object.keys((linhas[lk]&&linhas[lk].versoes)||{}).length;},0);
+  return {nLinhas:chaves.length, nVersoesTotal:nVersoesTotal, legado: !chaves.length && !!f.versoes};
+}
 
 // ============================================================
 // BUSCA — combina fichas já cadastradas + catálogo de SKUs sem ficha
@@ -501,11 +632,14 @@ function renderResultadosBusca(termo){
   var h='';
   achFichas.forEach(function(id){
     var f=FICHAS[id];
-    var nVersoes=f.versoes?Object.keys(f.versoes).length:0;
+    var info=contarInfo(f);
     var nSkus=f.skusVinculados?Object.keys(f.skusVinculados).length:0;
+    var subTxt = info.legado
+      ? '⚠ formato antigo — precisa migrar'
+      : nSkus+' SKU(s) vinculado(s) · '+info.nLinhas+' linha(s) · '+info.nVersoesTotal+' revisão(ões)';
     h+='<div class="res-item" onclick="abrirFicha(\''+id+'\')">'+
        '<div><div class="res-nome">📄 '+esc(f.nome)+'</div>'+
-       '<div class="res-sub">'+nSkus+' SKU(s) vinculado(s) · '+nVersoes+' revisão(ões)</div></div>'+
+       '<div class="res-sub">'+subTxt+'</div></div>'+
        '<div class="res-badge">FICHA</div></div>';
   });
   achCatalogo.forEach(function(m){
@@ -574,9 +708,26 @@ function abrirNovaFichaModal(codPre){
   renderSelecionados('nf');
   aM('ov-nova-ficha');
 }
+// Cria a estrutura de uma linha dentro de uma ficha (produto): 1ª versão vazia,
+// já com as seções corretas conforme o formato daquela linha (Ferraz ou Andritz).
+function criarLinhaFicha(produtoId, linhaNome){
+  var lk=encId(linhaNome);
+  var secoesMeta=SECOES_META_POR_LINHA[lk]||SECOES_ANDRITZ;
+  var secoesVazias={};
+  secoesMeta.forEach(function(s){secoesVazias[s.key]=[];});
+  var vRef=DB.ref('fichas_tecnicas/'+produtoId+'/linhas/'+lk+'/versoes').push();
+  var versaoInicial={numero:1, criadoEm:agora(), criadoPor:SES.nome||SES.login, observacoes:'', secoes:secoesVazias};
+  return vRef.set(versaoInicial).then(function(){
+    return DB.ref('fichas_tecnicas/'+produtoId+'/linhas/'+lk).update({nomeLinha:linhaNome, versaoAtualKey:vRef.key});
+  }).then(function(){
+    return {lk:lk, nomeLinha:linhaNome, versaoKey:vRef.key, versaoInicial:versaoInicial};
+  });
+}
 function salvarNovaFicha(){
   var nome=G('nf-nome').value.trim();
   if(!nome){ toast('Informe o nome do produto','err'); return; }
+  var linhaNome=G('nf-linha').value;
+  if(!linhaNome){ toast('Selecione a linha de produção desta ficha','err'); return; }
   var codigos=Object.keys(CAT_SEL_NOVA);
   if(!codigos.length){ toast('Vincule ao menos um código de SKU','err'); return; }
   var conflito=codigos.find(function(c){return VINCULADOS_SET[c];});
@@ -587,29 +738,46 @@ function salvarNovaFicha(){
 
   ld(true,'Criando ficha...');
   var novaRef=DB.ref('fichas_tecnicas').push();
-  var dados={
-    nome:nome,
-    linhaPadrao:G('nf-linha').value||'',
-    skusVinculados:skusVinculados
-  };
+  var dados={ nome:nome, skusVinculados:skusVinculados };
   novaRef.update(dados).then(function(){
-    var vRef=novaRef.child('versoes').push();
-    var secoesVazias={};
-    SECOES_META.forEach(function(s){secoesVazias[s.key]=[];});
-    return vRef.set({
-      numero:1, criadoEm:agora(), criadoPor:SES.nome||SES.login,
-      observacoes:'', secoes:secoesVazias
-    }).then(function(){
-      return novaRef.update({versaoAtualKey:vRef.key});
-    }).then(function(){ return {id:novaRef.key, dados:dados, versaoKey:vRef.key, secoesVazias:secoesVazias}; });
+    return criarLinhaFicha(novaRef.key, linhaNome);
   }).then(function(r){
-    FICHAS[r.id]=Object.assign({}, r.dados, {versaoAtualKey:r.versaoKey, versoes:{}});
-    FICHAS[r.id].versoes[r.versaoKey]={numero:1,criadoEm:agora(),criadoPor:SES.nome||SES.login,observacoes:'',secoes:r.secoesVazias};
+    FICHAS[novaRef.key]=Object.assign({}, dados, {linhas:{}});
+    FICHAS[novaRef.key].linhas[r.lk]={nomeLinha:r.nomeLinha, versaoAtualKey:r.versaoKey, versoes:{}};
+    FICHAS[novaRef.key].linhas[r.lk].versoes[r.versaoKey]=r.versaoInicial;
     reconstruirIndiceVinculos();
     ld(false);
     fM('ov-nova-ficha');
     toast('Ficha criada! Agora cadastre os parâmetros de máquina.','ok');
-    abrirFicha(r.id);
+    abrirFicha(novaRef.key);
+    setTimeout(function(){abrirEdicaoModal();},300);
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+// Adiciona mais uma linha de produção a um produto que já existe
+// (ex: produto cadastrado na Linha 5 e agora também vai rodar na Linha 1).
+function abrirAddLinhaModal(){
+  if(!FICHA_ATUAL) return;
+  var f=FICHAS[FICHA_ATUAL];
+  var jaTem=Object.keys(f.linhas||{});
+  var disponiveis=LINHAS.filter(function(l){return jaTem.indexOf(encId(l))<0;});
+  if(!disponiveis.length){ toast('Este produto já tem ficha cadastrada em todas as linhas','info'); return; }
+  var opts='<option value="">—</option>'+disponiveis.map(function(l){return '<option>'+esc(l)+'</option>';}).join('');
+  G('al-linha').innerHTML=opts;
+  aM('ov-add-linha');
+}
+function salvarNovaLinha(){
+  var linhaNome=G('al-linha').value;
+  if(!linhaNome){ toast('Selecione a linha','err'); return; }
+  ld(true,'Adicionando linha...');
+  criarLinhaFicha(FICHA_ATUAL, linhaNome).then(function(r){
+    var f=FICHAS[FICHA_ATUAL];
+    if(!f.linhas) f.linhas={};
+    f.linhas[r.lk]={nomeLinha:r.nomeLinha, versaoAtualKey:r.versaoKey, versoes:{}};
+    f.linhas[r.lk].versoes[r.versaoKey]=r.versaoInicial;
+    ld(false);
+    fM('ov-add-linha');
+    toast('Linha adicionada! Agora cadastre os parâmetros de máquina.','ok');
+    trocarLinha(r.lk);
     setTimeout(function(){abrirEdicaoModal();},300);
   }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
 }
@@ -624,7 +792,6 @@ function abrirVinculosModal(){
   Object.keys(f.skusVinculados||{}).forEach(function(c){CAT_SEL_VINC[c]=true;});
   G('vinc-nome-tit').textContent=f.nome;
   G('vinc-nome').value=f.nome;
-  G('vinc-linha').value=f.linhaPadrao||'';
   G('vc-cat-busca').value='';
   G('vc-cat-res').innerHTML='';
   renderSelecionados('vc');
@@ -643,10 +810,9 @@ function salvarVinculos(){
 
   ld(true,'Salvando vínculos...');
   DB.ref('fichas_tecnicas/'+FICHA_ATUAL).update({
-    nome:nome, linhaPadrao:G('vinc-linha').value||'', skusVinculados:skusVinculados
+    nome:nome, skusVinculados:skusVinculados
   }).then(function(){
     FICHAS[FICHA_ATUAL].nome=nome;
-    FICHAS[FICHA_ATUAL].linhaPadrao=G('vinc-linha').value||'';
     FICHAS[FICHA_ATUAL].skusVinculados=skusVinculados;
     reconstruirIndiceVinculos();
     ld(false);
@@ -663,11 +829,19 @@ function salvarVinculos(){
 function abrirFicha(id){
   FICHA_ATUAL=id;
   var f=FICHAS[id];
-  VERSAO_VISTA = f.versaoAtualKey;
+  var chaves=Object.keys(f.linhas||{});
+  if(chaves.length){
+    LINHA_ATUAL=chaves[0];
+    VERSAO_VISTA=f.linhas[LINHA_ATUAL].versaoAtualKey;
+  } else {
+    LINHA_ATUAL=null;
+    VERSAO_VISTA=null;
+  }
   G('busca-produto').value='';
   G('busca-res').innerHTML='';
   G('ficha-wrap').style.display='block';
   renderFichaHeader();
+  renderLinhaTabs();
   trocarTab('params');
   renderParams();
   renderQualidade();
@@ -676,20 +850,55 @@ function abrirFicha(id){
 }
 function fecharFicha(){
   FICHA_ATUAL=null;
+  LINHA_ATUAL=null;
   VERSAO_VISTA=null;
   G('ficha-wrap').style.display='none';
 }
 function renderFichaHeader(){
   var f=FICHAS[FICHA_ATUAL];
-  G('ficha-nome-tit').textContent=f.nome + (f.linhaPadrao?' — '+f.linhaPadrao:'');
+  G('ficha-nome-tit').textContent=f.nome;
   var codigos=Object.keys(f.skusVinculados||{});
   G('ficha-skus').innerHTML = codigos.length
     ? codigos.map(function(c){return '<span class="chip">'+esc(c)+'</span>';}).join('')
     : '<span class="hint">Nenhum código vinculado — use "Vínculos de SKU".</span>';
 }
+// Abas de linha — mostra cada linha de produção já cadastrada para este produto
+// + botão para adicionar outra. Fichas no formato antigo (não migradas) mostram aviso.
+function renderLinhaTabs(){
+  var f=FICHAS[FICHA_ATUAL];
+  var box=G('ficha-linha-tabs');
+  var linhas=f.linhas||{};
+  var chaves=Object.keys(linhas);
+  if(!chaves.length){
+    box.innerHTML = f.versoes
+      ? '<div class="alerta">⚠ Esta ficha está no formato antigo (sem linha definida). Rode a migração (botão no topo) para continuar editando.</div>'
+      : '<div class="alerta">⚠ Nenhuma linha cadastrada ainda para este produto. <button class="btn bsm bg2" onclick="abrirAddLinhaModal()">+ Adicionar linha</button></div>';
+    return;
+  }
+  var h='<div class="tabs" style="margin-bottom:14px">';
+  chaves.forEach(function(k){
+    var nomeL=(linhas[k]&&linhas[k].nomeLinha)||k;
+    h+='<div class="tab'+(k===LINHA_ATUAL?' on':'')+'" onclick="trocarLinha(\''+k+'\')">🏭 '+esc(nomeL)+'</div>';
+  });
+  h+='<div class="tab" style="color:#739630" onclick="abrirAddLinhaModal()">+ linha</div>';
+  h+='</div>';
+  box.innerHTML=h;
+}
+function trocarLinha(k){
+  var f=FICHAS[FICHA_ATUAL];
+  if(!f.linhas || !f.linhas[k]) return;
+  LINHA_ATUAL=k;
+  VERSAO_VISTA=f.linhas[k].versaoAtualKey;
+  renderLinhaTabs();
+  trocarTab('params');
+  renderParams();
+  renderHistorico();
+  atualizarBannerVersaoAntiga();
+}
 function versaoSendoVista(){
   var f=FICHAS[FICHA_ATUAL];
-  return (f.versoes||{})[VERSAO_VISTA] || null;
+  if(!f || !LINHA_ATUAL || !f.linhas || !f.linhas[LINHA_ATUAL]) return null;
+  return (f.linhas[LINHA_ATUAL].versoes||{})[VERSAO_VISTA] || null;
 }
 function trocarTab(tab){
   document.querySelectorAll('.tab').forEach(function(el){el.classList.toggle('on',el.dataset.tab===tab);});
@@ -703,9 +912,11 @@ function trocarTab(tab){
 function renderParams(){
   var v=versaoSendoVista();
   var box=G('pane-params');
+  if(!LINHA_ATUAL){ box.innerHTML='<div class="vazio">Selecione ou adicione uma linha de produção para ver os parâmetros.</div>'; return; }
   if(!v){ box.innerHTML='<div class="vazio">Nenhuma versão cadastrada ainda. Clique em "Nova revisão".</div>'; return; }
+  var secoesMeta=SECOES_META_POR_LINHA[LINHA_ATUAL]||SECOES_ANDRITZ;
   var h='';
-  SECOES_META.forEach(function(sm){
+  secoesMeta.forEach(function(sm){
     var linhas=(v.secoes&&v.secoes[sm.key])||[];
     h+='<div style="margin-bottom:20px"><div class="sec-h">'+(sm.icone||'')+' '+sm.label+'</div>';
     if(!linhas.length){
@@ -796,16 +1007,22 @@ function montarPainelQualidade(codigos){
 // ============================================================
 // HISTÓRICO DE REVISÕES
 // ============================================================
+function linhaAtualObj(){
+  var f=FICHAS[FICHA_ATUAL];
+  if(!f || !LINHA_ATUAL || !f.linhas) return null;
+  return f.linhas[LINHA_ATUAL] || null;
+}
 function renderHistorico(){
   var box=G('pane-hist');
-  var f=FICHAS[FICHA_ATUAL];
-  var versoes=f.versoes||{};
+  var lo=linhaAtualObj();
+  if(!lo){ box.innerHTML='<div class="vazio">Selecione uma linha de produção.</div>'; return; }
+  var versoes=lo.versoes||{};
   var lista=Object.keys(versoes).map(function(k){return Object.assign({fbKey:k},versoes[k]);});
   lista.sort(function(a,b){return (b.numero||0)-(a.numero||0);});
   if(!lista.length){ box.innerHTML='<div class="vazio">Nenhuma revisão cadastrada ainda.</div>'; return; }
   var h='';
   lista.forEach(function(v){
-    var atual=v.fbKey===f.versaoAtualKey;
+    var atual=v.fbKey===lo.versaoAtualKey;
     var vista=v.fbKey===VERSAO_VISTA;
     h+='<div class="hist-row'+(vista?' on':'')+'" onclick="verVersao(\''+v.fbKey+'\')">'+
        '<div class="hist-num">#'+v.numero+'</div>'+
@@ -824,10 +1041,10 @@ function verVersao(fbKey){
   trocarTab('params');
 }
 function atualizarBannerVersaoAntiga(){
-  var f=FICHAS[FICHA_ATUAL];
+  var lo=linhaAtualObj();
   var b=G('banner-versao-antiga');
-  if(VERSAO_VISTA && VERSAO_VISTA!==f.versaoAtualKey){
-    var v=f.versoes[VERSAO_VISTA];
+  if(lo && VERSAO_VISTA && VERSAO_VISTA!==lo.versaoAtualKey){
+    var v=lo.versoes[VERSAO_VISTA];
     b.innerHTML='<div class="banner-antiga">📌 Você está vendo a revisão #'+(v?v.numero:'?')+' (não é a versão atual — somente consulta).'+
       '<button class="btn bsm" onclick="voltarVersaoAtual()">Voltar para versão atual</button></div>';
   } else {
@@ -835,7 +1052,9 @@ function atualizarBannerVersaoAntiga(){
   }
 }
 function voltarVersaoAtual(){
-  VERSAO_VISTA=FICHAS[FICHA_ATUAL].versaoAtualKey;
+  var lo=linhaAtualObj();
+  if(!lo) return;
+  VERSAO_VISTA=lo.versaoAtualKey;
   renderParams(); renderHistorico(); atualizarBannerVersaoAntiga();
 }
 
@@ -844,10 +1063,12 @@ function voltarVersaoAtual(){
 // ============================================================
 function abrirEdicaoModal(){
   if(!FICHA_ATUAL) return;
-  var f=FICHAS[FICHA_ATUAL];
-  var atual=f.versaoAtualKey ? f.versoes[f.versaoAtualKey] : null;
+  var lo=linhaAtualObj();
+  if(!lo){ toast('Adicione uma linha de produção antes de lançar parâmetros','err'); return; }
+  var secoesMeta=SECOES_META_POR_LINHA[LINHA_ATUAL]||SECOES_ANDRITZ;
+  var atual=lo.versaoAtualKey ? lo.versoes[lo.versaoAtualKey] : null;
   EDIT_SECOES={};
-  SECOES_META.forEach(function(sm){
+  secoesMeta.forEach(function(sm){
     var base=(atual&&atual.secoes&&atual.secoes[sm.key])||[];
     if(base.length){
       EDIT_SECOES[sm.key]=base.map(function(r){return Object.assign({fixo:false},r);});
@@ -856,21 +1077,22 @@ function abrirEdicaoModal(){
       EDIT_SECOES[sm.key]=clonarTemplate(sm.key);
     }
   });
-  G('ed-nome-tit').textContent=f.nome;
+  G('ed-nome-tit').textContent=FICHAS[FICHA_ATUAL].nome+' — '+(lo.nomeLinha||LINHA_ATUAL);
   G('ed-obs').value='';
 
   var tabsH='', panesH='';
-  SECOES_META.forEach(function(sm,i){
+  secoesMeta.forEach(function(sm,i){
     tabsH+='<div class="tab'+(i===0?' on':'')+'" data-edtab="'+sm.key+'" onclick="trocarEdTab(\''+sm.key+'\')">'+(sm.icone||'')+' '+sm.label+'</div>';
     panesH+='<div class="tabpane'+(i===0?' on':'')+'" id="edpane-'+sm.key+'"></div>';
   });
   G('ed-tabs').innerHTML=tabsH;
   G('ed-panes').innerHTML=panesH;
-  SECOES_META.forEach(function(sm){renderEdSecao(sm.key);});
+  secoesMeta.forEach(function(sm){renderEdSecao(sm.key);});
   aM('ov-edicao');
 }
 function clonarTemplate(key){
-  var tpl=TEMPLATE_PADRAO[key]||[];
+  var tplLinha=TEMPLATE_PADRAO_POR_LINHA[LINHA_ATUAL]||{};
+  var tpl=tplLinha[key]||[];
   return tpl.map(function(t){return {label:t.label, unidade:t.unidade, valor:'', tolerancia:'', fixo:true};});
 }
 function trocarEdTab(key){
@@ -897,7 +1119,8 @@ function renderEdSecao(key){
        '<span class="prow-rm" onclick="edRemoveLinha(\''+key+'\','+i+')" title="Remover">×</span>'+
        '</div>';
   });
-  var temTemplate = TEMPLATE_PADRAO[key] && TEMPLATE_PADRAO[key].length;
+  var tplLinha=TEMPLATE_PADRAO_POR_LINHA[LINHA_ATUAL]||{};
+  var temTemplate = tplLinha[key] && tplLinha[key].length;
   h+='<div class="sec-actions">'+
      '<button class="btn bsm" onclick="edAddLinha(\''+key+'\')">+ Adicionar parâmetro</button>'+
      (temTemplate?'<button class="btn bsm" onclick="edRestaurarPadrao(\''+key+'\')">↺ Restaurar padrão</button>':'')+
@@ -915,7 +1138,8 @@ function edRemoveLinha(key,i){
 }
 function edRestaurarPadrao(key){
   if(!confirm('Isso adiciona de volta os campos padrão desta seção que foram removidos (mantém os valores já preenchidos e os campos extras). Continuar?')) return;
-  var tpl=TEMPLATE_PADRAO[key]||[];
+  var tplLinha=TEMPLATE_PADRAO_POR_LINHA[LINHA_ATUAL]||{};
+  var tpl=tplLinha[key]||[];
   var existentesLabels=EDIT_SECOES[key].map(function(r){return r.label;});
   tpl.forEach(function(t){
     if(existentesLabels.indexOf(t.label)<0){
@@ -925,43 +1149,120 @@ function edRestaurarPadrao(key){
   renderEdSecao(key);
 }
 function salvarNovaRevisao(){
-  var f=FICHAS[FICHA_ATUAL];
+  var lo=linhaAtualObj();
+  if(!lo){ toast('Nenhuma linha selecionada','err'); return; }
+  var secoesMeta=SECOES_META_POR_LINHA[LINHA_ATUAL]||SECOES_ANDRITZ;
   // Mantém campos padrão mesmo vazios (fazem parte da estrutura da ficha);
   // descarta campos extras que ficaram totalmente em branco.
   var secoesLimpas={};
-  SECOES_META.forEach(function(sm){
+  secoesMeta.forEach(function(sm){
     secoesLimpas[sm.key]=EDIT_SECOES[sm.key].filter(function(r){
       return r.fixo || (r.label&&r.label.trim()) || (r.valor&&String(r.valor).trim());
     });
   });
-  var totalPreenchidas=SECOES_META.reduce(function(s,sm){
+  var totalPreenchidas=secoesMeta.reduce(function(s,sm){
     return s+secoesLimpas[sm.key].filter(function(r){return r.valor&&String(r.valor).trim();}).length;
   },0);
   if(totalPreenchidas===0){ toast('Preencha ao menos um valor antes de salvar','err'); return; }
 
   var proximoNumero=1;
-  if(f.versoes){
-    proximoNumero=1+Object.values(f.versoes).reduce(function(m,v){return Math.max(m,v.numero||0);},0);
+  if(lo.versoes){
+    proximoNumero=1+Object.values(lo.versoes).reduce(function(m,v){return Math.max(m,v.numero||0);},0);
   }
 
   ld(true,'Salvando revisão...');
-  var vRef=DB.ref('fichas_tecnicas/'+FICHA_ATUAL+'/versoes').push();
+  var vRef=DB.ref('fichas_tecnicas/'+FICHA_ATUAL+'/linhas/'+LINHA_ATUAL+'/versoes').push();
   var novaVersao={
     numero:proximoNumero, criadoEm:agora(), criadoPor:SES.nome||SES.login,
     observacoes:G('ed-obs').value.trim(), secoes:secoesLimpas
   };
   vRef.set(novaVersao).then(function(){
-    return DB.ref('fichas_tecnicas/'+FICHA_ATUAL).update({versaoAtualKey:vRef.key});
+    return DB.ref('fichas_tecnicas/'+FICHA_ATUAL+'/linhas/'+LINHA_ATUAL).update({versaoAtualKey:vRef.key});
   }).then(function(){
-    if(!f.versoes) f.versoes={};
-    f.versoes[vRef.key]=novaVersao;
-    f.versaoAtualKey=vRef.key;
+    if(!lo.versoes) lo.versoes={};
+    lo.versoes[vRef.key]=novaVersao;
+    lo.versaoAtualKey=vRef.key;
     VERSAO_VISTA=vRef.key;
     ld(false);
     fM('ov-edicao');
     toast('Revisão #'+proximoNumero+' salva!','ok');
-    renderParams(); renderHistorico(); atualizarBannerVersaoAntiga();
+    renderLinhaTabs(); renderParams(); renderHistorico(); atualizarBannerVersaoAntiga();
   }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
+// ============================================================
+// MIGRAÇÃO — fichas antigas (versoes direto no produto) → linhas/{linha}/versoes
+// Sempre dry-run primeiro ("Simular"), nada é gravado até "Aplicar migração" + confirmação.
+// ============================================================
+function abrirMigracaoModal(){
+  var candidatos=Object.keys(FICHAS).filter(function(id){
+    var f=FICHAS[id];
+    return f.versoes && !f.linhas;
+  });
+  MIGR_ALVO={};
+  MIGR_SIMULADO=false;
+  var box=G('migr-lista');
+  if(!candidatos.length){
+    box.innerHTML='<div class="vazio">Nenhuma ficha no formato antigo encontrada. Nada a migrar.</div>';
+  } else {
+    var h='';
+    candidatos.forEach(function(id){
+      var f=FICHAS[id];
+      var nV=Object.keys(f.versoes).length;
+      var sugestao = LINHAS.indexOf(f.linhaPadrao)>=0 ? f.linhaPadrao : '';
+      MIGR_ALVO[id]=sugestao;
+      h+='<div class="hist-row" style="cursor:default">'+
+         '<div style="flex:1"><b>'+esc(f.nome)+'</b>'+
+         '<div class="hist-meta">'+nV+' revisão(ões) · linha padrão antiga: '+esc(f.linhaPadrao||'—')+'</div></div>'+
+         '<select style="width:230px" onchange="MIGR_ALVO[\''+id+'\']=this.value">'+
+         '<option value=""'+(sugestao?'':' selected')+'>— definir depois (fica pendente) —</option>'+
+         LINHAS.map(function(l){return '<option value="'+esc(l)+'"'+(l===sugestao?' selected':'')+'>'+esc(l)+'</option>';}).join('')+
+         '</select></div>';
+    });
+    box.innerHTML=h;
+  }
+  G('migr-resultado').innerHTML='';
+  aM('ov-migracao');
+}
+function simularMigracao(){
+  var ids=Object.keys(MIGR_ALVO);
+  if(!ids.length){ MIGR_SIMULADO=true; return; }
+  var comLinha=ids.filter(function(id){return MIGR_ALVO[id];});
+  var semLinha=ids.filter(function(id){return !MIGR_ALVO[id];});
+  var h='<div class="alerta alerta-ok">✓ Simulação (nada foi gravado ainda): '+comLinha.length+' ficha(s) serão movidas para a linha selecionada.</div>';
+  if(semLinha.length){
+    h+='<div class="alerta">⚠ '+semLinha.length+' ficha(s) sem linha definida — vão para um bucket "sem linha" e precisam de ajuste manual depois. Selecione uma linha acima para evitar isso.</div>';
+  }
+  G('migr-resultado').innerHTML=h;
+  MIGR_SIMULADO=true;
+}
+function aplicarMigracao(){
+  var ids=Object.keys(MIGR_ALVO);
+  if(!ids.length){ toast('Nada para migrar','info'); return; }
+  if(!MIGR_SIMULADO){ toast('Rode a simulação antes de aplicar','err'); return; }
+  if(!confirm('Isso vai reestruturar '+ids.length+' ficha(s) técnica(s) no banco de dados (Firebase). Confirma a migração?')) return;
+
+  ld(true,'Migrando fichas técnicas...');
+  var updateFinal={};
+  ids.forEach(function(id){
+    var f=FICHAS[id];
+    var alvoNome=MIGR_ALVO[id]||null;
+    var lk = alvoNome ? encId(alvoNome) : '__SEM_LINHA__';
+    updateFinal['fichas_tecnicas/'+id+'/linhas/'+lk+'/nomeLinha'] = alvoNome || '(sem linha definida — ajustar manualmente)';
+    updateFinal['fichas_tecnicas/'+id+'/linhas/'+lk+'/versaoAtualKey'] = f.versaoAtualKey || null;
+    Object.keys(f.versoes||{}).forEach(function(vk){
+      updateFinal['fichas_tecnicas/'+id+'/linhas/'+lk+'/versoes/'+vk] = f.versoes[vk];
+    });
+    updateFinal['fichas_tecnicas/'+id+'/versoes'] = null;
+    updateFinal['fichas_tecnicas/'+id+'/versaoAtualKey'] = null;
+    updateFinal['fichas_tecnicas/'+id+'/linhaPadrao'] = null;
+  });
+  DB.ref().update(updateFinal).then(function(){
+    ld(false);
+    toast('Migração concluída!','ok');
+    fM('ov-migracao');
+    iniciarApp();
+  }).catch(function(e){ ld(false); toast('Erro na migração: '+e.message,'err'); });
 }
 </script>
 </body>
