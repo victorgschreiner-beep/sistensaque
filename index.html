@@ -5176,6 +5176,7 @@ function gerarRelPeriodo(){
     // Botões exportar
     html+='<div style="text-align:right;margin-bottom:20px">';
     html+='<button class="btn" onclick="exportarFamiliasExcel()" style="background:#217346;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;margin-right:8px">📥 Excel Famílias</button>';
+    html+='<button class="btn" onclick="exportarFamiliasPDF()" style="background:#0077b6;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;margin-right:8px">📄 PDF Famílias</button>';
     html+='<button class="btn bp" onclick="exportarRelPeriodoPDF()">↓ Exportar PDF</button>';
     html+='</div>';
 
@@ -5255,6 +5256,159 @@ function gerarRelPeriodo(){
   }).catch(function(e){
     cont.innerHTML='<div style="text-align:center;padding:40px;color:#c0392b">Erro ao calcular relatório: '+e.message+'</div>';
   });
+}
+
+// PDF isolado — somente a seção "Produção por Família" do Relatório por Período
+function exportarFamiliasPDF(){
+  var d=window._relPeriodoData;
+  if(!d){toast('Gere o relatório primeiro','err');return;}
+  if(typeof jspdf==='undefined'){toast('jsPDF não disponível','err');return;}
+
+  var jsPDF=jspdf.jsPDF;
+  var doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  var W=190,ML=10,y=0;
+  function fDt2(dt){return dt?dt.slice(8)+'/'+dt.slice(5,7)+'/'+dt.slice(0,4):'';}
+
+  // Cabeçalho
+  doc.setFillColor(2,79,43); doc.rect(0,0,210,20,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(255,255,255);
+  doc.text('RELATÓRIO DE PRODUÇÃO POR FAMÍLIA',ML,13);
+  doc.setFontSize(8.5); doc.setFont('helvetica','normal'); doc.setTextColor(180,220,180);
+  doc.text('Período: '+fDt2(d.di)+' a '+fDt2(d.df)+(d.ln?' | Linha: '+d.ln:'')+'  |  Emitido: '+new Date().toLocaleString('pt-BR')+'  |  '+(typeof SES!=='undefined'&&SES?SES.nome:''),ML,18);
+  y=28;
+
+  var famT=d.famTotais||{AQUA:0,PET:0,HORSE:0};
+  var totalFam=(famT.AQUA||0)+(famT.PET||0)+(famT.HORSE||0);
+
+  // Cards por família
+  var famCards2=[
+    {l:'AQUA',v:famT.AQUA||0,c:[0,119,182]},
+    {l:'PET',v:famT.PET||0,c:[192,57,43]},
+    {l:'HORSE',v:famT.HORSE||0,c:[138,90,43]}
+  ];
+  var cw3=(W-4)/3;
+  famCards2.forEach(function(f,i){
+    var cx=ML+i*(cw3+2);
+    var pct=totalFam?(f.v/totalFam*100).toFixed(1):'0.0';
+    doc.setFillColor(245,250,245); doc.rect(cx,y,cw3,20,'F');
+    doc.setDrawColor(f.c[0],f.c[1],f.c[2]); doc.rect(cx,y,cw3,20,'S');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(100,130,100);
+    doc.text(f.l,cx+cw3/2,y+5.5,{align:'center'});
+    doc.setFontSize(11); doc.setTextColor(f.c[0],f.c[1],f.c[2]);
+    doc.text(fN(f.v)+' kg',cx+cw3/2,y+12.5,{align:'center'});
+    doc.setFontSize(7.5); doc.setTextColor(90,90,90);
+    doc.text(pct+'% do período',cx+cw3/2,y+17.5,{align:'center'});
+  });
+  y+=26;
+
+  // Gráficos (capturados dos canvases já renderizados na tela)
+  var chartFamEl=document.getElementById('rp-chart-fam');
+  var chartGranEl=document.getElementById('rp-chart-gran');
+  var yAfterCharts=y;
+  if(chartFamEl){
+    try{
+      var imgFam=chartFamEl.toDataURL('image/png',1.0);
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(2,79,43);
+      doc.text('Participação por Família',ML,y+4);
+      doc.addImage(imgFam,'PNG',ML,y+6,85,55);
+      yAfterCharts=Math.max(yAfterCharts,y+66);
+    }catch(e){}
+  }
+  if(chartGranEl){
+    try{
+      var imgGran=chartGranEl.toDataURL('image/png',1.0);
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(2,79,43);
+      doc.text('AQUA — Produção por Granulometria',ML+95,y+4);
+      doc.addImage(imgGran,'PNG',ML+95,y+6,95,55);
+      yAfterCharts=Math.max(yAfterCharts,y+66);
+    }catch(e){}
+  }
+  y=yAfterCharts;
+
+  // Tabela — Detalhamento AQUA por Granulometria
+  var granT=d.granTotais||{};
+  var granKeys2=Object.keys(granT).sort();
+  if(granKeys2.length){
+    if(y>250){doc.addPage();y=15;}
+    doc.setFillColor(2,79,43); doc.rect(ML,y,W,6,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+    doc.text('DETALHAMENTO AQUA POR GRANULOMETRIA',ML+4,y+4.5);
+    y+=7;
+    doc.setFillColor(220,235,220); doc.rect(ML,y,W,6,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(2,79,43);
+    doc.text('GRANULOMETRIA',ML+2,y+4.5); doc.text('TOTAL (KG)',ML+120,y+4.5); doc.text('%',ML+165,y+4.5);
+    y+=7;
+    var kgSemGran2=granT['Sem granulometria identificada']||0;
+    granKeys2.forEach(function(g,j){
+      if(y>280){doc.addPage();y=15;}
+      var v=granT[g];
+      var pct=famT.AQUA?(v/famT.AQUA*100).toFixed(1):'0.0';
+      var semGran=g==='Sem granulometria identificada';
+      if(j%2===0){doc.setFillColor(248,253,248);doc.rect(ML,y-1,W,6.5,'F');}
+      doc.setFont('helvetica','normal'); doc.setFontSize(7);
+      doc.setTextColor(semGran?192:50,semGran?57:50,semGran?43:50);
+      doc.text(String(g),ML+2,y+3.5);
+      doc.setFont('helvetica','bold'); doc.setTextColor(2,79,43);
+      doc.text(fN(v),ML+120,y+3.5);
+      doc.setFont('helvetica','normal'); doc.setTextColor(115,150,48);
+      doc.text(pct+'%',ML+165,y+3.5);
+      y+=6.5;
+    });
+    if(kgSemGran2>0){
+      y+=3;
+      doc.setFont('helvetica','italic'); doc.setFontSize(6.5); doc.setTextColor(192,57,43);
+      doc.text('Atenção: '+fN(kgSemGran2)+' kg sem granulometria identificada na descrição — verificar cadastro dos produtos.',ML,y);
+      y+=5;
+    }
+    y+=4;
+  }
+
+  // Tabela — Detalhamento por Produto (agregado no período)
+  var porCod={};
+  (d.detalheFamilias||[]).forEach(function(o){
+    var k=o.cod+'|'+o.familia;
+    if(!porCod[k]) porCod[k]={cod:o.cod,desc:o.desc,familia:o.familia,granulometria:o.granulometria,kg:0};
+    porCod[k].kg+=o.kg;
+  });
+  var listaCod=Object.keys(porCod).map(function(k){return porCod[k];}).sort(function(a,b){return b.kg-a.kg;});
+  var hc2=[ML+2,ML+28,ML+108,ML+140,ML+168];
+  var headerCols=['CÓDIGO','DESCRIÇÃO','FAMÍLIA','GRANULOM.','TOTAL (KG)'];
+  function desenharCabecalhoProduto(){
+    doc.setFillColor(220,235,220); doc.rect(ML,y,W,6,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(2,79,43);
+    headerCols.forEach(function(h,i){doc.text(h,hc2[i],y+4.5);});
+    y+=7;
+  }
+  if(listaCod.length){
+    if(y>250){doc.addPage();y=15;}
+    doc.setFillColor(2,79,43); doc.rect(ML,y,W,6,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+    doc.text('DETALHAMENTO POR PRODUTO (TOTAL NO PERÍODO)',ML+4,y+4.5);
+    y+=7;
+    desenharCabecalhoProduto();
+    listaCod.forEach(function(o,j){
+      if(y>282){doc.addPage();y=15;desenharCabecalhoProduto();}
+      if(j%2===0){doc.setFillColor(248,253,248);doc.rect(ML,y-1,W,6,'F');}
+      var corFam=o.familia==='AQUA'?[0,119,182]:o.familia==='PET'?[192,57,43]:[138,90,43];
+      doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(50,50,50);
+      doc.text(String(o.cod||''),hc2[0],y+3.5);
+      var descTrunc=(o.desc||'').length>38?(o.desc.slice(0,36)+'…'):(o.desc||'');
+      doc.text(descTrunc,hc2[1],y+3.5);
+      doc.setTextColor(corFam[0],corFam[1],corFam[2]);
+      doc.text(o.familia,hc2[2],y+3.5);
+      doc.setTextColor(80,80,80);
+      doc.text(o.granulometria||'-',hc2[3],y+3.5);
+      doc.setFont('helvetica','bold'); doc.setTextColor(2,79,43);
+      doc.text(fN(Math.round(o.kg)),hc2[4],y+3.5);
+      y+=6;
+    });
+  }
+
+  doc.setFontSize(6.5); doc.setTextColor(160,160,160);
+  doc.text('Raguife Ensaque  |  Relatório de Produção por Família  |  Período: '+fDt2(d.di)+' a '+fDt2(d.df)+'  |  Gerado em: '+new Date().toLocaleString('pt-BR'),105,290,{align:'center'});
+
+  doc.save('Relatorio_Familias_'+d.di+'_'+d.df+'.pdf');
+  toast('PDF de Famílias gerado!','ok');
 }
 
 function exportarRelPeriodoPDF(){
