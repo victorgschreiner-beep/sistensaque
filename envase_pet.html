@@ -244,7 +244,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <div style="display:flex;justify-content:space-between;font-size:11px;color:#4a664a;margin-bottom:3px"><span>Restante</span><span id="pd-restante-lbl"></span></div>
       <div style="background:#eef2ee;border-radius:3px;height:10px;overflow:hidden"><div id="pd-bar-restante" style="height:100%;background:#d29922;border-radius:3px"></div></div>
     </div>
-    <div class="alw" style="font-size:12px">A ordem continua sendo a MESMA (mesmo numero, mesmo historico). O que ja foi produzido fica preservado — so a data passa a valer para o dia seguinte.</div>
+    <div class="alw" style="font-size:12px">A ordem continua sendo a MESMA (mesmo numero). O que foi feito HOJE fica registrado no historico do dia de hoje. O RESTANTE vira o programado do dia seguinte.</div>
     <div class="mfoot">
       <button class="btn bsm" onclick="fM('mpassardia')">Cancelar</button>
       <button class="btn bp bsm" onclick="confirmarPassarDiaEnvase()">Confirmar</button>
@@ -276,6 +276,7 @@ var DB = firebase.database();
 // ============================================================
 var SES = null;
 var ENVASE_OPS = [];
+var ENVASE_HIST_DIAS = [];
 var AUTO_AVANCO_ENVASE_FEITO = false;
 
 // ============================================================
@@ -286,6 +287,22 @@ function fN(n){ return (Number(n)||0).toLocaleString('pt-BR'); }
 function pct(r,p){ return (p&&Number(p))?Math.min(Math.round((Number(r)||0)/Number(p)*100),999):0; }
 function hoje(){ return new Date().toISOString().slice(0,10); }
 function agora(){ return new Date().toISOString(); }
+
+// ============================================================
+// TOTAIS DA ORDEM (Envase PET) — a partir da divisao por dia,
+// 'prog'/'real'/'realEmbalagens'/'perda' passam a valer somente
+// para o DIA CORRENTE (o.data). O total historico da ordem (o que
+// importa pra tela de apontamento, Finalizar e PDF) fica em
+// 'progTotal'/'qtdEmbalagensTotal'/'realTotal'/'realEmbalagensTotal'/
+// 'perdaTotal'. Ordens antigas ainda sem esses campos caem no
+// fallback (progTotal ausente -> usa o proprio prog do dia), entao
+// nao precisa de migracao manual.
+// ============================================================
+function totProgEnvase(o){ return (o.progTotal!=null?Number(o.progTotal):Number(o.prog))||0; }
+function totProgEmbEnvase(o){ return (o.qtdEmbalagensTotal!=null?Number(o.qtdEmbalagensTotal):Number(o.qtdEmbalagens))||0; }
+function totRealEnvase(o){ return (Number(o.realTotal)||0)+(Number(o.real)||0); }
+function totRealEmbEnvase(o){ return (Number(o.realEmbalagensTotal)||0)+(Number(o.realEmbalagens)||0); }
+function totPerdaEnvase(o){ return (Number(o.perdaTotal)||0)+(Number(o.perda)||0); }
 
 function ld(on,msg){ G('loader').classList.toggle('on',on); if(msg) G('lmsg').textContent=msg; }
 function toast(msg,t){
@@ -340,7 +357,8 @@ function aplicarSessao(){
 
 function doLogout(){
   DB.ref('envase_pet_ops').off();
-  SES=null; ENVASE_OPS=[];
+  DB.ref('envase_pet_historico_dias').off();
+  SES=null; ENVASE_OPS=[]; ENVASE_HIST_DIAS=[];
   AUTO_AVANCO_ENVASE_FEITO=false;
   G('pg-app').style.display='none';
   G('pg-login').style.display='flex';
@@ -378,17 +396,21 @@ function autoAvancarEnvaseAtrasadas(){
   });
   if(!atrasadas.length) return;
 
+  var quem='AUTO ('+SES.login+')';
+  var historicos=[];
   var promises=atrasadas.map(function(o){
-    return DB.ref('envase_pet_ops/'+o.fbKey).update({
-      data:hj,
-      movidaEm:agora(),
-      movidaPor:'AUTO ('+SES.login+')',
-      diasAnteriores:(o.diasAnteriores||[]).concat([o.data])
-    });
+    var split=calcSplitEnvase(o);
+    var upd=montarUpdateAvancoEnvase(split);
+    upd.data=hj; upd.movidaEm=agora(); upd.movidaPor=quem;
+    upd.diasAnteriores=(o.diasAnteriores||[]).concat([o.data]);
+    historicos.push(montarHistoricoEnvase(o,split,hj,quem));
+    return DB.ref('envase_pet_ops/'+o.fbKey).update(upd);
   });
 
   Promise.all(promises).then(function(){
-    toast(atrasadas.length+' ordem(ns) que não foram finalizadas foram movidas automaticamente para hoje','inf');
+    return Promise.all(historicos.map(function(h){ return DB.ref('envase_pet_historico_dias').push(h); }));
+  }).then(function(){
+    toast(atrasadas.length+' ordem(ns) que não foram finalizadas foram movidas automaticamente para hoje (feito de cada dia preservado no historico)','inf');
     addLog('AUTO_AVANCAR_ENVASE', atrasadas.map(function(o){return o.id+' ('+o.data+' → '+hj+')';}).join(' | '));
   }).catch(function(e){ console.warn('Erro no auto-avanco de Envase:', e.message); });
 }
@@ -417,6 +439,14 @@ function iniciarApp(){
   }, function(err){
     ld(false); toast('Erro Firebase: '+err.message,'err');
   });
+  DB.ref('envase_pet_historico_dias').on('value', function(snap){
+    ENVASE_HIST_DIAS=[];
+    if(snap.exists()){
+      snap.forEach(function(c){ var v=c.val(); v.histKey=c.key; ENVASE_HIST_DIAS.push(v); });
+    }
+    var ativas=document.querySelectorAll('.scr.on');
+    if(ativas.length && ativas[0].id==='scr-dashboard') renderDashEnvase();
+  }, function(err){ console.warn('Erro ao carregar historico Envase:', err.message); });
 }
 
 // ============================================================
@@ -426,12 +456,33 @@ function iniciarApp(){
 function renderDashEnvase(){
   var dt=G('ddt')?G('ddt').value:hoje();
   var maq=G('dash-maq')?G('dash-maq').value:'';
-  var lista=ENVASE_OPS.filter(function(o){
+
+  // Ordens vivas cujo dia atual e' o filtrado
+  var vivas=ENVASE_OPS.filter(function(o){
     if(o.status==='Excluida') return false;
     if(o.data!==dt) return false;
     if(maq && o.maquina!==maq) return false;
     return true;
+  }).map(function(o){
+    return {id:o.id,cod:o.cod,desc:o.desc,lote:o.lote,maquina:o.maquina,
+      prog:Number(o.prog)||0,real:Number(o.real)||0,perda:Number(o.perda)||0,
+      status:o.status,congelado:false};
   });
+
+  // Dias ja fechados (congelados no historico) que caem na data filtrada —
+  // sem isso, o dia em que a ordem foi transferida perderia a producao
+  // que de fato aconteceu nele.
+  var congeladas=ENVASE_HIST_DIAS.filter(function(h){
+    if(h.data!==dt) return false;
+    if(maq && h.maquina!==maq) return false;
+    return true;
+  }).map(function(h){
+    return {id:h.opId,cod:h.cod,desc:h.desc,lote:h.lote,maquina:h.maquina,
+      prog:Number(h.progDia)||0,real:Number(h.realDia)||0,perda:Number(h.perdaDia)||0,
+      status:'Transferida',congelado:true};
+  });
+
+  var lista=vivas.concat(congeladas);
   var tp=0, tr=0, tperda=0;
   lista.forEach(function(o){ tp+=Number(o.prog)||0; tr+=Number(o.real)||0; tperda+=Number(o.perda)||0; });
   var adh=tp?Math.min(Math.round(tr/tp*100),999):0;
@@ -540,9 +591,8 @@ function renderApontamento(){
   var h='';
   for(var i=0;i<lista.length;i++){
     var o=lista[i];
-    var realEmb=Number(o.realEmbalagens)||0;
-    var progEmb=Number(o.qtdEmbalagens)||0;
-    var p=pct(o.real,o.prog);
+    var realEmb=totRealEmbEnvase(o), progEmb=totProgEmbEnvase(o);
+    var p=pct(totRealEnvase(o),totProgEnvase(o));
     var cor=p>=90?'#024f2b':p>=60?'#d29922':'#c0392b';
     var concluida=(o.status==='Concluida');
     h+='<div class="opcard '+(o.status==='Em andamento'?'and':'')+'">';
@@ -553,11 +603,14 @@ function renderApontamento(){
     h+=' <span style="font-size:11px;color:#4a664a;margin-left:6px">Origem: '+(o.origemOpId||'-')+'</span></div>';
     h+='</div>'+sbadge(o.status)+'</div>';
     h+='<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px">';
-    h+='<div style="font-size:12px"><span style="color:#739630">Prog.</span> <strong>'+fN(progEmb)+' emb. ('+fN(o.prog)+' kg)</strong></div>';
-    h+='<div style="font-size:12px"><span style="color:#739630">Real.</span> <strong>'+fN(realEmb)+' emb. ('+fN(o.real)+' kg)</strong></div>';
+    h+='<div style="font-size:12px"><span style="color:#739630">Prog.</span> <strong>'+fN(progEmb)+' emb. ('+fN(totProgEnvase(o))+' kg)</strong></div>';
+    h+='<div style="font-size:12px"><span style="color:#739630">Real.</span> <strong>'+fN(realEmb)+' emb. ('+fN(totRealEnvase(o))+' kg)</strong></div>';
     h+='<div style="font-size:12px"><span style="color:#739630">Peso unit.</span> <strong>'+fN(o.pesoUnit)+' kg</strong></div>';
-    if(Number(o.perda)>0) h+='<div style="font-size:12px"><span style="color:#c0392b">Perda</span> <strong style="color:#c0392b">'+fN(o.perda)+' kg</strong></div>';
+    if(Number(totPerdaEnvase(o))>0) h+='<div style="font-size:12px"><span style="color:#c0392b">Perda</span> <strong style="color:#c0392b">'+fN(totPerdaEnvase(o))+' kg</strong></div>';
     h+='</div>';
+    if(Number(o.realEmbalagens)>0 || Number(o.perda)>0){
+      h+='<div style="font-size:11px;color:#889;margin-top:2px">Hoje: '+fN(Number(o.realEmbalagens)||0)+' emb. ('+fN(Number(o.real)||0)+' kg)'+(Number(o.perda)>0?' &middot; perda '+fN(o.perda)+' kg':'')+'</div>';
+    }
     h+='<div style="margin-top:8px;background:#eef2ee;border-radius:3px;height:6px;overflow:hidden"><div style="height:100%;width:'+Math.min(p,100)+'%;background:'+cor+';border-radius:3px"></div></div>';
     h+='<div style="font-size:11px;color:#4a664a;margin-top:3px;text-align:right">'+p+'% realizado</div>';
     if(!concluida){
@@ -609,7 +662,7 @@ function finalizarEnvase(fbKey){
   var o=null;
   for(var i=0;i<ENVASE_OPS.length;i++){ if(ENVASE_OPS[i].fbKey===fbKey){ o=ENVASE_OPS[i]; break; } }
   if(!o) return;
-  if(!confirm('Finalizar a ordem '+o.id+' ('+o.cod+')?\n\nRealizado: '+fN(o.real||0)+' kg de '+fN(o.prog||0)+' kg programados.')) return;
+  if(!confirm('Finalizar a ordem '+o.id+' ('+o.cod+')?\n\nRealizado: '+fN(totRealEnvase(o))+' kg de '+fN(totProgEnvase(o))+' kg programados.')) return;
   ld(true,'Finalizando...');
   DB.ref('envase_pet_ops/'+fbKey).update({
     status:'Concluida', finalizadoPor:SES.login, finalizadoEm:agora()
@@ -647,7 +700,7 @@ function abrirEditarEnvase(fbKey){
   for(var i=0;i<ENVASE_OPS.length;i++){ if(ENVASE_OPS[i].fbKey===fbKey){ o=ENVASE_OPS[i]; break; } }
   if(!o){ toast('Ordem nao encontrada','err'); return; }
   G('edit-fbkey').value=fbKey;
-  G('edit-titulo').textContent='Editar Apontamento — '+o.id;
+  G('edit-titulo').textContent='Editar Apontamento (dia atual) — '+o.id;
   G('edit-emb').value=Number(o.realEmbalagens)||0;
   G('edit-perda').value=Number(o.perda)||0;
   G('edit-motivo').value='';
@@ -662,7 +715,7 @@ function calcEditPreview(){
   if(!o) return;
   var novaEmb=parseFloat(G('edit-emb').value)||0;
   var novoReal=novaEmb*(Number(o.pesoUnit)||0);
-  G('edit-preview').textContent='Equivale a '+fN(novoReal)+' kg (peso unit. '+fN(o.pesoUnit)+' kg). Valor atual: '+fN(o.realEmbalagens||0)+' emb. ('+fN(o.real||0)+' kg).';
+  G('edit-preview').textContent='Equivale a '+fN(novoReal)+' kg (peso unit. '+fN(o.pesoUnit)+' kg). Valor atual do dia: '+fN(o.realEmbalagens||0)+' emb. ('+fN(o.real||0)+' kg). Esta correcao afeta somente o dia atual ('+(o.data||hoje()).split('-').reverse().join('/')+'); dias ja congelados no historico nao sao alterados aqui.';
 }
 
 function salvarEdicaoEnvase(){
@@ -702,10 +755,51 @@ function salvarEdicaoEnvase(){
 }
 
 // ============================================================
-// PASSAR PRA OUTRO DIA (manual) — move a MESMA ordem pro dia
-// seguinte, preservando prog/real (modelo continuo, sem split
-// de registro). Mostra feito x restante antes de confirmar.
+// PASSAR PRA OUTRO DIA — a ordem continua sendo a MESMA (mesmo
+// fbKey/numero), mas agora o dia e' realmente fechado ao mudar:
+// o que foi feito no dia fica CONGELADO em envase_pet_historico_dias
+// (com a data correta, pra sempre), o restante (prog-real do dia)
+// vira o programado do dia seguinte, e os acumulados totais da
+// ordem (progTotal/realTotal/...) absorvem o que foi congelado —
+// assim o card/Finalizar/PDF continuam mostrando o progresso
+// completo da ordem, e o Dashboard mostra o real de cada dia
+// certo, sem duplicar nem sumir producao.
 // ============================================================
+function calcSplitEnvase(o){
+  var progDia=Number(o.prog)||0, embProgDia=Number(o.qtdEmbalagens)||0;
+  var realDia=Number(o.real)||0, embDia=Number(o.realEmbalagens)||0, perdaDia=Number(o.perda)||0;
+  var restanteKg=Math.max(0,progDia-realDia);
+  var restanteEmb=(Number(o.pesoUnit)||0)>0?Math.round(restanteKg/Number(o.pesoUnit)):Math.max(0,embProgDia-embDia);
+  return {
+    progTotal:(o.progTotal!=null?Number(o.progTotal):progDia),
+    qtdEmbalagensTotal:(o.qtdEmbalagensTotal!=null?Number(o.qtdEmbalagensTotal):embProgDia),
+    realTotalNovo:(Number(o.realTotal)||0)+realDia,
+    realEmbTotalNovo:(Number(o.realEmbalagensTotal)||0)+embDia,
+    perdaTotalNovo:(Number(o.perdaTotal)||0)+perdaDia,
+    restanteKg:restanteKg, restanteEmb:restanteEmb,
+    progDia:progDia, embProgDia:embProgDia,
+    realDia:realDia, embDia:embDia, perdaDia:perdaDia
+  };
+}
+function montarUpdateAvancoEnvase(split){
+  return {
+    progTotal:split.progTotal, qtdEmbalagensTotal:split.qtdEmbalagensTotal,
+    realTotal:split.realTotalNovo, realEmbalagensTotal:split.realEmbTotalNovo, perdaTotal:split.perdaTotalNovo,
+    prog:split.restanteKg, qtdEmbalagens:split.restanteEmb,
+    real:0, realEmbalagens:0, perda:0
+  };
+}
+function montarHistoricoEnvase(o,split,dtNova,usuario){
+  return {
+    opFbKey:o.fbKey, opId:o.id, cod:o.cod||'', desc:o.desc||'', lote:o.lote||'',
+    maquina:o.maquina||'', tipo:o.tipo||'',
+    data:o.data||hoje(),
+    progDia:split.progDia, qtdEmbalagensDia:split.embProgDia,
+    realDia:split.realDia, realEmbalagensDia:split.embDia, perdaDia:split.perdaDia,
+    movidoPara:dtNova, movidoPor:usuario, ts:agora()
+  };
+}
+
 function abrirPassarDiaEnvase(fbKey){
   var o=null;
   for(var i=0;i<ENVASE_OPS.length;i++){ if(ENVASE_OPS[i].fbKey===fbKey){ o=ENVASE_OPS[i]; break; } }
@@ -742,13 +836,19 @@ function confirmarPassarDiaEnvase(){
   var dtProx=new Date(dtAtual+'T12:00:00'); dtProx.setDate(dtProx.getDate()+1);
   var dtNova=dtProx.toISOString().slice(0,10);
 
+  var split=calcSplitEnvase(o);
+  var upd=montarUpdateAvancoEnvase(split);
+  upd.data=dtNova; upd.movidaEm=agora(); upd.movidaPor=SES.login;
+  upd.diasAnteriores=(o.diasAnteriores||[]).concat([dtAtual]);
+
   ld(true,'Movendo ordem...');
-  DB.ref('envase_pet_ops/'+fbKey).update({
-    data:dtNova, movidaEm:agora(), movidaPor:SES.login,
-    diasAnteriores:(o.diasAnteriores||[]).concat([dtAtual])
+  DB.ref('envase_pet_ops/'+fbKey).update(upd).then(function(){
+    return DB.ref('envase_pet_historico_dias').push(montarHistoricoEnvase(o,split,dtNova,SES.login));
   }).then(function(){
-    ld(false); toast('Ordem '+o.id+' movida para '+dtNova,'ok'); fM('mpassardia');
-    addLog('MOVER_ENVASE_DIA', o.id+' | '+dtAtual+' -> '+dtNova);
+    ld(false);
+    toast('Ordem '+o.id+': '+fN(split.realDia)+' kg ficam registrados em '+dtAtual.split('-').reverse().join('/')+' · restante ('+fN(split.restanteKg)+' kg) vira o programado de '+dtNova.split('-').reverse().join('/'),'ok');
+    fM('mpassardia');
+    addLog('MOVER_ENVASE_DIA', o.id+' | '+dtAtual+' -> '+dtNova+' | feito no dia: '+fN(split.realDia)+' kg | restante programado: '+fN(split.restanteKg)+' kg');
   }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
 }
 
@@ -766,8 +866,9 @@ function gerarPDFEnvase(fbKey){
   var jsPDF=jspdf.jsPDF;
   var doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
   var W=190, ML=10, y=16;
-  var p=pct(o.real,o.prog);
-  var realEmb=Number(o.realEmbalagens)||0, progEmb=Number(o.qtdEmbalagens)||0;
+  var progT=totProgEnvase(o), progEmbT=totProgEmbEnvase(o);
+  var realT=totRealEnvase(o), realEmbT=totRealEmbEnvase(o), perdaT=totPerdaEnvase(o);
+  var p=pct(realT,progT);
 
   doc.setDrawColor(2,79,43); doc.setLineWidth(0.6); doc.line(ML,y,ML+W,y); y+=6;
   doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(2,79,43);
@@ -797,10 +898,10 @@ function gerarPDFEnvase(fbKey){
   doc.setDrawColor(200,216,200); doc.line(ML,y,ML+W,y); y+=8;
 
   var cols=[
-    ['Programado', fN(progEmb)+' emb. ('+fN(o.prog||0)+' kg)'],
-    ['Realizado', fN(realEmb)+' emb. ('+fN(o.real||0)+' kg)'],
+    ['Programado (total)', fN(progEmbT)+' emb. ('+fN(progT)+' kg)'],
+    ['Realizado (total)', fN(realEmbT)+' emb. ('+fN(realT)+' kg)'],
     ['Peso unit.', fN(o.pesoUnit||0)+' kg'],
-    ['Perda', fN(o.perda||0)+' kg']
+    ['Perda (total)', fN(perdaT)+' kg']
   ];
   var colW=W/cols.length;
   cols.forEach(function(c,i){
@@ -818,7 +919,11 @@ function gerarPDFEnvase(fbKey){
   doc.setFillColor(230,240,230); doc.rect(ML,y,W,5,'F');
   var cor=p>=90?[2,79,43]:p>=60?[210,153,34]:[192,57,43];
   doc.setFillColor(cor[0],cor[1],cor[2]); doc.rect(ML,y,Math.min(p,100)/100*W,5,'F');
-  y+=14;
+  y+=12;
+
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(74,102,74);
+  doc.text('Producao do dia atual ('+(o.data||'-').split('-').reverse().join('/')+'): '+fN(o.realEmbalagens||0)+' emb. ('+fN(o.real||0)+' kg)'+(Number(o.perda)>0?' · perda '+fN(o.perda)+' kg':''),ML,y);
+  y+=10;
 
   if(o.editadoPor){
     doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(140,140,140);
