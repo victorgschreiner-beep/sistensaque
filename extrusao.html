@@ -1813,7 +1813,7 @@ function renderLinhaCard(linha){
     h+='<div class="op-desc">'+(opAtiva.desc||opAtiva.cod)+'</div>';
     h+='<div class="op-meta">'+(opAtiva.lote?'Lote: '+opAtiva.lote+' · ':'')+'Meta: '+fN(metaH)+' kg/h · Prog: '+fN(progAtivaKg)+' kg</div>';
     h+='</div>';
-    h+='<button data-cod="'+opAtiva.cod+'" data-desc="'+(opAtiva.desc||opAtiva.cod)+'" onclick="consultarFichaTecnica(this.dataset.cod,this.dataset.desc)" style="width:100%;margin-bottom:10px;background:#fff;border:2px solid #739630;color:#739630;padding:7px;font-size:11px;font-weight:700;cursor:pointer;border-radius:8px">📄 Consultar Ficha Técnica</button>';
+    h+='<button data-cod="'+opAtiva.cod+'" data-desc="'+(opAtiva.desc||opAtiva.cod)+'" data-linha="'+linha+'" onclick="consultarFichaTecnica(this.dataset.cod,this.dataset.desc,this.dataset.linha)" style="width:100%;margin-bottom:10px;background:#fff;border:2px solid #739630;color:#739630;padding:7px;font-size:11px;font-weight:700;cursor:pointer;border-radius:8px">📄 Consultar Ficha Técnica</button>';
     h+='<div class="prog-wrap">';
     h+='<div class="prog-label"><span>Extrusão na OP</span><span>'+fN(totalOpExt)+' / '+fN(progAtivaKg)+' kg ('+progExt+'%)</span></div>';
     h+='<div class="prog-bar"><div class="prog-fill '+corProg+'" style="width:'+progExt+'%"></div></div>';
@@ -1875,7 +1875,7 @@ function renderLinhaCard(linha){
         h+='<span class="badge-st '+badgeCls+'">'+o.status+'</span>';
       }
       h+='<div class="fila-op-prog" style="color:'+corPct+'">'+pct+'%</div>';
-      h+='<button data-cod="'+o.cod+'" data-desc="'+(o.desc||o.cod)+'" onclick="event.stopPropagation();consultarFichaTecnica(this.dataset.cod,this.dataset.desc)" title="Consultar Ficha Técnica" style="background:none;border:none;color:#739630;font-size:14px;cursor:pointer;padding:0 4px">📄</button>';
+      h+='<button data-cod="'+o.cod+'" data-desc="'+(o.desc||o.cod)+'" data-linha="'+linha+'" onclick="event.stopPropagation();consultarFichaTecnica(this.dataset.cod,this.dataset.desc,this.dataset.linha)" title="Consultar Ficha Técnica" style="background:none;border:none;color:#739630;font-size:14px;cursor:pointer;padding:0 4px">📄</button>';
       h+='</div>';
     });
   }
@@ -1970,7 +1970,15 @@ function renderLinhaCard(linha){
 
 // ── SELECIONAR OP ATIVA ───────────────────────────────────
 // ── FICHA TÉCNICA (consulta somente leitura, alimentada por ficha_tecnica.html) ──
-var FT_SECOES_META = [
+// Estrutura de seções espelha ficha_tecnica.html: Ferraz (L1/L2) tem 5 seções, Andritz (L4/L5) tem 6.
+var FT_SECOES_FERRAZ = [
+  {key:"parametrosMaquina", label:"Parâmetros de Máquina", icone:"⚙️"},
+  {key:"condicionador",     label:"Condicionador",         icone:"💧"},
+  {key:"telaPrincipal",     label:"Tela Principal",        icone:"🖥️"},
+  {key:"secador",           label:"Secador",               icone:"🔥"},
+  {key:"misturadorVC",      label:"Misturador VC",         icone:"🧪"}
+];
+var FT_SECOES_ANDRITZ = [
   {key:"parametrosMaquina", label:"Parâmetros de Máquina", icone:"⚙️"},
   {key:"preCondicionador",  label:"Pré-condicionador",     icone:"💧"},
   {key:"motorPrincipal",    label:"Motor Principal",       icone:"🔌"},
@@ -1978,8 +1986,13 @@ var FT_SECOES_META = [
   {key:"secagem",           label:"Secagem",               icone:"🔥"},
   {key:"misturadorVC",      label:"Misturador VC",         icone:"🧪"}
 ];
+var FT_SECOES_META_POR_LINHA = {};
+FT_SECOES_META_POR_LINHA[encId("Linha 1 (E-240)")]     = FT_SECOES_FERRAZ;
+FT_SECOES_META_POR_LINHA[encId("Linha 2 (E-200)")]     = FT_SECOES_FERRAZ;
+FT_SECOES_META_POR_LINHA[encId("Linha 4 (Andritz I)")] = FT_SECOES_ANDRITZ;
+FT_SECOES_META_POR_LINHA[encId("Linha 5 (Andritz II)")]= FT_SECOES_ANDRITZ;
 
-function consultarFichaTecnica(cod, desc){
+function consultarFichaTecnica(cod, desc, linha){
   if(!DB){toast("Firebase não conectado","err");return;}
   G("ft-cod-titulo").textContent = cod || "—";
   G("ft-corpo").innerHTML = '<div style="text-align:center;padding:20px;color:#4a664a">Buscando ficha técnica...</div>';
@@ -2010,21 +2023,54 @@ function consultarFichaTecnica(cod, desc){
         '<span style="font-size:11px;color:#999">Cadastre no módulo Ficha Técnica.</span></div>';
       return;
     }
-    var versao=(ficha.versoes||{})[ficha.versaoAtualKey];
-    renderFichaTecnica(ficha, versao, desc);
+
+    var lk = linha ? encId(linha) : null;
+    var versao=null, secoesMeta=FT_SECOES_ANDRITZ, statusLinha="ok";
+
+    if(ficha.linhas){
+      // Formato novo — a linha certa é a que a OP já está rodando.
+      var loAtual = lk ? ficha.linhas[lk] : null;
+      if(loAtual){
+        versao=(loAtual.versoes||{})[loAtual.versaoAtualKey];
+        secoesMeta=FT_SECOES_META_POR_LINHA[lk]||FT_SECOES_ANDRITZ;
+      } else {
+        statusLinha="sem_linha_atual";
+      }
+    } else if(ficha.versoes){
+      // Formato antigo (ainda não migrado) — mantém funcionando como antes.
+      versao=ficha.versoes[ficha.versaoAtualKey];
+    }
+    renderFichaTecnica(ficha, versao, desc, secoesMeta, linha, statusLinha);
   }).catch(function(e){
     G("ft-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#c0392b">Erro ao buscar: '+e.message+'</div>';
   });
 }
 
-function renderFichaTecnica(ficha, versao, desc){
+function renderFichaTecnica(ficha, versao, desc, secoesMeta, linhaConsultada, statusLinha){
+  secoesMeta = secoesMeta || FT_SECOES_ANDRITZ;
   var h='<div style="background:#f5f9f2;border-radius:8px;padding:10px 12px;margin-bottom:14px">';
   h+='<div style="font-size:11px;color:#739630;font-weight:700">PRODUTO</div>';
-  h+='<div style="font-size:14px;font-weight:700;color:#024f2b">'+(ficha.nome||desc||"—")+(ficha.linhaPadrao?' — '+ficha.linhaPadrao:'')+'</div>';
+  h+='<div style="font-size:14px;font-weight:700;color:#024f2b">'+(ficha.nome||desc||"—")+(linhaConsultada?' — '+linhaConsultada:'')+'</div>';
+  var codigosVinc=Object.keys(ficha.skusVinculados||{});
+  if(codigosVinc.length){
+    h+='<div style="margin-top:6px">'+codigosVinc.map(function(c){
+      return '<span style="display:inline-block;font-size:10px;background:#dde6dd;color:#024f2b;padding:2px 8px;border-radius:10px;margin:2px 3px 0 0;font-weight:600">'+c+'</span>';
+    }).join('')+'</div>';
+  }
   if(versao){
     h+='<div style="font-size:11px;color:#4a664a;margin-top:4px">Revisão nº'+(versao.numero||"—")+' · Atualizada em '+(versao.criadoEm||"—")+(versao.criadoPor?' por '+versao.criadoPor:'')+'</div>';
   }
   h+='</div>';
+
+  if(statusLinha==="sem_linha_atual"){
+    var outrasLinhas=Object.keys(ficha.linhas||{}).map(function(lk){return ficha.linhas[lk].nomeLinha||lk;});
+    h+='<div style="text-align:center;padding:16px;color:#a06c00;font-size:12px;background:#fff3cd;border-radius:8px">'+
+       '⚠️ Este produto não tem ficha técnica cadastrada para <strong>'+(linhaConsultada||"esta linha")+'</strong>.'+
+       (outrasLinhas.length?'<br><span style="font-size:11px">Só existe ficha para: '+outrasLinhas.join(', ')+'</span>':'')+
+       '</div>';
+    G("ft-corpo").innerHTML=h;
+    return;
+  }
 
   if(!versao){
     h+='<div style="text-align:center;padding:16px;color:#4a664a;font-size:12px">Ficha cadastrada, mas sem versão de parâmetros ainda.</div>';
@@ -2033,7 +2079,7 @@ function renderFichaTecnica(ficha, versao, desc){
   }
 
   var temAlgumaSecao=false;
-  FT_SECOES_META.forEach(function(sm){
+  secoesMeta.forEach(function(sm){
     var linhas=(versao.secoes&&versao.secoes[sm.key])||[];
     var preenchidas=linhas.filter(function(row){return row.valor!=null && String(row.valor).trim()!=='';});
     if(!preenchidas.length) return; // esconde seções vazias na consulta rápida do operador
