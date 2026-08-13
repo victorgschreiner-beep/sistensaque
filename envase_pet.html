@@ -106,6 +106,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
 .aler{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:12px;background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.25);color:#c0392b}
 .opcard{background:#fff;border:1px solid var(--bd);border-radius:var(--r2);padding:14px 16px;margin-bottom:10px;border-left:4px solid #024f2b;box-shadow:0 1px 4px rgba(2,79,43,.06)}
 .opcard.and{border-left-color:#d29922}.opcard.dn{border-left-color:#739630}
+.opcard.cong{border-left-color:#889;background:#f4f6f4;box-shadow:none}
 .sgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin:10px 0}
 .sbt{padding:8px 4px;border:1px solid #c8d8c8;border-radius:var(--r);background:#f4f6f4;cursor:pointer;text-align:center;font-size:12px;font-weight:600;transition:.12s;color:#1a2e1a}
 .sbt:hover{border-color:#024f2b}.sbt.on{border-color:#024f2b;background:rgba(2,79,43,.1);color:#024f2b}
@@ -583,8 +584,19 @@ function renderApontamento(){
   var ordem={'Em andamento':0,'Liberada':1,'Concluida':2};
   lista.sort(function(a,b){ return (ordem[a.status]||9)-(ordem[b.status]||9); });
 
+  // Dias ja congelados (ordem passou pra outro dia, manual ou automatico) que
+  // caem na data filtrada — mostrados aqui tambem, so que travados (sem
+  // lancamento/edicao), pra nada do que foi feito naquele dia sumir da tela
+  // de Apontamento. Mesma fonte que o Dashboard usa (envase_pet_historico_dias).
+  var congeladas=ENVASE_HIST_DIAS.filter(function(h){
+    if(h.data!==dt) return false;
+    if(maq && h.maquina!==maq) return false;
+    if(prod && (h.cod||'').toLowerCase().indexOf(prod)===-1 && (h.desc||'').toLowerCase().indexOf(prod)===-1) return false;
+    return true;
+  }).sort(function(a,b){ return (b.ts||'')>(a.ts||'')?1:-1; });
+
   var wrap=G('aptcards');
-  if(!lista.length){
+  if(!lista.length && !congeladas.length){
     wrap.innerHTML='<div style="text-align:center;padding:40px;color:#4a664a">Nenhuma ordem de Envase para essa data/filtro.</div>';
     return;
   }
@@ -630,6 +642,26 @@ function renderApontamento(){
       h+='<button class="btn bsm" data-key="'+o.fbKey+'" onclick="gerarPDFEnvase(this.dataset.key)">PDF</button>';
       h+='</div>';
     }
+    h+='</div>';
+  }
+  for(var k=0;k<congeladas.length;k++){
+    var hh=congeladas[k];
+    var pDia=pct(hh.realDia,hh.progDia);
+    var corDia=pDia>=90?'#024f2b':pDia>=60?'#d29922':'#c0392b';
+    h+='<div class="opcard cong">';
+    h+='<div style="display:flex;justify-content:space-between;align-items:flex-start">';
+    h+='<div><div style="font-weight:700;font-size:14px">'+hh.opId+'</div>';
+    h+='<div style="font-size:12px;color:#4a664a;margin-top:2px">'+(hh.desc||hh.cod)+' &middot; '+(hh.maquina||'-')+' &middot; '+(hh.tipo||'')+'</div>';
+    h+='<div style="margin-top:3px"><span style="font-size:11px;font-weight:700;color:#024f2b;background:rgba(2,79,43,.08);padding:2px 8px;border-radius:4px">Lote: '+(hh.lote||'---')+'</span></div>';
+    h+='</div><span class="badge bcz">Transferida</span></div>';
+    h+='<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px">';
+    h+='<div style="font-size:12px"><span style="color:#739630">Prog. do dia</span> <strong>'+fN(hh.qtdEmbalagensDia)+' emb. ('+fN(hh.progDia)+' kg)</strong></div>';
+    h+='<div style="font-size:12px"><span style="color:#739630">Real. do dia</span> <strong>'+fN(hh.realEmbalagensDia)+' emb. ('+fN(hh.realDia)+' kg)</strong></div>';
+    if(Number(hh.perdaDia)>0) h+='<div style="font-size:12px"><span style="color:#c0392b">Perda do dia</span> <strong style="color:#c0392b">'+fN(hh.perdaDia)+' kg</strong></div>';
+    h+='</div>';
+    h+='<div style="margin-top:8px;background:#eef2ee;border-radius:3px;height:6px;overflow:hidden"><div style="height:100%;width:'+Math.min(pDia,100)+'%;background:'+corDia+';border-radius:3px"></div></div>';
+    h+='<div style="font-size:11px;color:#4a664a;margin-top:3px;text-align:right">'+pDia+'% realizado neste dia</div>';
+    h+='<div style="font-size:11px;color:#4a664a;margin-top:8px;padding-top:8px;border-top:1px dashed #d8e0d8">Dia fechado &middot; restante foi transferido para <strong>'+(hh.movidoPara||'-').split('-').reverse().join('/')+'</strong> por '+(hh.movidoPor||'-')+'</div>';
     h+='</div>';
   }
   wrap.innerHTML=h;
