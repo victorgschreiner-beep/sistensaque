@@ -325,10 +325,10 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
     <input type="date" id="ger-fdt" style="width:auto" onchange="renderApontamentosGerais()">
-    <select id="ger-ftipo" style="width:auto" onchange="renderApontamentosGerais()"><option value="">Todos os tipos</option><option>Finos</option><option>Reprocesso Geral</option><option>Varredura</option></select>
+    <select id="ger-ftipo" style="width:auto" onchange="renderApontamentosGerais()"><option value="">Todos os tipos</option><option>Finos</option><option>Finos Magisan</option><option>Reprocesso Geral</option><option>Varredura</option></select>
     <select id="ger-fln" style="width:auto" onchange="renderApontamentosGerais()"><option value="">Todas as linhas</option><option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option><option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option></select>
   </div>
-  <div id="ger-metrics" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px"></div>
+  <div id="ger-metrics" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px"></div>
   <div class="card" style="padding:0"><div class="tw"><table>
     <thead><tr><th>Data</th><th>Turno</th><th>Tipo</th><th>Linha</th><th style="text-align:right">Quantidade</th><th>Motivo</th><th>Operador</th><th>Codigo</th><th>Acoes</th></tr></thead>
     <tbody id="ger-body"></tbody>
@@ -738,6 +738,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <select id="ger-tipo">
         <option value="">Selecione...</option>
         <option>Finos</option>
+        <option>Finos Magisan</option>
         <option>Reprocesso Geral</option>
         <option>Varredura</option>
       </select>
@@ -785,16 +786,17 @@ tr:hover td{background:rgba(2,79,43,.03)}
     </div>
   </div>
   <input type="hidden" id="corr-data">
-  <div style="background:rgba(192,57,43,.05);border:1px solid rgba(192,57,43,.2);border-radius:var(--r);padding:10px 12px;margin-bottom:12px">
-    <div style="font-size:11px;font-weight:700;color:#c0392b;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Perdas / Refugos por Turno (kg)</div>
+  <div style="background:rgba(210,153,34,.08);border:1px solid rgba(210,153,34,.3);border-radius:var(--r);padding:10px 12px;margin-bottom:12px">
+    <div style="font-size:11px;font-weight:700;color:#d29922;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Reprocesso por Turno (kg)</div>
     <div class="fr fr3" style="margin-bottom:0">
-      <div class="fg" style="margin-bottom:0"><label class="fl">Perda T1 (kg)</label><input type="number" id="crpe1" min="0" value="0" oninput="atualizarTotaisCorr()"></div>
-      <div class="fg" style="margin-bottom:0"><label class="fl">Perda T2 (kg)</label><input type="number" id="crpe2" min="0" value="0" oninput="atualizarTotaisCorr()"></div>
-      <div class="fg" style="margin-bottom:0"><label class="fl">Perda T3 (kg)</label><input type="number" id="crpe3" min="0" value="0" oninput="atualizarTotaisCorr()"></div>
+      <div class="fg" style="margin-bottom:0"><label class="fl">Reprocesso T1 (kg)</label><input type="number" id="crrp1" min="0" value="0" oninput="atualizarTotaisCorr()"></div>
+      <div class="fg" style="margin-bottom:0"><label class="fl">Reprocesso T2 (kg)</label><input type="number" id="crrp2" min="0" value="0" oninput="atualizarTotaisCorr()"></div>
+      <div class="fg" style="margin-bottom:0"><label class="fl">Reprocesso T3 (kg)</label><input type="number" id="crrp3" min="0" value="0" oninput="atualizarTotaisCorr()"></div>
     </div>
+    <div id="corr-perda-legado" style="font-size:10px;color:#8a8a8a;margin-top:6px;display:none"></div>
   </div>
-  <div class="fr"><div class="fg"><label class="fl">Motivo da correcao *</label><input type="text" id="crmotivo" placeholder="ex: erro de digitacao ou perda incorreta"></div></div>
-  <input type="hidden" id="crpe" value="0">
+  <div class="fr"><div class="fg"><label class="fl">Motivo da correcao *</label><input type="text" id="crmotivo" placeholder="ex: erro de digitacao ou reprocesso incorreto"></div></div>
+  <input type="hidden" id="crrp" value="0">
   <div style="background:#f4f6f4;border:1px solid #c8d8c8;border-radius:var(--r);padding:10px 12px;font-size:12px;color:#4a664a;margin-bottom:8px" id="corr-totais"></div>
   <input type="hidden" id="crfbkey"><input type="hidden" id="crtipo">
   <div class="mfoot"><button class="btn bsm" onclick="fM('mcorr')">Cancelar</button><button class="btn bsm bp" onclick="salvarCorrecao()">Salvar Correcao</button></div>
@@ -883,22 +885,22 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <div class="fg" id="editapt-row-t3" style="flex:1;min-width:120px"><label class="fl" id="editapt-lbl3">Turno 3</label><input type="number" id="eat3" min="0" value="0"></div>
     </div>
     <div class="fr">
-      <div class="fg"><label class="fl">Perdas / Refugos (kg)</label><input type="number" id="eape" min="0" value="0"></div>
+      <div class="fg"><label class="fl">Reprocesso (kg)</label><input type="number" id="eape" min="0" value="0"></div>
       <div class="fg"><label class="fl">Motivo da edicao</label><input type="text" id="eamotivo" placeholder="ex: correcao de valor"></div>
     </div>
   </div>
-  <!-- Secao exclusiva PCP para editar perda em OPs Concluidas -->
+  <!-- Secao exclusiva PCP para editar reprocesso em OPs Concluidas -->
   <div id="editapt-perda-pcp" style="display:none">
-    <div class="alw" style="margin-bottom:12px">OP Concluida — apenas a perda pode ser corrigida.</div>
+    <div class="alw" style="margin-bottom:12px">OP Concluida — apenas o reprocesso pode ser corrigido.</div>
     <div class="fr">
-      <div class="fg"><label class="fl">Perdas / Refugos (kg)</label><input type="number" id="eape-pcp" min="0" value="0"></div>
-      <div class="fg"><label class="fl">Motivo da correcao *</label><input type="text" id="eamotivo-pcp" placeholder="ex: registro incorreto da perda"></div>
+      <div class="fg"><label class="fl">Reprocesso (kg)</label><input type="number" id="eape-pcp" min="0" value="0"></div>
+      <div class="fg"><label class="fl">Motivo da correcao *</label><input type="text" id="eamotivo-pcp" placeholder="ex: registro incorreto do reprocesso"></div>
     </div>
   </div>
   <input type="hidden" id="eafbkey">
   <input type="hidden" id="eatipo">
   <input type="hidden" id="eadtctx">
-  <input type="hidden" id="eamodo"> <!-- 'perda' = so perda, '' = normal -->
+  <input type="hidden" id="eamodo"> <!-- 'reprocesso' = so reprocesso, '' = normal -->
   <div class="mfoot">
     <button class="btn bsm" onclick="fM('meditapt')">Cancelar</button>
     <button class="btn bsm bp" id="editapt-salvar" onclick="salvarEdicaoApt()">Salvar Edicao</button>
@@ -2731,7 +2733,7 @@ function salvarApontamentoGeral(){
   var turno=SES.turno||0;
   var dt=SES.dataOperacional||hoje();
   var motivo='Limpeza de setor';
-  var sigla=tipo==='Finos'?'FIN':tipo==='Reprocesso Geral'?'RPG':'VAR';
+  var sigla=tipo==='Finos'?'FIN':tipo==='Finos Magisan'?'FMG':tipo==='Reprocesso Geral'?'RPG':'VAR';
   var codigoEtiqueta=sigla+'-'+dt.replace(/-/g,'')+'-T'+turno+'-'+uid().toUpperCase();
 
   ld(true,'Salvando...');
@@ -2769,10 +2771,11 @@ function renderApontamentosGerais(){
     if(fln) lista=lista.filter(function(v){return v.linha===fln;});
     lista.sort(function(a,b){return (b.ts||0)-(a.ts||0);});
 
-    var totais={'Finos':0,'Reprocesso Geral':0,'Varredura':0};
+    var totais={'Finos':0,'Finos Magisan':0,'Reprocesso Geral':0,'Varredura':0};
     lista.forEach(function(v){ totais[v.tipo]=(totais[v.tipo]||0)+(Number(v.quantidadeKg)||0); });
     G('ger-metrics').innerHTML=
       '<div class="mc"><div class="ml">Finos no dia</div><div class="mv co">'+fN(totais['Finos'])+'</div><div class="ms">kg</div></div>'+
+      '<div class="mc"><div class="ml">Finos Magisan no dia</div><div class="mv co">'+fN(totais['Finos Magisan'])+'</div><div class="ms">kg</div></div>'+
       '<div class="mc"><div class="ml">Reprocesso Geral no dia</div><div class="mv co">'+fN(totais['Reprocesso Geral'])+'</div><div class="ms">kg</div></div>'+
       '<div class="mc"><div class="ml">Varredura no dia</div><div class="mv co">'+fN(totais['Varredura'])+'</div><div class="ms">kg</div></div>';
 
@@ -2904,10 +2907,10 @@ function abrirEditarApt(fbKey){
     form.style.display='none';
     if(perdaPCPDiv){
       perdaPCPDiv.style.display='block';
-      G('eape-pcp').value=op.perda||0;
+      G('eape-pcp').value=op.reprocessado||0;
       G('eamotivo-pcp').value='';
     }
-    G('eamodo').value='perda';
+    G('eamodo').value='reprocesso';
     salvarBtn.style.display='';
     G('editapt-info').textContent='';
   } else if(isPCP){
@@ -2920,7 +2923,7 @@ function abrirEditarApt(fbKey){
     G('eat1').value=v1; G('eat1').readOnly=false;
     G('eat2').value=v2; G('eat2').readOnly=false;
     G('eat3').value=v3; G('eat3').readOnly=false;
-    G('eape').value=op.perda||0;
+    G('eape').value=op.reprocessado||0;
     G('eamodo').value='';
     G('editapt-info').textContent='PCP: edite os turnos do dia '+dtCtxView.split('-').reverse().join('/')+'. Os valores substituem a producao daquele dia (outros dias da OP nao sao alterados).';
   } else {
@@ -2944,7 +2947,7 @@ function abrirEditarApt(fbKey){
     G('eat2').readOnly = (turno!==2 && turno!==0);
     G('eat3').readOnly = (turno!==3 && turno!==0);
 
-    G('eape').value=op.perda||0;
+    G('eape').value=op.reprocessado||0;
     if(perdaPCPDiv) perdaPCPDiv.style.display='none';
     G('eamodo').value='';
 
@@ -2970,43 +2973,66 @@ function arquivarPerdasAntigas(fbKey){
   });
 }
 
+// Marca apontamentos de reprocesso (origem:'reprocesso') de uma OP como substituidos.
+// Mesmo criterio nao-destrutivo de arquivarPerdasAntigas — nada e apagado, so deixa
+// de contar nas somas do Dashboard/TV. Retorna o total que estava ativo (pra log e
+// mensagem de "anterior -> novo" na correcao de OP finalizada).
+function arquivarReprocessoAntigo(fbKey){
+  return DB.ref('apontamentos').orderByChild('opId').equalTo(fbKey).once('value').then(function(snap){
+    var promises=[]; var totalAtivo=0;
+    snap.forEach(function(c){
+      var a=c.val();
+      if(a.origem!=='reprocesso'||a.substituido) return;
+      totalAtivo+=Number(a.real)||0;
+      promises.push(DB.ref('apontamentos/'+c.key).update({substituido:true}));
+    });
+    return Promise.all(promises).then(function(){ return totalAtivo; });
+  });
+}
+
 function salvarEdicaoApt(){
   var fbKey=G('eafbkey').value;
   var tipo=G('eatipo').value;
   var isPCP=SES.perfil==='pcp'||SES.perfil==='admin';
 
   // Verifica modo pelo flag hidden
-  var modoSoPerda = G('eamodo') && G('eamodo').value==='perda';
+  var modoSoPerda = G('eamodo') && G('eamodo').value==='reprocesso';
 
   if(modoSoPerda){
-    // Salva apenas a perda
+    // OP ja concluida — so o total de reprocesso (lifetime) pode ser corrigido.
     var motivo=G('eamotivo-pcp').value.trim();
     if(!motivo){ toast('Informe o motivo da correcao','err'); G('eamotivo-pcp').style.borderColor='#c0392b'; setTimeout(function(){G('eamotivo-pcp').style.borderColor='';},2000); return; }
-    var novaPerda=parseInt(G('eape-pcp').value)||0;
+    var novoReprocesso=parseInt(G('eape-pcp').value)||0;
     var op=null;
     for(var i=0;i<OPS.length;i++){if(OPS[i].fbKey===fbKey){op=OPS[i];break;}}
-    var perdaAnt=op?Number(op.perda)||0:0;
-    var dtPerdaCorr=op?(op.data||hoje()):hoje();
-    ld(true,'Salvando correcao de perda...');
-    arquivarPerdasAntigas(fbKey).then(function(){
-      var writes=[
-        DB.ref('ops/'+fbKey).update({perda:novaPerda}),
-        DB.ref('correcoes/'+fbKey).push({
-          ts:agora(), usuario:SES.login, perfil:SES.perfil,
-          tipo:'correcao_perda', motivo:motivo,
-          perdaAnterior:perdaAnt, perdaNova:novaPerda
-        })
-      ];
-      if(novaPerda>0) writes.push(DB.ref('perdas_diarias').push({
-        opId:fbKey, data:dtPerdaCorr, turno:0, perdaKG:novaPerda,
-        operador:SES.login, tipo:'correcao_perda', motivo:motivo, ts:agora()
-      }));
-      return Promise.all(writes);
-    }).then(function(){
+    var dtCorr=op?(op.ultimoApt||op.data||hoje()):hoje();
+    ld(true,'Salvando correcao de reprocesso...');
+    arquivarReprocessoAntigo(fbKey).then(function(reprocessoAnt){
+      return DB.ref('ops/'+fbKey).once('value').then(function(snapOp){
+        var opFresh=snapOp.val()||{};
+        var t1=Number(opFresh.t1)||0, t2=Number(opFresh.t2)||0, t3=Number(opFresh.t3)||0;
+        var novoReal=t1+t2+t3+novoReprocesso;
+        var writes=[
+          DB.ref('ops/'+fbKey).update({reprocessado:novoReprocesso, real:novoReal}),
+          DB.ref('correcoes/'+fbKey).push({
+            ts:agora(), usuario:SES.login, perfil:SES.perfil,
+            tipo:'correcao_reprocesso', motivo:motivo,
+            reprocessoAnterior:reprocessoAnt, reprocessoNovo:novoReprocesso
+          })
+        ];
+        if(novoReprocesso>0||reprocessoAnt>0) writes.push(DB.ref('apontamentos').push({
+          id:uid(), opId:fbKey, data:dtCorr, turno:0,
+          t1:0, t2:0, t3:0, real:novoReprocesso,
+          origem:'reprocesso', motivoReprocesso:motivo,
+          operador:SES.login, tipo:'correcao_pcp', motivo:motivo, ts:agora()
+        }));
+        return Promise.all(writes).then(function(){ return reprocessoAnt; });
+      });
+    }).then(function(reprocessoAnt){
       ld(false);
-      toast('Perda corrigida: '+fN(perdaAnt)+' kg → '+fN(novaPerda)+' kg','ok');
+      toast('Reprocesso corrigido: '+fN(reprocessoAnt)+' kg → '+fN(novoReprocesso)+' kg','ok');
       fM('meditapt');
-      addLog('CORRECAO_PERDA', (op?op.id:fbKey)+' | '+perdaAnt+'→'+novaPerda+'kg | '+motivo);
+      addLog('CORRECAO_REPROCESSO', (op?op.id:fbKey)+' | '+reprocessoAnt+'→'+novoReprocesso+'kg | '+motivo);
     }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
     return;
   }
@@ -3023,7 +3049,7 @@ function salvarEdicaoApt(){
   for(var i=0;i<OPS.length;i++){if(OPS[i].fbKey===fbKey){op=OPS[i];break;}}
   if(!op){ toast('OP nao encontrada','err'); return; }
 
-  var origPerda=Number(op.perda)||0;
+  var origReprocessado=Number(op.reprocessado)||0;
 
   // Data do dia sendo editado = filtro selecionado na tela (eadtctx), igual ao
   // "Corrigir Apontamento" do PCP. TODO o calculo abaixo e feito em cima de dados
@@ -3058,20 +3084,20 @@ function salvarEdicaoApt(){
     var origT2Dia=Number(diaAtual['2'])||0;
     var origT3Dia=Number(diaAtual['3'])||0;
 
-    var novoT1sc,novoT2sc,novoT3sc,perdaKG;
+    var novoT1sc,novoT2sc,novoT3sc,reprocessoKG;
     if(isPCP){
       // PCP substitui os 3 turnos DO DIA selecionado
       novoT1sc=parseInt(G('eat1').value)||0;
       novoT2sc=parseInt(G('eat2').value)||0;
       novoT3sc=parseInt(G('eat3').value)||0;
-      perdaKG=parseInt(G('eape').value)||0;
+      reprocessoKG=parseInt(G('eape').value)||0;
     } else {
       // Operador: substitui APENAS seu turno, no dia selecionado; os demais
       // turnos daquele mesmo dia ficam com o valor ja existente (nao mexe)
       novoT1sc = turno===1 ? parseInt(G('eat1').value)||0 : Math.round(origT1Dia/fator);
       novoT2sc = turno===2 ? parseInt(G('eat2').value)||0 : Math.round(origT2Dia/fator);
       novoT3sc = turno===3 ? parseInt(G('eat3').value)||0 : Math.round(origT3Dia/fator);
-      perdaKG = origPerda; // operador nao altera perda total
+      reprocessoKG = origReprocessado; // operador nao altera reprocesso total
     }
 
     var novoT1=novoT1sc*fator, novoT2=novoT2sc*fator, novoT3=novoT3sc*fator;
@@ -3093,9 +3119,12 @@ function salvarEdicaoApt(){
     var novoLifeT1=Math.max(lifeT1+deltaT1,0);
     var novoLifeT2=Math.max(lifeT2+deltaT2,0);
     var novoLifeT3=Math.max(lifeT3+deltaT3,0);
-    var novoLifeReal=novoLifeT1+novoLifeT2+novoLifeT3;
 
-    var perdaMudou = isPCP && (perdaKG!==origPerda);
+    var reprocessoMudou = isPCP && (reprocessoKG!==origReprocessado);
+    // Reprocesso soma no real produzido (igual ao apontamento normal) — usa o
+    // novo valor se foi alterado agora, senao mantem o que ja estava.
+    var reprocessadoEfetivo = reprocessoMudou ? reprocessoKG : origReprocessado;
+    var novoLifeReal=novoLifeT1+novoLifeT2+novoLifeT3+reprocessadoEfetivo;
 
     // Marca como substituido APENAS o(s) apontamento(s) ativo(s) do turno editado,
     // NAQUELE dia especifico — mesmo criterio cirurgico do salvarCorrecao (PCP).
@@ -3117,7 +3146,7 @@ function salvarEdicaoApt(){
       DB.ref('ops/'+fbKey).update({
         t1:novoLifeT1, t2:novoLifeT2, t3:novoLifeT3, real:novoLifeReal,
         t1sc:Math.round(novoLifeT1/fator), t2sc:Math.round(novoLifeT2/fator), t3sc:Math.round(novoLifeT3/fator),
-        perda:perdaKG,
+        reprocessado:reprocessadoEfetivo,
         realPorData:rpd,
         realPorDataTurno:rpdt
       }),
@@ -3125,7 +3154,8 @@ function salvarEdicaoApt(){
         ts:agora(), usuario:SES.login, perfil:SES.perfil,
         turno:turno, motivo:motivo,
         dataContexto:dtCtx, deltaReal:deltaReal,
-        t1:novoT1, t2:novoT2, t3:novoT3, perda:perdaKG
+        t1:novoT1, t2:novoT2, t3:novoT3,
+        reprocessoAnterior:origReprocessado, reprocessoNovo:reprocessadoEfetivo
       })
     ]);
     // Registro ativo do valor corrigido, no dia+turno certos — mesmo quando o
@@ -3135,15 +3165,21 @@ function salvarEdicaoApt(){
       writes.push(DB.ref('apontamentos').push({
         id:uid(), opId:fbKey, data:dtCtx, turno:t,
         t1:t===1?valT:0, t2:t===2?valT:0, t3:t===3?valT:0, real:valT,
-        perda:0, operador:SES.login, tipo:'correcao_operador', motivo:motivo, ts:agora()
+        operador:SES.login, tipo:'correcao_operador', motivo:motivo, ts:agora()
       }));
     });
-    if(perdaMudou && perdaKG>0) writes.push(DB.ref('perdas_diarias').push({
-      opId:fbKey, data:dtCtx, turno:0, perdaKG:perdaKG,
-      operador:SES.login, tipo:'correcao_apontamento', motivo:motivo, ts:agora()
-    }));
+    // Reprocesso (lifetime, mesmo padrao do modoSoPerda/correcao-OP-finalizada):
+    // se o PCP mudou o total, arquiva os registros de reprocesso ativos antigos
+    // e grava um novo evento representando o total corrigido, na data do contexto.
+    var pReprocesso = reprocessoMudou ? arquivarReprocessoAntigo(fbKey) : Promise.resolve();
 
-    return (perdaMudou?arquivarPerdasAntigas(fbKey):Promise.resolve()).then(function(){
+    return pReprocesso.then(function(){
+      if(reprocessoMudou && (reprocessoKG>0||origReprocessado>0)) writes.push(DB.ref('apontamentos').push({
+        id:uid(), opId:fbKey, data:dtCtx, turno:0,
+        t1:0, t2:0, t3:0, real:reprocessoKG,
+        origem:'reprocesso', motivoReprocesso:motivo,
+        operador:SES.login, tipo:'correcao_apontamento', motivo:motivo, ts:agora()
+      }));
       return Promise.all(writes);
     });
   }).then(function(){
@@ -3326,6 +3362,11 @@ function confirmarExcluir(){
 // (via realPorDataTurno) e preenche o campo — chamada no abrir do modal e toda
 // vez que o PCP troca a data de um turno. Nunca mostra o acumulado de vida
 // inteira da OP misturado com uma data que nao corresponde a ele.
+// Cache de reprocesso por data+turno da OP em correcao, carregado em abrirCorrecao()
+// a partir de 'apontamentos' (origem:'reprocesso') — mesma fonte que o Dashboard le,
+// pra mostrar no formulario exatamente o que esta valendo naquele dia.
+var CORR_REPROC={};
+
 function atualizarCampoCorrTurno(turno){
   var fbKey=G('crfbkey').value;
   var op=null;
@@ -3336,6 +3377,11 @@ function atualizarCampoCorrTurno(turno){
   var rpdt=op.realPorDataTurno||{};
   var kg=(dt&&rpdt[dt]&&rpdt[dt][String(turno)]!==undefined)?Number(rpdt[dt][String(turno)]):0;
   if(G('crt'+turno)) G('crt'+turno).value=fator?Math.round(kg/fator):kg;
+  // Reprocesso do dia/turno — le do cache CORR_REPROC (carregado em abrirCorrecao),
+  // igual ao criterio do apontamento normal e do Dashboard (apontamentos com
+  // origem:'reprocesso', nao substituidos).
+  var rp=(dt&&CORR_REPROC[dt+'|'+turno]!==undefined)?CORR_REPROC[dt+'|'+turno]:0;
+  if(G('crrp'+turno)) G('crrp'+turno).value=rp;
   atualizarTotaisCorr();
 }
 
@@ -3355,6 +3401,7 @@ function abrirCorrecao(fbKey){
   if(G('corr-dt2')) G('corr-dt2').value=dtBase;
   if(G('corr-dt3')) G('corr-dt3').value=dtBase;
   if(G('corr-data')) G('corr-data').value=dtBase;
+  G('crrp1').value=0; G('crrp2').value=0; G('crrp3').value=0;
   // Preenche T1/T2/T3 com o que foi APONTADO NAQUELA DATA especifica (realPorDataTurno),
   // nao mais com o acumulado da vida inteira da OP (op.t1sc/t2sc/t3sc) — uma OP que roda
   // em mais de um dia tinha esse total misturando dias diferentes, mostrando pro PCP um
@@ -3362,22 +3409,31 @@ function abrirCorrecao(fbKey){
   atualizarCampoCorrTurno(1);
   atualizarCampoCorrTurno(2);
   atualizarCampoCorrTurno(3);
-  // Perda por turno - distribui a perda total nos campos
-  // Se tiver perdas por turno salvas, usa elas; senao distribui igualmente
-  var perdaT1=Number(op.perdaT1)||0;
-  var perdaT2=Number(op.perdaT2)||0;
-  var perdaT3=Number(op.perdaT3)||0;
-  var totalPerdaSalva=perdaT1+perdaT2+perdaT3;
-  var perdaTotal=Number(op.perda)||0;
-  if(totalPerdaSalva===0 && perdaTotal>0){
-    // Distribui nos 3 campos para o PCP ajustar
-    G('crpe1').value=perdaTotal;
-    G('crpe2').value=0;
-    G('crpe3').value=0;
-  } else {
-    G('crpe1').value=perdaT1;
-    G('crpe2').value=perdaT2;
-    G('crpe3').value=perdaT3;
+  // Reprocesso por turno — busca os apontamentos de reprocesso (origem:'reprocesso')
+  // desta OP, os mesmos que o apontamento normal do operador grava, e monta um cache
+  // por data+turno pra preencher os campos com o que realmente esta valendo naquele
+  // dia (igual ao apontamento de producao, que ja mostra "por dia").
+  CORR_REPROC={};
+  DB.ref('apontamentos').orderByChild('opId').equalTo(fbKey).once('value').then(function(snap){
+    snap.forEach(function(c){
+      var a=c.val();
+      if(a.substituido||a.origem!=='reprocesso') return;
+      var t=Number(a.turno);
+      if(t<1||t>3) return;
+      var k=a.data+'|'+t;
+      CORR_REPROC[k]=(CORR_REPROC[k]||0)+(Number(a.real)||0);
+    });
+    atualizarCampoCorrTurno(1);
+    atualizarCampoCorrTurno(2);
+    atualizarCampoCorrTurno(3);
+  });
+  // Perda historica (registro antigo, de antes da mudanca Perda -> Reprocesso) —
+  // exibicao apenas, congelada, nunca mais recebe gravacoes novas.
+  var perdaLeg=Number(op.perda)||0;
+  var hLeg=G('corr-perda-legado');
+  if(hLeg){
+    if(perdaLeg>0){ hLeg.style.display='block'; hLeg.textContent='Perda histórica (registro antigo, anterior à mudança para Reprocesso): '+fN(perdaLeg)+' kg — congelada, não editável aqui.'; }
+    else hLeg.style.display='none';
   }
   G('crmotivo').value='';
   var hEl=G('corr-hint');
@@ -3393,17 +3449,17 @@ function atualizarTotaisCorr(){
   var v2=parseInt(G('crt2').value)||0;
   var v3=parseInt(G('crt3').value)||0;
   var tot=v1+v2+v3;
-  var pe1=parseInt(G('crpe1')?G('crpe1').value:0)||0;
-  var pe2=parseInt(G('crpe2')?G('crpe2').value:0)||0;
-  var pe3=parseInt(G('crpe3')?G('crpe3').value:0)||0;
-  var perda=pe1+pe2+pe3;
-  if(G('crpe')) G('crpe').value=perda;
+  var rp1=parseInt(G('crrp1')?G('crrp1').value:0)||0;
+  var rp2=parseInt(G('crrp2')?G('crrp2').value:0)||0;
+  var rp3=parseInt(G('crrp3')?G('crrp3').value:0)||0;
+  var reprocesso=rp1+rp2+rp3;
+  if(G('crrp')) G('crrp').value=reprocesso;
   var real=tot*fator;
-  var totalProc=real+perda;
+  var totalProc=real+reprocesso;
   var unid=tipo==='SC'?'SC':tipo==='BG'?'BG':'kg';
   var txt='Prod. Bom: '+fN(tot)+' '+unid;
   if(tipo!=='KG') txt+=' = '+fN(real)+' kg';
-  txt+=' | Perda T1:'+fN(pe1)+' T2:'+fN(pe2)+' T3:'+fN(pe3)+' | Total:'+fN(perda)+' kg | Proc:'+fN(totalProc)+' kg';
+  txt+=' | Reprocesso T1:'+fN(rp1)+' T2:'+fN(rp2)+' T3:'+fN(rp3)+' | Total:'+fN(reprocesso)+' kg | Proc:'+fN(totalProc)+' kg';
   G('corr-totais').textContent=txt;
   // Hints de conversão por turno
   if(tipo!=='KG'){
@@ -3426,10 +3482,9 @@ function salvarCorrecao(){
   var t1sc=parseInt(G('crt1').value)||0;
   var t2sc=parseInt(G('crt2').value)||0;
   var t3sc=parseInt(G('crt3').value)||0;
-  var pe1=parseInt(G('crpe1')?G('crpe1').value:0)||0;
-  var pe2=parseInt(G('crpe2')?G('crpe2').value:0)||0;
-  var pe3=parseInt(G('crpe3')?G('crpe3').value:0)||0;
-  var novaPerda=pe1+pe2+pe3;
+  var novoRp1=parseInt(G('crrp1')?G('crrp1').value:0)||0;
+  var novoRp2=parseInt(G('crrp2')?G('crrp2').value:0)||0;
+  var novoRp3=parseInt(G('crrp3')?G('crrp3').value:0)||0;
   // Data por turno
   var dtC1=G('corr-dt1')&&G('corr-dt1').value?G('corr-dt1').value:hoje();
   var dtC2=G('corr-dt2')&&G('corr-dt2').value?G('corr-dt2').value:hoje();
@@ -3439,7 +3494,6 @@ function salvarCorrecao(){
 
   var op=null;
   for(var i=0;i<OPS.length;i++){if(OPS[i].fbKey===fbKey){op=OPS[i];break;}}
-  var perdaAnt=op?Number(op.perda)||0:0;
 
   ld(true,'Salvando correcao...');
 
@@ -3450,15 +3504,28 @@ function salvarCorrecao(){
 
   Promise.all([
     DB.ref('ops/'+fbKey).once('value'),
-    DB.ref('apontamentos').orderByChild('opId').equalTo(fbKey).once('value'),
-    arquivarPerdasAntigas(fbKey)
+    DB.ref('apontamentos').orderByChild('opId').equalTo(fbKey).once('value')
   ]).then(function(res){
     var opFresh=res[0].val()||{};
     var snapApts=res[1];
 
-    // Passo 1: marca como substituidos APENAS os apontamentos do turno especifico
-    // que esta sendo corrigido, na data especifica que esse turno esta recebendo
-    // agora — nao mais "qualquer coisa datada em qualquer uma das 3 datas envolvidas".
+    // Reprocesso ORIGINAL (dados frescos do Firebase, nao do cache client-side)
+    // por data+turno, restrito as datas/turnos que estao sendo corrigidos agora —
+    // mesmo criterio usado pra producao bom (origT1/T2/T3 abaixo), pra calcular
+    // o delta certo sem depender do que a tela tinha carregado.
+    var origRp1=0, origRp2=0, origRp3=0;
+    snapApts.forEach(function(c){
+      var a=c.val();
+      if(a.substituido||a.origem!=='reprocesso') return;
+      if(a.data===dtC1 && Number(a.turno)===1) origRp1+=Number(a.real)||0;
+      if(a.data===dtC2 && Number(a.turno)===2) origRp2+=Number(a.real)||0;
+      if(a.data===dtC3 && Number(a.turno)===3) origRp3+=Number(a.real)||0;
+    });
+
+    // Passo 1: marca como substituidos os apontamentos (producao bom OU reprocesso)
+    // do turno especifico que esta sendo corrigido, na data especifica que esse
+    // turno esta recebendo agora — nao mais "qualquer coisa datada em qualquer
+    // uma das 3 datas envolvidas".
     // Bug real corrigido aqui: ao mover T1/T2 pra uma data e corrigir T3 em outra,
     // a versao anterior marcava como substituido TUDO que ja existia nas datas
     // envolvidas, inclusive turnos que nao tinham nada a ver com esta correcao —
@@ -3509,13 +3576,20 @@ function salvarCorrecao(){
     var novoLifeT1=Math.max((Number(opFresh.t1)||0)+deltaT1,0);
     var novoLifeT2=Math.max((Number(opFresh.t2)||0)+deltaT2,0);
     var novoLifeT3=Math.max((Number(opFresh.t3)||0)+deltaT3,0);
-    var novoLifeReal=novoLifeT1+novoLifeT2+novoLifeT3;
+
+    // Reprocesso — mesmo criterio: delta por data+turno, soma no total "vida
+    // inteira" da OP (op.reprocessado), exatamente como o apontamento normal
+    // do operador (que ja substituiu Perda por Reprocesso). Reprocesso conta
+    // dentro do real produzido da OP, nao e mais descontado a parte.
+    var deltaRp1=novoRp1-origRp1, deltaRp2=novoRp2-origRp2, deltaRp3=novoRp3-origRp3;
+    var novoLifeReprocessado=Math.max((Number(opFresh.reprocessado)||0)+deltaRp1+deltaRp2+deltaRp3,0);
+    var novoLifeReal=novoLifeT1+novoLifeT2+novoLifeT3+novoLifeReprocessado;
 
     var promises=promisesSubst.concat([
       DB.ref('ops/'+fbKey).update({
         t1:novoLifeT1, t2:novoLifeT2, t3:novoLifeT3, real:novoLifeReal,
         t1sc:Math.round(novoLifeT1/fator), t2sc:Math.round(novoLifeT2/fator), t3sc:Math.round(novoLifeT3/fator),
-        perda:novaPerda, perdaT1:pe1, perdaT2:pe2, perdaT3:pe3,
+        reprocessado:novoLifeReprocessado,
         ultimoApt:dataCorr,
         realPorData:rpd,
         realPorDataTurno:rpdt
@@ -3523,45 +3597,62 @@ function salvarCorrecao(){
       DB.ref('apontamentos').push({
         id:uid(), opId:fbKey, data:dataCorr, turno:0,
         t1:novoT1, t2:novoT2, t3:novoT3,
-        real:novoT1+novoT2+novoT3, perda:0,
+        real:novoT1+novoT2+novoT3,
         operador:SES.login, tipo:'correcao_pcp', motivo:motivo, ts:agora()
       }),
       DB.ref('correcoes/'+fbKey).push({
         ts:agora(), pcp:SES.login, motivo:motivo, data:dataCorr,
-        perdaAnterior:perdaAnt, perdaNova:novaPerda,
-        perdaT1:pe1, perdaT2:pe2, perdaT3:pe3,
-        real:novoT1+novoT2+novoT3, totalProcessado:(novoT1+novoT2+novoT3)+novaPerda
+        reprocessoAnterior:origRp1+origRp2+origRp3, reprocessoNovo:novoRp1+novoRp2+novoRp3,
+        reprocessoT1:novoRp1, reprocessoT2:novoRp2, reprocessoT3:novoRp3,
+        real:novoT1+novoT2+novoT3, totalProcessado:(novoT1+novoT2+novoT3)+(novoRp1+novoRp2+novoRp3)
       })
     ]);
-    // Registros individuais por turno — SEMPRE gravados (mesmo com valor 0), nao
-    // so quando novoT>0. Um turno corrigido pra 0 precisa de um registro ativo
-    // dizendo "corrigido pra 0", senao ele fica sem nenhum apontamento ativo
-    // naquela data+turno e vira exatamente o "orfao" que causava o bug do turno
-    // sumindo na visao filtrada do Dashboard. Registros com real=0 nao entram em
-    // nenhuma soma (o.real<=0 ja e filtrado em todo lugar que le apontamentos),
-    // entao isso e seguro — so fecha a rastreabilidade.
+    // Registros individuais de PRODUCAO por turno — SEMPRE gravados (mesmo com
+    // valor 0), nao so quando novoT>0. Um turno corrigido pra 0 precisa de um
+    // registro ativo dizendo "corrigido pra 0", senao ele fica sem nenhum
+    // apontamento ativo naquela data+turno e vira exatamente o "orfao" que
+    // causava o bug do turno sumindo na visao filtrada do Dashboard. Registros
+    // com real=0 nao entram em nenhuma soma (o.real<=0 ja e filtrado em todo
+    // lugar que le apontamentos), entao isso e seguro — so fecha a rastreabilidade.
     promises.push(DB.ref('apontamentos').push({
       id:uid(),opId:fbKey,data:dtC1,turno:1,t1:novoT1,t2:0,t3:0,
-      real:novoT1,perda:0,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
+      real:novoT1,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
     }));
     promises.push(DB.ref('apontamentos').push({
       id:uid(),opId:fbKey,data:dtC2,turno:2,t1:0,t2:novoT2,t3:0,
-      real:novoT2,perda:0,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
+      real:novoT2,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
     }));
     promises.push(DB.ref('apontamentos').push({
       id:uid(),opId:fbKey,data:dtC3,turno:3,t1:0,t2:0,t3:novoT3,
-      real:novoT3,perda:0,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
+      real:novoT3,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
     }));
-    if(pe1>0) promises.push(DB.ref('perdas_diarias').push({opId:fbKey,data:dtC1,turno:1,perdaKG:pe1,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()}));
-    if(pe2>0) promises.push(DB.ref('perdas_diarias').push({opId:fbKey,data:dtC2,turno:2,perdaKG:pe2,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()}));
-    if(pe3>0) promises.push(DB.ref('perdas_diarias').push({opId:fbKey,data:dtC3,turno:3,perdaKG:pe3,operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()}));
+    // Registros de REPROCESSO por turno (origem:'reprocesso') — mesmo padrao dos
+    // registros de producao, gravados quando havia ou passa a haver valor >0
+    // (evita orfao sem poluir o node com zeros irrelevantes quando nunca existiu
+    // reprocesso naquele turno/dia). E o que faz o Dashboard/TV somar esse valor
+    // como reprocesso (e nao mais como perda separada).
+    if(origRp1>0||novoRp1>0) promises.push(DB.ref('apontamentos').push({
+      id:uid(),opId:fbKey,data:dtC1,turno:1,t1:0,t2:0,t3:0,real:novoRp1,
+      origem:'reprocesso',motivoReprocesso:motivo,
+      operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
+    }));
+    if(origRp2>0||novoRp2>0) promises.push(DB.ref('apontamentos').push({
+      id:uid(),opId:fbKey,data:dtC2,turno:2,t1:0,t2:0,t3:0,real:novoRp2,
+      origem:'reprocesso',motivoReprocesso:motivo,
+      operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
+    }));
+    if(origRp3>0||novoRp3>0) promises.push(DB.ref('apontamentos').push({
+      id:uid(),opId:fbKey,data:dtC3,turno:3,t1:0,t2:0,t3:0,real:novoRp3,
+      origem:'reprocesso',motivoReprocesso:motivo,
+      operador:SES.login,tipo:'correcao_pcp',motivo:motivo,ts:agora()
+    }));
     return Promise.all(promises);
   }).then(function(){
     ld(false);
     var dtInfo=dtC1===dtC2&&dtC2===dtC3?' | Data: '+dtC1:' | T1:'+dtC1+' T2:'+dtC2+' T3:'+dtC3;
     toast('Correcao salva!'+dtInfo,'ok');
     fM('mcorr');
-    addLog('CORRECAO',(op?op.id:fbKey)+' | '+dataCorr+' | perda:'+perdaAnt+'->'+novaPerda+'kg | '+motivo);
+    addLog('CORRECAO',(op?op.id:fbKey)+' | '+dataCorr+' | reprocesso:'+(novoRp1+novoRp2+novoRp3)+'kg | '+motivo);
   }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
 }
 
@@ -4326,7 +4417,11 @@ function gerarComparativo(){
       COMP_DADOS=baseIds.map(function(baseId){
         var rodadas=grupos[baseId].slice().sort(function(a,b){return (a.data||'')<(b.data||'')?-1:(a.data||'')>(b.data||'')?1:0;});
         var ensacado=rodadas.reduce(function(a,o){return a+(Number(o.real)||0);},0);
-        var perda=rodadas.reduce(function(a,o){return a+(Number(o.perda)||0);},0);
+        // Reprocesso da cadeia = soma do campo legado 'perda' (registros antigos,
+        // gravados antes da mudanca de nome — na pratica sempre foi reprocesso)
+        // + 'reprocessado' (campo atual). Preserva 100% do que ja foi apontado,
+        // so muda o rotulo de exibicao.
+        var reprocesso=rodadas.reduce(function(a,o){return a+(Number(o.perda)||0)+(Number(o.reprocessado)||0);},0);
         var extrusado=extPorBase[baseId]||0;
         var extPorRodada=extPorRodadaPorBase[baseId]||{};
         // Programado da cadeia inteira: usa progOriginal se alguma rodada tiver
@@ -4334,16 +4429,17 @@ function gerarComparativo(){
         var progOrig=null;
         rodadas.forEach(function(o){ if(o.progOriginal) progOrig=Number(o.progOriginal); });
         var prog=progOrig!==null?progOrig:(Number(rodadas[0].prog)||0);
-        // Diferença Total considera a perda de ensaque como material ja contabilizado
-        // (nao "sumido") — so o que sobra depois de somar bom+perda e comparar com o
-        // que a Extrusao realmente produziu e que conta como divergencia de verdade.
-        var diff=extrusado-(ensacado+perda);
+        // Diferença Total considera o reprocesso de ensaque como material ja
+        // contabilizado (nao "sumido") — so o que sobra depois de somar bom+reprocesso
+        // e comparar com o que a Extrusao realmente produziu e que conta como
+        // divergencia de verdade.
+        var diff=extrusado-(ensacado+reprocesso);
         var pct=extrusado>0?Math.round(diff/extrusado*100):null;
         var status=pct===null?'sem-ext':Math.abs(pct)<=5?'ok':Math.abs(pct)<=10?'warn':'crit';
         var op0=rodadas[0], opN=rodadas[rodadas.length-1];
         return {
           op:{id:baseId,desc:op0.desc,cod:op0.cod,linha:op0.linha,data:op0.data,dataFim:opN.data,prog:prog},
-          ensacado:ensacado,perda:perda,extrusado:extrusado,diff:diff,pct:pct,status:status,
+          ensacado:ensacado,reprocesso:reprocesso,extrusado:extrusado,diff:diff,pct:pct,status:status,
           rodadas:rodadas,extPorRodada:extPorRodada
         };
       });
@@ -4392,7 +4488,7 @@ function renderComparativo(st){
     h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">Programado</th>';
     h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">🏭 Extrusado</th>';
     h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">📦 Ensacado</th>';
-    h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#c0392b">Perda</th>';
+    h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#d29922">Reprocesso</th>';
     h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">Diferença Total</th>';
     h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">%</th>';
     h+='<th style="padding:8px;text-align:center;border-bottom:2px solid #d4e8d4;color:#024f2b">Status</th>';
@@ -4419,7 +4515,7 @@ function renderComparativo(st){
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right">'+fN(op.prog)+'</td>';
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#1a7a4a">'+fN(r.extrusado)+'</td>';
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#024f2b">'+fN(r.ensacado)+'</td>';
-      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;color:#c0392b">'+(r.perda>0?fN(r.perda):'—')+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;color:#d29922">'+(r.reprocesso>0?fN(r.reprocesso):'—')+'</td>';
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:'+corDiff+'">'+(r.diff>0?'+':'')+fN(r.diff)+'</td>';
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:'+corDiff+'">'+(r.pct!==null?(r.pct>0?'+':'')+r.pct+'%':'—')+'</td>';
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:center">'+(stBadge[r.status]||'')+'</td>';
@@ -4433,7 +4529,7 @@ function exportarComparativoExcel(){
   if(!COMP_DADOS.length){alert('Gere a análise primeiro');return;}
   if(typeof XLSX==='undefined'){alert('Biblioteca Excel não disponível');return;}
 
-  var linhas=[['Nº OP','Produto','Linha','Período','Programado (kg)','Extrusado (kg)','Ensacado (kg)','Perda (kg)','Diferença Total (kg)','Diferença (%)','Status','Rodadas']];
+  var linhas=[['Nº OP','Produto','Linha','Período','Programado (kg)','Extrusado (kg)','Ensacado (kg)','Reprocesso (kg)','Diferença Total (kg)','Diferença (%)','Status','Rodadas']];
   COMP_DADOS.forEach(function(r){
     var op=r.op;
     var stTxt={ok:'OK (≤5%)','warn':'Atenção (5-10%)','crit':'Crítico (>10%)','sem-ext':'Sem extrusão'}[r.status]||'';
@@ -4445,7 +4541,7 @@ function exportarComparativoExcel(){
       Number(op.prog)||0,
       r.extrusado,
       r.ensacado,
-      r.perda,
+      r.reprocesso,
       r.diff,
       r.pct!==null?r.pct+'%':'—',
       stTxt,
@@ -4457,7 +4553,7 @@ function exportarComparativoExcel(){
   // a aba "Comparativo" soma tudo, essa aba mostra de onde veio cada número.
   // Extrusado aqui vem da mesma fonte confiável do comparativo (extrusao_apts
   // por opNum exato da rodada), nao de op.realExtrusao.
-  var linhasDetalhe=[['OP base','Nº OP (rodada)','Data da rodada','Programado da rodada (kg)','Extrusado (kg)','Ensacado (kg)','Perda (kg)','Status da OP']];
+  var linhasDetalhe=[['OP base','Nº OP (rodada)','Data da rodada','Programado da rodada (kg)','Extrusado (kg)','Ensacado (kg)','Reprocesso (kg)','Status da OP']];
   COMP_DADOS.forEach(function(r){
     r.rodadas.forEach(function(o){
       linhasDetalhe.push([
@@ -4467,7 +4563,7 @@ function exportarComparativoExcel(){
         Number(o.prog)||0,
         (r.extPorRodada&&r.extPorRodada[o.id])||0,
         Number(o.real)||0,
-        Number(o.perda)||0,
+        (Number(o.perda)||0)+(Number(o.reprocessado)||0),
         o.status||''
       ]);
     });
