@@ -323,11 +323,19 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <h2 style="font-size:16px;font-weight:700;color:#024f2b">Finos / Reprocesso Geral / Varredura <span style="font-size:11px;color:#739630;font-weight:500">— sem vinculo com OP, limpeza do setor</span></h2>
     <button class="btn bp" onclick="abrirApontamentoGeral()">+ Novo apontamento</button>
   </div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-    <input type="date" id="ger-fdt" style="width:auto" onchange="renderApontamentosGerais()">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:flex-end">
+    <div class="fg" style="margin-bottom:0"><label class="fl">De</label><input type="date" id="ger-fdti" style="width:auto" onchange="renderApontamentosGerais()"></div>
+    <div class="fg" style="margin-bottom:0"><label class="fl">Até</label><input type="date" id="ger-fdtf" style="width:auto" onchange="renderApontamentosGerais()"></div>
     <select id="ger-ftipo" style="width:auto" onchange="renderApontamentosGerais()"><option value="">Todos os tipos</option><option>Finos</option><option>Finos Magisan</option><option>Reprocesso Geral</option><option>Varredura</option></select>
     <select id="ger-fln" style="width:auto" onchange="renderApontamentosGerais()"><option value="">Todas as linhas</option><option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option><option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option></select>
   </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    <button class="btn bsm" onclick="gerFiltroRapido(0)">Hoje</button>
+    <button class="btn bsm" onclick="gerFiltroRapido(7)">Últimos 7 dias</button>
+    <button class="btn bsm" onclick="gerFiltroRapido(30)">Últimos 30 dias</button>
+    <button class="btn bsm" onclick="gerFiltroRapido('mes')">Este mês</button>
+  </div>
+  <div id="ger-periodo-info" style="font-size:11px;color:#739630;margin-bottom:10px"></div>
   <div id="ger-metrics" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px"></div>
   <div class="card" style="padding:0"><div class="tw"><table>
     <thead><tr><th>Data</th><th>Turno</th><th>Tipo</th><th>Linha</th><th style="text-align:right">Quantidade</th><th>Motivo</th><th>Operador</th><th>Codigo</th><th>Acoes</th></tr></thead>
@@ -1312,7 +1320,7 @@ function go(s,btn){
       renderBalCards();
       renderBalHistorico();
     }
-    else if(s==='geral'){ if(!G('ger-fdt').value) G('ger-fdt').value=hoje(); renderApontamentosGerais(); }
+    else if(s==='geral'){ if(!G('ger-fdti').value){ G('ger-fdti').value=hoje(); G('ger-fdtf').value=hoje(); } renderApontamentosGerais(); }
   }
   var needsOPS = (s==='dashboard'||s==='ops'||s==='fila'||s==='fila-op'||s==='operador'||s==='exportar'||s==='envase'||s==='programacao');
   if(needsOPS && OPS.length===0){
@@ -2759,25 +2767,50 @@ function salvarApontamentoGeral(){
   }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
 }
 
+// Atalhos de periodo — reduz cliques p/ analises rapidas (hoje / 7d / 30d / mes atual)
+function gerFiltroRapido(qtd){
+  var fim=hoje();
+  var ini;
+  if(qtd==='mes'){
+    ini=fim.slice(0,8)+'01';
+  } else if(qtd===0){
+    ini=fim;
+  } else {
+    var d=new Date(fim+'T00:00:00');
+    d.setDate(d.getDate()-(qtd-1));
+    ini=d.toISOString().slice(0,10);
+  }
+  G('ger-fdti').value=ini;
+  G('ger-fdtf').value=fim;
+  renderApontamentosGerais();
+}
+
 function renderApontamentosGerais(){
-  var dt=G('ger-fdt').value;
+  var di=G('ger-fdti').value;
+  var df=G('ger-fdtf').value;
   var ftipo=G('ger-ftipo').value;
   var fln=G('ger-fln').value;
-  if(!dt) return;
-  DB.ref('apontamentos_gerais').orderByChild('data').equalTo(dt).once('value').then(function(snap){
+  if(!di||!df) return;
+  if(di>df){ toast('Data inicial maior que a final — ajuste o periodo','err'); return; }
+  G('ger-periodo-info').textContent = di===df
+    ? 'Exibindo '+di.split('-').reverse().join('/')
+    : 'Periodo: '+di.split('-').reverse().join('/')+' a '+df.split('-').reverse().join('/');
+
+  DB.ref('apontamentos_gerais').orderByChild('data').startAt(di).endAt(df).once('value').then(function(snap){
     var lista=[];
     if(snap.exists()) snap.forEach(function(c){ var v=c.val(); v.fbKey=c.key; lista.push(v); });
     if(ftipo) lista=lista.filter(function(v){return v.tipo===ftipo;});
     if(fln) lista=lista.filter(function(v){return v.linha===fln;});
-    lista.sort(function(a,b){return (b.ts||0)-(a.ts||0);});
+    lista.sort(function(a,b){ return (b.data||'').localeCompare(a.data||'') || (b.ts||0)-(a.ts||0); });
 
     var totais={'Finos':0,'Finos Magisan':0,'Reprocesso Geral':0,'Varredura':0};
     lista.forEach(function(v){ totais[v.tipo]=(totais[v.tipo]||0)+(Number(v.quantidadeKg)||0); });
+    var rotulo = di===df ? 'no dia' : 'no periodo';
     G('ger-metrics').innerHTML=
-      '<div class="mc"><div class="ml">Finos no dia</div><div class="mv co">'+fN(totais['Finos'])+'</div><div class="ms">kg</div></div>'+
-      '<div class="mc"><div class="ml">Finos Magisan no dia</div><div class="mv co">'+fN(totais['Finos Magisan'])+'</div><div class="ms">kg</div></div>'+
-      '<div class="mc"><div class="ml">Reprocesso Geral no dia</div><div class="mv co">'+fN(totais['Reprocesso Geral'])+'</div><div class="ms">kg</div></div>'+
-      '<div class="mc"><div class="ml">Varredura no dia</div><div class="mv co">'+fN(totais['Varredura'])+'</div><div class="ms">kg</div></div>';
+      '<div class="mc"><div class="ml">Finos '+rotulo+'</div><div class="mv co">'+fN(totais['Finos'])+'</div><div class="ms">kg</div></div>'+
+      '<div class="mc"><div class="ml">Finos Magisan '+rotulo+'</div><div class="mv co">'+fN(totais['Finos Magisan'])+'</div><div class="ms">kg</div></div>'+
+      '<div class="mc"><div class="ml">Reprocesso Geral '+rotulo+'</div><div class="mv co">'+fN(totais['Reprocesso Geral'])+'</div><div class="ms">kg</div></div>'+
+      '<div class="mc"><div class="ml">Varredura '+rotulo+'</div><div class="mv co">'+fN(totais['Varredura'])+'</div><div class="ms">kg</div></div>';
 
     var h='';
     lista.forEach(function(v){
@@ -2786,7 +2819,7 @@ function renderApontamentosGerais(){
       h+='<td style="font-size:10px;color:#739630">'+(v.codigoEtiqueta||'—')+'</td>';
       h+='<td><button class="btn bsm" onclick="imprimirEtiquetaReprocesso({titulo:\''+v.tipo.toUpperCase()+'\',linha:\''+(v.linha||'')+'\',codigo:\''+v.codigoEtiqueta+'\',turno:'+v.turno+',data:\''+v.data+'\',pesoKg:'+v.quantidadeKg+',motivo:\''+v.motivo+'\'})">Reimprimir</button></td></tr>';
     });
-    G('ger-body').innerHTML=h||'<tr><td colspan="9" style="text-align:center;color:#739630">Nenhum apontamento nessa data</td></tr>';
+    G('ger-body').innerHTML=h||'<tr><td colspan="9" style="text-align:center;color:#739630">Nenhum apontamento no periodo selecionado</td></tr>';
   }).catch(function(e){ toast('Erro ao carregar: '+e.message,'err'); });
 }
 
