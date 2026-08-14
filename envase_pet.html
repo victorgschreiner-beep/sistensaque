@@ -214,34 +214,26 @@ tr:hover td{background:rgba(2,79,43,.03)}
 <!-- REPROCESSO -->
 <div class="scr" id="scr-reprocesso">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Reprocesso <span style="font-size:11px;color:#739630;font-weight:500">— rastreabilidade por etiqueta</span></h2>
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Reprocesso <span style="font-size:11px;color:#739630;font-weight:500">— controle interno, com etiqueta e vinculo com OP</span></h2>
     <button class="btn bp" onclick="abrirNovoReprocesso()">+ Novo Reprocesso</button>
   </div>
-  <div class="tabs" id="reprotabs">
-    <button class="tab on" onclick="tabRepro(0,this)">Pendentes</button>
-    <button class="tab" onclick="tabRepro(1,this)">Histórico</button>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:flex-end">
+    <div class="fg" style="margin-bottom:0"><label class="fl">De</label><input type="date" id="repro-di" style="width:auto" onchange="renderReprocesso()"></div>
+    <div class="fg" style="margin-bottom:0"><label class="fl">Até</label><input type="date" id="repro-df" style="width:auto" onchange="renderReprocesso()"></div>
+    <select id="repro-ftipo" style="width:auto" onchange="renderReprocesso()"><option value="">Todos os tipos</option><option>Geral</option><option>Varredura</option><option>Finos</option><option>Qualidade</option></select>
   </div>
-
-  <div id="repro-pendentes">
-    <div class="mrow" id="repro-metrics" style="grid-template-columns:repeat(2,minmax(150px,1fr))"></div>
-    <div id="repro-lista"></div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    <button class="btn bsm" onclick="reproFiltroRapido(0)">Hoje</button>
+    <button class="btn bsm" onclick="reproFiltroRapido(7)">Últimos 7 dias</button>
+    <button class="btn bsm" onclick="reproFiltroRapido(30)">Últimos 30 dias</button>
+    <button class="btn bsm" onclick="reproFiltroRapido('mes')">Este mês</button>
   </div>
-
-  <div id="repro-historico" style="display:none">
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:flex-end">
-      <div class="fg" style="margin-bottom:0"><label class="fl">De</label><input type="date" id="repro-h-di" style="width:auto" onchange="renderReproHistorico()"></div>
-      <div class="fg" style="margin-bottom:0"><label class="fl">Até</label><input type="date" id="repro-h-df" style="width:auto" onchange="renderReproHistorico()"></div>
-      <select id="repro-h-tipo" style="width:auto" onchange="renderReproHistorico()"><option value="">Todos os tipos</option><option>Geral</option><option>Varredura</option><option>Finos</option><option>Qualidade</option></select>
-    </div>
-    <div class="card" style="padding:0;margin-bottom:14px"><div class="ch" style="padding:14px 16px 0"><span class="ct">Etiquetas</span></div><div class="tw"><table>
-      <thead><tr><th>Código</th><th>Tipo</th><th>Data</th><th style="text-align:right">Peso original</th><th style="text-align:right">Saldo</th><th>Status</th><th>Origem</th><th>Ações</th></tr></thead>
-      <tbody id="repro-h-body"></tbody>
-    </table></div></div>
-    <div class="card" style="padding:0"><div class="ch" style="padding:14px 16px 0"><span class="ct">Movimentações (baixas)</span></div><div class="tw"><table>
-      <thead><tr><th>Etiqueta</th><th>Tipo</th><th style="text-align:right">Qtd</th><th>OP destino</th><th>Motivo</th><th>Operador</th><th>Data</th></tr></thead>
-      <tbody id="repro-h-baixas-body"></tbody>
-    </table></div></div>
-  </div>
+  <div id="repro-periodo-info" style="font-size:11px;color:#739630;margin-bottom:10px"></div>
+  <div class="mrow" id="repro-metrics" style="grid-template-columns:repeat(4,1fr)"></div>
+  <div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr><th>Data</th><th>Tipo</th><th style="text-align:right">Quantidade</th><th>OP relacionada</th><th>Motivo do desvio</th><th>Observação</th><th>Lançado por</th><th>Código</th><th>Ações</th></tr></thead>
+    <tbody id="repro-body"></tbody>
+  </table></div></div>
 </div>
 
 </div>
@@ -314,25 +306,6 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
 </div>
 
-<!-- MODAL BAIXA DE REPROCESSO (uso ou perda) -->
-<div class="ov" id="mbaixarepro">
-  <div class="modal">
-    <div class="mt" id="baixa-titulo">Baixa de Reprocesso</div>
-    <input type="hidden" id="baixa-etiqueta-fbkey">
-    <input type="hidden" id="baixa-tipo">
-    <div class="ali" id="baixa-info" style="font-size:12px"></div>
-    <div class="fg"><label class="fl">Ordem de Produção (destino) *</label><select id="baixa-op"></select></div>
-    <div class="fr">
-      <div class="fg"><label class="fl">Quantidade (kg) *</label><input type="number" min="0" id="baixa-qtd" step="0.1"></div>
-      <div class="fg" id="baixa-motivo-row" style="display:none"><label class="fl">Motivo da perda *</label><input type="text" id="baixa-motivo" placeholder="Ex: contaminacao, mistura incorreta..."></div>
-    </div>
-    <div class="mfoot">
-      <button class="btn bsm" onclick="fM('mbaixarepro')">Cancelar</button>
-      <button class="btn bp bsm" id="baixa-confirmar-btn" onclick="salvarBaixaReprocesso()">Confirmar</button>
-    </div>
-  </div>
-</div>
-
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -360,8 +333,7 @@ var ENVASE_OPS = [];
 var ENVASE_HIST_DIAS = [];
 var AUTO_AVANCO_ENVASE_FEITO = false;
 var ENVASE_REPROCESSO = [];
-var ENVASE_REPROCESSO_BAIXAS = [];
-var REPRO_SUBTAB = 0; // 0 = Pendentes, 1 = Historico
+
 
 // ============================================================
 // UTILS (mesmos padroes do index.html)
@@ -443,9 +415,8 @@ function doLogout(){
   DB.ref('envase_pet_ops').off();
   DB.ref('envase_pet_historico_dias').off();
   DB.ref('envase_pet_reprocesso').off();
-  DB.ref('envase_pet_reprocesso_baixas').off();
   SES=null; ENVASE_OPS=[]; ENVASE_HIST_DIAS=[];
-  ENVASE_REPROCESSO=[]; ENVASE_REPROCESSO_BAIXAS=[];
+  ENVASE_REPROCESSO=[];
   AUTO_AVANCO_ENVASE_FEITO=false;
   G('pg-app').style.display='none';
   G('pg-login').style.display='flex';
@@ -464,7 +435,7 @@ function go(s,btn){
   if(s==='dashboard') renderDashEnvase();
   else if(s==='apontamento') renderApontamento();
   else if(s==='reprocesso'){
-    if(!G('repro-h-di').value){ G('repro-h-di').value=hoje(); G('repro-h-df').value=hoje(); }
+    if(!G('repro-di').value){ G('repro-di').value=hoje(); G('repro-df').value=hoje(); }
     renderReprocesso();
   }
 }
@@ -546,14 +517,6 @@ function iniciarApp(){
     var ativas=document.querySelectorAll('.scr.on');
     if(ativas.length && ativas[0].id==='scr-reprocesso') renderReprocesso();
   }, function(err){ console.warn('Erro ao carregar reprocesso Envase:', err.message); });
-  DB.ref('envase_pet_reprocesso_baixas').on('value', function(snap){
-    ENVASE_REPROCESSO_BAIXAS=[];
-    if(snap.exists()){
-      snap.forEach(function(c){ var v=c.val(); v.fbKey=c.key; ENVASE_REPROCESSO_BAIXAS.push(v); });
-    }
-    var ativas=document.querySelectorAll('.scr.on');
-    if(ativas.length && ativas[0].id==='scr-reprocesso' && REPRO_SUBTAB===1) renderReproHistorico();
-  }, function(err){ console.warn('Erro ao carregar baixas de reprocesso Envase:', err.message); });
 }
 
 // ============================================================
@@ -1077,39 +1040,68 @@ function gerarPDFEnvase(fbKey){
 }
 
 // ============================================================
-// REPROCESSO — controle de material desviado da linha (Geral,
-// Varredura, Finos, Qualidade), com rastreabilidade completa por
-// etiqueta. Cada etiqueta nasce com um saldo (pesoKg) e so' e'
-// baixada por acao explicita do operador — nunca por inferencia
-// automatica a partir da perda geral da OP (uma OP pode ter varias
-// etiquetas vinculadas ao mesmo tempo, ou nenhuma; tentar deduzir
-// proporcao automaticamente gera numero errado e some com o
-// rastreio real). Duas acoes de baixa, sempre vinculadas a uma OP:
-//   - "uso"   -> material efetivamente incorporado na producao
-//   - "perda" -> material perdido (exige motivo)
-// Cada baixa e' parcial-ou-total e pode se repetir ate' o saldo
-// zerar. Nos: envase_pet_reprocesso (etiqueta/saldo) e
-// envase_pet_reprocesso_baixas (historico de movimentacoes, no
-// plano, mesmo padrao de 'apontamentos' no restante do sistema).
+// REPROCESSO — registro simples e interno de material desviado da
+// linha (Geral, Varredura, Finos, Qualidade), com etiqueta e vinculo
+// opcional a uma OP. Tipo Qualidade exige a OP relacionada + motivo
+// do desvio, pra permitir identificar de qual producao o material foi
+// segregado. Sem controle de saldo/baixa — e' so' um log de controle
+// interno, no mesmo padrao do Finos/Reprocesso Geral/Varredura do
+// index.html (periodo De/Ate, cards por tipo, tabela, reimpressao).
 // ============================================================
-function statusBadgeRepro(s){
-  var m={'Pendente':'bam','Parcial':'baz','Encerrado':'bvd'};
-  return '<span class="badge '+(m[s]||'bcz')+'">'+s+'</span>';
-}
-
-function tabRepro(i,btn){
-  REPRO_SUBTAB=i;
-  var tabs=document.querySelectorAll('#reprotabs .tab');
-  for(var k=0;k<tabs.length;k++) tabs[k].classList.remove('on');
-  if(btn) btn.classList.add('on');
-  G('repro-pendentes').style.display = i===0 ? 'block' : 'none';
-  G('repro-historico').style.display = i===1 ? 'block' : 'none';
-  renderReprocesso();
-}
-
 function renderReprocesso(){
-  if(REPRO_SUBTAB===0) renderReproPendentes();
-  else renderReproHistorico();
+  var di=G('repro-di').value, df=G('repro-df').value;
+  var ftipo=G('repro-ftipo').value;
+  if(!di||!df) return;
+  if(di>df){ toast('Data inicial maior que a final — ajuste o periodo','err'); return; }
+  G('repro-periodo-info').textContent = di===df
+    ? 'Exibindo '+di.split('-').reverse().join('/')
+    : 'Periodo: '+di.split('-').reverse().join('/')+' a '+df.split('-').reverse().join('/');
+
+  var lista=ENVASE_REPROCESSO.filter(function(r){
+    if((r.data||'')<di||(r.data||'')>df) return false;
+    if(ftipo && r.tipo!==ftipo) return false;
+    return true;
+  });
+  lista.sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
+
+  var tipos=['Geral','Varredura','Finos','Qualidade'];
+  var totais={};
+  tipos.forEach(function(t){ totais[t]=0; });
+  lista.forEach(function(r){ totais[r.tipo]=(totais[r.tipo]||0)+(Number(r.pesoKg)||0); });
+  var rotulo = di===df ? 'no dia' : 'no periodo';
+  var hm='';
+  tipos.forEach(function(t){
+    hm+='<div class="mc"><div class="ml">'+t+' '+rotulo+'</div><div class="mv co">'+fN(totais[t])+'</div><div class="ms">kg</div></div>';
+  });
+  G('repro-metrics').innerHTML=hm;
+
+  var h='';
+  lista.forEach(function(r){
+    h+='<tr><td>'+(r.data||'').split('-').reverse().join('/')+'</td><td>'+r.tipo+'</td>';
+    h+='<td style="text-align:right">'+fN(r.pesoKg)+' kg</td><td>'+(r.opOrigemId||'—')+'</td>';
+    h+='<td>'+(r.motivoDesvio||'—')+'</td><td>'+(r.obs||'—')+'</td><td>'+(r.lancadoPor||'—')+'</td>';
+    h+='<td style="font-size:10px;color:#739630">'+(r.codigo||'—')+'</td>';
+    h+='<td><button class="btn bsm" data-key="'+r.fbKey+'" onclick="reimprimirEtiquetaReprocesso(this.dataset.key)">Reimprimir</button></td></tr>';
+  });
+  G('repro-body').innerHTML = h || '<tr><td colspan="9" style="text-align:center;color:#739630">Nenhum reprocesso no periodo selecionado</td></tr>';
+}
+
+// Atalhos de periodo — mesmo padrao do Finos/Reprocesso Geral do ensaque.
+function reproFiltroRapido(qtd){
+  var fim=hoje();
+  var ini;
+  if(qtd==='mes'){
+    ini=fim.slice(0,8)+'01';
+  } else if(qtd===0){
+    ini=fim;
+  } else {
+    var d=new Date(fim+'T00:00:00');
+    d.setDate(d.getDate()-(qtd-1));
+    ini=d.toISOString().slice(0,10);
+  }
+  G('repro-di').value=ini;
+  G('repro-df').value=fim;
+  renderReprocesso();
 }
 
 // Codigo sequencial por dia, no padrao REP-AAMMDD-NNN — rastreio fisico
@@ -1180,8 +1172,7 @@ function salvarNovoReprocesso(){
     codigo:codigo, tipo:tipo,
     opOrigemFbKey:opOrigemFbKey||null, opOrigemId:opOrigemId||null, opOrigemProduto:opOrigemProduto||null,
     motivoDesvio:motivoDesvio||null,
-    pesoKg:peso, saldoKg:peso, obs:obs||null,
-    status:'Pendente',
+    pesoKg:peso, obs:obs||null,
     data:dt, hora:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
     lancadoPor:SES.login, lancadoEm:agora(), ts:Date.now()
   }).then(function(){
@@ -1193,148 +1184,6 @@ function salvarNovoReprocesso(){
       codigo:codigo, tipo:tipo, pesoKg:peso, data:dt,
       opOrigemId:opOrigemId, motivoDesvio:motivoDesvio, obs:obs
     });
-  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
-}
-
-function renderReproPendentes(){
-  // Mostra TODAS as etiquetas com saldo > 0, sem filtro de data — mesmo
-  // criterio ja usado no restante do sistema pra etiqueta antiga nao sumir
-  // do filtro padrao (bag esquecido precisa continuar visivel como alerta).
-  var lista=ENVASE_REPROCESSO.filter(function(r){ return (Number(r.saldoKg)||0)>0; });
-  lista.sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
-
-  var totPend=0;
-  lista.forEach(function(r){ totPend+=Number(r.saldoKg)||0; });
-  G('repro-metrics').innerHTML=
-    '<div class="mc"><div class="ml">Etiquetas em aberto</div><div class="mv co">'+lista.length+'</div><div class="ms">aguardando baixa</div></div>'+
-    '<div class="mc"><div class="ml">Saldo pendente</div><div class="mv cr">'+fN(totPend)+'</div><div class="ms">kg no total</div></div>';
-
-  var h='';
-  lista.forEach(function(r){
-    h+='<div class="opcard">';
-    h+='<div style="display:flex;justify-content:space-between;align-items:flex-start">';
-    h+='<div><div style="font-weight:700;font-size:14px">'+r.codigo+'</div>';
-    h+='<div style="font-size:12px;color:#4a664a;margin-top:2px">'+r.tipo+(r.opOrigemId?' &middot; Origem: '+r.opOrigemId+(r.opOrigemProduto?' ('+r.opOrigemProduto+')':''):'')+'</div>';
-    if(r.motivoDesvio) h+='<div style="font-size:11px;color:#c0392b;margin-top:2px">Desvio: '+r.motivoDesvio+'</div>';
-    h+='</div>'+statusBadgeRepro(r.status)+'</div>';
-    h+='<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px">';
-    h+='<div style="font-size:12px"><span style="color:#739630">Peso original</span> <strong>'+fN(r.pesoKg)+' kg</strong></div>';
-    h+='<div style="font-size:12px"><span style="color:#739630">Saldo disponivel</span> <strong style="color:#024f2b">'+fN(r.saldoKg)+' kg</strong></div>';
-    h+='<div style="font-size:12px"><span style="color:#739630">Gerado em</span> <strong>'+(r.data||'').split('-').reverse().join('/')+'</strong></div>';
-    h+='</div>';
-    if(r.obs) h+='<div style="font-size:11px;color:#4a664a;margin-top:4px">Obs: '+r.obs+'</div>';
-    h+='<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">';
-    h+='<button class="btn bp bsm" data-key="'+r.fbKey+'" onclick="abrirBaixaReprocesso(this.dataset.key,\'uso\')">Usar em producao</button>';
-    h+='<button class="btn br bsm" data-key="'+r.fbKey+'" onclick="abrirBaixaReprocesso(this.dataset.key,\'perda\')">Registrar perda</button>';
-    h+='<button class="btn bsm" data-key="'+r.fbKey+'" onclick="reimprimirEtiquetaReprocesso(this.dataset.key)">Reimprimir etiqueta</button>';
-    h+='</div></div>';
-  });
-  G('repro-lista').innerHTML = h || '<div style="text-align:center;padding:40px;color:#4a664a">Nenhuma etiqueta pendente — todo o reprocesso em aberto ja foi baixado.</div>';
-}
-
-function renderReproHistorico(){
-  var di=G('repro-h-di').value, df=G('repro-h-df').value;
-  var ftipo=G('repro-h-tipo').value;
-  if(!di||!df) return;
-  if(di>df){ toast('Data inicial maior que a final — ajuste o periodo','err'); return; }
-
-  var etiquetas=ENVASE_REPROCESSO.filter(function(r){
-    if((r.data||'')<di||(r.data||'')>df) return false;
-    if(ftipo && r.tipo!==ftipo) return false;
-    return true;
-  }).sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
-
-  var h='';
-  etiquetas.forEach(function(r){
-    h+='<tr><td>'+r.codigo+'</td><td>'+r.tipo+'</td><td>'+(r.data||'').split('-').reverse().join('/')+'</td>';
-    h+='<td style="text-align:right">'+fN(r.pesoKg)+' kg</td><td style="text-align:right">'+fN(r.saldoKg)+' kg</td>';
-    h+='<td>'+statusBadgeRepro(r.status)+'</td><td>'+(r.opOrigemId||'—')+'</td>';
-    h+='<td><button class="btn bxs" data-key="'+r.fbKey+'" onclick="reimprimirEtiquetaReprocesso(this.dataset.key)">Reimprimir</button></td></tr>';
-  });
-  G('repro-h-body').innerHTML = h || '<tr><td colspan="8" style="text-align:center;color:#739630">Nenhuma etiqueta no periodo selecionado</td></tr>';
-
-  var etiquetasFbKeys=null;
-  if(ftipo){
-    etiquetasFbKeys={};
-    etiquetas.forEach(function(r){ etiquetasFbKeys[r.fbKey]=true; });
-  }
-  var baixas=ENVASE_REPROCESSO_BAIXAS.filter(function(b){
-    if((b.data||'')<di||(b.data||'')>df) return false;
-    if(etiquetasFbKeys && !etiquetasFbKeys[b.etiquetaFbKey]) return false;
-    return true;
-  }).sort(function(a,b){ return (b.ts||'')>(a.ts||'')?1:-1; });
-
-  var hb='';
-  baixas.forEach(function(b){
-    hb+='<tr><td>'+(b.codigo||'—')+'</td><td>'+(b.tipo==='uso'?'Uso em producao':'Perda')+'</td>';
-    hb+='<td style="text-align:right">'+fN(b.qtd)+' kg</td><td>'+(b.opDestinoId||'—')+'</td>';
-    hb+='<td>'+(b.motivoPerda||'—')+'</td><td>'+(b.operador||'—')+'</td>';
-    hb+='<td>'+(b.data||'').split('-').reverse().join('/')+'</td></tr>';
-  });
-  G('repro-h-baixas-body').innerHTML = hb || '<tr><td colspan="7" style="text-align:center;color:#739630">Nenhuma movimentacao no periodo selecionado</td></tr>';
-}
-
-function abrirBaixaReprocesso(fbKey,tipo){
-  var r=null;
-  for(var i=0;i<ENVASE_REPROCESSO.length;i++){ if(ENVASE_REPROCESSO[i].fbKey===fbKey){ r=ENVASE_REPROCESSO[i]; break; } }
-  if(!r){ toast('Etiqueta nao encontrada','err'); return; }
-  G('baixa-etiqueta-fbkey').value=fbKey;
-  G('baixa-tipo').value=tipo;
-  G('baixa-titulo').textContent=(tipo==='uso'?'Usar em producao':'Registrar perda')+' — '+r.codigo;
-  G('baixa-info').textContent='Saldo disponivel: '+fN(r.saldoKg)+' kg (de '+fN(r.pesoKg)+' kg originais)';
-  G('baixa-qtd').value=0;
-  G('baixa-qtd').max=r.saldoKg;
-  G('baixa-motivo').value='';
-  G('baixa-motivo-row').style.display = (tipo==='perda') ? 'flex' : 'none';
-  var btn=G('baixa-confirmar-btn');
-  btn.className = (tipo==='perda') ? 'btn br bsm' : 'btn bp bsm';
-  popularSelectOPsReprocesso('baixa-op');
-  G('mbaixarepro').classList.add('on');
-}
-
-function salvarBaixaReprocesso(){
-  var fbKey=G('baixa-etiqueta-fbkey').value;
-  var tipo=G('baixa-tipo').value;
-  var r=null;
-  for(var i=0;i<ENVASE_REPROCESSO.length;i++){ if(ENVASE_REPROCESSO[i].fbKey===fbKey){ r=ENVASE_REPROCESSO[i]; break; } }
-  if(!r){ toast('Etiqueta nao encontrada','err'); return; }
-
-  var opFbKey=G('baixa-op').value;
-  if(!opFbKey){ toast('Selecione a Ordem de Producao','err'); return; }
-  var qtd=parseFloat(G('baixa-qtd').value)||0;
-  if(qtd<=0){ toast('Informe a quantidade','err'); return; }
-  var saldoAtual=Number(r.saldoKg)||0;
-  if(qtd>saldoAtual+0.001){ toast('Quantidade maior que o saldo disponivel ('+fN(saldoAtual)+' kg)','err'); return; }
-
-  var motivo='';
-  if(tipo==='perda'){
-    motivo=(G('baixa-motivo').value||'').trim();
-    if(!motivo){ toast('Informe o motivo da perda','err'); return; }
-  }
-
-  var op=null;
-  for(var j=0;j<ENVASE_OPS.length;j++){ if(ENVASE_OPS[j].fbKey===opFbKey){ op=ENVASE_OPS[j]; break; } }
-  var opId=op?op.id:'-';
-
-  var novoSaldo=Math.max(0,saldoAtual-qtd);
-  var novoStatus = novoSaldo<=0.001 ? 'Encerrado' : 'Parcial';
-
-  ld(true,'Salvando...');
-  DB.ref('envase_pet_reprocesso_baixas').push({
-    etiquetaFbKey:fbKey, codigo:r.codigo, tipo:tipo, qtd:qtd,
-    opDestinoFbKey:opFbKey, opDestinoId:opId,
-    motivoPerda: tipo==='perda' ? motivo : null,
-    operador:SES.login, data:hoje(), ts:agora()
-  }).then(function(){
-    return DB.ref('envase_pet_reprocesso/'+fbKey).update({
-      saldoKg:novoSaldo, status:novoStatus,
-      atualizadoPor:SES.login, atualizadoEm:agora()
-    });
-  }).then(function(){
-    ld(false);
-    toast((tipo==='uso'?'Uso registrado':'Perda registrada')+' — saldo restante: '+fN(novoSaldo)+' kg','ok');
-    addLog('BAIXA_REPROCESSO_ENVASE_PET', r.codigo+' | '+tipo+' | '+fN(qtd)+'kg | OP '+opId+' | saldo restante: '+fN(novoSaldo)+'kg'+(motivo?' | motivo: '+motivo:''));
-    fM('mbaixarepro');
   }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
 }
 
