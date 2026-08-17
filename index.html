@@ -5044,11 +5044,13 @@ function gerarRelPeriodo(){
   Promise.all([
     Promise.all(datas.map(function(d){return DB.ref('metas_diarias/'+d).once('value');})),
     DB.ref('perdas_diarias').orderByChild('data').startAt(di).endAt(df).once('value'),
-    DB.ref('apontamentos').orderByChild('data').startAt(di).endAt(df).once('value')
+    DB.ref('apontamentos').orderByChild('data').startAt(di).endAt(df).once('value'),
+    DB.ref('apontamentos_gerais').orderByChild('data').startAt(di).endAt(df).once('value')
   ]).then(function(results){
     var metasSnaps=results[0];
     var perdasSnap=results[1];
     var aptsSnap=results[2];
+    var geraisSnap=results[3];
 
     // Programado por dia — soma das metas das linhas relevantes (mesma regra do
     // Dashboard: SO a meta do PCP conta, sem cair de volta pra soma de o.prog)
@@ -5063,20 +5065,49 @@ function gerarRelPeriodo(){
       }
     });
 
-    // Perda por dia — direto de perdas_diarias (fonte ja correta por dia), respeitando
-    // filtro de linha via opId->linha e ignorando registros substituidos/corrigidos
-    var perdaPorDia={};
-    datas.forEach(function(d){perdaPorDia[d]=0;});
+    // Reprocesso por dia — "Perda" foi descontinuada e virou Reprocesso, em 3 grupos:
+    // 1) Reprocesso OP (vinculado a uma ordem) = legado congelado em perdas_diarias
+    //    (datas anteriores a migração, nunca entrou no real da OP) + apontamentos
+    //    com origem:'reprocesso' (atual, ESTE sim soma dentro de realPorData/real
+    //    da OP — precisa ser descontado do bruto pra achar o "bom puro", exatamente
+    //    como o Dashboard principal faz: trBomPuro = tr - reprocFiltrado)
+    // 2) Finos + Finos Magisan + Reprocesso Geral (limpeza de setor, sem OP, nunca
+    //    entra no real de nenhuma OP — nao precisa de desconto)
+    // 3) Varredura (idem, sem OP)
+    var reprOpLegadoPorDia={}, reprOpNovoPorDia={}, finosPorDia={}, varredPorDia={};
+    var reprOpNovoTurnoPorDia={};
+    datas.forEach(function(d){
+      reprOpLegadoPorDia[d]=0; reprOpNovoPorDia[d]=0; finosPorDia[d]=0; varredPorDia[d]=0;
+      reprOpNovoTurnoPorDia[d]={1:0,2:0,3:0};
+    });
+
+    // 1a) Legado congelado (perdas_diarias) — so existe pra datas anteriores ao corte.
+    // NUNCA foi somado em o.real/realPorData no modelo antigo, entao entra so no
+    // card/tabela de reprocesso, sem descontar de nada.
     if(perdasSnap.exists()) perdasSnap.forEach(function(c){
       var p=c.val();
       if(p.substituido) return;
-      if(!perdaPorDia.hasOwnProperty(p.data)) return;
+      if(!reprOpLegadoPorDia.hasOwnProperty(p.data)) return;
       if(ln&&fbKeyToLinha[p.opId]!==ln) return;
-      perdaPorDia[p.data]+=Number(p.perdaKG)||Number(p.quantidade)||0;
+      reprOpLegadoPorDia[p.data]+=Number(p.perdaKG)||Number(p.quantidade)||0;
+    });
+    // 2 e 3) Reprocesso geral de setor — vem de 'apontamentos_gerais' (sem opId,
+    // filtro de linha direto pelo campo 'linha' do registro). Tambem nunca entra
+    // no real de OP nenhuma.
+    if(geraisSnap.exists()) geraisSnap.forEach(function(c){
+      var g=c.val();
+      if(!finosPorDia.hasOwnProperty(g.data)) return;
+      if(ln&&g.linha&&g.linha!==ln) return;
+      var qtd=Number(g.quantidadeKg)||0;
+      if(g.tipo==='Varredura') varredPorDia[g.data]+=qtd;
+      else finosPorDia[g.data]+=qtd; // Finos, Finos Magisan, Reprocesso Geral
     });
 
     // Detalhamento por turno (T1/T2/T3, sacaria e granel) — direto de 'apontamentos',
-    // por dia. Respeita filtro de linha e ignora substituidos, igual perda.
+    // por dia. Respeita filtro de linha e ignora substituidos. O mesmo loop separa
+    // o reprocesso OP atual (origem:'reprocesso') pra descontar do bruto e achar o
+    // "bom puro" — sc/kg por turno continuam brutos, igual o Dashboard principal faz
+    // (reprocesso KG puro nao mexe em contagem de sacaria/big bag).
     var turnoPorDia={}, scTurnoPorDia={}, kgTurnoPorDia={};
     datas.forEach(function(d){
       turnoPorDia[d]={1:0,2:0,3:0};
@@ -5092,7 +5123,11 @@ function gerarRelPeriodo(){
       if(t<1||t>3) return;
       var real=a.real!==undefined?(Number(a.real)||0):((Number(a.t1)||0)+(Number(a.t2)||0)+(Number(a.t3)||0));
       if(real<=0) return;
-      turnoPorDia[a.data][t]+=real;
+      turnoPorDia[a.data][t]+=real; // bruto (inclui reprocesso, igual Dashboard)
+      if(a.origem==='reprocesso'){
+        reprOpNovoPorDia[a.data]+=real;
+        reprOpNovoTurnoPorDia[a.data][t]+=real;
+      }
       if(fbKeyToTipo[a.opId]==='SC') scTurnoPorDia[a.data][t]+=real;
       else kgTurnoPorDia[a.data][t]+=real;
     });
@@ -5106,8 +5141,13 @@ function gerarRelPeriodo(){
     datas.forEach(function(d){
       porData[d]={
         prog:progPorDia[d]||0, real:0,
-        t1:turnoPorDia[d][1], t2:turnoPorDia[d][2], t3:turnoPorDia[d][3],
-        perda:perdaPorDia[d]||0,
+        // T1/T2/T3 "bom puro" — desconta o reprocesso OP atual do bruto, igual
+        // ao Dashboard principal (trBomPuro = tr - reprocFiltrado)
+        t1:turnoPorDia[d][1]-reprOpNovoTurnoPorDia[d][1],
+        t2:turnoPorDia[d][2]-reprOpNovoTurnoPorDia[d][2],
+        t3:turnoPorDia[d][3]-reprOpNovoTurnoPorDia[d][3],
+        reprOp:(reprOpLegadoPorDia[d]||0)+(reprOpNovoPorDia[d]||0),
+        finos:finosPorDia[d]||0, varred:varredPorDia[d]||0,
         scT1:scTurnoPorDia[d][1], scT2:scTurnoPorDia[d][2], scT3:scTurnoPorDia[d][3],
         kgT1:kgTurnoPorDia[d][1], kgT2:kgTurnoPorDia[d][2], kgT3:kgTurnoPorDia[d][3]
       };
@@ -5130,16 +5170,25 @@ function gerarRelPeriodo(){
     });
     var totalFamilias=famTotais.AQUA+famTotais.PET+famTotais.HORSE;
 
+    // "Bom puro" no total diário — desconta o reprocesso OP atual do bruto vindo de
+    // realPorData, igual ao Dashboard principal (trBomPuro = tr - reprocFiltrado).
+    // O legado (perdas_diarias) NAO desconta, pois nunca esteve somado em real/realPorData.
+    datas.forEach(function(d){
+      porData[d].real-=(reprOpNovoPorDia[d]||0);
+    });
+
     // Totais consolidados do periodo
-    var totProg=0,totReal=0,totT1=0,totT2=0,totT3=0,totPerda=0;
+    var totProg=0,totReal=0,totT1=0,totT2=0,totT3=0,totReprOp=0,totFinos=0,totVarred=0;
     var totScT1=0,totScT2=0,totScT3=0,totKgT1=0,totKgT2=0,totKgT3=0;
     datas.forEach(function(d){
       var pd=porData[d];
       totProg+=pd.prog; totReal+=pd.real;
-      totT1+=pd.t1; totT2+=pd.t2; totT3+=pd.t3; totPerda+=pd.perda;
+      totT1+=pd.t1; totT2+=pd.t2; totT3+=pd.t3;
+      totReprOp+=pd.reprOp; totFinos+=pd.finos; totVarred+=pd.varred;
       totScT1+=pd.scT1; totScT2+=pd.scT2; totScT3+=pd.scT3;
       totKgT1+=pd.kgT1; totKgT2+=pd.kgT2; totKgT3+=pd.kgT3;
     });
+    var totReprocesso=totReprOp+totFinos+totVarred;
     var totAdh=totProg?Math.min(Math.round(totReal/totProg*100),100):0;
     var adhT1=totProg?Math.min(Math.round(totT1/totProg*100),100):0;
     var adhT2=totProg?Math.min(Math.round(totT2/totProg*100),100):0;
@@ -5150,12 +5199,14 @@ function gerarRelPeriodo(){
     function fDt(d){return d?d.slice(8)+'/'+d.slice(5,7):'';}
 
     // ── CARDS CONSOLIDADOS ───────────────────────────────────
-    var html='<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:20px">';
+    var html='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px">';
     var cards=[
       {l:'PROGRAMADO',v:fN(totProg)+' kg',c:'#024f2b'},
-      {l:'PROD. BOM',v:fN(totReal)+' kg',c:corAdh},
+      {l:'PROD. BOM (s/ reprocesso)',v:fN(totReal)+' kg',c:corAdh},
       {l:'ADERÊNCIA',v:totAdh+'%',c:corAdh},
-      {l:'PERDA TOTAL',v:fN(totPerda)+' kg',c:'#c0392b'},
+      {l:'REPROCESSO OP',v:fN(totReprOp)+' kg',c:'#c0392b'},
+      {l:'FINOS + F.MAGISAN + REPR. GERAL',v:fN(totFinos)+' kg',c:'#c0392b'},
+      {l:'VARREDURA',v:fN(totVarred)+' kg',c:'#c0392b'},
       {l:'DIAS NO PERÍODO',v:datas.length+' dias',c:'#4a664a'},
       {l:'OPs NO PERÍODO',v:opsRelevantes.length+' OPs',c:'#4a664a'}
     ];
@@ -5168,6 +5219,7 @@ function gerarRelPeriodo(){
     html+='</div>';
 
     // ── ADERÊNCIA POR TURNO ──────────────────────────────────
+    html+='<div style="margin-bottom:8px"><span style="font-weight:700;color:#024f2b;font-size:14px">📊 Aderência por Turno</span><span style="font-size:11px;color:#739630;margin-left:6px">(bom puro, sem reprocesso)</span></div>';
     html+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px">';
     var turnos=[
       {n:'Turno 1 (21h–05h)',real:totT1,adh:adhT1,c:'#00643c'},
@@ -5192,7 +5244,7 @@ function gerarRelPeriodo(){
     html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">';
 
     html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
-    html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Produção Diária — Prog. vs Real.</div>';
+    html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Produção Diária — Prog. vs Real. <span style="font-weight:400;font-size:11px;color:#739630">(bom, sem reprocesso)</span></div>';
     html+='<canvas id="'+chartId1+'" height="180"></canvas></div>';
 
     html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
@@ -5212,7 +5264,7 @@ function gerarRelPeriodo(){
     html+='<canvas id="'+chartId5+'" height="180"></canvas></div>';
 
     html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px">';
-    html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Perda por Dia (kg)</div>';
+    html+='<div style="font-weight:700;color:#024f2b;margin-bottom:8px;font-size:13px">Reprocesso por Dia (kg)</div>';
     html+='<canvas id="'+chartId6+'" height="180"></canvas></div>';
 
     html+='</div>';
@@ -5224,12 +5276,14 @@ function gerarRelPeriodo(){
     html+='<tr style="border-bottom:2px solid #d4e8d4">'+
       '<th style="text-align:left;padding:6px;color:#4a664a">Data</th>'+
       '<th style="text-align:right;padding:6px;color:#4a664a">Programado</th>'+
-      '<th style="text-align:right;padding:6px;color:#4a664a">Realizado</th>'+
+      '<th style="text-align:right;padding:6px;color:#4a664a">Realizado (bom)</th>'+
       '<th style="text-align:right;padding:6px;color:#4a664a">Aderência</th>'+
       '<th style="text-align:right;padding:6px;color:#4a664a">T1</th>'+
       '<th style="text-align:right;padding:6px;color:#4a664a">T2</th>'+
       '<th style="text-align:right;padding:6px;color:#4a664a">T3</th>'+
-      '<th style="text-align:right;padding:6px;color:#4a664a">Perda</th></tr>';
+      '<th style="text-align:right;padding:6px;color:#4a664a">Repr. OP</th>'+
+      '<th style="text-align:right;padding:6px;color:#4a664a">Finos+F.Mag.+Repr.Geral</th>'+
+      '<th style="text-align:right;padding:6px;color:#4a664a">Varredura</th></tr>';
     datas.forEach(function(d){
       var pd=porData[d];
       var adhDia=pd.prog?Math.min(Math.round(pd.real/pd.prog*100),999):0;
@@ -5242,7 +5296,9 @@ function gerarRelPeriodo(){
         '<td style="text-align:right;padding:6px;color:#4a664a">'+fN(pd.t1)+' kg</td>'+
         '<td style="text-align:right;padding:6px;color:#4a664a">'+fN(pd.t2)+' kg</td>'+
         '<td style="text-align:right;padding:6px;color:#4a664a">'+fN(pd.t3)+' kg</td>'+
-        '<td style="text-align:right;padding:6px;color:#c0392b">'+(pd.perda>0?fN(pd.perda)+' kg':'—')+'</td></tr>';
+        '<td style="text-align:right;padding:6px;color:#c0392b">'+(pd.reprOp>0?fN(pd.reprOp)+' kg':'—')+'</td>'+
+        '<td style="text-align:right;padding:6px;color:#c0392b">'+(pd.finos>0?fN(pd.finos)+' kg':'—')+'</td>'+
+        '<td style="text-align:right;padding:6px;color:#c0392b">'+(pd.varred>0?fN(pd.varred)+' kg':'—')+'</td></tr>';
     });
     html+='<tr style="border-top:2px solid #024f2b;background:#f0f7ec;font-weight:700">'+
       '<td style="padding:8px;color:#024f2b">TOTAL</td>'+
@@ -5252,7 +5308,9 @@ function gerarRelPeriodo(){
       '<td style="text-align:right;padding:8px;color:#024f2b">'+fN(totT1)+' kg</td>'+
       '<td style="text-align:right;padding:8px;color:#024f2b">'+fN(totT2)+' kg</td>'+
       '<td style="text-align:right;padding:8px;color:#024f2b">'+fN(totT3)+' kg</td>'+
-      '<td style="text-align:right;padding:8px;color:#c0392b">'+fN(totPerda)+' kg</td></tr>';
+      '<td style="text-align:right;padding:8px;color:#c0392b">'+fN(totReprOp)+' kg</td>'+
+      '<td style="text-align:right;padding:8px;color:#c0392b">'+fN(totFinos)+' kg</td>'+
+      '<td style="text-align:right;padding:8px;color:#c0392b">'+fN(totVarred)+' kg</td></tr>';
     html+='</table></div>';
 
     // ── PRODUÇÃO POR FAMÍLIA ─────────────────────────────────
@@ -5318,7 +5376,9 @@ function gerarRelPeriodo(){
     var t1s=datas.map(function(d){return porData[d].t1;});
     var t2s=datas.map(function(d){return porData[d].t2;});
     var t3s=datas.map(function(d){return porData[d].t3;});
-    var perdas=datas.map(function(d){return porData[d].perda;});
+    var reprOps=datas.map(function(d){return porData[d].reprOp;});
+    var finosArr=datas.map(function(d){return porData[d].finos;});
+    var varredArr=datas.map(function(d){return porData[d].varred;});
     var adhs=datas.map(function(d){var pd=porData[d];return pd.prog?Math.min(Math.round(pd.real/pd.prog*100),100):0;});
     var scT1s=datas.map(function(d){return Math.round((porData[d].scT1||0)/25);});
     var scT2s=datas.map(function(d){return Math.round((porData[d].scT2||0)/25);});
@@ -5363,8 +5423,10 @@ function gerarRelPeriodo(){
     ],{scales:{x:{ticks:{font:{size:9}}},y:{min:0,max:110,ticks:{font:{size:9}}}}});
 
     mkChart(chartId6,'bar',labels,[
-      {label:'Perda (kg)',data:perdas,backgroundColor:'rgba(192,57,43,0.7)',borderColor:'#c0392b',borderWidth:1}
-    ]);
+      {label:'Reprocesso OP',data:reprOps,backgroundColor:'rgba(192,57,43,0.7)',borderColor:'#c0392b',borderWidth:1},
+      {label:'Finos+F.Mag.+Repr.Geral',data:finosArr,backgroundColor:'rgba(210,153,34,0.7)',borderColor:'#d29922',borderWidth:1},
+      {label:'Varredura',data:varredArr,backgroundColor:'rgba(140,110,60,0.7)',borderColor:'#8a6e3c',borderWidth:1}
+    ],{scales:{x:{stacked:false,ticks:{font:{size:9}}},y:{stacked:false,ticks:{font:{size:9}}}}});
 
     mkChart('rp-chart-fam','pie',['AQUA','PET','HORSE'],[
       {data:[famTotais.AQUA,famTotais.PET,famTotais.HORSE],backgroundColor:['#0077b6','#c0392b','#8a5a2b']}
@@ -5377,7 +5439,8 @@ function gerarRelPeriodo(){
 
     // Guarda dados para exportar PDF/Excel
     window._relPeriodoData={di:di,df:df,ln:ln,datas:datas,porData:porData,
-      totProg:totProg,totReal:totReal,totAdh:totAdh,totPerda:totPerda,
+      totProg:totProg,totReal:totReal,totAdh:totAdh,
+      totReprOp:totReprOp,totFinos:totFinos,totVarred:totVarred,totReprocesso:totReprocesso,
       totT1:totT1,totT2:totT2,totT3:totT3,adhT1:adhT1,adhT2:adhT2,adhT3:adhT3,
       totScT1:totScT1,totScT2:totScT2,totScT3:totScT3,
       totKgT1:totKgT1,totKgT2:totKgT2,totKgT3:totKgT3,ops:opsRelevantes,
@@ -5562,13 +5625,15 @@ function exportarRelPeriodoPDF(){
   var corAdh2=d.totAdh>=90?[2,79,43]:d.totAdh>=60?[210,153,34]:[192,57,43];
   var cards2=[
     {l:'PROGRAMADO',v:fN(d.totProg)+' kg',c:[50,80,50]},
-    {l:'PROD. BOM',v:fN(d.totReal)+' kg',c:corAdh2},
+    {l:'PROD. BOM (s/ reprocesso)',v:fN(d.totReal)+' kg',c:corAdh2},
     {l:'ADERÊNCIA',v:d.totAdh+'%',c:corAdh2},
-    {l:'PERDA TOTAL',v:fN(d.totPerda)+' kg',c:[192,57,43]},
+    {l:'REPROCESSO OP',v:fN(d.totReprOp)+' kg',c:[192,57,43]},
+    {l:'FINOS+F.MAG.+REPR.GERAL',v:fN(d.totFinos)+' kg',c:[192,57,43]},
+    {l:'VARREDURA',v:fN(d.totVarred)+' kg',c:[192,57,43]},
     {l:'DIAS',v:d.datas.length+' dias',c:[50,80,50]},
     {l:'OPs',v:d.ops.length+' OPs',c:[50,80,50]}
   ];
-  var cw2=(W-5)/6;
+  var cw2=(W-7)/8;
   cards2.forEach(function(card,i){
     var cx=ML+i*cw2+(i>0?1:0);
     doc.setFillColor(245,250,245); doc.rect(cx,y,cw2-1,14,'F');
@@ -5622,7 +5687,7 @@ function exportarRelPeriodoPDF(){
   var hc=[ML+2,ML+22,ML+55,ML+88,ML+110,ML+132,ML+154,ML+176,ML+200,ML+220,ML+242,ML+260];
   doc.setFillColor(220,235,220); doc.rect(ML,y,W,6,'F');
   doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(2,79,43);
-  ['DATA','PROGRAMADO','REALIZADO','ADERÊNCIA','T1 TOTAL','T2 TOTAL','T3 TOTAL','SACARIA T1','SACARIA T2','SACARIA T3','GRANEL','PERDA'].forEach(function(h,i){
+  ['DATA','PROGRAMADO','REALIZADO','ADERÊNCIA','T1 TOTAL','T2 TOTAL','T3 TOTAL','SACARIA T1','SACARIA T2','SACARIA T3','GRANEL','REPROCESSO'].forEach(function(h,i){
     if(hc[i]) doc.text(h,hc[i],y+4.5);
   });
   y+=7;
@@ -5653,7 +5718,7 @@ function exportarRelPeriodoPDF(){
     doc.setTextColor(80,80,80);
     doc.text(fN((pd.kgT1||0)+(pd.kgT2||0)+(pd.kgT3||0)),hc[10],y+4);
     doc.setTextColor(192,57,43);
-    doc.text(fN(pd.perda),hc[11],y+4);
+    doc.text(fN((pd.reprOp||0)+(pd.finos||0)+(pd.varred||0)),hc[11],y+4);
     y+=7;
   });
 
@@ -5674,7 +5739,7 @@ function exportarRelPeriodoPDF(){
   doc.text(fN(Math.round(d.totScT2/25))+' sc',hc[8],y+5.5);
   doc.text(fN(Math.round(d.totScT3/25))+' sc',hc[9],y+5.5);
   doc.setTextColor(80,80,80); doc.text(fN(d.totKgT1+d.totKgT2+d.totKgT3),hc[10],y+5.5);
-  doc.setTextColor(192,57,43); doc.text(fN(d.totPerda),hc[11],y+5.5);
+  doc.setTextColor(192,57,43); doc.text(fN(d.totReprocesso),hc[11],y+5.5);
 
   doc.setFontSize(6.5); doc.setTextColor(160,160,160);
   doc.text('Raguife Ensaque  |  Período: '+fDt2(d.di)+' a '+fDt2(d.df)+'  |  Gerado em: '+new Date().toLocaleString('pt-BR'),148,202,{align:'center'});
