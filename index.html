@@ -4681,14 +4681,18 @@ function classificarFamilia(cod){
 // ENVASE PET — converte OP de ensaque (CAT/DOG, tipo KG) em
 // uma ou mais ordens de envase (produto fracionado, mesmo lote).
 // Nó separado no Firebase (envase_pet_ops) — nunca escreve em 'ops'.
-// Escopo: prefixos CAT, DOG e HOR (Horse). Nao usa FAMILIA_PREFIXOS.PET,
-// que tambem inclui EX — EX nao vai para o Envase PET.
+// Escopo: prefixos CAT, DOG e HOR (Horse), incluindo suas variantes
+// de exportação (prefixo "EX" + familia, ex: EXCAT, EXDOG, EXHOR).
+// A variante EX é normalizada para a mesma familia antes de classificar,
+// entao qualquer novo SKU de exportacao dessas 3 familias ja funciona
+// sem precisar alterar este código de novo.
 // ============================================================
 function classificarPrefixoEnvase(cod){
   var c=(cod||'').toString().trim().toUpperCase();
-  if(c.indexOf('CAT')===0) return 'CAT';
-  if(c.indexOf('DOG')===0) return 'DOG';
-  if(c.indexOf('HOR')===0) return 'HOR';
+  var base=(c.indexOf('EX')===0) ? c.slice(2) : c;
+  if(base.indexOf('CAT')===0) return 'CAT';
+  if(base.indexOf('DOG')===0) return 'DOG';
+  if(base.indexOf('HOR')===0) return 'HOR';
   return null;
 }
 
@@ -4848,13 +4852,16 @@ function abrirConversaoEnvase(fbKey){
   G('envase-origem-info').innerHTML='<b>OP Origem:</b> '+op.id+' &nbsp; <b>Produto:</b> '+op.cod+' - '+(op.desc||'')+' &nbsp; <b>Lote:</b> '+(op.lote||'-')+'<br><b>Produzido:</b> '+(op.real||0).toFixed(1)+' kg &nbsp; <b>Ja convertido:</b> '+conv.toFixed(1)+' kg &nbsp; <b>Saldo disponivel:</b> '+saldo.toFixed(1)+' kg';
   G('envase-maquina').value='Haver';
 
-  // Popula datalist filtrado pelo mesmo prefixo (CAT/DOG) da origem, apenas tipos SC/BG
+  // Popula datalist filtrado pela mesma familia (CAT/DOG/HOR) da origem, apenas tipos SC/BG.
+  // Aceita tanto o produto "normal" quanto sua variante de exportacao (prefixo EX),
+  // pois a origem pode ser EXCAT/EXDOG/EXHOR e o destino cadastrado pode ser qualquer um dos dois.
   var pfx=classificarPrefixoEnvase(op.cod);
   var dl=G('envaselist_dl'); var h='';
   for(var j=0;j<PRODS.length;j++){
     var p=PRODS[j];
     var pc=(p.cod||'').toString().toUpperCase();
-    if(pfx && pc.indexOf(pfx)===0 && (p.unid==='SC'||p.unid==='BG')){
+    var pcBase=(pc.indexOf('EX')===0) ? pc.slice(2) : pc;
+    if(pfx && pcBase.indexOf(pfx)===0 && (p.unid==='SC'||p.unid==='BG')){
       h+='<option value="'+p.cod+' - '+p.desc+'">';
     }
   }
