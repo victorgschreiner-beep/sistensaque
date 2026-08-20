@@ -601,6 +601,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
 
     <!-- Wrap Metas -->
     <div id="adm-metas-wrap" style="display:none">
+      <div id="adm-meta-alerta" style="display:none;background:#fff6e0;border:1px solid #e8c874;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:11px;color:#7a5a00"></div>
       <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
         <input class="fi" id="adm-meta-busca" placeholder="Buscar por código ou descrição..." style="flex:1;font-size:12px" oninput="admMetasFiltrar(this.value)">
         <select class="fi" id="adm-meta-linha" style="width:160px;font-size:12px" onchange="admMetasFiltrar(G('adm-meta-busca').value)">
@@ -616,6 +617,8 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       <div id="adm-meta-form" style="display:none;background:#f5f9f2;border-radius:8px;padding:12px;margin-top:8px;border:1px solid #d4e8d4">
         <div style="font-size:12px;font-weight:700;color:#024f2b;margin-bottom:8px" id="adm-meta-form-titulo"></div>
         <input type="hidden" id="adm-meta-cod">
+        <input type="hidden" id="adm-meta-novo-cod">
+        <input type="hidden" id="adm-meta-novo-desc">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
           <div><label style="font-size:11px;color:#4a664a;font-weight:700;display:block;margin-bottom:3px">L1 (E-240) kg/h</label><input class="fi" type="number" id="adm-meta-l1" min="0"></div>
           <div><label style="font-size:11px;color:#4a664a;font-weight:700;display:block;margin-bottom:3px">L2 (E-200) kg/h</label><input class="fi" type="number" id="adm-meta-l2" min="0"></div>
@@ -5753,7 +5756,51 @@ function admMetasCarregar(){
     METAS_LISTA.sort(function(a,b){return (a.cod||"")>(b.cod||"")?1:-1;});
     G("adm-meta-status").textContent=METAS_LISTA.length+" produtos cadastrados. Busque pelo código ou descrição.";
     admMetasRender(METAS_LISTA);
+    admMetasVerificarSkuNovos();
   });
+}
+
+// ── ALERTA: SKUs cadastrados no Ensaque (node "produtos") que ainda não têm
+// meta configurada aqui na Extrusão (node "config/metas"). Apenas leitura do
+// node "produtos" — a Extrusão nunca escreve nele (isolamento de módulo).
+// Não cria nada automaticamente: só sinaliza para configuração manual.
+function admMetasVerificarSkuNovos(){
+  var alerta=G("adm-meta-alerta");
+  if(!DB||!alerta) return;
+  DB.ref("produtos").once("value",function(s){
+    var codsComMeta={};
+    METAS_LISTA.forEach(function(m){ if(m.cod) codsComMeta[m.cod]=true; });
+    var novos=[];
+    if(s.exists()) s.forEach(function(c){
+      var p=c.val();
+      if(p&&p.cod&&!codsComMeta[p.cod]) novos.push({cod:p.cod,desc:p.desc||""});
+    });
+    if(!novos.length){ alerta.style.display="none"; alerta.innerHTML=""; return; }
+    novos.sort(function(a,b){return a.cod>b.cod?1:-1;});
+    var chips=novos.map(function(p){
+      return '<button onclick="admMetasNovo(\''+p.cod.replace(/'/g,"\\'")+'\',\''+(p.desc||"").replace(/'/g,"\\'")+'\')" '+
+        'style="background:#fff;border:1px solid #e8c874;color:#7a5a00;padding:3px 9px;border-radius:12px;font-size:10px;font-weight:700;cursor:pointer;margin:2px">'+
+        p.cod+' — configurar</button>';
+    }).join(" ");
+    alerta.innerHTML='<div style="font-weight:700;margin-bottom:6px">⚠ '+novos.length+' SKU(s) cadastrado(s) no Ensaque sem meta de produção configurada aqui:</div>'+
+      '<div>'+chips+'</div>';
+    alerta.style.display="block";
+  });
+}
+
+// Abre o formulário de meta em modo "criar" para um SKU que existe em
+// "produtos" (Ensaque) mas ainda não em "config/metas" (Extrusão).
+function admMetasNovo(cod,desc){
+  G("adm-meta-form-titulo").textContent=cod+" — "+(desc||"")+" (novo — defina as metas)";
+  G("adm-meta-cod").value="";
+  G("adm-meta-novo-cod").value=cod;
+  G("adm-meta-novo-desc").value=desc||"";
+  G("adm-meta-l1").value=0;
+  G("adm-meta-l2").value=0;
+  G("adm-meta-l4").value=0;
+  G("adm-meta-l5").value=0;
+  G("adm-meta-form").style.display="block";
+  G("adm-meta-form").scrollIntoView({behavior:"smooth",block:"nearest"});
 }
 
 function admMetasFiltrar(q){
@@ -5803,6 +5850,8 @@ function admMetasEditar(fbKey){
   if(!m) return;
   G("adm-meta-form-titulo").textContent=m.cod+" — "+(m.desc||"");
   G("adm-meta-cod").value=fbKey;
+  G("adm-meta-novo-cod").value="";
+  G("adm-meta-novo-desc").value="";
   G("adm-meta-l1").value=m.metaL1||0;
   G("adm-meta-l2").value=m.metaL2||0;
   G("adm-meta-l4").value=m.metaL4||0;
@@ -5813,7 +5862,46 @@ function admMetasEditar(fbKey){
 
 function admMetasSalvar(){
   var fbKey=G("adm-meta-cod").value;
-  if(!fbKey||!DB){toast("Erro ao identificar produto","err");return;}
+  var novoCod=G("adm-meta-novo-cod").value;
+  if(!DB){toast("Firebase não conectado","err");return;}
+
+  // Modo CRIAR: SKU veio do alerta (existe em "produtos" do Ensaque, ainda
+  // não existe em "config/metas"). Cria um registro novo, sem afetar os
+  // demais SKUs já configurados.
+  if(!fbKey && novoCod){
+    var key=novoCod.replace(/[.#$\[\]]/g,"_");
+    if(METAS_LISTA.some(function(x){return x.cod===novoCod;})){
+      toast("Esse SKU já foi configurado — atualize a busca","err");return;
+    }
+    var novo={
+      cod:novoCod,
+      desc:G("adm-meta-novo-desc").value||"",
+      metaL1:parseInt(G("adm-meta-l1").value)||0,
+      metaL2:parseInt(G("adm-meta-l2").value)||0,
+      metaL4:parseInt(G("adm-meta-l4").value)||0,
+      metaL5:parseInt(G("adm-meta-l5").value)||0
+    };
+    DB.ref("config/metas/"+key).set(novo).then(function(){
+      novo.fbKey=key;
+      METAS_LISTA.push(novo);
+      METAS_LISTA.sort(function(a,b){return (a.cod||"")>(b.cod||"")?1:-1;});
+      METAS_FB[key]=novo;
+      METAS_IDX[novo.cod]=novo;
+      toast("Meta de "+novo.cod+" criada!","ok");
+      registrarLog("meta","Criou meta para SKU novo do Ensaque: "+novo.cod+" L1="+novo.metaL1+" L2="+novo.metaL2+" L4="+novo.metaL4+" L5="+novo.metaL5,"-");
+      G("adm-meta-form").style.display="none";
+      G("adm-meta-novo-cod").value="";
+      G("adm-meta-novo-desc").value="";
+      admMetasVerificarSkuNovos();
+      admMetasRender(METAS_LISTA.filter(function(x){
+        var q=G("adm-meta-busca").value.toLowerCase();
+        return !q||(x.cod||"").toLowerCase().includes(q)||(x.desc||"").toLowerCase().includes(q);
+      }));
+    }).catch(function(e){toast("Erro: "+e.message,"err");});
+    return;
+  }
+
+  if(!fbKey){toast("Erro ao identificar produto","err");return;}
   var m=METAS_LISTA.find(function(x){return x.fbKey===fbKey;});
   if(!m) return;
   var upd={
