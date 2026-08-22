@@ -74,3 +74,28 @@ consegue ler/escrever nele — isso já é assim para o Raguife hoje, então
 reaproveitar o projeto não piora nem melhora esse ponto. Se algum dia isso
 virar preocupação, a correção é no Firebase (Regras + Auth), não no código
 do Ishikawa AI.
+
+===============================================================================
+DEPOIS DE SUBIR — CHECKLIST DE TESTE (faça sempre, é rápido)
+===============================================================================
+1. Espere 1–2 minutos após o push (GitHub Pages leva um tempinho pra
+   publicar).
+2. No CELULAR, se você já tinha acessado essa URL antes de uma versão
+   anterior, force um recarregamento sem cache (no Safari/Chrome do
+   celular: segure o botão de recarregar, ou limpe os dados do site) —
+   navegadores mobile guardam cache agressivo, e testar com a versão
+   antiga em cache reproduz bugs que já foram corrigidos.
+3. No computador: crie uma sessão nova → tela de QR Code.
+4. No celular (de preferência em rede de dados móveis, não no mesmo Wi-Fi,
+   pra garantir que não é coincidência de rede local): escaneie o QR Code,
+   identifique-se, envie uma ideia.
+5. No computador: abra a Parede de Post-its da mesma sessão — a ideia deve
+   aparecer em poucos segundos, sem precisar atualizar a página.
+
+Se aparecer "Não foi possível conectar a esta sessão" no celular mesmo
+depois disso, quase sempre é um destes dois motivos:
+- O celular carregou uma versão em cache de ANTES do firebase-config.json
+  existir no pacote (resolve com o passo 2 acima).
+- O firebase-config.json não foi de fato publicado junto com o index.html
+  desta pasta (confira acessando .../ishikawa/firebase-config.json
+  diretamente no navegador — deve mostrar o JSON, não um erro 404).
