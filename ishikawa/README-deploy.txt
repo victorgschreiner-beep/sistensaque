@@ -131,6 +131,20 @@ Manutenção deste mês" direto na tela. Clique em "Todas" para voltar à visão
 geral. Trocar de aba (Extrusão ↔ Ensaque) limpa o filtro automaticamente,
 porque cada fonte tem seu próprio conjunto de categorias.
 
+DRILL-DOWN POR LINHA: clique numa barra do gráfico "Tempo parado por
+linha/balança" para abrir, logo abaixo, um painel só daquela linha —
+quantidade de paradas, tempo total, ranking dos motivos daquela linha
+específica, e a lista de cada ocorrência (data, horário, motivo). Na aba
+Extrusão, cada ocorrência também mostra qual PRODUTO estava rodando na
+linha naquele turno — informação cruzada em tempo real com a OP ativa
+registrada pelo próprio dashboard (nó "extrusao_op_ativa" + "ops"), sem
+nenhum dado hardcoded. Quando não há OP registrada para aquele turno (ex:
+troca de turno, parada de setup antes de iniciar produção), aparece
+"não identificado" em vez de adivinhar um produto errado. Clicar de novo na
+mesma barra (ou no X do painel) fecha o drill-down. A aba Ensaque mostra o
+mesmo painel (quantidade + motivos + ocorrências), mas sem a coluna de
+produto — esse módulo ainda não registra qual OP estava ativa por parada.
+
 Cada item do ranking tem um botão "Investigar" que já cria uma nova sessão
 de brainstorm com o problema, setor e objetivo pré-preenchidos a partir
 daquela parada — direto do dado real para a análise de causa-raiz.
