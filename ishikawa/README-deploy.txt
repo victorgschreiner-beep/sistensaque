@@ -99,3 +99,51 @@ depois disso, quase sempre é um destes dois motivos:
 - O firebase-config.json não foi de fato publicado junto com o index.html
   desta pasta (confira acessando .../ishikawa/firebase-config.json
   diretamente no navegador — deve mostrar o JSON, não um erro 404).
+
+===============================================================================
+NOVO: INSIGHTS DE PARADAS (lê o dashboard Raguife, só leitura, 2 fontes)
+===============================================================================
+Nova tela: menu lateral → "Insights de Paradas" (ou pelo card na tela inicial).
+Tem duas abas — troque entre elas sem sair da tela:
+
+① EXTRUSÃO (aba padrão) — lê "extrusao_paradas" (cada parada registrada:
+  linha, motivo, horário de início/fim, minutos parado, operador) cruzado
+  em tempo real com o catálogo "extrusao_motivos_parada" (que mapeia cada
+  motivo à sua categoria: Manutenção, Operacional, Fator Externo, Setup ou
+  Utilidades — o mesmo catálogo que aparece na tela de Extrusão do
+  dashboard, editável por lá). Quebra também por linha de produção.
+
+② ENSAQUE (Balanças) — lê "ensaque_historico_paradas", como na versão
+  anterior deste pacote — paradas de balança, quebradas por balança.
+
+Ambas as abas mostram, dentro do Ishikawa AI:
+- tempo total parado no mês, nº de paradas, paradas ainda em aberto;
+- ranking das maiores causas de parada (por tempo parado, não só frequência);
+- gráfico por categoria e por linha/balança.
+
+Cada item do ranking tem um botão "Investigar" que já cria uma nova sessão
+de brainstorm com o problema, setor e objetivo pré-preenchidos a partir
+daquela parada — direto do dado real para a análise de causa-raiz.
+
+Ponto de atenção sobre paradas em aberto (aba Extrusão): o próprio sistema
+Raguife só calcula os minutos parados quando o operador registra o horário
+de término. Uma parada ainda em aberto (sem esse horário) aparece com 0min
+até ser fechada — o Ishikawa AI só exibe o que já está lá, não estima o
+tempo corrido. Um aviso amarelo aparece na tela quando há paradas em aberto
+no mês, para você não confundir "0min" com "sem impacto".
+
+IMPORTANTE — leitura, nunca escrita: as três funções que alimentam esta
+tela (subscribeExternalParadas, subscribeExternalExtrusaoParadas,
+subscribeExternalExtrusaoMotivos, em src/services/RealtimeService.js) só
+têm LEITURA para esses caminhos. Não existe, em nenhum lugar do Ishikawa
+AI, código que escreva, atualize ou apague dado em "ensaque_historico_paradas",
+"extrusao_paradas", "extrusao_motivos_parada" ou qualquer outro caminho do
+dashboard Raguife.
+
+Confirmação: o link https://victorgschreiner-beep.github.io/sistensaque/extrusao.html
+que você indicou É o mesmo projeto Firebase "sistema-ensaque" já configurado
+neste pacote — confirmei lendo o firebaseConfig de dentro do arquivo que
+você enviou (mesma apiKey/databaseURL). Também percebi, ao investigar esse
+repositório, que ele já contém uma pasta "ishikawa/" com o pacote que te
+entreguei antes — ou seja, o deploy anterior já está publicado nesse mesmo
+repositório GitHub.
