@@ -145,6 +145,16 @@ mesma barra (ou no X do painel) fecha o drill-down. A aba Ensaque mostra o
 mesmo painel (quantidade + motivos + ocorrências), mas sem a coluna de
 produto — esse módulo ainda não registra qual OP estava ativa por parada.
 
+AGRUPAMENTO POR SKU (dentro do drill-down por linha, aba Extrusão): em vez
+de uma linha por ocorrência, as paradas aparecem agrupadas por SKU/produto
+— cada card de SKU mostra quantas paradas aconteceram nele e o tempo total,
+e dentro do card os MOTIVOS aparecem cada um só uma vez com sua contagem
+("Ração fora de corte ou diâmetro · 3x"), em vez de 3 linhas repetidas.
+Motivos diferentes no mesmo SKU aparecem em linhas separadas — só o mesmo
+motivo repetido no mesmo SKU é que colapsa. Clique num motivo para expandir
+e ver as datas/horários de cada ocorrência individual (a informação
+detalhada continua disponível, só não polui a visão geral).
+
 Cada item do ranking tem um botão "Investigar" que já cria uma nova sessão
 de brainstorm com o problema, setor e objetivo pré-preenchidos a partir
 daquela parada — direto do dado real para a análise de causa-raiz.
