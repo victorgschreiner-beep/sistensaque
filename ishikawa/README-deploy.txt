@@ -121,6 +121,16 @@ Ambas as abas mostram, dentro do Ishikawa AI:
 - ranking das maiores causas de parada (por tempo parado, não só frequência);
 - gráfico por categoria e por linha/balança.
 
+FILTRO POR CATEGORIA: logo abaixo das abas aparecem "chips" clicáveis com
+cada categoria encontrada naquele mês (ex: Manutenção, Operacional, Fator
+Externo — mais Setup/Utilidades na Extrusão, quando existirem), cada um já
+mostrando o tempo total daquela categoria. Ao clicar em uma categoria, os
+cards, o ranking (que passa a mostrar as 5 maiores em vez de 8) e os
+gráficos filtram só para ela — é o "me mostre as 5 maiores paradas de
+Manutenção deste mês" direto na tela. Clique em "Todas" para voltar à visão
+geral. Trocar de aba (Extrusão ↔ Ensaque) limpa o filtro automaticamente,
+porque cada fonte tem seu próprio conjunto de categorias.
+
 Cada item do ranking tem um botão "Investigar" que já cria uma nova sessão
 de brainstorm com o problema, setor e objetivo pré-preenchidos a partir
 daquela parada — direto do dado real para a análise de causa-raiz.
