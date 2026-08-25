@@ -132,18 +132,24 @@ geral. Trocar de aba (Extrusão ↔ Ensaque) limpa o filtro automaticamente,
 porque cada fonte tem seu próprio conjunto de categorias.
 
 DRILL-DOWN POR LINHA: clique numa barra do gráfico "Tempo parado por
-linha/balança" para abrir, logo abaixo, um painel só daquela linha —
-quantidade de paradas, tempo total, ranking dos motivos daquela linha
-específica, e a lista de cada ocorrência (data, horário, motivo). Na aba
-Extrusão, cada ocorrência também mostra qual PRODUTO estava rodando na
-linha naquele turno — informação cruzada em tempo real com a OP ativa
-registrada pelo próprio dashboard (nó "extrusao_op_ativa" + "ops"), sem
-nenhum dado hardcoded. Quando não há OP registrada para aquele turno (ex:
-troca de turno, parada de setup antes de iniciar produção), aparece
-"não identificado" em vez de adivinhar um produto errado. Clicar de novo na
-mesma barra (ou no X do painel) fecha o drill-down. A aba Ensaque mostra o
-mesmo painel (quantidade + motivos + ocorrências), mas sem a coluna de
-produto — esse módulo ainda não registra qual OP estava ativa por parada.
+linha/balança" para filtrar a tela inteira por aquela linha — o painel
+"Top 5" no topo passa a mostrar as 5 maiores paradas DAQUELA linha (em vez
+do top 5 geral), os cards de tempo total/quantidade/paradas em aberto
+também passam a refletir só ela, e o gráfico de categoria (pizza) mostra a
+composição só daquela linha. O gráfico "por linha" continua mostrando TODAS
+as linhas (para você comparar e trocar de seleção clicando em outra barra)
+— só ele fica de fora do filtro, de propósito. Clique de novo na mesma
+barra para voltar ao "Top 5 geral" (todas as linhas).
+
+Com uma linha selecionada, abre também um painel de ocorrências abaixo. Na
+aba Extrusão, cada ocorrência mostra qual PRODUTO estava rodando na linha
+naquele turno — informação cruzada em tempo real com a OP ativa registrada
+pelo próprio dashboard (nó "extrusao_op_ativa" + "ops"), sem nenhum dado
+hardcoded. Quando não há OP registrada para aquele turno (ex: troca de
+turno, parada de setup antes de iniciar produção), aparece "não
+identificado" em vez de adivinhar um produto errado. A aba Ensaque mostra o
+mesmo painel de ocorrências, mas sem a coluna de produto — esse módulo
+ainda não registra qual OP estava ativa por parada.
 
 AGRUPAMENTO POR SKU (dentro do drill-down por linha, aba Extrusão): em vez
 de uma linha por ocorrência, as paradas aparecem agrupadas por SKU/produto
