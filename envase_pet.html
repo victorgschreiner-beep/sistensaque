@@ -341,7 +341,7 @@ var ENVASE_REPROCESSO = [];
 function G(id){ return document.getElementById(id); }
 function fN(n){ return (Number(n)||0).toLocaleString('pt-BR'); }
 function pct(r,p){ return (p&&Number(p))?Math.min(Math.round((Number(r)||0)/Number(p)*100),999):0; }
-function hoje(){ return new Date().toISOString().slice(0,10); }
+function hoje(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function agora(){ return new Date().toISOString(); }
 
 // ============================================================
