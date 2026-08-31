@@ -697,6 +697,11 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
           <option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option>
         </select>
       </div>
+      <div><label style="display:block;font-size:11px;font-weight:700;color:#4a664a;margin-bottom:3px">ÁREA DA PARADA</label>
+        <select id="dash-area-f" class="fi" style="width:190px">
+          <option value="">Todas</option>
+        </select>
+      </div>
       <div><label style="display:block;font-size:11px;font-weight:700;color:#4a664a;margin-bottom:3px">PRODUTO (SKU)</label>
         <input type="text" id="dash-sku-f" class="fi" placeholder="Código ou descrição..." style="width:200px">
       </div>
@@ -752,11 +757,17 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <!-- Gráficos linha 3 — Paradas -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
       <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px">
-        <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">Pareto de Paradas — Top 10 motivos</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-weight:700;color:#024f2b;font-size:13px">Pareto de Paradas — Top 10 motivos</div>
+          <span id="dash-g5-badge" style="display:none;font-size:10px;font-weight:700;color:#024f2b;background:#e6f0e6;border:1px solid #c8e0c8;border-radius:12px;padding:2px 8px"></span>
+        </div>
         <canvas id="dash-g5" height="200"></canvas>
       </div>
       <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px">
-        <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">Paradas por SKU (minutos)</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-weight:700;color:#024f2b;font-size:13px">Paradas por SKU (minutos)</div>
+          <span id="dash-g6-badge" style="display:none;font-size:10px;font-weight:700;color:#024f2b;background:#e6f0e6;border:1px solid #c8e0c8;border-radius:12px;padding:2px 8px"></span>
+        </div>
         <canvas id="dash-g6" height="200"></canvas>
       </div>
     </div>
@@ -1098,6 +1109,8 @@ function motivosCarregarFirebase(){
       lista.sort(function(a,b){return (a.grupo+"|"+a.desc)>(b.grupo+"|"+b.desc)?1:-1;});
       PARADAS=lista;
       PARADAS_FB_OK=true;
+      // Mantém o filtro ÁREA do dashboard sincronizado com o catálogo de motivos
+      dashPopularAreas();
       // Se o modal de seleção de parada do operador estiver aberto, re-renderiza com a lista atualizada
       if(G("m-para")&&G("m-para").classList.contains("on")) renderParadas(G("para-busca")?G("para-busca").value:"");
       // Se a aba de gestão de motivos estiver aberta no admin, re-renderiza
@@ -3846,8 +3859,22 @@ function abrirDashboard(){
   G("dash-turno-f").value="";
   G("dash-linha-f").value="";
   G("dash-sku-f").value="";
+  dashPopularAreas();
+  G("dash-area-f").value="";
   aM("m-dash");
   gerarDashboard();
+}
+
+// Popula o select ÁREA DA PARADA com os grupos cadastrados no catálogo de motivos (PARADAS).
+// Reflete em tempo real qualquer grupo novo criado pelo admin em "Gestão de Motivos".
+function dashPopularAreas(){
+  var sel=G("dash-area-f");
+  if(!sel) return;
+  var atual=sel.value;
+  var grupos=Array.from(new Set((PARADAS||[]).map(function(p){return p.grupo;}).filter(Boolean))).sort();
+  var h='<option value="">Todas</option>';
+  grupos.forEach(function(g){ h+='<option value="'+g+'"'+(g===atual?" selected":"")+'>'+g+'</option>'; });
+  sel.innerHTML=h;
 }
 
 function gerarDashboard(){
@@ -3855,6 +3882,7 @@ function gerarDashboard(){
   var di=G("dash-di").value, df=G("dash-df").value;
   var turnoF=G("dash-turno-f").value;
   var linhaF=G("dash-linha-f").value;
+  var areaF=G("dash-area-f")?G("dash-area-f").value:"";
   var skuF=G("dash-sku-f").value.toLowerCase().trim();
   if(!di||!df){toast("Informe período","err");return;}
 
@@ -3880,18 +3908,31 @@ function gerarDashboard(){
     if(linhaF){apts=apts.filter(function(a){return a.linha===linhaF;});paradas=paradas.filter(function(p){return p.linha===linhaF;});}
     if(skuF){apts=apts.filter(function(a){return (a.cod||"").toLowerCase().includes(skuF)||(a.desc||"").toLowerCase().includes(skuF);});}
 
-    dashRender(apts, paradas, di, df);
+    dashRender(apts, paradas, di, df, areaF);
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
-function dashRender(apts, paradas, di, df){
+// Resolve o GRUPO (área) de uma parada a partir do catálogo PARADAS,
+// cruzando primeiro por código (mais confiável) e, na ausência dele, por descrição.
+// Retorna "Outros" quando o motivo não é encontrado no catálogo atual (ex.: motivo excluído depois de apontado).
+function paradaGrupo(p){
+  var m=PARADAS.find(function(x){return x.cod===p.codMotivo;});
+  if(!m) m=PARADAS.find(function(x){return x.desc===p.descricao;});
+  return m?m.grupo:"Outros";
+}
+
+function dashRender(apts, paradas, di, df, areaF){
   // Cache para exportarOpPDF acessar fora do escopo
-  window._DASH_CACHE={apts:apts,paradas:paradas,di:di,df:df};
+  window._DASH_CACHE={apts:apts,paradas:paradas,di:di,df:df,areaF:areaF};
+  // Paradas filtradas por ÁREA — usadas nos indicadores/gráficos de paradas (card, Pareto, Paradas por SKU).
+  // O "Corrida por Máquina" (setup) continua usando o array "paradas" completo, pois setup é um conceito
+  // de eficiência de máquina independente do filtro de área selecionado.
+  var paradasArea=areaF?paradas.filter(function(p){return paradaGrupo(p)===areaF;}):paradas;
   // ── CALCULOS ────────────────────────────────────────────
   var totReal=apts.reduce(function(a,x){return a+(Number(x.real)||0);},0);
   var totMeta=apts.reduce(function(a,x){return a+(Number(x.metaH)||0);},0);
   var adh=totMeta?Math.min(Math.round(totReal/totMeta*100),999):0;
-  var totMinPara=paradas.reduce(function(a,p){return a+(Number(p.minutos)||0);},0);
+  var totMinPara=paradasArea.reduce(function(a,p){return a+(Number(p.minutos)||0);},0);
 
   // Por turno
   var porTurno={1:{real:0,meta:0},2:{real:0,meta:0},3:{real:0,meta:0}};
@@ -3935,17 +3976,17 @@ function dashRender(apts, paradas, di, df){
     }
   });
 
-  // Motivos de parada
+  // Motivos de parada (respeita o filtro de ÁREA)
   var porMotivo={};
-  paradas.forEach(function(p){
+  paradasArea.forEach(function(p){
     var m=p.descricao||"Sem motivo";
     if(!porMotivo[m]) porMotivo[m]=0;
     porMotivo[m]+=(Number(p.minutos)||0);
   });
 
-  // Paradas por SKU (via opNum cruzando com apts)
+  // Paradas por SKU (via opNum cruzando com apts) — respeita o filtro de ÁREA
   var paradasPorSKU={};
-  paradas.forEach(function(p){
+  paradasArea.forEach(function(p){
     // Acha apts do mesmo período/linha/turno para pegar o SKU
     var aptRef=apts.find(function(a){
       return a.linha===p.linha && a.turno===p.turno && a.data===p.data;
@@ -3968,7 +4009,7 @@ function dashRender(apts, paradas, di, df){
     {l:"TOTAL PRODUZIDO",v:fN(totReal)+" kg",c:"#024f2b"},
     {l:"META ACUMULADA",v:fN(totMeta)+" kg",c:"#4a664a"},
     {l:"ADERÊNCIA GERAL",v:adh+"%",c:corAdh},
-    {l:"TOTAL PARADAS",v:minH(totMinPara),c:"#c0392b"},
+    {l:areaF?"PARADAS ("+areaF.toUpperCase()+")":"TOTAL PARADAS",v:minH(totMinPara),c:"#c0392b"},
     {l:"MELHOR TURNO",v:"T"+melhorTurno,c:"#739630"},
     {l:"APONTAMENTOS",v:apts.length,c:"#4a664a"}
   ];
@@ -4076,6 +4117,14 @@ function dashRender(apts, paradas, di, df){
     skus.map(function(s){return (s.desc||s.cod).slice(0,20);}),
     [{label:"kg",data:skus.map(function(s){return s.real;}),backgroundColor:"rgba(115,150,48,.75)"}],
     {indexAxis:"y",scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:9}}}}});
+
+  // Badges visuais indicando o filtro de ÁREA ativo nos gráficos de paradas
+  ["dash-g5-badge","dash-g6-badge"].forEach(function(id){
+    var b=G(id);
+    if(!b) return;
+    if(areaF){ b.textContent="Área: "+areaF; b.style.display="inline-block"; }
+    else { b.style.display="none"; }
+  });
 
   // G5 — Pareto de Paradas (barras + linha % acumulado)
   var motivosPareto=Object.entries(porMotivo).sort(function(a,b){return b[1]-a[1];}).slice(0,10);
