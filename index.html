@@ -4501,9 +4501,66 @@ function gerarComparativo(){
       });
 
       renderComparativo(st);
+      calcularTotaisPeriodoCards(di,df);
     }).catch(function(e){
       G('div-corpo').innerHTML='<div style="text-align:center;padding:30px;color:#c0392b">Erro ao buscar dados de extrusão: '+e.message+'</div>';
     });
+  });
+}
+
+// Cards do topo = Extrusado x Ensacado APENAS do período selecionado (não a
+// vida inteira das OPs). r.extrusado ja vem filtrado por data (extrusao_apts),
+// mas r.ensacado/r.reprocesso das linhas da tabela usam o campo cumulativo
+// da OP (op.real / op.reprocessado) — correto pra auditoria da OP inteira,
+// mas errado pra responder "quanto foi ensacado NESTE período". Por isso os
+// cards recalculam Ensacado/Reprocesso direto de 'apontamentos', filtrando
+// pela mesma data do período — mesmo criterio (turno 1-3, sem substituido)
+// usado em todo o resto do sistema pra evitar contar o registro-resumo em dobro.
+function calcularTotaisPeriodoCards(di,df){
+  var fbKeys=[];
+  COMP_DADOS.forEach(function(r){ r.rodadas.forEach(function(o){ if(o.fbKey) fbKeys.push(o.fbKey); }); });
+  fbKeys=fbKeys.filter(function(v,i,a){ return a.indexOf(v)===i; });
+
+  var totExt=0; COMP_DADOS.forEach(function(r){ totExt+=r.extrusado; });
+
+  if(!fbKeys.length){
+    G('div-tot-ext').textContent=fN(totExt)+' kg';
+    G('div-tot-ens').textContent='0 kg';
+    G('div-tot-diff').textContent=(totExt>0?'+':'')+fN(totExt)+' kg';
+    G('div-tot-diff').style.color=totExt>0?'#024f2b':'#666';
+    return;
+  }
+
+  var buscas=fbKeys.map(function(fbKey){
+    return DB.ref('apontamentos').orderByChild('opId').equalTo(fbKey).once('value')
+      .then(function(s){
+        var ens=0,rep=0;
+        if(s.exists()) s.forEach(function(c){
+          var a=c.val();
+          if(a.substituido) return;
+          var t=Number(a.turno);
+          if(t<1||t>3) return; // exclui registro-resumo (turno 0), mesmo criterio do resto do sistema
+          if(a.data<di||a.data>df) return; // restringe ao periodo selecionado
+          var v=Number(a.real)||0;
+          if(a.origem==='reprocesso') rep+=v; else ens+=v;
+        });
+        return {ens:ens,rep:rep};
+      }).catch(function(){ return {ens:0,rep:0}; });
+  });
+
+  Promise.all(buscas).then(function(results){
+    var totEns=0,totRep=0;
+    results.forEach(function(r){ totEns+=r.ens; totRep+=r.rep; });
+    var totEnsRep=totEns+totRep;
+    var totDiff=totExt-totEnsRep;
+    G('div-tot-ext').textContent=fN(totExt)+' kg';
+    G('div-tot-ens').textContent=fN(totEnsRep)+' kg';
+    var elDiff=G('div-tot-diff');
+    elDiff.textContent=(totDiff>0?'+':'')+fN(totDiff)+' kg';
+    elDiff.style.color=totDiff>0?'#024f2b':totDiff<0?'#c0392b':'#666';
+  }).catch(function(e){
+    G('div-tot-ens').textContent='erro';
+    G('div-tot-diff').textContent='—';
   });
 }
 
@@ -4519,31 +4576,13 @@ function renderComparativo(st){
     G('div-c-warn').textContent=nWarn;
     G('div-c-crit').textContent=nCrit;
 
-    // Totais consolidados — soma apenas OPs com extrusao registrada no periodo
-    // (status ok/warn/crit). OPs "Sem ext." nao entram: extrusado=0 nelas nao
-    // significa material sumido, so significa que a extrusao aconteceu fora do
-    // periodo filtrado (ex: extrudiu antes, esta sendo ensacada agora). Somar
-    // o ensacado dessas OPs sem contrapartida de extrusado inflava a diferenca
-    // artificialmente, sem refletir nenhuma divergencia real de producao.
-    var totExt=0,totEns=0,totRep=0,nSemExt=0,ensSemExt=0;
-    COMP_DADOS.forEach(function(r){
-      if(r.status==='sem-ext'){ nSemExt++; ensSemExt+=r.ensacado+r.reprocesso; return; }
-      totExt+=r.extrusado; totEns+=r.ensacado; totRep+=r.reprocesso;
-    });
-    var totEnsRep=totEns+totRep;
-    var totDiff=totExt-totEnsRep;
-    G('div-tot-ext').textContent=fN(totExt)+' kg';
-    G('div-tot-ens').textContent=fN(totEnsRep)+' kg';
-    var elDiff=G('div-tot-diff');
-    elDiff.textContent=(totDiff>0?'+':'')+fN(totDiff)+' kg';
-    elDiff.style.color=totDiff>0?'#024f2b':totDiff<0?'#c0392b':'#666';
-    var elNota=G('div-tot-nota');
-    if(elNota){
-      elNota.innerHTML=nSemExt>0
-        ? nSemExt+' OP(s) sem extrusão registrada no período (extrusão provavelmente fora da janela filtrada) — '+fN(ensSemExt)+' kg ensacados delas não entraram nesse total.'
-        : '';
-      elNota.style.display=nSemExt>0?'block':'none';
-    }
+    // Cards de total ficam em "calculando..." até calcularTotaisPeriodoCards()
+    // preencher com os valores restritos ao período selecionado (ver abaixo).
+    G('div-tot-ext').textContent='...';
+    G('div-tot-ens').textContent='...';
+    G('div-tot-diff').textContent='...';
+    G('div-tot-diff').style.color='#666';
+    var elNota0=G('div-tot-nota'); if(elNota0) elNota0.style.display='none';
 
     G('div-resumo').style.display='block';
     G('btn-exp-comp').style.display='inline-block';
