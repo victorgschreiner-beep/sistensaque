@@ -454,6 +454,20 @@ tr:hover td{background:rgba(2,79,43,.03)}
             <div style="font-size:22px;font-weight:800;color:#a00" id="div-c-crit">0</div>
           </div>
         </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+          <div style="background:#f5f9f2;border-radius:10px;border:1px solid #d4e8d4;padding:12px;text-align:center">
+            <div style="font-size:10px;font-weight:700;color:#739630;margin-bottom:4px">🏭 TOTAL EXTRUSADO</div>
+            <div style="font-size:20px;font-weight:800;color:#1a7a4a" id="div-tot-ext">0</div>
+          </div>
+          <div style="background:#f5f9f2;border-radius:10px;border:1px solid #d4e8d4;padding:12px;text-align:center">
+            <div style="font-size:10px;font-weight:700;color:#739630;margin-bottom:4px">📦 TOTAL ENSACADO (+ reprocesso)</div>
+            <div style="font-size:20px;font-weight:800;color:#024f2b" id="div-tot-ens">0</div>
+          </div>
+          <div style="background:#f5f9f2;border-radius:10px;border:1px solid #d4e8d4;padding:12px;text-align:center">
+            <div style="font-size:10px;font-weight:700;color:#739630;margin-bottom:4px">⚖️ DIFERENÇA TOTAL</div>
+            <div style="font-size:20px;font-weight:800" id="div-tot-diff">0</div>
+          </div>
+        </div>
       </div>
 
       <div id="div-corpo"><div style="text-align:center;padding:30px;color:#4a664a;font-size:13px">Configure os filtros e clique em Analisar</div></div>
@@ -913,6 +927,14 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <button class="btn bsm" onclick="fM('meditapt')">Cancelar</button>
     <button class="btn bsm bp" id="editapt-salvar" onclick="salvarEdicaoApt()">Salvar Edicao</button>
   </div>
+</div></div>
+
+<div class="ov" id="mtimeline"><div class="modal" style="width:900px">
+  <div class="mt">📅 Histórico por dia — <span id="tl-op-titulo"></span></div>
+  <div class="ali" style="margin-bottom:10px">Apontamentos de Extrusão e Ensaque desta OP agrupados por dia (data real do lançamento), <b>sem filtro de período</b> — mostra tudo que já foi apontado para esta OP, do primeiro ao último dia. Linhas com ⚠️ têm apontamento(s) cuja data gravada no banco diverge da data real do lançamento.</div>
+  <div id="tl-resumo" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px"></div>
+  <div id="tl-corpo" style="max-height:52vh;overflow-y:auto"></div>
+  <div class="mfoot"><button class="btn bsm" onclick="fM('mtimeline')">Fechar</button></div>
 </div></div>
 
 <div class="ov" id="mpdf"><div class="modal" style="width:680px">
@@ -4495,6 +4517,19 @@ function renderComparativo(st){
     G('div-c-ok').textContent=nOk;
     G('div-c-warn').textContent=nWarn;
     G('div-c-crit').textContent=nCrit;
+
+    // Totais consolidados (soma de TODAS as OPs do período/linha filtrados,
+    // independente do filtro de status) — visão geral rápida antes de entrar OP a OP.
+    var totExt=0,totEns=0,totRep=0;
+    COMP_DADOS.forEach(function(r){ totExt+=r.extrusado; totEns+=r.ensacado; totRep+=r.reprocesso; });
+    var totEnsRep=totEns+totRep;
+    var totDiff=totExt-totEnsRep;
+    G('div-tot-ext').textContent=fN(totExt)+' kg';
+    G('div-tot-ens').textContent=fN(totEnsRep)+' kg';
+    var elDiff=G('div-tot-diff');
+    elDiff.textContent=(totDiff>0?'+':'')+fN(totDiff)+' kg';
+    elDiff.style.color=totDiff>0?'#024f2b':totDiff<0?'#c0392b':'#666';
+
     G('div-resumo').style.display='block';
     G('btn-exp-comp').style.display='inline-block';
 
@@ -4525,6 +4560,7 @@ function renderComparativo(st){
     h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">Diferença Total</th>';
     h+='<th style="padding:8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">%</th>';
     h+='<th style="padding:8px;text-align:center;border-bottom:2px solid #d4e8d4;color:#024f2b">Status</th>';
+    h+='<th style="padding:8px;text-align:center;border-bottom:2px solid #d4e8d4;color:#024f2b">Detalhe</th>';
     h+='</tr></thead><tbody>';
 
     filtrados.forEach(function(r,i){
@@ -4552,10 +4588,164 @@ function renderComparativo(st){
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:'+corDiff+'">'+(r.diff>0?'+':'')+fN(r.diff)+'</td>';
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:'+corDiff+'">'+(r.pct!==null?(r.pct>0?'+':'')+r.pct+'%':'—')+'</td>';
       h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:center">'+(stBadge[r.status]||'')+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:center"><button class="btn" style="padding:4px 8px;font-size:11px;background:#eaf5ea;color:#024f2b;border:1px solid #c8e0c8;border-radius:6px;cursor:pointer" onclick="abrirTimelineOP(\''+op.id.replace(/'/g,"\\'")+'\')" title="Ver histórico por dia (Extrusão vs Ensaque)">📅 Histórico por dia</button></td>';
       h+='</tr>';
     });
     h+='</tbody></table></div>';
     G('div-corpo').innerHTML=h;
+}
+
+// ── LINHA DO TEMPO POR OP (drill-down para investigar divergências) ────
+// Mostra todos os apontamentos (extrusão + ensaque) de UMA OP, em ordem real
+// de gravação (ts), SEM filtro de periodo — proposital: se algum apontamento
+// tiver a 'data' gravada errada (bug de fuso horario), o filtro de periodo do
+// comparativo o exclui silenciosamente do total. Aqui buscamos tudo, sempre.
+function dataLocalDeTS(tsIso){
+  if(!tsIso) return '';
+  var d=new Date(new Date(tsIso).getTime()-3*60*60*1000); // mesma logica de hoje()
+  return d.toISOString().slice(0,10);
+}
+function horaLocalDeTS(tsIso){
+  if(!tsIso) return '';
+  var d=new Date(new Date(tsIso).getTime()-3*60*60*1000);
+  return ('0'+d.getUTCHours()).slice(-2)+':'+('0'+d.getUTCMinutes()).slice(-2);
+}
+function fmtDataBR(dataStr){
+  if(!dataStr) return '—';
+  var p=dataStr.split('-');
+  return p.length===3?(p[2]+'/'+p[1]):dataStr;
+}
+
+function abrirTimelineOP(baseId){
+  var grupo=COMP_DADOS.find(function(r){return r.op.id===baseId;});
+  if(!grupo){toast('OP não encontrada nos dados carregados','err');return;}
+  if(!DB){toast('Sem conexão','err');return;}
+  G('tl-op-titulo').textContent=baseId+' — '+(grupo.op.desc||grupo.op.cod||'');
+  G('tl-corpo').innerHTML='<div style="text-align:center;padding:20px;color:#4a664a">Buscando todos os apontamentos...</div>';
+  G('tl-resumo').innerHTML='';
+  G('mtimeline').classList.add('on');
+
+  var fbKeys=grupo.rodadas.map(function(o){return o.fbKey;}).filter(Boolean);
+  var reBase=new RegExp('^'+baseId.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(\\s#\\d+)*$');
+
+  // Extrusão — busca por opNum (prefixo da OP-base), sem filtro de data.
+  var buscaExt=DB.ref('extrusao_apts').orderByChild('opNum').startAt(baseId).endAt(baseId+'\uf8ff').once('value')
+    .then(function(s){
+      var out=[];
+      if(s.exists()) s.forEach(function(c){
+        var a=c.val();
+        if(!a.opNum || !reBase.test(a.opNum)) return;
+        out.push({origem:'ext',ts:a.ts,data:a.data,turno:a.turno,qtd:Number(a.real)||0,operador:a.operador});
+      });
+      return out;
+    }).catch(function(){ return []; });
+
+  // Ensaque — apontamentos vinculados por opId (fbKey de cada rodada), sem filtro de data.
+  var buscasEns=fbKeys.map(function(fbKey){
+    return DB.ref('apontamentos').orderByChild('opId').equalTo(fbKey).once('value')
+      .then(function(s){
+        var out=[];
+        if(s.exists()) s.forEach(function(c){
+          var a=c.val();
+          out.push({origem:a.origem==='reprocesso'?'reprocesso':'ens',ts:a.ts,data:a.data,turno:a.turno,qtd:Number(a.real)||0,operador:a.operador});
+        });
+        return out;
+      }).catch(function(){ return []; });
+  });
+
+  Promise.all([buscaExt].concat(buscasEns)).then(function(listas){
+    var eventos=[].concat.apply([],listas);
+    // Remove registros de controle do ensaque (real:0, sem producao) — nao sao
+    // eventos de producao, so poluiriam a linha do tempo sem mudar nenhum total.
+    eventos=eventos.filter(function(e){ return !(e.origem==='ens' && e.qtd<=0); });
+    eventos.sort(function(a,b){ return (a.ts||'')<(b.ts||'')?-1:(a.ts||'')>(b.ts||'')?1:0; });
+
+    if(!eventos.length){
+      G('tl-corpo').innerHTML='<div style="text-align:center;padding:20px;color:#4a664a">Nenhum apontamento encontrado para esta OP</div>';
+      return;
+    }
+
+    var totalExt=0,totalEns=0,totalRep=0;
+    eventos.forEach(function(e){ if(e.origem==='ext') totalExt+=e.qtd; else if(e.origem==='reprocesso') totalRep+=e.qtd; else totalEns+=e.qtd; });
+    var totalEnsRep=totalEns+totalRep;
+    var totalDiff=totalExt-totalEnsRep;
+    var corTotalDiff=totalDiff>0?'#024f2b':totalDiff<0?'#c0392b':'#666';
+
+    G('tl-resumo').innerHTML=
+      '<div style="background:#f5f9f2;border-radius:8px;border:1px solid #d4e8d4;padding:10px;text-align:center"><div style="font-size:10px;font-weight:700;color:#739630">🏭 EXTRUSADO (total real)</div><div style="font-size:18px;font-weight:800;color:#1a7a4a">'+fN(totalExt)+' kg</div></div>'+
+      '<div style="background:#f5f9f2;border-radius:8px;border:1px solid #d4e8d4;padding:10px;text-align:center"><div style="font-size:10px;font-weight:700;color:#739630">📦 ENSACADO + REPROCESSO (total real)</div><div style="font-size:18px;font-weight:800;color:#024f2b">'+fN(totalEnsRep)+' kg</div></div>'+
+      '<div style="background:#f5f9f2;border-radius:8px;border:1px solid #d4e8d4;padding:10px;text-align:center"><div style="font-size:10px;font-weight:700;color:#739630">⚖️ DIFERENÇA TOTAL</div><div style="font-size:18px;font-weight:800;color:'+corTotalDiff+'">'+(totalDiff>0?'+':'')+fN(totalDiff)+' kg</div></div>';
+
+    // Agrupa por dia real (derivado do ts, imune ao bug de fuso horário) —
+    // assim cada apontamento cai no dia em que de fato aconteceu, mesmo que
+    // o campo 'data' gravado esteja errado. Se 'data' divergir, contamos
+    // como anomalia daquele dia (sinal do bug de extrusao.html linha 651).
+    var porDia={};
+    eventos.forEach(function(e){
+      var dia=dataLocalDeTS(e.ts)||e.data||'—';
+      if(!porDia[dia]) porDia[dia]={ext:0,ens:0,rep:0,anomalias:0};
+      if(e.origem==='ext') porDia[dia].ext+=e.qtd;
+      else if(e.origem==='reprocesso') porDia[dia].rep+=e.qtd;
+      else porDia[dia].ens+=e.qtd;
+      if(e.data && dia!=='—' && e.data!==dia) porDia[dia].anomalias++;
+    });
+    var dias=Object.keys(porDia).sort();
+    var nAnomalias=0;
+    dias.forEach(function(d){ nAnomalias+=porDia[d].anomalias; });
+
+    var h='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    h+='<thead><tr style="background:#f5f9f2;position:sticky;top:0">';
+    h+='<th style="padding:7px 8px;text-align:left;border-bottom:2px solid #d4e8d4;color:#024f2b">Data</th>';
+    h+='<th style="padding:7px 8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">🏭 Extrudido</th>';
+    h+='<th style="padding:7px 8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">📦 Ensacado</th>';
+    h+='<th style="padding:7px 8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#d29922">♻️ Reprocesso</th>';
+    h+='<th style="padding:7px 8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">Diferença do dia</th>';
+    h+='<th style="padding:7px 8px;text-align:right;border-bottom:2px solid #d4e8d4;color:#024f2b">%</th>';
+    h+='<th style="padding:7px 8px;text-align:center;border-bottom:2px solid #d4e8d4;color:#024f2b">Status</th>';
+    h+='</tr></thead><tbody>';
+
+    dias.forEach(function(d,i){
+      var v=porDia[d];
+      var ensRep=v.ens+v.rep;
+      var diff=v.ext-ensRep;
+      var pct=v.ext>0?Math.round(diff/v.ext*100):null;
+      var status=pct===null?'sem-ext':Math.abs(pct)<=5?'ok':Math.abs(pct)<=10?'warn':'crit';
+      var stBadge={
+        'ok':'<span style="background:#d4f0e4;color:#024f2b;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">✅ OK</span>',
+        'warn':'<span style="background:#fff3cd;color:#856404;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">⚠️ Atenção</span>',
+        'crit':'<span style="background:#ffd4d4;color:#a00;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">🔴 Crítico</span>',
+        'sem-ext':'<span style="background:#f0f0f0;color:#888;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">Sem ext.</span>'
+      }[status];
+      var corDiff=diff>0?'#024f2b':diff<0?'#c0392b':'#666';
+      var bg=v.anomalias>0?'#fff4e6':(i%2===0?'#fff':'#f9fbf9');
+      h+='<tr style="background:'+bg+'">';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;font-weight:700;color:#024f2b">'+fmtDataBR(d)+(v.anomalias>0?' <span title="'+v.anomalias+' apontamento(s) com data gravada divergente da data real">⚠️</span>':'')+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#1a7a4a">'+fN(v.ext)+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#024f2b">'+fN(v.ens)+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;color:#d29922">'+(v.rep>0?fN(v.rep):'—')+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:'+corDiff+'">'+(diff>0?'+':'')+fN(diff)+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:'+corDiff+'">'+(pct!==null?(pct>0?'+':'')+pct+'%':'—')+'</td>';
+      h+='<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0;text-align:center">'+stBadge+'</td>';
+      h+='</tr>';
+    });
+    h+='<tr style="background:#eaf5ea;font-weight:800">';
+    h+='<td style="padding:8px">TOTAL</td>';
+    h+='<td style="padding:8px;text-align:right;color:#1a7a4a">'+fN(totalExt)+'</td>';
+    h+='<td style="padding:8px;text-align:right;color:#024f2b">'+fN(totalEns)+'</td>';
+    h+='<td style="padding:8px;text-align:right;color:#d29922">'+(totalRep>0?fN(totalRep):'—')+'</td>';
+    h+='<td style="padding:8px;text-align:right;color:'+corTotalDiff+'">'+(totalDiff>0?'+':'')+fN(totalDiff)+'</td>';
+    h+='<td colspan="2"></td>';
+    h+='</tr>';
+    h+='</tbody></table>';
+
+    if(nAnomalias>0){
+      h='<div style="background:#fff4e6;border:1px solid #ffc999;border-radius:8px;padding:10px;margin-bottom:10px;font-size:12px;color:#b35c00"><b>⚠️ '+nAnomalias+' apontamento(s)</b> com data gravada diferente da data real do lançamento, dentro dos dias marcados — provável efeito do bug de fuso horário em extrusao.html (linha 651, ainda não corrigido). O agrupamento acima já usa a data real (imune ao bug); relatórios que filtram pela data gravada podem estar excluindo esses registros.</div>'+h;
+    }
+
+    G('tl-corpo').innerHTML=h;
+  }).catch(function(e){
+    G('tl-corpo').innerHTML='<div style="text-align:center;padding:20px;color:#c0392b">Erro ao buscar histórico: '+e.message+'</div>';
+  });
 }
 
 function exportarComparativoExcel(){
