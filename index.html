@@ -4647,6 +4647,7 @@ function abrirTimelineOP(baseId){
         var out=[];
         if(s.exists()) s.forEach(function(c){
           var a=c.val();
+          if(a.substituido) return; // registro corrigido/reprogramado — a versao vigente e o registro novo, nao este
           out.push({origem:a.origem==='reprocesso'?'reprocesso':'ens',ts:a.ts,data:a.data,turno:a.turno,qtd:Number(a.real)||0,operador:a.operador});
         });
         return out;
