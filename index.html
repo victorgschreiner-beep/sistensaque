@@ -468,6 +468,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
             <div style="font-size:20px;font-weight:800" id="div-tot-diff">0</div>
           </div>
         </div>
+        <div id="div-tot-nota" style="display:none;margin-top:8px;font-size:11px;color:#856404;background:#fff9e6;border:1px solid #ffe8a3;border-radius:6px;padding:8px 10px"></div>
       </div>
 
       <div id="div-corpo"><div style="text-align:center;padding:30px;color:#4a664a;font-size:13px">Configure os filtros e clique em Analisar</div></div>
@@ -4518,10 +4519,17 @@ function renderComparativo(st){
     G('div-c-warn').textContent=nWarn;
     G('div-c-crit').textContent=nCrit;
 
-    // Totais consolidados (soma de TODAS as OPs do período/linha filtrados,
-    // independente do filtro de status) — visão geral rápida antes de entrar OP a OP.
-    var totExt=0,totEns=0,totRep=0;
-    COMP_DADOS.forEach(function(r){ totExt+=r.extrusado; totEns+=r.ensacado; totRep+=r.reprocesso; });
+    // Totais consolidados — soma apenas OPs com extrusao registrada no periodo
+    // (status ok/warn/crit). OPs "Sem ext." nao entram: extrusado=0 nelas nao
+    // significa material sumido, so significa que a extrusao aconteceu fora do
+    // periodo filtrado (ex: extrudiu antes, esta sendo ensacada agora). Somar
+    // o ensacado dessas OPs sem contrapartida de extrusado inflava a diferenca
+    // artificialmente, sem refletir nenhuma divergencia real de producao.
+    var totExt=0,totEns=0,totRep=0,nSemExt=0,ensSemExt=0;
+    COMP_DADOS.forEach(function(r){
+      if(r.status==='sem-ext'){ nSemExt++; ensSemExt+=r.ensacado+r.reprocesso; return; }
+      totExt+=r.extrusado; totEns+=r.ensacado; totRep+=r.reprocesso;
+    });
     var totEnsRep=totEns+totRep;
     var totDiff=totExt-totEnsRep;
     G('div-tot-ext').textContent=fN(totExt)+' kg';
@@ -4529,6 +4537,13 @@ function renderComparativo(st){
     var elDiff=G('div-tot-diff');
     elDiff.textContent=(totDiff>0?'+':'')+fN(totDiff)+' kg';
     elDiff.style.color=totDiff>0?'#024f2b':totDiff<0?'#c0392b':'#666';
+    var elNota=G('div-tot-nota');
+    if(elNota){
+      elNota.innerHTML=nSemExt>0
+        ? nSemExt+' OP(s) sem extrusão registrada no período (extrusão provavelmente fora da janela filtrada) — '+fN(ensSemExt)+' kg ensacados delas não entraram nesse total.'
+        : '';
+      elNota.style.display=nSemExt>0?'block':'none';
+    }
 
     G('div-resumo').style.display='block';
     G('btn-exp-comp').style.display='inline-block';
@@ -4648,6 +4663,11 @@ function abrirTimelineOP(baseId){
         if(s.exists()) s.forEach(function(c){
           var a=c.val();
           if(a.substituido) return; // registro corrigido/reprogramado — a versao vigente e o registro novo, nao este
+          var t=Number(a.turno);
+          if(t<1||t>3) return; // exclui registro-resumo (turno 0) — algumas correcoes do PCP gravam
+          // um resumo com turno:0 (soma dos 3 turnos) ALEM dos 3 registros individuais por turno,
+          // pra atender relatorios que nao precisam de detalhamento por turno. Somar os dois conta
+          // a mesma producao em dobro. Mesmo criterio usado em todo o resto do sistema (t<1||t>3).
           out.push({origem:a.origem==='reprocesso'?'reprocesso':'ens',ts:a.ts,data:a.data,turno:a.turno,qtd:Number(a.real)||0,operador:a.operador});
         });
         return out;
