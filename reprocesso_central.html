@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Raguife — Reprocesso Central</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f4f6f4;--bg2:#ffffff;--bg3:#eef2ee;--bg4:#dde6dd;
+  --bd:#c8d8c8;--bd2:#b0c8b0;
+  --tx:#1a2e1a;--tx2:#4a664a;--tx3:#739630;
+  --ac:#024f2b;--ac2:#036b3a;--acbg:rgba(2,79,43,.10);
+  --gr:#024f2b;--or:#d29922;--rd:#c0392b;
+  --orbg:rgba(210,153,34,.15);--rdbg:rgba(192,57,43,.12);
+  --r:8px;--r2:12px;
+}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--tx);font-size:14px;min-height:100vh}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg3)}::-webkit-scrollbar-thumb{background:#024f2b;border-radius:3px}
+input,select{width:100%;padding:9px 12px;background:#f7faf7;border:1px solid #c8d8c8;border-radius:var(--r);color:#1a2e1a;font-size:13px;outline:none;font-family:inherit;transition:.15s}
+input:focus,select:focus{border-color:#024f2b;box-shadow:0 0 0 3px rgba(2,79,43,.15)}
+select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%23739630' d='M5 7L0 2h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:8px 16px;border-radius:var(--r);border:1px solid #c8d8c8;background:#f4f6f4;color:#1a2e1a;cursor:pointer;font-size:13px;font-weight:500;transition:.15s;font-family:inherit;white-space:nowrap}
+.btn:hover{background:#dde6dd}
+.bp{background:#024f2b;border-color:#024f2b;color:#fff}.bp:hover{background:#036b3a}
+.bg2{background:#739630;border-color:#739630;color:#fff}.bg2:hover{opacity:.85}
+.br{background:#c0392b;border-color:#c0392b;color:#fff}
+.bo{background:#d29922;border-color:#d29922;color:#fff}
+.bsm{padding:5px 11px;font-size:12px}.bxs{padding:3px 8px;font-size:11px}.bfw{width:100%}
+.lerr{color:#c0392b;font-size:12px;margin-top:8px;display:none;text-align:center}
+
+/* LOGIN */
+#pg-login{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#024f2b 0%,#036b3a 60%,#739630 100%)}
+.lbox{background:#fff;border-radius:var(--r2);padding:36px 32px;width:380px;box-shadow:0 8px 40px rgba(0,0,0,.25)}
+.logo{text-align:center;margin-bottom:28px}
+.logo-t{font-size:18px;font-weight:700;color:#024f2b;margin-top:8px}
+.logo-s{font-size:12px;color:#739630;margin-top:3px;font-weight:500}
+.fld{margin-bottom:14px}
+.fld label{display:block;font-size:12px;color:#4a664a;margin-bottom:5px;font-weight:500}
+
+/* APP */
+#pg-app{display:none;min-height:100vh;flex-direction:column}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:8px 18px;background:#024f2b;border-bottom:2px solid #739630;position:sticky;top:0;z-index:50;flex-wrap:wrap;gap:8px;box-shadow:0 2px 12px rgba(2,79,43,.25)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;color:#fff}
+.pill{font-size:11px;padding:2px 9px;border-radius:20px;background:rgba(115,150,48,.25);color:#b6d46a;border:1px solid rgba(115,150,48,.4)}
+.nav{display:flex;gap:2px;flex-wrap:wrap}
+.nb{padding:6px 13px;border:none;background:transparent;color:rgba(255,255,255,.75);border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;transition:.1s;font-family:inherit}
+.nb:hover{background:rgba(255,255,255,.12);color:#fff}.nb.on{background:#739630;color:#fff}
+.ubar{display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.85)}
+.av{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.rtdot{width:8px;height:8px;border-radius:50%;background:#b6d46a;display:inline-block;margin-right:4px;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.content{flex:1;padding:16px;overflow-y:auto;max-height:calc(100vh - 58px)}
+.scr{display:none}.scr.on{display:block}
+
+/* CARDS */
+.card{background:#fff;border:1px solid var(--bd);border-radius:var(--r2);padding:16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(2,79,43,.06)}
+.ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+.ct{font-size:11px;font-weight:700;color:#739630;text-transform:uppercase;letter-spacing:.06em}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.mrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px}
+.mc{background:#fff;border:1px solid var(--bd);border-radius:var(--r);padding:13px 15px;box-shadow:0 1px 4px rgba(2,79,43,.05)}
+.ml{font-size:10px;color:#739630;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;font-weight:600}
+.mv{font-size:22px;font-weight:700}
+.ms{font-size:11px;color:#4a664a;margin-top:2px}
+.cg{color:#024f2b}.co{color:#d29922}.cr{color:#c0392b}.cb{color:#036b3a}
+
+/* TABLE */
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:#024f2b;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #024f2b;white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--bd);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(2,79,43,.03)}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.bvd{background:rgba(2,79,43,.1);color:#024f2b}
+.bam{background:rgba(210,153,34,.15);color:#8a5700}
+.baz{background:rgba(2,79,43,.08);color:#024f2b}
+.bcz{background:#eef2ee;color:#4a664a}
+.bpx{background:rgba(139,92,246,.15);color:#5b21b6}
+
+/* MODAL */
+.ov{position:fixed;inset:0;background:rgba(1,40,22,.65);z-index:200;display:none;align-items:center;justify-content:center;padding:12px}
+.ov.on{display:flex}
+.modal{background:#fff;border:1px solid #c8d8c8;border-radius:var(--r2);padding:22px 24px;width:560px;max-width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 8px 32px rgba(2,79,43,.15)}
+.mt{font-size:16px;font-weight:700;margin-bottom:16px;color:#024f2b}
+.mfoot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--bd)}
+.fr{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.fr3{grid-template-columns:1fr 1fr 1fr}
+.fg{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.fl{font-size:12px;color:#4a664a;font-weight:500}
+
+/* TOAST */
+#twrap{position:fixed;bottom:18px;right:18px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.tos{padding:11px 16px;border-radius:var(--r);font-size:13px;font-weight:500;animation:tin .2s ease;max-width:320px}
+.tok{background:#024f2b;color:#fff}.terr{background:#c0392b;color:#fff}.tinf{background:#739630;color:#fff}
+@keyframes tin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* MISC */
+.tabs{display:flex;border:1px solid var(--bd);border-radius:var(--r);overflow:hidden;width:fit-content;margin-bottom:16px}
+.tab{padding:6px 16px;border:none;background:#eef2ee;color:#4a664a;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;transition:.1s}
+.tab.on{background:#024f2b;color:#fff}
+.alw{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:12px;background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.3);color:#8a5700}
+.ali{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:12px;background:rgba(2,79,43,.08);border:1px solid rgba(2,79,43,.2);color:#024f2b}
+.aler{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:12px;background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.25);color:#c0392b}
+.opcard{background:#fff;border:1px solid var(--bd);border-radius:var(--r2);padding:14px 16px;margin-bottom:10px;border-left:4px solid #024f2b;box-shadow:0 1px 4px rgba(2,79,43,.06)}
+.opcard.and{border-left-color:#d29922}.opcard.dn{border-left-color:#739630}
+.opcard.cong{border-left-color:#889;background:#f4f6f4;box-shadow:none}
+.sgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin:10px 0}
+.sbt{padding:8px 4px;border:1px solid #c8d8c8;border-radius:var(--r);background:#f4f6f4;cursor:pointer;text-align:center;font-size:12px;font-weight:600;transition:.12s;color:#1a2e1a}
+.sbt:hover{border-color:#024f2b}.sbt.on{border-color:#024f2b;background:rgba(2,79,43,.1);color:#024f2b}
+.excard{background:#f4f6f4;border:1px solid #c8d8c8;border-radius:var(--r2);padding:16px;cursor:pointer;text-align:center;transition:.15s}
+.excard:hover{border-color:#024f2b;background:rgba(2,79,43,.07)}
+.pdfprev{background:#fff;color:#111;border-radius:var(--r);padding:20px;font-family:Georgia,serif;font-size:12px;line-height:1.6}
+.fila-col{background:#fff;border:1px solid var(--bd);border-radius:var(--r2);padding:14px;min-height:200px}
+.fila-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-bottom:10px;border-bottom:2px solid #024f2b}
+.fila-titulo{font-weight:700;font-size:14px;color:#024f2b}
+.fila-sub{font-size:11px;color:#739630;font-weight:500}
+.fila-item{background:#fff;border:1px solid #c8d8c8;border-radius:var(--r);padding:10px 12px;margin-bottom:8px;cursor:grab;transition:.15s;border-left:3px solid #024f2b;user-select:none}
+.fila-item.dragging{opacity:.4}.fila-item.drag-over{border-color:#739630;background:#f4fbee}
+.fila-item.status-andamento{border-left-color:#d29922}
+.fila-pos{width:22px;height:22px;border-radius:50%;background:#024f2b;color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;flex-shrink:0}
+.fila-empty{text-align:center;padding:24px;color:#aaa;font-size:13px;border:2px dashed #dde6dd;border-radius:var(--r)}
+#loader{position:fixed;inset:0;background:rgba(1,40,22,.7);z-index:1000;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+#loader.on{display:flex}
+.spin{width:34px;height:34px;border:3px solid rgba(115,150,48,.3);border-top-color:#739630;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* BADGES DE FONTE — consolidado central de reprocesso */
+.fonte-tag{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+.fonte-ensaque{background:rgba(2,79,43,.10);color:#024f2b}
+.fonte-envasepet{background:rgba(115,150,48,.15);color:#4a6b1a}
+.fonte-extrusao{background:rgba(139,92,246,.15);color:#5b21b6}
+.fonte-central{background:rgba(210,153,34,.15);color:#8a5700}
+.readonly-info{background:#f4f6f4;border:1px solid var(--bd);border-radius:var(--r);padding:9px 12px;font-size:12px;color:#4a664a;display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px}
+.readonly-info b{color:#024f2b}
+.setor-hero{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.setor-hero .dot{width:9px;height:9px;border-radius:50%;background:#024f2b}
+</style>
+</head>
+<body>
+<div id="twrap"></div>
+<div id="loader"><div class="spin"></div><div style="color:rgba(255,255,255,.8);font-size:13px" id="lmsg">Aguarde...</div></div>
+
+<!-- LOGIN -->
+<div id="pg-login">
+<div class="lbox">
+  <div class="logo">
+<img src="data:image/png;base64,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" style="height:36px;display:block" alt="Raguife">
+    <div class="logo-t">Reprocesso Central</div>
+    <div class="logo-s">Confianca que Inspira</div>
+  </div>
+  <div style="text-align:center;font-size:12px;color:#739630;margin-bottom:16px;font-weight:500"><span class="rtdot"></span>Firebase conectado</div>
+  <div class="fld"><label>Usuario</label><input type="text" id="lu" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()"></div>
+  <div class="fld"><label>Senha</label><input type="password" id="lp" onkeydown="if(event.key==='Enter')doLogin()"></div>
+  <div class="lerr" id="lerr">Usuario ou senha incorretos.</div>
+  <button class="btn bp bfw" style="margin-top:18px;padding:11px" onclick="doLogin()">Entrar</button>
+</div>
+</div>
+
+<!-- APP -->
+<div id="pg-app" style="display:none;flex-direction:column;min-height:100vh">
+<div class="topbar">
+  <div class="brand">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 60" height="32" style="display:block">
+      <rect x="0" y="4" width="140" height="52" rx="3" fill="#fff" fill-opacity=".15"/>
+      <text x="70" y="38" font-family="Arial,sans-serif" font-size="28" font-weight="700" fill="#ffffff" text-anchor="middle">raguife</text>
+      <rect x="148" y="4" width="52" height="52" rx="3" fill="none" stroke="#b6d46a" stroke-width="3"/>
+      <circle cx="163" cy="24" r="5" fill="#b6d46a"/>
+      <circle cx="174" cy="24" r="5" fill="#b6d46a"/>
+      <circle cx="185" cy="24" r="5" fill="#b6d46a"/>
+    </svg>
+    <span class="pill">REPROCESSO CENTRAL</span>
+  </div>
+  <div class="nav" id="navwrap">
+    <button class="nb on" id="nb-dashboard" onclick="go('dashboard',this)">Dashboard</button>
+    <button class="nb" id="nb-expedicao_aqua" onclick="go('expedicao_aqua',this)">Expedição Aqua</button>
+    <button class="nb" id="nb-expedicao_pet" onclick="go('expedicao_pet',this)">Expedição PET</button>
+    <button class="nb" id="nb-recebimento" onclick="go('recebimento',this)">Recebimento</button>
+  </div>
+  <div class="ubar">
+    <span class="rtdot"></span>
+    <span id="unm"></span>
+    <div class="av" id="uav">?</div>
+    <button class="btn bsm" style="background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.3)" onclick="doLogout()">Sair</button>
+  </div>
+</div>
+<div class="content">
+
+<!-- DASHBOARD CONSOLIDADO -->
+<div class="scr on" id="scr-dashboard">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Dashboard Consolidado de Reprocesso <span style="font-size:11px;color:#739630;font-weight:500">— leitura, sem duplicar apontamentos</span></h2>
+    <button class="btn bsm" onclick="renderDashboardConsolidado()">&#8635; Atualizar</button>
+  </div>
+  <div class="readonly-info">
+    <span>Este painel <b>não grava dados</b> — ele só lê e consolida o que já foi apontado no Ensaque, Envase PET, Extrusão e nos 3 novos setores abaixo.</span>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:flex-end">
+    <div class="fg" style="margin-bottom:0"><label class="fl">De</label><input type="date" id="dash-di" style="width:auto" onchange="renderDashboardConsolidado()"></div>
+    <div class="fg" style="margin-bottom:0"><label class="fl">Até</label><input type="date" id="dash-df" style="width:auto" onchange="renderDashboardConsolidado()"></div>
+    <div class="fg" style="margin-bottom:0"><label class="fl">Fonte</label>
+      <select id="dash-ffonte" style="width:auto" onchange="renderDashboardConsolidado()">
+        <option value="">Todas as fontes</option>
+        <option value="ensaque_op">Ensaque — vínculo OP</option>
+        <option value="ensaque_geral">Ensaque — Finos/Varredura/Geral</option>
+        <option value="envasepet">Envase PET</option>
+        <option value="extrusao">Extrusão (agregado)</option>
+        <option value="expedicao_aqua">Central — Expedição Aqua</option>
+        <option value="expedicao_pet">Central — Expedição PET</option>
+        <option value="recebimento">Central — Recebimento</option>
+      </select>
+    </div>
+    <div class="fg" style="margin-bottom:0"><label class="fl">Tipo</label>
+      <select id="dash-ftipo" style="width:auto" onchange="renderDashboardConsolidado()">
+        <option value="">Todos os tipos</option>
+        <option>Geral</option>
+        <option>Varredura</option>
+        <option>Finos</option>
+        <option>Qualidade</option>
+      </select>
+    </div>
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    <button class="btn bsm" onclick="dashFiltroRapido(0)">Hoje</button>
+    <button class="btn bsm" onclick="dashFiltroRapido(7)">Últimos 7 dias</button>
+    <button class="btn bsm" onclick="dashFiltroRapido(30)">Últimos 30 dias</button>
+    <button class="btn bsm" onclick="dashFiltroRapido('mes')">Este mês</button>
+  </div>
+  <div id="dash-periodo-info" style="font-size:11px;color:#739630;margin-bottom:10px"></div>
+  <div class="mrow" id="dash-metrics-tipo" style="grid-template-columns:repeat(5,1fr)"></div>
+  <div class="card">
+    <div class="ch"><span class="ct">Resumo por Fonte</span></div>
+    <div class="tw"><table>
+      <thead><tr><th>Fonte</th><th style="text-align:right">Total (kg)</th><th style="text-align:right">% do período</th><th style="text-align:right">Registros</th></tr></thead>
+      <tbody id="dash-fonte-body"></tbody>
+    </table></div>
+  </div>
+  <div class="card" style="padding:0">
+    <div style="padding:14px 16px 0"><span class="ct">Detalhamento — todos os apontamentos do período</span></div>
+    <div class="tw"><table>
+      <thead><tr><th>Data</th><th>Fonte</th><th>Setor/Linha</th><th>Tipo</th><th style="text-align:right">Peso</th><th>Origem/Motivo</th><th>Código</th><th>Lançado por</th></tr></thead>
+      <tbody id="dash-detalhe-body"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- EXPEDIÇÃO AQUA -->
+<div class="scr" id="scr-expedicao_aqua">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+    <div class="setor-hero"><span class="dot"></span><h2 style="font-size:16px;font-weight:700;color:#024f2b">Expedição Aqua <span style="font-size:11px;color:#739630;font-weight:500">&#9679; apontamento de reprocesso</span></h2></div>
+    <button class="btn bp" onclick="abrirNovoReprocessoSetor('expedicao_aqua')">+ Novo Apontamento</button>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:flex-end">
+    <div class="fg" style="margin-bottom:0"><label class="fl">De</label><input type="date" id="aqua-di" style="width:auto" onchange="renderListaSetor('expedicao_aqua')"></div>
+    <div class="fg" style="margin-bottom:0"><label class="fl">Até</label><input type="date" id="aqua-df" style="width:auto" onchange="renderListaSetor('expedicao_aqua')"></div>
+    <select id="aqua-ftipo" style="width:auto" onchange="renderListaSetor('expedicao_aqua')"><option value="">Todos os tipos</option><option>Geral</option><option>Varredura</option><option>Finos</option><option>Qualidade</option></select>
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    <button class="btn bsm" onclick="filtroRapidoSetor('expedicao_aqua',0)">Hoje</button>
+    <button class="btn bsm" onclick="filtroRapidoSetor('expedicao_aqua',7)">Últimos 7 dias</button>
+    <button class="btn bsm" onclick="filtroRapidoSetor('expedicao_aqua',30)">Últimos 30 dias</button>
+    <button class="btn bsm" onclick="filtroRapidoSetor('expedicao_aqua','mes')">Este mês</button>
+  </div>
+  <div id="aqua-periodo-info" style="font-size:11px;color:#739630;margin-bottom:10px"></div>
+  <div class="mrow" id="aqua-metrics" style="grid-template-columns:repeat(4,1fr)"></div>
+  <div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr><th>Data</th><th>Hora</th><th>Tipo</th><th style="text-align:right">Peso</th><th>Produto</th><th>Origem</th><th>Motivo</th><th>Obs.</th><th>Código</th><th>Lançado por</th><th>Ações</th></tr></thead>
+    <tbody id="aqua-body"></tbody>
+  </table></div></div>
+</div>
+
+<!-- EXPEDIÇÃO PET -->
+<div class="scr" id="scr-expedicao_pet">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+    <div class="setor-hero"><span class="dot"></span><h2 style="font-size:16px;font-weight:700;color:#024f2b">Expedição PET <span style="font-size:11px;color:#739630;font-weight:500">&#9679; apontamento de reprocesso</span></h2></div>
+    <button class="btn bp" onclick="abrirNovoReprocessoSetor('expedicao_pet')">+ Novo Apontamento</button>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:flex-end">
+    <div class="fg" style="margin-bottom:0"><label class="fl">De</label><input type="date" id="pet-di" style="width:auto" onchange="renderListaSetor('expedicao_pet')"></div>
+    <div class="fg" style="margin-bottom:0"><label class="fl">Até</label><input type="date" id="pet-df" style="width:auto" onchange="renderListaSetor('expedicao_pet')"></div>
+    <select id="pet-ftipo" style="width:auto" onchange="renderListaSetor('expedicao_pet')"><option value="">Todos os tipos</option><option>Geral</option><option>Varredura</option><option>Finos</option><option>Qualidade</option></select>
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    <button class="btn bsm" onclick="filtroRapidoSetor('expedicao_pet',0)">Hoje</button>
+    <button class="btn bsm" onclick="filtroRapidoSetor('expedicao_pet',7)">Últimos 7 dias</button>
+    <button class="btn bsm" onclick="filtroRapidoSetor('expedicao_pet',30)">Últimos 30 dias</button>
+    <button class="btn bsm" onclick="filtroRapidoSetor('expedicao_pet','mes')">Este mês</button>
+  </div>
+  <div id="pet-periodo-info" style="font-size:11px;color:#739630;margin-bottom:10px"></div>
+  <div class="mrow" id="pet-metrics" style="grid-template-columns:repeat(4,1fr)"></div>
+  <div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr><th>Data</th><th>Hora</th><th>Tipo</th><th style="text-align:right">Peso</th><th>Produto</th><th>Origem</th><th>Motivo</th><th>Obs.</th><th>Código</th><th>Lançado por</th><th>Ações</th></tr></thead>
+    <tbody id="pet-body"></tbody>
+  </table></div></div>
+</div>
+
+<!-- RECEBIMENTO -->
+<div class="scr" id="scr-recebimento">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+    <div class="setor-hero"><span class="dot"></span><h2 style="font-size:16px;font-weight:700;color:#024f2b">Recebimento <span style="font-size:11px;color:#739630;font-weight:500">&#9679; apontamento de reprocesso</span></h2></div>
+    <button class="btn bp" onclick="abrirNovoReprocessoSetor('recebimento')">+ Novo Apontamento</button>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:flex-end">
+    <div class="fg" style="margin-bottom:0"><label class="fl">De</label><input type="date" id="rec-di" style="width:auto" onchange="renderListaSetor('recebimento')"></div>
+    <div class="fg" style="margin-bottom:0"><label class="fl">Até</label><input type="date" id="rec-df" style="width:auto" onchange="renderListaSetor('recebimento')"></div>
+    <select id="rec-ftipo" style="width:auto" onchange="renderListaSetor('recebimento')"><option value="">Todos os tipos</option><option>Geral</option><option>Varredura</option><option>Finos</option><option>Qualidade</option></select>
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    <button class="btn bsm" onclick="filtroRapidoSetor('recebimento',0)">Hoje</button>
+    <button class="btn bsm" onclick="filtroRapidoSetor('recebimento',7)">Últimos 7 dias</button>
+    <button class="btn bsm" onclick="filtroRapidoSetor('recebimento',30)">Últimos 30 dias</button>
+    <button class="btn bsm" onclick="filtroRapidoSetor('recebimento','mes')">Este mês</button>
+  </div>
+  <div id="rec-periodo-info" style="font-size:11px;color:#739630;margin-bottom:10px"></div>
+  <div class="mrow" id="rec-metrics" style="grid-template-columns:repeat(4,1fr)"></div>
+  <div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr><th>Data</th><th>Hora</th><th>Tipo</th><th style="text-align:right">Peso</th><th>Produto</th><th>Origem</th><th>Motivo</th><th>Obs.</th><th>Código</th><th>Lançado por</th><th>Ações</th></tr></thead>
+    <tbody id="rec-body"></tbody>
+  </table></div></div>
+</div>
+
+</div>
+</div>
+
+<!-- MODAL NOVO APONTAMENTO (compartilhado pelos 3 setores) -->
+<div class="ov" id="mnovoreprocesso">
+  <div class="modal">
+    <div class="mt" id="nr-titulo">Novo Apontamento de Reprocesso</div>
+    <input type="hidden" id="nr-setor">
+    <div class="fr">
+      <div class="fg"><label class="fl">Tipo *</label>
+        <select id="nr-tipo" onchange="onTipoNovoReprocessoChange()">
+          <option value="">Selecione...</option>
+          <option>Geral</option>
+          <option>Varredura</option>
+          <option>Finos</option>
+          <option>Qualidade</option>
+        </select>
+      </div>
+      <div class="fg"><label class="fl">Quantidade (kg) *</label><input type="number" min="0" id="nr-peso" value="0" step="0.1"></div>
+    </div>
+    <div class="fr">
+      <div class="fg"><label class="fl">Produto <span style="font-size:11px;color:#739630">(opcional)</span></label><input type="text" id="nr-produto" placeholder="Ex: Ração Golden Adultos 15kg"></div>
+      <div class="fg"><label class="fl">Origem/Procedência</label><input type="text" id="nr-origem" placeholder="Ex: Linha 2, Devolução cliente, Silo 4..."></div>
+    </div>
+    <div id="nr-qualidade-row" style="display:none">
+      <div class="alw" style="font-size:12px">Tipo Qualidade exige o motivo do desvio — permite rastrear a causa do desvio.</div>
+    </div>
+    <div class="fg"><label class="fl" id="nr-motivo-label">Motivo <span style="font-size:11px;color:#739630">(opcional, exceto para Qualidade)</span></label><input type="text" id="nr-motivo" placeholder="Ex: contaminação, fora de especificação, limpeza de setor..."></div>
+    <div class="fr">
+      <div class="fg"><label class="fl">Quantidade de etiquetas *</label><input type="number" min="1" id="nr-qtd-etiquetas" value="1" step="1"></div>
+      <div class="fg"><label class="fl">Observação</label><input type="text" id="nr-obs" placeholder="Opcional"></div>
+    </div>
+    <div class="mfoot">
+      <button class="btn bsm" onclick="fM('mnovoreprocesso')">Cancelar</button>
+      <button class="btn bp bsm" onclick="salvarNovoReprocessoSetor()">Salvar e Imprimir Etiqueta</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.12.3/JsBarcode.all.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+// ============================================================
+// REPROCESSO CENTRAL — PILOTO
+// Modulo de CONSOLIDACAO e apontamento de reprocesso.
+//
+// Le (sem duplicar, sem gravar de volta) os apontamentos que ja
+// existem em:
+//   - apontamentos            (origem:'reprocesso', vinculado a OP — Ensaque)
+//   - apontamentos_gerais     (Finos/Finos Magisan/Reprocesso Geral/Varredura — Ensaque)
+//   - envase_pet_reprocesso   (Geral/Varredura/Finos/Qualidade — Envase PET)
+//   - extrusao_turno.reprocesso (agregado por linha/turno — Extrusao, sem
+//                                 codigo/tipo/motivo individual)
+//
+// E GRAVA apontamentos novos, SOMENTE para os 3 setores que ainda nao
+// tem local proprio de apontamento, em um no dedicado:
+//   - reprocesso_central       (setor: expedicao_aqua | expedicao_pet | recebimento)
+//
+// Mesmo projeto Firebase do restante do sistema. Etiqueta segue o
+// PADRAO ZPL/Zebra do index.html (BrowserPrint, com fallback via
+// impressao do navegador + codigo de barras + QR), replicado aqui de
+// forma autocontida (mesmo principio de desacoplamento do Envase PET).
+// ============================================================
+var firebaseConfig = {
+  apiKey: "AIzaSyB52cXfvtmY2xXu9vMkMPhCWU-rp6NXhxc",
+  authDomain: "sistema-ensaque.firebaseapp.com",
+  databaseURL: "https://sistema-ensaque-default-rtdb.firebaseio.com",
+  projectId: "sistema-ensaque"
+};
+firebase.initializeApp(firebaseConfig);
+var DB = firebase.database();
+
+// ============================================================
+// GLOBAIS
+// ============================================================
+var SES = null;
+// Cache local por setor (chave = setor), populado ao abrir cada aba —
+// usado tanto pra listar quanto pra gerar o codigo sequencial do dia.
+var CACHE_SETOR = { expedicao_aqua: [], expedicao_pet: [], recebimento: [] };
+
+var SETORES_CENTRAL = {
+  expedicao_aqua: { label: 'Expedição Aqua', prefixo: 'EAQ', idPrefix: 'aqua' },
+  expedicao_pet:  { label: 'Expedição PET',  prefixo: 'EPT', idPrefix: 'pet'  },
+  recebimento:    { label: 'Recebimento',    prefixo: 'REC', idPrefix: 'rec'  }
+};
+
+// Perfis que apontam SOMENTE no seu proprio setor (tela restrita).
+// admin/pcp/supervisor continuam vendo tudo, igual ao resto do sistema.
+var PERFIS_SETOR = ['expedicao_aqua','expedicao_pet','recebimento'];
+
+// ============================================================
+// UTILS (mesmos padroes do restante do sistema)
+// ============================================================
+function G(id){ return document.getElementById(id); }
+function fN(n){ return (Number(n)||0).toLocaleString('pt-BR'); }
+function hoje(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function agora(){ return new Date().toISOString(); }
+function horaAtual(){ return new Date().toTimeString().slice(0,5); }
+
+function ld(on,msg){ G('loader').classList.toggle('on',on); if(msg) G('lmsg').textContent=msg; }
+function toast(msg,t){
+  var d=document.createElement('div');
+  d.className='tos '+(t==='err'?'terr':t==='inf'?'tinf':'tok');
+  d.textContent=msg;
+  G('twrap').appendChild(d);
+  setTimeout(function(){ if(d.parentNode) d.parentNode.removeChild(d); },3500);
+}
+function fM(id){ G(id).classList.remove('on'); }
+function addLog(acao,det){
+  if(!DB||!SES) return;
+  DB.ref('log').push({ts:agora(),usuario:SES.login,acao:acao,detalhe:det||'',modulo:'reprocesso_central'});
+}
+
+// ============================================================
+// LOGIN — mesmo no 'usuarios' do restante do sistema. Os 3 novos
+// setores precisam de um usuario cadastrado la com perfil:
+// 'expedicao_aqua' | 'expedicao_pet' | 'recebimento' (a criar
+// manualmente no Firebase/tela de usuarios — fora do escopo deste
+// piloto).
+// ============================================================
+function doLogin(){
+  var u=G('lu').value.trim(), p=G('lp').value;
+  if(!u||!p) return;
+  ld(true,'Autenticando...');
+  DB.ref('usuarios').orderByChild('login').equalTo(u).once('value').then(function(snap){
+    ld(false);
+    if(!snap.exists()){ G('lerr').style.display='block'; return; }
+    var found=null;
+    snap.forEach(function(c){ var v=c.val(); if(v.senha===p&&v.ativo!==false) found=v; });
+    if(!found){ G('lerr').style.display='block'; return; }
+    SES=found;
+    G('lerr').style.display='none';
+    G('lp').value='';
+    aplicarSessao();
+    G('pg-login').style.display='none';
+    G('pg-app').style.display='flex';
+    addLog('LOGIN_REPROCESSO_CENTRAL','');
+    iniciarApp();
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
+function aplicarSessao(){
+  G('unm').textContent=SES.nome;
+  var ini=SES.nome.split(' ').map(function(w){return w[0];}).join('').slice(0,2).toUpperCase();
+  G('uav').textContent=ini;
+  var c={pcp:'#1f6feb',operador:'#2ea043',admin:'#8b5cf6',supervisor:'#d29922'}[SES.perfil]||'#444';
+  G('uav').style.background=c+'22'; G('uav').style.color=c;
+
+  // Controle de acesso: login de setor so' ve' e opera na sua propria
+  // aba (evita erro operacional de apontar no setor errado e mantem a
+  // tela limpa pra quem so' precisa daquela funcao). admin/pcp/supervisor
+  // continuam vendo tudo, inclusive o Dashboard consolidado.
+  var restrito = PERFIS_SETOR.indexOf(SES.perfil) !== -1;
+  var btnDash=G('nb-dashboard');
+  if(restrito){
+    btnDash.style.display='none';
+    Object.keys(SETORES_CENTRAL).forEach(function(k){
+      var btn=G('nb-'+k);
+      btn.style.display = (k===SES.perfil) ? '' : 'none';
+    });
+  } else {
+    btnDash.style.display='';
+    Object.keys(SETORES_CENTRAL).forEach(function(k){ G('nb-'+k).style.display=''; });
+  }
+}
+
+function doLogout(){
+  SES=null;
+  CACHE_SETOR = { expedicao_aqua: [], expedicao_pet: [], recebimento: [] };
+  G('pg-app').style.display='none';
+  G('pg-login').style.display='flex';
+}
+
+function iniciarApp(){
+  var restrito = PERFIS_SETOR.indexOf(SES.perfil) !== -1;
+  if(restrito){
+    var btn=G('nb-'+SES.perfil);
+    go(SES.perfil, btn);
+  } else {
+    go('dashboard', G('nb-dashboard'));
+  }
+}
+
+// ============================================================
+// NAVEGACAO
+// ============================================================
+function go(s,btn){
+  var all=document.querySelectorAll('.scr');
+  for(var i=0;i<all.length;i++) all[i].classList.remove('on');
+  var nbs=document.querySelectorAll('.nb');
+  for(var j=0;j<nbs.length;j++) nbs[j].classList.remove('on');
+  var el=G('scr-'+s); if(el) el.classList.add('on');
+  if(btn) btn.classList.add('on');
+
+  if(s==='dashboard'){
+    if(!G('dash-di').value){ G('dash-di').value=hoje(); G('dash-df').value=hoje(); }
+    renderDashboardConsolidado();
+  } else if(SETORES_CENTRAL[s]){
+    var idp=SETORES_CENTRAL[s].idPrefix;
+    if(!G(idp+'-di').value){ G(idp+'-di').value=hoje(); G(idp+'-df').value=hoje(); }
+    renderListaSetor(s);
+  }
+}
+
+// ============================================================
+// ETIQUETA — ZPL/Zebra, PADRAO IDENTICO ao index.html (Ensaque).
+// Replicado aqui de forma autocontida (mesmo principio de
+// desacoplamento entre modulos ja usado no Envase PET), conforme
+// decisao confirmada: seguir o padrao ZPL/Zebra existente.
+// ============================================================
+var PRINTER_DPI = 203; // ZT231 padrao — trocar pra 300 se a impressora for a versao 300dpi
+// Config real lida direto no visor da impressora em 07/08/2026 — fonte de verdade pro ZPL,
+// sem depender de conversao mm->dots (elimina qualquer arredondamento).
+var PRINTER_W_DOTS = 800, PRINTER_H_DOTS = 802;
+var PRINTER_MEDIA_TIPO = 'transferencia_termica'; // Tipo de impressao: Transf. Term (visor)
+var PRINTER_MEDIA_SENSOR = 'espaco_ranhura';       // Tipo de midia: Espaco/Ranhura (visor)
+// Tamanho da etiqueta pro fallback via navegador (CSS @page, em mm) — calculado
+// direto a partir dos pontos que a PROPRIA impressora reportou (800 x 802,
+// visor em 07/08/2026), nao um numero digitado solto. Mesma fonte que o ZPL usa
+// acima (PRINTER_W_DOTS/PRINTER_H_DOTS), garantindo que os dois caminhos
+// de impressao nunca fiquem dessincronizados.
+var LABEL_W_MM = PRINTER_W_DOTS/PRINTER_DPI*25.4;
+var LABEL_H_MM = PRINTER_H_DOTS/PRINTER_DPI*25.4;
+
+function _mmToDots(mm){ return Math.round(mm * (PRINTER_DPI/25.4)); }
+
+function _buildZPL(dados){
+  var w=PRINTER_W_DOTS, h=PRINTER_H_DOTS;
+  var titulo=dados.titulo||'REPROCESSO';
+  var zpl = '^XA';
+  zpl += '^MTT';  // Transferencia Termica — bate com "Tipo de impressao: Transf. Term" no visor
+  zpl += '^MNY';  // Sensor de Espaco/Ranhura — bate com "Tipo de midia: Espaco/Ranhura" no visor
+  zpl += '^PW'+w+'^LL'+h;
+  // Titulo
+  zpl += '^CF0,50';
+  zpl += '^FO0,40^FB'+w+',1,0,C^FD'+titulo+'^FS';
+  zpl += '^FO40,105^GB'+(w-80)+',3,3^FS';
+  // Dados da OP (se houver — apontamentos gerais como Finos/Varredura nao tem OP)
+  zpl += '^CF0,32';
+  var yLinha=140;
+  if(dados.opNumero){ zpl += '^FO50,'+yLinha+'^FDOP: '+dados.opNumero+'^FS'; yLinha+=45; }
+  zpl += '^FO50,'+yLinha+'^FDTurno: '+(dados.turno||'—')+'     Data: '+(dados.data||'').split('-').reverse().join('/')+'^FS';
+  yLinha+=45;
+  if(dados.produto){ zpl += '^FO50,'+yLinha+'^FB'+(w-100)+',2,4,L^FDProduto: '+dados.produto+'^FS'; yLinha+=90; }
+  if(dados.linha){ zpl += '^FO50,'+yLinha+'^FDLinha: '+dados.linha+'^FS'; yLinha+=45; }
+  // Peso em destaque
+  zpl += '^CF0,80';
+  zpl += '^FO0,'+(yLinha+40)+'^FB'+w+',1,0,C^FD'+fN(dados.pesoKg)+' kg^FS';
+  // Motivo
+  zpl += '^CF0,26';
+  zpl += '^FO50,'+(yLinha+150)+'^FB'+(w-100)+',2,4,L^FDMotivo: '+(dados.motivo||'—')+'^FS';
+  // Codigo de barras, lado esquerdo
+  zpl += '^BY3,3,120';
+  zpl += '^FO50,'+(h-220)+'^BCN,120,Y,N,N^FD'+dados.codigo+'^FS';
+  // QR Code, lado direito — mesma informacao, redundancia de leitura
+  zpl += '^FO'+(w-260)+','+(h-260)+'^BQN,2,6^FDQA,'+dados.codigo+'^FS';
+  zpl += '^XZ';
+  return zpl;
+}
+
+function _zebraBrowserPrintDisponivel(){
+  return typeof window.BrowserPrint !== 'undefined';
+}
+
+function _enviarZPLViaBrowserPrint(zpl){
+  return new Promise(function(resolve,reject){
+    if(!_zebraBrowserPrintDisponivel()){ reject(new Error('BrowserPrint indisponivel')); return; }
+    window.BrowserPrint.getDefaultDevice('printer', function(device){
+      if(!device){ reject(new Error('Nenhuma impressora padrao encontrada')); return; }
+      device.send(zpl, function(){ resolve(true); }, function(err){ reject(err); });
+    }, function(err){ reject(err); });
+  });
+}
+
+function _gerarQRCodeDataURL(texto, tamanhoPx){
+  // qrcodejs precisa de um elemento realmente no DOM pra desenhar — usa um
+  // container temporario fora da tela, extrai o PNG em alta resolucao e remove.
+  var tmp=document.createElement('div');
+  tmp.style.cssText='position:fixed;left:-9999px;top:-9999px';
+  document.body.appendChild(tmp);
+  var dataUrl='';
+  try{
+    if(window.QRCode){
+      new QRCode(tmp, {text:texto, width:tamanhoPx, height:tamanhoPx, correctLevel:QRCode.CorrectLevel.H});
+      var canvas=tmp.querySelector('canvas');
+      if(canvas) dataUrl=canvas.toDataURL('image/png');
+    }
+  }catch(e){ console.warn('Erro gerando QR Code:',e); }
+  tmp.remove();
+  return dataUrl;
+}
+
+function _imprimirEtiquetaFallbackNavegador(dados){
+  // Gera o codigo de barras num SVG "solto" (fora do DOM da aplicacao) — evita
+  // tocar em qualquer elemento do documento principal. Resolucao aumentada
+  // (mais largura de modulo e altura) pra ficar nitido mesmo impresso pequeno.
+  var svgBarcode=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  try{
+    if(window.JsBarcode) JsBarcode(svgBarcode, dados.codigo, {format:'CODE128', width:4, height:130, fontSize:22, margin:10});
+  }catch(e){ console.warn('Erro gerando codigo de barras:',e); }
+  var barcodeMarkup=svgBarcode.outerHTML||'';
+
+  // QR Code em alta resolucao (500x500px de origem, reduzido na impressao —
+  // fica nitido mesmo pequeno). Mesmo conteudo do codigo de barras.
+  var qrDataUrl=_gerarQRCodeDataURL(dados.codigo, 500);
+  var qrMarkup=qrDataUrl?('<img src="'+qrDataUrl+'" style="width:100%;height:100%;object-fit:contain">'):'';
+
+  var labelHtml =
+    '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+
+      '@page{size:'+LABEL_W_MM+'mm '+LABEL_H_MM+'mm;margin:0}'+
+      'html,body{margin:0;padding:0;width:'+LABEL_W_MM+'mm;height:'+LABEL_H_MM+'mm}'+
+      '*{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}'+
+      // body centraliza o rotulo dentro da pagina inteira — cria uma margem igual
+      // nos 4 lados (3% do tamanho da etiqueta), disfarçando qualquer pequeno
+      // desvio de calibracao fisica da impressora em vez de deixar tudo colado
+      // numa borda so.
+      'body{display:flex;align-items:center;justify-content:center}'+
+      '.label{width:94%;height:94%;padding:4mm;display:flex;flex-direction:column;text-align:center}'+
+      '.tit{font-size:28px;font-weight:800;letter-spacing:.06em;flex:0 0 auto}'+
+      '.hr{border-top:2px solid #000;margin:4px 4mm 6px;flex:0 0 auto}'+
+      '.linha{font-size:16px;text-align:left;margin-bottom:3px;flex:0 0 auto}'+
+      '.peso{font-size:50px;font-weight:800;margin:8px 0;flex:0 0 auto}'+
+      '.motivo{font-size:14px;text-align:left;word-break:break-word;margin-bottom:6px;flex:0 0 auto}'+
+      '.codigosrow{flex:1 1 auto;display:flex;align-items:center;justify-content:center;gap:4mm;padding-bottom:2mm;min-height:0;overflow:hidden}'+
+      '.qrbox{width:20mm;height:20mm;flex:0 0 auto}'+
+      '.bcbox{flex:1;display:flex;align-items:center;justify-content:center;max-width:58%;height:100%}'+
+      '.bcbox svg{width:100%;height:auto;max-height:20mm}'+
+    '</style></head><body>'+
+      '<div class="label">'+
+        '<div class="tit">'+(dados.titulo||'REPROCESSO')+'</div>'+
+        '<div class="hr"></div>'+
+        (dados.opNumero?('<div class="linha">OP: '+dados.opNumero+'</div>'):'')+
+        '<div class="linha">Turno: '+(dados.turno||'—')+' &nbsp;&nbsp; Data: '+(dados.data||'').split('-').reverse().join('/')+'</div>'+
+        (dados.produto?('<div class="linha">Produto: '+dados.produto+'</div>'):'')+
+        (dados.linha?('<div class="linha">Linha: '+dados.linha+'</div>'):'')+
+        '<div class="peso">'+fN(dados.pesoKg)+' kg</div>'+
+        '<div class="motivo">Motivo: '+(dados.motivo||'—')+'</div>'+
+        '<div class="codigosrow">'+
+          '<div class="qrbox">'+qrMarkup+'</div>'+
+          '<div class="bcbox">'+barcodeMarkup+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},80);};<\/script>'+
+    '</body></html>';
+
+  var iframe=document.createElement('iframe');
+  iframe.id='etiqueta-print-frame';
+  iframe.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+  document.body.appendChild(iframe);
+  iframe.srcdoc=labelHtml;
+
+  // Remove o iframe depois de dar tempo do dialogo de impressao abrir — nao
+  // interfere em mais nada do documento principal, e some sozinho.
+  setTimeout(function(){
+    var el=G('etiqueta-print-frame');
+    if(el) el.remove();
+  },4000);
+}
+
+function imprimirEtiquetaReprocesso(dados){
+  var zpl=_buildZPL(dados);
+  _enviarZPLViaBrowserPrint(zpl).then(function(){
+    toast('Etiqueta enviada pra impressora (ZPL)','ok');
+  }).catch(function(){
+    // BrowserPrint indisponivel ou falhou — usa impressao pelo navegador, sem travar o operador
+    _imprimirEtiquetaFallbackNavegador(dados);
+  });
+}
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,5); }
+
+// ============================================================
+// APONTAMENTO POR SETOR (Expedição Aqua / Expedição PET / Recebimento)
+// Um unico modal compartilhado — grava sempre em 'reprocesso_central',
+// campo 'setor' identifica de onde veio. Evita duplicar HTML/JS pros
+// 3 setores (mesma logica, so' muda o rotulo/prefixo).
+// ============================================================
+function abrirNovoReprocessoSetor(setorKey){
+  var cfg=SETORES_CENTRAL[setorKey];
+  if(!cfg) return;
+  G('nr-setor').value=setorKey;
+  G('nr-titulo').textContent='Novo Apontamento — '+cfg.label;
+  G('nr-tipo').value='';
+  G('nr-peso').value=0;
+  G('nr-produto').value='';
+  G('nr-origem').value='';
+  G('nr-motivo').value='';
+  G('nr-qtd-etiquetas').value=1;
+  G('nr-obs').value='';
+  G('nr-qualidade-row').style.display='none';
+  G('nr-motivo-label').textContent='Motivo (opcional, exceto para Qualidade)';
+  G('mnovoreprocesso').classList.add('on');
+}
+
+function onTipoNovoReprocessoChange(){
+  var ehQualidade=(G('nr-tipo').value==='Qualidade');
+  G('nr-qualidade-row').style.display = ehQualidade ? 'block' : 'none';
+  G('nr-motivo-label').textContent = ehQualidade ? 'Motivo do desvio *' : 'Motivo (opcional, exceto para Qualidade)';
+}
+
+// Codigo sequencial por dia, por setor — {PREFIXO}-AAMMDD-NNN. Consulta
+// direto no Firebase pra nao depender do cache local estar com o
+// periodo certo carregado (evita colisao de numero se o operador
+// tiver filtrado outro periodo na tela).
+function gerarCodigoSetor(setorKey, dt){
+  var cfg=SETORES_CENTRAL[setorKey];
+  return DB.ref('reprocesso_central').orderByChild('data').equalTo(dt).once('value').then(function(snap){
+    var n=0;
+    if(snap.exists()) snap.forEach(function(c){ var v=c.val(); if(v.setor===setorKey) n++; });
+    var seq=String(n+1); while(seq.length<3) seq='0'+seq;
+    var ymd=dt.replace(/-/g,'').slice(2);
+    return cfg.prefixo+'-'+ymd+'-'+seq;
+  });
+}
+
+function salvarNovoReprocessoSetor(){
+  var setorKey=G('nr-setor').value;
+  var cfg=SETORES_CENTRAL[setorKey];
+  if(!cfg){ toast('Setor invalido','err'); return; }
+
+  var tipo=G('nr-tipo').value;
+  var peso=parseFloat(G('nr-peso').value)||0;
+  var produto=(G('nr-produto').value||'').trim();
+  var origem=(G('nr-origem').value||'').trim();
+  var motivo=(G('nr-motivo').value||'').trim();
+  var qtdEtiquetas=parseInt(G('nr-qtd-etiquetas').value)||0;
+  var obs=(G('nr-obs').value||'').trim();
+
+  if(!tipo){ toast('Selecione o tipo','err'); return; }
+  if(peso<=0){ toast('Informe a quantidade (kg)','err'); return; }
+  if(qtdEtiquetas<1){ toast('Quantidade de etiquetas deve ser pelo menos 1','err'); return; }
+  if(tipo==='Qualidade' && !motivo){ toast('Informe o motivo do desvio de qualidade','err'); return; }
+
+  var dt=hoje();
+  var hr=horaAtual();
+
+  ld(true,'Gerando código...');
+  gerarCodigoSetor(setorKey, dt).then(function(codigo){
+    ld(true,'Salvando...');
+    return DB.ref('reprocesso_central').push({
+      codigo:codigo, setor:setorKey, tipo:tipo,
+      pesoKg:peso, produto:produto||null, origem:origem||null,
+      motivo:motivo||null, qtdEtiquetas:qtdEtiquetas, obs:obs||null,
+      data:dt, hora:hr,
+      lancadoPor:SES.login, lancadoEm:agora(), ts:Date.now(),
+      substituido:false
+    }).then(function(){ return codigo; });
+  }).then(function(codigo){
+    ld(false);
+    toast('Reprocesso registrado — '+fN(peso)+' kg — '+codigo,'ok');
+    addLog('NOVO_REPROCESSO_'+setorKey.toUpperCase(), codigo+' | '+tipo+' | '+fN(peso)+'kg');
+    fM('mnovoreprocesso');
+
+    var dadosEtiqueta={
+      titulo: tipo.toUpperCase(),
+      linha: cfg.label,
+      codigo: codigo,
+      turno: (SES.turno||0),
+      data: dt,
+      pesoKg: peso,
+      motivo: motivo || origem || '—',
+      produto: produto || ''
+    };
+    for(var i=0;i<qtdEtiquetas;i++){ imprimirEtiquetaReprocesso(dadosEtiqueta); }
+
+    renderListaSetor(setorKey);
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
+// Atalhos de periodo — mesmo padrao do resto do sistema.
+function filtroRapidoSetor(setorKey, qtd){
+  var cfg=SETORES_CENTRAL[setorKey]; if(!cfg) return;
+  var idp=cfg.idPrefix;
+  var fim=hoje();
+  var ini;
+  if(qtd==='mes'){ ini=fim.slice(0,8)+'01'; }
+  else if(qtd===0){ ini=fim; }
+  else { var d=new Date(fim+'T00:00:00'); d.setDate(d.getDate()-(qtd-1)); ini=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  G(idp+'-di').value=ini;
+  G(idp+'-df').value=fim;
+  renderListaSetor(setorKey);
+}
+
+function renderListaSetor(setorKey){
+  var cfg=SETORES_CENTRAL[setorKey]; if(!cfg) return;
+  var idp=cfg.idPrefix;
+  var di=G(idp+'-di').value, df=G(idp+'-df').value;
+  var ftipo=G(idp+'-ftipo').value;
+  if(!di||!df) return;
+  if(di>df){ toast('Data inicial maior que a final — ajuste o periodo','err'); return; }
+  G(idp+'-periodo-info').textContent = di===df
+    ? 'Exibindo '+di.split('-').reverse().join('/')
+    : 'Periodo: '+di.split('-').reverse().join('/')+' a '+df.split('-').reverse().join('/');
+
+  DB.ref('reprocesso_central').orderByChild('data').startAt(di).endAt(df).once('value').then(function(snap){
+    var lista=[];
+    if(snap.exists()) snap.forEach(function(c){ var v=c.val(); v.fbKey=c.key; if(v.setor===setorKey && !v.substituido) lista.push(v); });
+    CACHE_SETOR[setorKey]=lista.slice();
+
+    var filtrada=ftipo ? lista.filter(function(v){return v.tipo===ftipo;}) : lista;
+    filtrada.sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
+
+    var tipos=['Geral','Varredura','Finos','Qualidade'];
+    var totais={}; tipos.forEach(function(t){ totais[t]=0; });
+    filtrada.forEach(function(v){ totais[v.tipo]=(totais[v.tipo]||0)+(Number(v.pesoKg)||0); });
+    var rotulo = di===df ? 'no dia' : 'no periodo';
+    var hm='';
+    tipos.forEach(function(t){
+      hm+='<div class="mc"><div class="ml">'+t+' '+rotulo+'</div><div class="mv co">'+fN(totais[t])+'</div><div class="ms">kg</div></div>';
+    });
+    G(idp+'-metrics').innerHTML=hm;
+
+    var h='';
+    filtrada.forEach(function(v){
+      h+='<tr><td>'+(v.data||'').split('-').reverse().join('/')+'</td><td>'+(v.hora||'—')+'</td><td>'+v.tipo+'</td>';
+      h+='<td style="text-align:right">'+fN(v.pesoKg)+' kg</td><td>'+(v.produto||'—')+'</td><td>'+(v.origem||'—')+'</td>';
+      h+='<td>'+(v.motivo||'—')+'</td><td>'+(v.obs||'—')+'</td>';
+      h+='<td style="font-size:10px;color:#739630">'+(v.codigo||'—')+'</td><td>'+(v.lancadoPor||'—')+'</td>';
+      h+='<td><button class="btn bsm" data-key="'+v.fbKey+'" data-setor="'+setorKey+'" onclick="reimprimirEtiquetaCentral(this.dataset.key,this.dataset.setor)">Reimprimir</button></td></tr>';
+    });
+    G(idp+'-body').innerHTML = h || '<tr><td colspan="11" style="text-align:center;color:#739630">Nenhum reprocesso no periodo selecionado</td></tr>';
+  }).catch(function(e){ toast('Erro ao carregar: '+e.message,'err'); });
+}
+
+function reimprimirEtiquetaCentral(fbKey, setorKey){
+  var cfg=SETORES_CENTRAL[setorKey]; if(!cfg) return;
+  var lista=CACHE_SETOR[setorKey]||[];
+  var v=null;
+  for(var i=0;i<lista.length;i++){ if(lista[i].fbKey===fbKey){ v=lista[i]; break; } }
+  if(!v){ toast('Registro nao encontrado — atualize a lista','err'); return; }
+  imprimirEtiquetaReprocesso({
+    titulo: (v.tipo||'').toUpperCase(),
+    linha: cfg.label,
+    codigo: v.codigo,
+    turno: SES.turno||0,
+    data: v.data,
+    pesoKg: v.pesoKg,
+    motivo: v.motivo || v.origem || '—',
+    produto: v.produto || ''
+  });
+  addLog('REIMPRIMIR_ETIQUETA_'+setorKey.toUpperCase(), v.codigo);
+}
+
+// ============================================================
+// DASHBOARD CONSOLIDADO — SOMENTE LEITURA. Junta as 5 fontes de
+// reprocesso da fabrica num unico painel, marcando a origem de cada
+// linha (campo 'fonte'), sem escrever nada de volta em nenhum no.
+// ============================================================
+function dashFiltroRapido(qtd){
+  var fim=hoje();
+  var ini;
+  if(qtd==='mes'){ ini=fim.slice(0,8)+'01'; }
+  else if(qtd===0){ ini=fim; }
+  else { var d=new Date(fim+'T00:00:00'); d.setDate(d.getDate()-(qtd-1)); ini=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  G('dash-di').value=ini;
+  G('dash-df').value=fim;
+  renderDashboardConsolidado();
+}
+
+var FONTE_LABELS = {
+  ensaque_op:      { nome:'Ensaque — vínculo OP',              css:'fonte-ensaque'   },
+  ensaque_geral:   { nome:'Ensaque — Finos/Varredura/Geral',   css:'fonte-ensaque'   },
+  envasepet:       { nome:'Envase PET',                         css:'fonte-envasepet'},
+  extrusao:        { nome:'Extrusão (agregado)',                css:'fonte-extrusao' },
+  expedicao_aqua:  { nome:'Central — Expedição Aqua',           css:'fonte-central'  },
+  expedicao_pet:   { nome:'Central — Expedição PET',            css:'fonte-central'  },
+  recebimento:     { nome:'Central — Recebimento',              css:'fonte-central'  }
+};
+var TIPO_GERAL_MAP = { 'Finos':'Finos', 'Finos Magisan':'Finos', 'Reprocesso Geral':'Geral', 'Varredura':'Varredura' };
+
+// Decodifica a chave interna do reprocesso por linha da Extrusao (extrusao_turno.reprocesso
+// e' um objeto {encId(linha): kg}) de volta pro nome real da linha — mesma funcao encId()
+// e mesma lista TODAS_LINHAS do extrusao.html, replicadas aqui pra nao depender de import.
+function encIdLinha(s){ return s.replace(/[^a-zA-Z0-9]/g,'_'); }
+var TODAS_LINHAS_EXTRUSAO=['Linha 1 (E-240)','Linha 2 (E-200)','Linha 4 (Andritz I)','Linha 5 (Andritz II)'];
+var LINHA_EXTRUSAO_DECODE={};
+TODAS_LINHAS_EXTRUSAO.forEach(function(nome){ LINHA_EXTRUSAO_DECODE[encIdLinha(nome)]=nome; });
+
+function renderDashboardConsolidado(){
+  var di=G('dash-di').value, df=G('dash-df').value;
+  var ffonte=G('dash-ffonte').value;
+  var ftipo=G('dash-ftipo').value;
+  if(!di||!df) return;
+  if(di>df){ toast('Data inicial maior que a final — ajuste o periodo','err'); return; }
+  G('dash-periodo-info').textContent = di===df
+    ? 'Exibindo '+di.split('-').reverse().join('/')
+    : 'Periodo: '+di.split('-').reverse().join('/')+' a '+df.split('-').reverse().join('/');
+
+  ld(true,'Consolidando reprocesso...');
+
+  var pEnsaqueOP = DB.ref('apontamentos').orderByChild('data').startAt(di).endAt(df).once('value');
+  var pEnsaqueGeral = DB.ref('apontamentos_gerais').orderByChild('data').startAt(di).endAt(df).once('value');
+  var pEnvasePet = DB.ref('envase_pet_reprocesso').orderByChild('data').startAt(di).endAt(df).once('value');
+  var pExtrusao = DB.ref('extrusao_turno').orderByChild('data').startAt(di).endAt(df).once('value');
+  var pCentral = DB.ref('reprocesso_central').orderByChild('data').startAt(di).endAt(df).once('value');
+
+  Promise.all([pEnsaqueOP,pEnsaqueGeral,pEnvasePet,pExtrusao,pCentral]).then(function(res){
+    ld(false);
+    var rows=[];
+
+    // 1) Ensaque — vinculo OP (apontamentos, origem:'reprocesso')
+    if(res[0].exists()) res[0].forEach(function(c){
+      var v=c.val();
+      if(v.origem!=='reprocesso' || v.substituido) return;
+      rows.push({
+        data:v.data, fonte:'ensaque_op', setor:'OP '+(v.opId?String(v.opId).slice(-6):'—')+' • T'+(v.turno||'—'),
+        tipo:'', peso:Number(v.real)||0, motivo:v.motivoReprocesso||'—',
+        codigo:v.codigoEtiqueta||'—', lancadoPor:v.operador||'—'
+      });
+    });
+
+    // 2) Ensaque — Finos/Finos Magisan/Reprocesso Geral/Varredura (apontamentos_gerais)
+    if(res[1].exists()) res[1].forEach(function(c){
+      var v=c.val();
+      rows.push({
+        data:v.data, fonte:'ensaque_geral', setor:v.linha||'—',
+        tipo:TIPO_GERAL_MAP[v.tipo]||'', peso:Number(v.quantidadeKg)||0, motivo:v.motivo||'—',
+        codigo:v.codigoEtiqueta||'—', lancadoPor:v.operador||'—'
+      });
+    });
+
+    // 3) Envase PET (envase_pet_reprocesso)
+    if(res[2].exists()) res[2].forEach(function(c){
+      var v=c.val();
+      rows.push({
+        data:v.data, fonte:'envasepet', setor:'—',
+        tipo:v.tipo||'', peso:Number(v.pesoKg)||0, motivo:v.motivoDesvio||v.obs||'—',
+        codigo:v.codigo||'—', lancadoPor:v.lancadoPor||'—'
+      });
+    });
+
+    // 4) Extrusao (extrusao_turno.reprocesso) — UMA LINHA POR CADA LINHA DE
+    //    PRODUCAO (decodificada via encId), nao mais agregado por turno.
+    //    Continua sem codigo/tipo/motivo individual — a origem nao registra
+    //    isso hoje, so' o kg por linha/turno (ver analise no chat).
+    if(res[3].exists()) res[3].forEach(function(c){
+      var v=c.val();
+      if(!v.reprocesso) return;
+      Object.keys(v.reprocesso).forEach(function(k){
+        var kg=Number(v.reprocesso[k])||0;
+        if(kg<=0) return;
+        var nomeLinha=LINHA_EXTRUSAO_DECODE[k]||k;
+        rows.push({
+          data:v.data, fonte:'extrusao', setor:nomeLinha+' • T'+(v.turno||'—'),
+          tipo:'', peso:kg, motivo:'sem detalhamento por etiqueta (registro por linha/turno)',
+          codigo:'—', lancadoPor:v.operador||'—'
+        });
+      });
+    });
+
+    // 5) Central — Expedicao Aqua / Expedicao PET / Recebimento (reprocesso_central)
+    if(res[4].exists()) res[4].forEach(function(c){
+      var v=c.val();
+      if(v.substituido) return;
+      var cfg=SETORES_CENTRAL[v.setor];
+      rows.push({
+        data:v.data, fonte:v.setor, setor:cfg?cfg.label:(v.setor||'—'),
+        tipo:v.tipo||'', peso:Number(v.pesoKg)||0, motivo:v.motivo||v.origem||'—',
+        codigo:v.codigo||'—', lancadoPor:v.lancadoPor||'—'
+      });
+    });
+
+    // Filtros
+    if(ffonte) rows=rows.filter(function(r){ return r.fonte===ffonte; });
+    if(ftipo) rows=rows.filter(function(r){ return r.tipo===ftipo; });
+
+    // Cards por tipo (so' contam linhas que carregam a taxonomia — Ensaque
+    // vinculo-OP e Extrusao nao tem 'tipo', entao nao entram nesses 4
+    // cards, so' no Total Geral).
+    var tipos=['Geral','Varredura','Finos','Qualidade'];
+    var totaisTipo={}; tipos.forEach(function(t){ totaisTipo[t]=0; });
+    var totalGeral=0;
+    rows.forEach(function(r){ totalGeral+=r.peso; if(totaisTipo[r.tipo]!=null) totaisTipo[r.tipo]+=r.peso; });
+
+    var hm='<div class="mc"><div class="ml">Total Geral</div><div class="mv cg">'+fN(totalGeral)+'</div><div class="ms">kg — todas as fontes</div></div>';
+    tipos.forEach(function(t){
+      hm+='<div class="mc"><div class="ml">'+t+'</div><div class="mv co">'+fN(totaisTipo[t])+'</div><div class="ms">kg</div></div>';
+    });
+    G('dash-metrics-tipo').innerHTML=hm;
+
+    // Resumo por fonte
+    var porFonte={};
+    rows.forEach(function(r){
+      if(!porFonte[r.fonte]) porFonte[r.fonte]={peso:0,n:0};
+      porFonte[r.fonte].peso+=r.peso; porFonte[r.fonte].n++;
+    });
+    var fontesOrdenadas=Object.keys(porFonte).sort(function(a,b){ return porFonte[b].peso-porFonte[a].peso; });
+    var hf='';
+    fontesOrdenadas.forEach(function(f){
+      var info=FONTE_LABELS[f]||{nome:f,css:'fonte-central'};
+      var pct = totalGeral>0 ? (porFonte[f].peso/totalGeral*100).toFixed(1) : '0.0';
+      hf+='<tr><td><span class="fonte-tag '+info.css+'">'+info.nome+'</span></td>';
+      hf+='<td style="text-align:right">'+fN(porFonte[f].peso)+' kg</td>';
+      hf+='<td style="text-align:right">'+pct+'%</td>';
+      hf+='<td style="text-align:right">'+porFonte[f].n+'</td></tr>';
+    });
+    G('dash-fonte-body').innerHTML = hf || '<tr><td colspan="4" style="text-align:center;color:#739630">Nenhum reprocesso no periodo/filtro selecionado</td></tr>';
+
+    // Detalhamento
+    rows.sort(function(a,b){ return (b.data||'').localeCompare(a.data||'') || b.peso-a.peso; });
+    var hd='';
+    rows.forEach(function(r){
+      var info=FONTE_LABELS[r.fonte]||{nome:r.fonte,css:'fonte-central'};
+      hd+='<tr><td>'+(r.data||'').split('-').reverse().join('/')+'</td>';
+      hd+='<td><span class="fonte-tag '+info.css+'">'+info.nome+'</span></td>';
+      hd+='<td>'+(r.setor||'—')+'</td><td>'+(r.tipo||'—')+'</td>';
+      hd+='<td style="text-align:right">'+fN(r.peso)+' kg</td><td>'+r.motivo+'</td>';
+      hd+='<td style="font-size:10px;color:#739630">'+r.codigo+'</td><td>'+r.lancadoPor+'</td></tr>';
+    });
+    G('dash-detalhe-body').innerHTML = hd || '<tr><td colspan="8" style="text-align:center;color:#739630">Nenhum reprocesso no periodo/filtro selecionado</td></tr>';
+  }).catch(function(e){ ld(false); toast('Erro ao consolidar: '+e.message,'err'); });
+}
+</script>
+</body>
+</html>
