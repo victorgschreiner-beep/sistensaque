@@ -310,6 +310,8 @@ tr:hover td{background:rgba(2,79,43,.03)}
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.12.3/JsBarcode.all.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 // ============================================================
 // FIREBASE CONFIG — mesmo projeto/banco do restante do sistema.
@@ -1187,53 +1189,157 @@ function salvarNovoReprocesso(){
   }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
 }
 
-// Etiqueta termica 100x100mm — mesmo padrao ja usado nos demais modulos
-// (Finos/Reprocesso Geral do index.html), autocontida aqui pois o
-// Envase PET e' um arquivo separado sem dependencia entre si.
+// ============================================================
+// ETIQUETA — ZPL/Zebra, PADRAO IDENTICO ao index.html (Ensaque) e ao
+// reprocesso_central.html. Trocado do PDF/jsPDF anterior a pedido do
+// Victor (confirmado: Envase PET tem impressora Zebra + BrowserPrint
+// instalado). Autocontida aqui, mesmo principio de desacoplamento
+// entre modulos ja usado no restante do sistema.
+// ============================================================
+var PRINTER_DPI = 203; // ZT231 padrao — trocar pra 300 se a impressora for a versao 300dpi
+var PRINTER_W_DOTS = 800, PRINTER_H_DOTS = 802;
+var LABEL_W_MM = PRINTER_W_DOTS/PRINTER_DPI*25.4;
+var LABEL_H_MM = PRINTER_H_DOTS/PRINTER_DPI*25.4;
+
+function _buildZPL(dados){
+  var w=PRINTER_W_DOTS, h=PRINTER_H_DOTS;
+  var titulo=dados.titulo||'REPROCESSO';
+  var zpl = '^XA';
+  zpl += '^MTT';
+  zpl += '^MNY';
+  zpl += '^PW'+w+'^LL'+h;
+  zpl += '^CF0,50';
+  zpl += '^FO0,40^FB'+w+',1,0,C^FD'+titulo+'^FS';
+  zpl += '^FO40,105^GB'+(w-80)+',3,3^FS';
+  zpl += '^CF0,32';
+  var yLinha=140;
+  if(dados.opNumero){ zpl += '^FO50,'+yLinha+'^FDOP: '+dados.opNumero+'^FS'; yLinha+=45; }
+  zpl += '^FO50,'+yLinha+'^FDTurno: '+(dados.turno||'—')+'     Data: '+(dados.data||'').split('-').reverse().join('/')+'^FS';
+  yLinha+=45;
+  if(dados.produto){ zpl += '^FO50,'+yLinha+'^FB'+(w-100)+',2,4,L^FDProduto: '+dados.produto+'^FS'; yLinha+=90; }
+  if(dados.linha){ zpl += '^FO50,'+yLinha+'^FDLinha: '+dados.linha+'^FS'; yLinha+=45; }
+  zpl += '^CF0,80';
+  zpl += '^FO0,'+(yLinha+40)+'^FB'+w+',1,0,C^FD'+fN(dados.pesoKg)+' kg^FS';
+  zpl += '^CF0,26';
+  zpl += '^FO50,'+(yLinha+150)+'^FB'+(w-100)+',2,4,L^FDMotivo: '+(dados.motivo||'—')+'^FS';
+  zpl += '^BY3,3,120';
+  zpl += '^FO50,'+(h-220)+'^BCN,120,Y,N,N^FD'+dados.codigo+'^FS';
+  zpl += '^FO'+(w-260)+','+(h-260)+'^BQN,2,6^FDQA,'+dados.codigo+'^FS';
+  zpl += '^XZ';
+  return zpl;
+}
+
+function _zebraBrowserPrintDisponivel(){
+  return typeof window.BrowserPrint !== 'undefined';
+}
+
+function _enviarZPLViaBrowserPrint(zpl){
+  return new Promise(function(resolve,reject){
+    if(!_zebraBrowserPrintDisponivel()){ reject(new Error('BrowserPrint indisponivel')); return; }
+    window.BrowserPrint.getDefaultDevice('printer', function(device){
+      if(!device){ reject(new Error('Nenhuma impressora padrao encontrada')); return; }
+      device.send(zpl, function(){ resolve(true); }, function(err){ reject(err); });
+    }, function(err){ reject(err); });
+  });
+}
+
+function _gerarQRCodeDataURL(texto, tamanhoPx){
+  var tmp=document.createElement('div');
+  tmp.style.cssText='position:fixed;left:-9999px;top:-9999px';
+  document.body.appendChild(tmp);
+  var dataUrl='';
+  try{
+    if(window.QRCode){
+      new QRCode(tmp, {text:texto, width:tamanhoPx, height:tamanhoPx, correctLevel:QRCode.CorrectLevel.H});
+      var canvas=tmp.querySelector('canvas');
+      if(canvas) dataUrl=canvas.toDataURL('image/png');
+    }
+  }catch(e){ console.warn('Erro gerando QR Code:',e); }
+  tmp.remove();
+  return dataUrl;
+}
+
+function _imprimirEtiquetaFallbackNavegador(dados){
+  var svgBarcode=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  try{
+    if(window.JsBarcode) JsBarcode(svgBarcode, dados.codigo, {format:'CODE128', width:4, height:130, fontSize:22, margin:10});
+  }catch(e){ console.warn('Erro gerando codigo de barras:',e); }
+  var barcodeMarkup=svgBarcode.outerHTML||'';
+
+  var qrDataUrl=_gerarQRCodeDataURL(dados.codigo, 500);
+  var qrMarkup=qrDataUrl?('<img src="'+qrDataUrl+'" style="width:100%;height:100%;object-fit:contain">'):'';
+
+  var labelHtml =
+    '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+
+      '@page{size:'+LABEL_W_MM+'mm '+LABEL_H_MM+'mm;margin:0}'+
+      'html,body{margin:0;padding:0;width:'+LABEL_W_MM+'mm;height:'+LABEL_H_MM+'mm}'+
+      '*{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}'+
+      'body{display:flex;align-items:center;justify-content:center}'+
+      '.label{width:94%;height:94%;padding:4mm;display:flex;flex-direction:column;text-align:center}'+
+      '.tit{font-size:28px;font-weight:800;letter-spacing:.06em;flex:0 0 auto}'+
+      '.hr{border-top:2px solid #000;margin:4px 4mm 6px;flex:0 0 auto}'+
+      '.linha{font-size:16px;text-align:left;margin-bottom:3px;flex:0 0 auto}'+
+      '.peso{font-size:50px;font-weight:800;margin:8px 0;flex:0 0 auto}'+
+      '.motivo{font-size:14px;text-align:left;word-break:break-word;margin-bottom:6px;flex:0 0 auto}'+
+      '.codigosrow{flex:1 1 auto;display:flex;align-items:center;justify-content:center;gap:4mm;padding-bottom:2mm;min-height:0;overflow:hidden}'+
+      '.qrbox{width:20mm;height:20mm;flex:0 0 auto}'+
+      '.bcbox{flex:1;display:flex;align-items:center;justify-content:center;max-width:58%;height:100%}'+
+      '.bcbox svg{width:100%;height:auto;max-height:20mm}'+
+    '</style></head><body>'+
+      '<div class="label">'+
+        '<div class="tit">'+(dados.titulo||'REPROCESSO')+'</div>'+
+        '<div class="hr"></div>'+
+        (dados.opNumero?('<div class="linha">OP: '+dados.opNumero+'</div>'):'')+
+        '<div class="linha">Turno: '+(dados.turno||'—')+' &nbsp;&nbsp; Data: '+(dados.data||'').split('-').reverse().join('/')+'</div>'+
+        (dados.produto?('<div class="linha">Produto: '+dados.produto+'</div>'):'')+
+        (dados.linha?('<div class="linha">Linha: '+dados.linha+'</div>'):'')+
+        '<div class="peso">'+fN(dados.pesoKg)+' kg</div>'+
+        '<div class="motivo">Motivo: '+(dados.motivo||'—')+'</div>'+
+        '<div class="codigosrow">'+
+          '<div class="qrbox">'+qrMarkup+'</div>'+
+          '<div class="bcbox">'+barcodeMarkup+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},80);};<\/script>'+
+    '</body></html>';
+
+  var iframe=document.createElement('iframe');
+  iframe.id='etiqueta-print-frame';
+  iframe.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+  document.body.appendChild(iframe);
+  iframe.srcdoc=labelHtml;
+
+  setTimeout(function(){
+    var el=G('etiqueta-print-frame');
+    if(el) el.remove();
+  },4000);
+}
+
+function imprimirEtiquetaReprocesso(dados){
+  var zpl=_buildZPL(dados);
+  _enviarZPLViaBrowserPrint(zpl).then(function(){
+    toast('Etiqueta enviada pra impressora (ZPL)','ok');
+  }).catch(function(){
+    _imprimirEtiquetaFallbackNavegador(dados);
+  });
+}
+
+// Adaptador — mantem a assinatura antiga (mesmos campos que ja eram
+// passados por salvarNovoReprocesso/reimprimirEtiquetaReprocesso) e so'
+// remapeia pro formato generico usado pela funcao ZPL acima. Assim os
+// pontos de chamada nao precisam mudar.
 function imprimirEtiquetaReprocessoPET(dados){
-  if(typeof jspdf==='undefined'){ toast('jsPDF nao disponivel','err'); return; }
-  var jsPDF=jspdf.jsPDF;
-  var doc=new jsPDF({orientation:'portrait',unit:'mm',format:[100,100]});
-  var W=100, ML=6, y;
-
-  doc.setFillColor(2,79,43); doc.rect(0,0,W,16,'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(255,255,255);
-  doc.text('REPROCESSO', W/2, 10, {align:'center'});
-
-  y=22;
-  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(2,79,43);
-  doc.text((dados.tipo||'').toUpperCase(), W/2, y, {align:'center'});
-  y+=8;
-
-  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(26,46,26);
-  doc.text('Codigo:', ML, y); doc.setFont('helvetica','bold'); doc.text(dados.codigo||'-', ML+22, y); y+=7;
-  doc.setFont('helvetica','normal'); doc.text('Data:', ML, y); doc.setFont('helvetica','bold'); doc.text((dados.data||'').split('-').reverse().join('/'), ML+22, y); y+=8;
-
-  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.text('Peso:', ML, y);
-  doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.text(fN(dados.pesoKg)+' kg', ML+22, y);
-  doc.setFontSize(9); y+=9;
-
-  if(dados.opOrigemId){
-    doc.setFont('helvetica','normal'); doc.text('OP origem:', ML, y);
-    doc.setFont('helvetica','bold'); doc.text(String(dados.opOrigemId), ML+26, y); y+=7;
-  }
-  if(dados.motivoDesvio){
-    doc.setFont('helvetica','normal'); doc.setFontSize(8);
-    var linhas=doc.splitTextToSize('Desvio: '+dados.motivoDesvio, W-ML*2);
-    doc.text(linhas, ML, y); y+=linhas.length*4+3;
-  }
-  if(dados.obs){
-    doc.setFont('helvetica','normal'); doc.setFontSize(8);
-    var linhasObs=doc.splitTextToSize('Obs: '+dados.obs, W-ML*2);
-    doc.text(linhasObs, ML, y); y+=linhasObs.length*4+3;
-  }
-
-  doc.setDrawColor(200,216,200); doc.line(ML,90,W-ML,90);
-  doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(140,140,140);
-  doc.text('Raguife — Envase PET', ML, 95);
-  doc.text(new Date().toLocaleString('pt-BR'), W-ML, 95, {align:'right'});
-
-  doc.save('Etiqueta_'+(dados.codigo||'reprocesso')+'.pdf');
+  imprimirEtiquetaReprocesso({
+    titulo: (dados.tipo||'').toUpperCase(),
+    linha: 'Envase PET',
+    codigo: dados.codigo,
+    turno: '—',
+    data: dados.data,
+    pesoKg: dados.pesoKg,
+    opNumero: dados.opOrigemId || '',
+    produto: '',
+    motivo: dados.motivoDesvio || dados.obs || (dados.opOrigemId ? ('OP origem: '+dados.opOrigemId) : '—')
+  });
 }
 
 function reimprimirEtiquetaReprocesso(fbKey){
