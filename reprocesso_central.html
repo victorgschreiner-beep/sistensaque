@@ -140,6 +140,10 @@ tr:hover td{background:rgba(2,79,43,.03)}
 .readonly-info b{color:#024f2b}
 .setor-hero{display:flex;align-items:center;gap:10px;margin-bottom:4px}
 .setor-hero .dot{width:9px;height:9px;border-radius:50%;background:#024f2b}
+.mc-click{cursor:pointer;transition:transform .15s,box-shadow .15s}
+.mc-click:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(2,79,43,.14)}
+.mc-click .ml{display:flex;align-items:center;justify-content:space-between;gap:4px}
+.mc-click .ml::after{content:'▸';font-size:11px;color:#739630;opacity:.7}
 </style>
 </head>
 <body>
@@ -369,8 +373,22 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
 </div>
 
+<!-- MODAL GRAFICO DE MOTIVOS (drill-down a partir dos cards do Dashboard) -->
+<div class="ov" id="mgraficomotivos">
+  <div class="modal" style="width:640px">
+    <div class="mt" id="gm-titulo">Motivos lançados</div>
+    <div id="gm-periodo" style="font-size:11px;color:#739630;margin:-10px 0 14px"></div>
+    <div id="gm-vazio" style="display:none;text-align:center;color:#739630;font-size:13px;padding:30px 0">Nenhum motivo registrado nesse setor, no período selecionado.</div>
+    <div id="gm-chart-wrap" style="position:relative;height:320px"><canvas id="gm-chart"></canvas></div>
+    <div class="mfoot">
+      <button class="btn bsm" onclick="fM('mgraficomotivos')">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.12.3/JsBarcode.all.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
@@ -908,6 +926,86 @@ var FONTE_CARD_CLASS = {
 };
 var TIPO_GERAL_MAP = { 'Finos':'Finos', 'Finos Magisan':'Finos', 'Reprocesso Geral':'Geral', 'Varredura':'Varredura' };
 
+// Cache do ultimo conjunto de linhas exibido no Dashboard (ja filtrado por
+// periodo/fonte/tipo) — usado pro drill-down "Motivos lançados" sem nova
+// consulta ao Firebase.
+var DASH_ROWS_ATUAIS = [];
+var DASH_PERIODO_ATUAL = { di:'', df:'' };
+var GRAFICO_MOTIVOS_CHART = null;
+
+// Cores fixas por fonte pro grafico de barras (mesma logica de cores dos
+// cards/badges, so' que em hex solido pra o Chart.js).
+var FONTE_COR_CHART = {
+  ensaque_op:'#024f2b', ensaque_geral:'#024f2b',
+  envasepet:'#739630',
+  extrusao:'#8b5cf6',
+  expedicao_aqua:'#d29922', expedicao_pet:'#d29922', recebimento:'#d29922'
+};
+
+function abrirGraficoMotivosSetor(fonteKey){
+  var info=FONTE_LABELS[fonteKey]||{nome:fonteKey};
+  G('gm-titulo').textContent='Motivos lançados — '+info.nome;
+  var di=DASH_PERIODO_ATUAL.di, df=DASH_PERIODO_ATUAL.df;
+  G('gm-periodo').textContent = (di===df)
+    ? 'Período: '+(di||'').split('-').reverse().join('/')
+    : 'Período: '+(di||'').split('-').reverse().join('/')+' a '+(df||'').split('-').reverse().join('/');
+
+  var linhas=DASH_ROWS_ATUAIS.filter(function(r){ return r.fonte===fonteKey; });
+
+  if(GRAFICO_MOTIVOS_CHART){ GRAFICO_MOTIVOS_CHART.destroy(); GRAFICO_MOTIVOS_CHART=null; }
+
+  if(!linhas.length){
+    G('gm-vazio').style.display='block';
+    G('gm-chart-wrap').style.display='none';
+    G('mgraficomotivos').classList.add('on');
+    return;
+  }
+  G('gm-vazio').style.display='none';
+  G('gm-chart-wrap').style.display='block';
+
+  // Agrupa por motivo, somando o peso (kg) — top 8 + "Outros" pra nao
+  // poluir o grafico quando o motivo for muito variado/texto livre.
+  var porMotivo={};
+  linhas.forEach(function(r){
+    var m=(r.motivo||'—').trim() || '—';
+    porMotivo[m]=(porMotivo[m]||0)+r.peso;
+  });
+  var pares=Object.keys(porMotivo).map(function(m){ return {motivo:m, peso:porMotivo[m]}; });
+  pares.sort(function(a,b){ return b.peso-a.peso; });
+
+  var top=pares.slice(0,8);
+  var resto=pares.slice(8);
+  if(resto.length){
+    var somaResto=resto.reduce(function(s,p){ return s+p.peso; },0);
+    top.push({motivo:'Outros ('+resto.length+')', peso:somaResto});
+  }
+
+  var cor=FONTE_COR_CHART[fonteKey]||'#024f2b';
+  var ctx=G('gm-chart').getContext('2d');
+  GRAFICO_MOTIVOS_CHART=new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels: top.map(function(p){ return p.motivo; }),
+      datasets:[{
+        label:'kg',
+        data: top.map(function(p){ return Math.round(p.peso*10)/10; }),
+        backgroundColor: cor+'cc',
+        borderRadius:4
+      }]
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:function(c){ return fN(c.parsed.x)+' kg'; }}} },
+      scales:{ x:{beginAtZero:true, title:{display:true,text:'kg'}} }
+    }
+  });
+
+  G('mgraficomotivos').classList.add('on');
+}
+
+
 // Decodifica a chave interna do reprocesso por linha da Extrusao (extrusao_turno.reprocesso
 // e' um objeto {encId(linha): kg}) de volta pro nome real da linha — mesma funcao encId()
 // e mesma lista TODAS_LINHAS do extrusao.html, replicadas aqui pra nao depender de import.
@@ -1004,6 +1102,11 @@ function renderDashboardConsolidado(){
     if(ffonte) rows=rows.filter(function(r){ return r.fonte===ffonte; });
     if(ftipo) rows=rows.filter(function(r){ return r.tipo===ftipo; });
 
+    // Cache pro drill-down "Motivos lançados" ao clicar num card de setor —
+    // reaproveita o que ja foi lido/filtrado, sem nova consulta ao Firebase.
+    DASH_ROWS_ATUAIS = rows.slice();
+    DASH_PERIODO_ATUAL = { di:di, df:df };
+
     // Cards por tipo (so' contam linhas que carregam a taxonomia — Ensaque
     // vinculo-OP e Extrusao nao tem 'tipo', entao nao entram nesses 4
     // cards, so' no Total Geral).
@@ -1035,7 +1138,7 @@ function renderDashboardConsolidado(){
     fontesCards.forEach(function(f){
       var info=FONTE_LABELS[f]||{nome:f,css:'fonte-central'};
       var d=porFonte[f]||{peso:0,n:0};
-      hc+='<div class="mc '+FONTE_CARD_CLASS[f]+'"><div class="ml">'+info.nome+'</div><div class="mv co">'+fN(d.peso)+'</div><div class="ms">kg — '+d.n+' registro(s)</div></div>';
+      hc+='<div class="mc mc-click '+FONTE_CARD_CLASS[f]+'" onclick="abrirGraficoMotivosSetor(\''+f+'\')"><div class="ml">'+info.nome+'</div><div class="mv co">'+fN(d.peso)+'</div><div class="ms">kg — '+d.n+' registro(s)</div></div>';
     });
     G('dash-metrics-setor').innerHTML=hc;
 
