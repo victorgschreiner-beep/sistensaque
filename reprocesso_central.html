@@ -132,6 +132,10 @@ tr:hover td{background:rgba(2,79,43,.03)}
 .fonte-envasepet{background:rgba(115,150,48,.15);color:#4a6b1a}
 .fonte-extrusao{background:rgba(139,92,246,.15);color:#5b21b6}
 .fonte-central{background:rgba(210,153,34,.15);color:#8a5700}
+.mc-ensaque{border-left:3px solid #024f2b}
+.mc-envasepet{border-left:3px solid #739630}
+.mc-extrusao{border-left:3px solid #8b5cf6}
+.mc-central{border-left:3px solid #d29922}
 .readonly-info{background:#f4f6f4;border:1px solid var(--bd);border-radius:var(--r);padding:9px 12px;font-size:12px;color:#4a664a;display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px}
 .readonly-info b{color:#024f2b}
 .setor-hero{display:flex;align-items:center;gap:10px;margin-bottom:4px}
@@ -229,6 +233,12 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
   <div id="dash-periodo-info" style="font-size:11px;color:#739630;margin-bottom:10px"></div>
   <div class="mrow" id="dash-metrics-tipo" style="grid-template-columns:repeat(5,1fr)"></div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+    <span class="ct" style="font-size:13px">Quantidade por Setor</span>
+  </div>
+  <div class="mrow" id="dash-metrics-setor" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px"></div>
+
   <div class="card">
     <div class="ch"><span class="ct">Resumo por Fonte</span></div>
     <div class="tw"><table>
@@ -889,6 +899,13 @@ var FONTE_LABELS = {
   expedicao_pet:   { nome:'Central — Expedição PET',            css:'fonte-central'  },
   recebimento:     { nome:'Central — Recebimento',              css:'fonte-central'  }
 };
+var ORDEM_FONTES = ['ensaque_op','ensaque_geral','envasepet','extrusao','expedicao_aqua','expedicao_pet','recebimento'];
+var FONTE_CARD_CLASS = {
+  ensaque_op:'mc-ensaque', ensaque_geral:'mc-ensaque',
+  envasepet:'mc-envasepet',
+  extrusao:'mc-extrusao',
+  expedicao_aqua:'mc-central', expedicao_pet:'mc-central', recebimento:'mc-central'
+};
 var TIPO_GERAL_MAP = { 'Finos':'Finos', 'Finos Magisan':'Finos', 'Reprocesso Geral':'Geral', 'Varredura':'Varredura' };
 
 // Decodifica a chave interna do reprocesso por linha da Extrusao (extrusao_turno.reprocesso
@@ -1001,12 +1018,27 @@ function renderDashboardConsolidado(){
     });
     G('dash-metrics-tipo').innerHTML=hm;
 
-    // Resumo por fonte
+    // Quantidade por Setor / Fonte — cards + resumo em tabela.
+    // Sem filtro de fonte: mostra as 7 fontes numa ordem fixa (mesmo com
+    // 0 kg), pra facilitar comparar quem apontou e quem nao apontou no
+    // periodo. Com filtro de fonte ativo, mostra so' a fonte selecionada
+    // (mostrar as outras zeradas so' confundiria, ja que nem foram lidas).
     var porFonte={};
+    if(!ffonte){ ORDEM_FONTES.forEach(function(f){ porFonte[f]={peso:0,n:0}; }); }
     rows.forEach(function(r){
       if(!porFonte[r.fonte]) porFonte[r.fonte]={peso:0,n:0};
       porFonte[r.fonte].peso+=r.peso; porFonte[r.fonte].n++;
     });
+
+    var fontesCards = ffonte ? Object.keys(porFonte) : ORDEM_FONTES;
+    var hc='';
+    fontesCards.forEach(function(f){
+      var info=FONTE_LABELS[f]||{nome:f,css:'fonte-central'};
+      var d=porFonte[f]||{peso:0,n:0};
+      hc+='<div class="mc '+FONTE_CARD_CLASS[f]+'"><div class="ml">'+info.nome+'</div><div class="mv co">'+fN(d.peso)+'</div><div class="ms">kg — '+d.n+' registro(s)</div></div>';
+    });
+    G('dash-metrics-setor').innerHTML=hc;
+
     var fontesOrdenadas=Object.keys(porFonte).sort(function(a,b){ return porFonte[b].peso-porFonte[a].peso; });
     var hf='';
     fontesOrdenadas.forEach(function(f){
