@@ -1673,8 +1673,11 @@ function carregarExtrusao(){
       if(s.exists()) s.forEach(function(c){
         var p=c.val();p.fbKey=c.key;
         if(p.linha!==linha||p.data!==dt) return;
-        if(!isAdmin&&p.turno!==t) return;
-        if(!p.horaFim && p.continuacaoTurno && p.turno!==t) return;
+        if(!isAdmin && p.horaFim && p.turno!==t) return; // histórico de paradas fechadas continua restrito ao turno de quem está logado
+        // Parada em andamento (sem horaFim) sempre aparece pra quem está na linha —
+        // independente do turno técnico gravado nela. Evita esconder uma parada real
+        // em andamento do operador por causa de uma virada de turno (bug reportado 04/09/2026:
+        // parada aberta às 06:00, na virada T1→T2, não aparecia pro operador de T2, só pro admin).
         EST[linha].paradas.push(p);
       });
       renderLinhaCard(linha);
