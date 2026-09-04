@@ -5557,18 +5557,19 @@ function batProcessarArquivo(input){
   reader.readAsArrayBuffer(file);
 }
 
-// O Excel guarda o horário local (Brasília) sem timezone — o SheetJS constrói o
-// Date via UTC a partir dos valores literais da planilha, então usamos os
-// getters UTC diretamente, sem passar por Intl/America-Sao_Paulo (evita
-// deslocamento duplo de fuso, igual ao bug já documentado em dataBrasilia()).
+// O SheetJS (cellDates:true) codifica a data/hora LITERAL da planilha nos
+// componentes LOCAIS do objeto Date (getHours/getDate), não nos componentes
+// UTC — é assim que a própria lib funciona (ver numdate() no código-fonte).
+// Por isso usamos getters locais aqui; usar getUTC* deslocaria tudo pelo
+// fuso do navegador (bug confirmado: 3h de deslocamento em America/Sao_Paulo).
 function batCampos(d){
-  return {y:d.getUTCFullYear(),mo:d.getUTCMonth(),da:d.getUTCDate(),h:d.getUTCHours(),mi:d.getUTCMinutes()};
+  return {y:d.getFullYear(),mo:d.getMonth(),da:d.getDate(),h:d.getHours(),mi:d.getMinutes()};
 }
 function batDataOperacional(d){
   var c=batCampos(d);
-  var base=new Date(Date.UTC(c.y,c.mo,c.da));
+  var base=new Date(c.y,c.mo,c.da);
   if(c.h>=21) base=new Date(base.getTime()+24*60*60*1000); // regra das 21h — mesma de hoje()
-  return base.toISOString().slice(0,10);
+  return base.getFullYear()+"-"+pad(base.getMonth()+1)+"-"+pad(base.getDate());
 }
 function batHoraStr(d){
   var c=batCampos(d);
