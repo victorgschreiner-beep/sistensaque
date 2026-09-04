@@ -8,6 +8,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-height:100vh}
@@ -267,6 +268,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       <button class="btn-resumo" onclick="abrirDashboard()">📊 Dashboard</button>
       <button class="btn-resumo" onclick="abrirResumo()">📋 Resumo Turno</button>
       <button class="btn-resumo" id="btn-conferencia" onclick="abrirConferencia()" style="display:none">🔍 Conferência</button>
+      <button class="btn-resumo" id="btn-bateladas" onclick="abrirBateladas()" style="display:none">🧮 Bateladas</button>
     </div>
 
     <div style="background:#fff3cd;border:2px solid #d29922;border-radius:10px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
@@ -311,6 +313,24 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       </div>
       <div class="conf-body" id="conf-corpo">
         <div style="text-align:center;padding:30px;color:#4a664a;font-size:13px">Selecione a data e clique em Gerar para conferir os apontamentos.</div>
+      </div>
+    </div>
+
+    <!-- SEÇÃO CONFERÊNCIA DE BATELADAS (EXCEL) — visível só para admin -->
+    <div id="secao-bateladas" style="margin-top:20px;display:none">
+      <div class="conf-header">
+        <h2>🧮 Conferência de Bateladas (Excel)</h2>
+        <div style="display:flex;gap:8px;align-items:center">
+          <label for="bat-file" style="background:#739630;color:#fff;border:none;padding:7px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📂 Subir Relatório de Bateladas (.xlsx)</label>
+          <input type="file" id="bat-file" accept=".xlsx,.xls" style="display:none" onchange="batProcessarArquivo(this)">
+          <span id="bat-arquivo-nome" style="font-size:11px;color:rgba(255,255,255,.7)"></span>
+        </div>
+      </div>
+      <div style="background:#eef5ea;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:11px;color:#4a664a">
+        ℹ️ Compara a soma das bateladas (VC1=Linha 1, VC2=Linha 2, VC4=Linha 4, VC5=Linha 5) dentro da janela de horário de cada apontamento já lançado, contra o valor <strong>real</strong> informado pelo operador. Divergências acima de <strong>2 kg</strong> são listadas abaixo para revisão manual — nada é alterado automaticamente.
+      </div>
+      <div class="conf-body" id="bat-corpo">
+        <div style="text-align:center;padding:30px;color:#4a664a;font-size:13px">Selecione o arquivo Excel de bateladas para iniciar a conferência.</div>
       </div>
     </div>
   </div>
@@ -1231,7 +1251,7 @@ function iniciarApp(){
   iniciarAlerta();
   iniciarAlertaQualidade();
   // Inicializa seção de conferência para admin
-  setTimeout(function(){confInit();},500);
+  setTimeout(function(){confInit();batInit();},500);
 }
 
 // ── FIREBASE DATA ─────────────────────────────────────────
@@ -3852,6 +3872,31 @@ function abrirConferencia(){
   }
 }
 
+function abrirBateladas(){
+  var sec=G("secao-bateladas");
+  if(!sec) return;
+  var visivel=sec.style.display!=="none";
+  var dash=G("modal-dashboard");
+  if(dash) dash.style.display="none";
+  // Fecha a conferência de apontamentos se estiver aberta, para não poluir a tela
+  var confSec=G("secao-conferencia");
+  if(confSec && confSec.style.display!=="none"){
+    confSec.style.display="none";
+    G("btn-conferencia").style.background="";
+    G("btn-conferencia").style.color="";
+  }
+  if(visivel){
+    sec.style.display="none";
+    G("btn-bateladas").style.background="";
+    G("btn-bateladas").style.color="";
+  } else {
+    sec.style.display="block";
+    G("btn-bateladas").style.background="#024f2b";
+    G("btn-bateladas").style.color="#fff";
+    sec.scrollIntoView({behavior:"smooth",block:"start"});
+  }
+}
+
 function abrirDashboard(){
   var dt=DT_FILA||hoje();
   G("dash-di").value=dt;
@@ -5464,6 +5509,263 @@ function confInit(){
   var dtOntem=new Date(); dtOntem.setDate(dtOntem.getDate()-1);
   var dtStr=dtOntem.toISOString().slice(0,10);
   if(G("conf-dt")) G("conf-dt").value=dtStr;
+}
+
+// ── CONFERÊNCIA DE BATELADAS (EXCEL) ─────────────────────────
+// Compara o relatório de bateladas (VC1/VC2/VC4/VC5) com os apontamentos
+// já lançados pelos operadores. Somente leitura + comparação — a troca do
+// valor "real" só acontece quando o admin confirma linha por linha em batTrocar().
+var BAT_EQUIP_MAP={
+  "VC1":"Linha 1 (E-240)",
+  "VC2":"Linha 2 (E-200)",
+  "VC4":"Linha 4 (Andritz I)",
+  "VC5":"Linha 5 (Andritz II)"
+};
+var BAT_STATE={bateladasPorLinhaData:{},naoMapeados:{},apts:[],resultados:[],semApt:[]};
+
+function batInit(){
+  if(!SES||SES.perfil!=="admin") return;
+  var sec=G("secao-bateladas");
+  if(sec) sec.style.display="none"; // controlado por abrirBateladas()
+  var btn=G("btn-bateladas");
+  if(btn) btn.style.display="inline-flex";
+}
+
+function batProcessarArquivo(input){
+  var file=input.files&&input.files[0];
+  if(!file) return;
+  if(!DB){toast("Firebase não conectado","err");return;}
+  if(typeof XLSX==="undefined"){toast("Biblioteca de leitura de Excel não carregou — verifique sua conexão","err");return;}
+  G("bat-arquivo-nome").textContent=file.name;
+  G("bat-corpo").innerHTML='<div style="text-align:center;padding:30px;color:#4a664a;font-size:13px">⏳ Lendo arquivo...</div>';
+
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var wb=XLSX.read(new Uint8Array(e.target.result),{type:"array",cellDates:true});
+      var wsName=wb.SheetNames[0];
+      var ws=wb.Sheets[wsName];
+      var linhasExcel=XLSX.utils.sheet_to_json(ws,{defval:null});
+      batProcessarLinhas(linhasExcel);
+    }catch(err){
+      G("bat-corpo").innerHTML='<div style="padding:20px;color:#c0392b">Erro ao ler o arquivo: '+err.message+'</div>';
+    }
+  };
+  reader.onerror=function(){
+    G("bat-corpo").innerHTML='<div style="padding:20px;color:#c0392b">Erro ao ler o arquivo.</div>';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// O Excel guarda o horário local (Brasília) sem timezone — o SheetJS constrói o
+// Date via UTC a partir dos valores literais da planilha, então usamos os
+// getters UTC diretamente, sem passar por Intl/America-Sao_Paulo (evita
+// deslocamento duplo de fuso, igual ao bug já documentado em dataBrasilia()).
+function batCampos(d){
+  return {y:d.getUTCFullYear(),mo:d.getUTCMonth(),da:d.getUTCDate(),h:d.getUTCHours(),mi:d.getUTCMinutes()};
+}
+function batDataOperacional(d){
+  var c=batCampos(d);
+  var base=new Date(Date.UTC(c.y,c.mo,c.da));
+  if(c.h>=21) base=new Date(base.getTime()+24*60*60*1000); // regra das 21h — mesma de hoje()
+  return base.toISOString().slice(0,10);
+}
+function batHoraStr(d){
+  var c=batCampos(d);
+  return pad(c.h)+":"+pad(c.mi);
+}
+// Mesma normalização usada em salvarApt() para comparar horários no T1 (noturno)
+function batNormH(h,t){
+  var n=parseInt(h.replace(":",""));
+  if(t===1 && n<=600) n+=2400;
+  return n;
+}
+
+function batProcessarLinhas(linhasExcel){
+  BAT_STATE.bateladasPorLinhaData={};
+  BAT_STATE.naoMapeados={};
+  var totalLidas=0, totalMapeadas=0;
+
+  linhasExcel.forEach(function(row){
+    var qtd=Number(row["Quantidade"]);
+    var dataIni=row["Data Inicio"]||row["Data Início"];
+    var equipRaw=row["Equipamento"];
+    if(qtd==null||isNaN(qtd)||!dataIni||!equipRaw) return;
+    totalLidas++;
+    var equip=String(equipRaw).trim();
+    var linha=BAT_EQUIP_MAP[equip];
+    if(!linha){
+      BAT_STATE.naoMapeados[equip]=(BAT_STATE.naoMapeados[equip]||0)+1;
+      return;
+    }
+    var d=(dataIni instanceof Date)?dataIni:new Date(dataIni);
+    if(isNaN(d.getTime())) return;
+    totalMapeadas++;
+    var dataOp=batDataOperacional(d);
+    var horaStr=batHoraStr(d);
+    var turno=turnoDeHora(horaStr);
+    var chave=linha+"|"+dataOp;
+    if(!BAT_STATE.bateladasPorLinhaData[chave]) BAT_STATE.bateladasPorLinhaData[chave]=[];
+    BAT_STATE.bateladasPorLinhaData[chave].push({qtd:qtd,hora:horaStr,turno:turno});
+  });
+
+  BAT_STATE._totalLidas=totalLidas;
+  BAT_STATE._totalMapeadas=totalMapeadas;
+
+  var datasDistintas=Object.keys(BAT_STATE.bateladasPorLinhaData).map(function(k){return k.split("|")[1];});
+  datasDistintas=datasDistintas.filter(function(v,i,a){return a.indexOf(v)===i;});
+
+  if(!datasDistintas.length){
+    G("bat-corpo").innerHTML='<div style="padding:20px;color:#c0392b">Nenhuma batelada válida encontrada no arquivo (verifique as colunas Quantidade / Data Inicio / Equipamento).</div>';
+    return;
+  }
+
+  G("bat-corpo").innerHTML='<div style="text-align:center;padding:30px;color:#4a664a;font-size:13px">⏳ Buscando apontamentos no Firebase...</div>';
+
+  var proms=datasDistintas.map(function(dt){
+    return DB.ref("extrusao_apts").orderByChild("data").equalTo(dt).once("value");
+  });
+
+  Promise.all(proms).then(function(results){
+    BAT_STATE.apts=[];
+    results.forEach(function(snap){
+      snap.forEach(function(c){
+        var a=c.val(); a.fbKey=c.key; BAT_STATE.apts.push(a);
+      });
+    });
+    batComparar();
+  }).catch(function(e){
+    G("bat-corpo").innerHTML='<div style="padding:20px;color:#c0392b">Erro ao buscar apontamentos: '+e.message+'</div>';
+  });
+}
+
+function batComparar(){
+  var divergentes=[];
+  var semApt=[];
+  var conferidos=0;
+
+  var chaves=Object.keys(BAT_STATE.bateladasPorLinhaData);
+
+  chaves.forEach(function(chave){
+    var partes=chave.split("|");
+    var linha=partes[0], dataOp=partes[1];
+    var bateladas=BAT_STATE.bateladasPorLinhaData[chave];
+    var aptsLinhaData=BAT_STATE.apts.filter(function(a){return a.linha===linha && a.data===dataOp;});
+
+    var usadas=new Array(bateladas.length).fill(false);
+
+    aptsLinhaData.forEach(function(apt){
+      if(!apt.horaIni||!apt.horaFim) return;
+      var turnoApt=apt.turno||turnoDeHora(apt.horaIni);
+      var nHi=batNormH(apt.horaIni,turnoApt), nHf=batNormH(apt.horaFim,turnoApt);
+      var soma=0, qtdBatidas=0;
+      bateladas.forEach(function(b,idx){
+        var nB=batNormH(b.hora,turnoApt);
+        if(nB>=nHi && nB<nHf){
+          soma+=b.qtd; qtdBatidas++; usadas[idx]=true;
+        }
+      });
+      conferidos++;
+      var real=Number(apt.real)||0;
+      var diff=soma-real;
+      if(Math.abs(diff)>2){
+        divergentes.push({
+          fbKey:apt.fbKey, linha:linha, data:dataOp, turno:turnoApt,
+          horaIni:apt.horaIni, horaFim:apt.horaFim,
+          real:real, batelada:soma, diff:diff, qtdBatidas:qtdBatidas,
+          opFbKey:apt.opFbKey, opNum:apt.opNum, cod:apt.cod
+        });
+      }
+    });
+
+    bateladas.forEach(function(b,idx){
+      if(!usadas[idx]){
+        semApt.push({linha:linha,data:dataOp,turno:b.turno,hora:b.hora,qtd:b.qtd});
+      }
+    });
+  });
+
+  divergentes.sort(function(a,b){return (a.data+a.linha+a.horaIni).localeCompare(b.data+b.linha+b.horaIni);});
+  semApt.sort(function(a,b){return (a.data+a.linha+a.hora).localeCompare(b.data+b.linha+b.hora);});
+
+  BAT_STATE.resultados=divergentes;
+  BAT_STATE.semApt=semApt;
+  BAT_STATE._conferidos=conferidos;
+
+  batRenderizar();
+}
+
+function batRenderizar(){
+  var s=BAT_STATE;
+  var h="";
+
+  var naoMapEntradas=Object.keys(s.naoMapeados||{});
+  h+='<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;font-size:12px">';
+  h+='<div style="background:#eef5ea;border-radius:8px;padding:8px 14px"><strong>'+fN(s._totalLidas)+'</strong> bateladas lidas</div>';
+  h+='<div style="background:#eef5ea;border-radius:8px;padding:8px 14px"><strong>'+fN(s._totalMapeadas)+'</strong> mapeadas para linhas</div>';
+  h+='<div style="background:#eef5ea;border-radius:8px;padding:8px 14px"><strong>'+fN(s._conferidos)+'</strong> apontamentos conferidos</div>';
+  h+='<div style="background:#fdecea;border-radius:8px;padding:8px 14px;color:#c0392b"><strong>'+fN(s.resultados.length)+'</strong> divergentes (&gt;2kg)</div>';
+  h+='<div style="background:#fff3cd;border-radius:8px;padding:8px 14px;color:#856404"><strong>'+fN(s.semApt.length)+'</strong> bateladas sem apontamento</div>';
+  h+='</div>';
+
+  if(naoMapEntradas.length){
+    h+='<div style="background:#fdecea;border-radius:8px;padding:8px 12px;margin-bottom:14px;font-size:11px;color:#c0392b">⚠️ Equipamento(s) não mapeado(s) e ignorado(s): '+naoMapEntradas.map(function(k){return k+" ("+s.naoMapeados[k]+")";}).join(", ")+'</div>';
+  }
+
+  if(!s.resultados.length){
+    h+='<div style="text-align:center;padding:16px;color:#4a664a;font-size:13px">✔ Nenhuma divergência acima de 2kg encontrada nos apontamentos conferidos.</div>';
+  } else {
+    h+='<h3 style="font-size:13px;color:#024f2b;margin:10px 0 6px">🔁 Apontamentos divergentes — revise e confirme linha por linha</h3>';
+    h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
+    h+='<tr style="background:#f5f9f2;text-align:left"><th style="padding:6px 8px">Linha</th><th style="padding:6px 8px">Data</th><th style="padding:6px 8px">Turno</th><th style="padding:6px 8px">Horário</th><th style="padding:6px 8px">OP</th><th style="padding:6px 8px">Apontado (operador)</th><th style="padding:6px 8px">Bateladas (Excel)</th><th style="padding:6px 8px">Diferença</th><th style="padding:6px 8px"></th></tr>';
+    s.resultados.forEach(function(r,i){
+      var corDiff=r.diff>0?"#c0392b":"#2471a3";
+      h+='<tr style="border-bottom:1px solid #eee" id="bat-row-'+i+'">';
+      h+='<td style="padding:6px 8px">'+r.linha+'</td>';
+      h+='<td style="padding:6px 8px">'+r.data+'</td>';
+      h+='<td style="padding:6px 8px">T'+r.turno+'</td>';
+      h+='<td style="padding:6px 8px">'+r.horaIni+'–'+r.horaFim+'</td>';
+      h+='<td style="padding:6px 8px">'+(r.opNum||r.cod||"-")+'</td>';
+      h+='<td style="padding:6px 8px">'+fN(r.real)+' kg</td>';
+      h+='<td style="padding:6px 8px">'+fN(Math.round(r.batelada*100)/100)+' kg <span style="color:#999">('+r.qtdBatidas+' bat.)</span></td>';
+      h+='<td style="padding:6px 8px;color:'+corDiff+';font-weight:700">'+(r.diff>0?"+":"")+fN(Math.round(r.diff*100)/100)+' kg</td>';
+      h+='<td style="padding:6px 8px"><button data-i="'+i+'" onclick="batTrocar(this.dataset.i)" style="background:#739630;color:#fff;border:none;padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">✔ OK, trocar</button></td>';
+      h+='</tr>';
+    });
+    h+='</table></div>';
+  }
+
+  if(s.semApt.length){
+    h+='<h3 style="font-size:13px;color:#856404;margin:18px 0 6px">⚠️ Bateladas sem apontamento correspondente (nenhuma janela cobre esse horário)</h3>';
+    h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
+    h+='<tr style="background:#fff3cd;text-align:left"><th style="padding:6px 8px">Linha</th><th style="padding:6px 8px">Data</th><th style="padding:6px 8px">Turno</th><th style="padding:6px 8px">Hora</th><th style="padding:6px 8px">Quantidade</th></tr>';
+    s.semApt.forEach(function(b){
+      h+='<tr style="border-bottom:1px solid #f5e8b8"><td style="padding:6px 8px">'+b.linha+'</td><td style="padding:6px 8px">'+b.data+'</td><td style="padding:6px 8px">T'+b.turno+'</td><td style="padding:6px 8px">'+b.hora+'</td><td style="padding:6px 8px">'+fN(b.qtd)+' kg</td></tr>';
+    });
+    h+='</table></div>';
+  }
+
+  G("bat-corpo").innerHTML=h;
+}
+
+function batTrocar(i){
+  var r=BAT_STATE.resultados[i];
+  if(!r||r._feito) return;
+  var novoValor=Math.round(r.batelada*100)/100;
+  if(!confirm("Confirma trocar o apontamento da "+r.linha+" ("+r.data+", "+r.horaIni+"–"+r.horaFim+")?\n\nAtual: "+fN(r.real)+" kg\nNovo (bateladas): "+fN(novoValor)+" kg")) return;
+
+  if(!DB){toast("Firebase não conectado","err");return;}
+  DB.ref("extrusao_apts/"+r.fbKey).update({real:novoValor}).then(function(){
+    r._feito=true;
+    if(r.opFbKey) recalcularRealExtrusao(r.opFbKey);
+    registrarLog("apontamento","Corrigido via Conferência de Bateladas (Excel) — apontamento "+r.fbKey+" linha "+r.linha+" ("+r.data+" "+r.horaIni+"–"+r.horaFim+")",
+      "real anterior:"+r.real+" → novo:"+novoValor+" (baseado em "+r.qtdBatidas+" bateladas)");
+    toast("Apontamento atualizado a partir das bateladas!","ok");
+    var row=G("bat-row-"+i);
+    if(row) row.innerHTML='<td colspan="9" style="padding:6px 8px;color:#024f2b;font-weight:700">✔ '+r.linha+' — '+r.data+' '+r.horaIni+'–'+r.horaFim+' corrigido para '+fN(novoValor)+' kg</td>';
+  }).catch(function(e){
+    toast("Erro ao salvar: "+e.message,"err");
+  });
 }
 
 function confGerar(){
