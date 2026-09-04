@@ -996,6 +996,10 @@ function dataBrasilia(d){
 function horaBrasilia(d){
   return parseInt(new Intl.DateTimeFormat("en-US",{timeZone:"America/Sao_Paulo",hour:"2-digit",hour12:false}).format(d),10)%24;
 }
+// Minuto de Brasília, mesmo padrão de horaBrasilia() — usado por horaAtual().
+function minutoBrasilia(d){
+  return parseInt(new Intl.DateTimeFormat("en-US",{timeZone:"America/Sao_Paulo",minute:"2-digit"}).format(d),10);
+}
 function hoje(){
   // Data operacional: a partir das 21h pertence ao próximo dia (início do T1)
   var now=new Date();
@@ -1003,9 +1007,14 @@ function hoje(){
   return dataBrasilia(now);
 }
 function agora(){return new Date().toISOString();}
-function horaAtual(){var d=new Date();return pad(d.getHours())+":"+pad(d.getMinutes());}
-function horaCheia(){return pad(new Date().getHours())+":00";}
-function horaAnterior(){return pad((new Date().getHours()-1+24)%24)+":00";}
+// CORREÇÃO (04/09/2026): antes usava new Date().getHours()/getMinutes() — hora CRUA
+// do dispositivo, sem forçar fuso. Se o relógio do tablet/PC estivesse mal configurado,
+// a "Hora Início" pré-preenchida na Parada vinha errada, e isso podia gravar a parada
+// num turno diferente do turno da sessão do operador (que vem do login, não do relógio) —
+// fazendo a parada sumir do card dele (só o admin, que ignora esse filtro, continuava vendo).
+function horaAtual(){var d=new Date();return pad(horaBrasilia(d))+":"+pad(minutoBrasilia(d));}
+function horaCheia(){return pad(horaBrasilia(new Date()))+":00";}
+function horaAnterior(){return pad((horaBrasilia(new Date())-1+24)%24)+":00";}
 function pad(n){return String(n).padStart(2,"0");}
 function uid(){return Math.random().toString(36).slice(2,10);}
 function fN(n){return (Number(n)||0).toLocaleString("pt-BR");}
@@ -1925,8 +1934,10 @@ function renderLinhaCard(linha){
   e.apts.forEach(function(a){hist.push({tipo:"apt",hora:a.horaIni,d:a});});
   e.paradas.forEach(function(p){hist.push({tipo:"para",hora:p.horaIni,d:p});});
   hist.sort(function(a,b){return a.hora>b.hora?1:-1;});
-  // Exibe todos os registros do turno — identifica visualmente a qual OP pertence
-  var histVis=isAdminRender?hist:hist.slice(-8);
+  // Mostra o histórico completo do turno pra todo mundo — sem limite de quantidade.
+  // Antes só o admin via tudo (operador via só os últimos 8), o que fazia paradas
+  // já fechadas sumirem da tela do operador conforme o turno avançava (bug reportado 04/09/2026).
+  var histVis=hist;
   if(hist.length){
     h+='<div style="margin-top:10px">';
     if(isAdminRender&&hist.length>0){
