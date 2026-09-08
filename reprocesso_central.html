@@ -185,6 +185,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <button class="nb" id="nb-expedicao_aqua" onclick="go('expedicao_aqua',this)">Expedição Aqua</button>
     <button class="nb" id="nb-expedicao_pet" onclick="go('expedicao_pet',this)">Expedição PET</button>
     <button class="nb" id="nb-recebimento" onclick="go('recebimento',this)">Recebimento</button>
+    <button class="nb" id="nb-higienizacao" onclick="go('higienizacao',this)">Higienização</button>
   </div>
   <div class="ubar">
     <span class="rtdot"></span>
@@ -202,7 +203,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <button class="btn bsm" onclick="renderDashboardConsolidado()">&#8635; Atualizar</button>
   </div>
   <div class="readonly-info">
-    <span>Este painel <b>não grava dados</b> — ele só lê e consolida o que já foi apontado no Ensaque, Envase PET, Extrusão e nos 3 novos setores abaixo.</span>
+    <span>Este painel <b>não grava dados</b> — ele só lê e consolida o que já foi apontado no Ensaque, Envase PET, Extrusão e nos 4 novos setores abaixo.</span>
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:flex-end">
     <div class="fg" style="margin-bottom:0"><label class="fl">De</label><input type="date" id="dash-di" style="width:auto" onchange="renderDashboardConsolidado()"></div>
@@ -217,6 +218,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
         <option value="expedicao_aqua">Central — Expedição Aqua</option>
         <option value="expedicao_pet">Central — Expedição PET</option>
         <option value="recebimento">Central — Recebimento</option>
+        <option value="higienizacao">Central — Higienização Industrial</option>
       </select>
     </div>
     <div class="fg" style="margin-bottom:0"><label class="fl">Tipo</label>
@@ -226,6 +228,8 @@ tr:hover td{background:rgba(2,79,43,.03)}
         <option>Varredura</option>
         <option>Finos</option>
         <option>Qualidade</option>
+        <option>Limpeza Exaustores</option>
+        <option>Geral Fábrica</option>
       </select>
     </div>
   </div>
@@ -236,7 +240,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <button class="btn bsm" onclick="dashFiltroRapido('mes')">Este mês</button>
   </div>
   <div id="dash-periodo-info" style="font-size:11px;color:#739630;margin-bottom:10px"></div>
-  <div class="mrow" id="dash-metrics-tipo" style="grid-template-columns:repeat(5,1fr)"></div>
+  <div class="mrow" id="dash-metrics-tipo"></div>
 
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
     <span class="ct" style="font-size:13px">Quantidade por Setor</span>
@@ -334,10 +338,35 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </table></div></div>
 </div>
 
+<!-- HIGIENIZACAO INDUSTRIAL / EXAUSTORES -->
+<div class="scr" id="scr-higienizacao">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+    <div class="setor-hero"><span class="dot"></span><h2 style="font-size:16px;font-weight:700;color:#024f2b">Higienização Industrial / Exaustores <span style="font-size:11px;color:#739630;font-weight:500">&#9679; apontamento de varredura, limpeza de exaustores e geral fábrica</span></h2></div>
+    <button class="btn bp" onclick="abrirNovoReprocessoSetor('higienizacao')">+ Novo Apontamento</button>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:flex-end">
+    <div class="fg" style="margin-bottom:0"><label class="fl">De</label><input type="date" id="hig-di" style="width:auto" onchange="renderListaSetor('higienizacao')"></div>
+    <div class="fg" style="margin-bottom:0"><label class="fl">Até</label><input type="date" id="hig-df" style="width:auto" onchange="renderListaSetor('higienizacao')"></div>
+    <select id="hig-ftipo" style="width:auto" onchange="renderListaSetor('higienizacao')"><option value="">Todos os tipos</option><option>Varredura</option><option>Limpeza Exaustores</option><option>Geral Fábrica</option></select>
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    <button class="btn bsm" onclick="filtroRapidoSetor('higienizacao',0)">Hoje</button>
+    <button class="btn bsm" onclick="filtroRapidoSetor('higienizacao',7)">Últimos 7 dias</button>
+    <button class="btn bsm" onclick="filtroRapidoSetor('higienizacao',30)">Últimos 30 dias</button>
+    <button class="btn bsm" onclick="filtroRapidoSetor('higienizacao','mes')">Este mês</button>
+  </div>
+  <div id="hig-periodo-info" style="font-size:11px;color:#739630;margin-bottom:10px"></div>
+  <div class="mrow" id="hig-metrics" style="grid-template-columns:repeat(3,1fr)"></div>
+  <div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr><th>Data</th><th>Hora</th><th>Tipo</th><th style="text-align:right">Peso</th><th>Produto</th><th>Origem</th><th>Motivo</th><th>Obs.</th><th>Código</th><th>Lançado por</th><th>Ações</th></tr></thead>
+    <tbody id="hig-body"></tbody>
+  </table></div></div>
+</div>
+
 </div>
 </div>
 
-<!-- MODAL NOVO APONTAMENTO (compartilhado pelos 3 setores) -->
+<!-- MODAL NOVO APONTAMENTO (compartilhado pelos 4 setores) -->
 <div class="ov" id="mnovoreprocesso">
   <div class="modal">
     <div class="mt" id="nr-titulo">Novo Apontamento de Reprocesso</div>
@@ -404,7 +433,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
 //   - extrusao_turno.reprocesso (agregado por linha/turno — Extrusao, sem
 //                                 codigo/tipo/motivo individual)
 //
-// E GRAVA apontamentos novos, SOMENTE para os 3 setores que ainda nao
+// E GRAVA apontamentos novos, SOMENTE para os 4 setores que ainda nao
 // tem local proprio de apontamento, em um no dedicado:
 //   - reprocesso_central       (setor: expedicao_aqua | expedicao_pet | recebimento)
 //
@@ -428,17 +457,30 @@ var DB = firebase.database();
 var SES = null;
 // Cache local por setor (chave = setor), populado ao abrir cada aba —
 // usado tanto pra listar quanto pra gerar o codigo sequencial do dia.
-var CACHE_SETOR = { expedicao_aqua: [], expedicao_pet: [], recebimento: [] };
+var CACHE_SETOR = { expedicao_aqua: [], expedicao_pet: [], recebimento: [], higienizacao: [] };
 
 var SETORES_CENTRAL = {
   expedicao_aqua: { label: 'Expedição Aqua', prefixo: 'EAQ', idPrefix: 'aqua' },
   expedicao_pet:  { label: 'Expedição PET',  prefixo: 'EPT', idPrefix: 'pet'  },
-  recebimento:    { label: 'Recebimento',    prefixo: 'REC', idPrefix: 'rec'  }
+  recebimento:    { label: 'Recebimento',    prefixo: 'REC', idPrefix: 'rec'  },
+  higienizacao:   { label: 'Higienização Industrial', prefixo: 'HIG', idPrefix: 'hig' }
+};
+
+// Taxonomia de Tipo por setor — Expedicao Aqua/PET e Recebimento usam a
+// mesma taxonomia de reprocesso ja padronizada (Geral/Varredura/Finos/
+// Qualidade). Higienizacao Industrial/Exaustores tem natureza diferente
+// (nao e' material reprocessavel, e' residuo de limpeza/varredura da
+// fabrica) — por isso taxonomia propria.
+var TIPOS_POR_SETOR = {
+  expedicao_aqua: ['Geral','Varredura','Finos','Qualidade'],
+  expedicao_pet:  ['Geral','Varredura','Finos','Qualidade'],
+  recebimento:    ['Geral','Varredura','Finos','Qualidade'],
+  higienizacao:   ['Varredura','Limpeza Exaustores','Geral Fábrica']
 };
 
 // Perfis que apontam SOMENTE no seu proprio setor (tela restrita).
 // admin/pcp/supervisor continuam vendo tudo, igual ao resto do sistema.
-var PERFIS_SETOR = ['expedicao_aqua','expedicao_pet','recebimento'];
+var PERFIS_SETOR = ['expedicao_aqua','expedicao_pet','recebimento','higienizacao'];
 
 // ============================================================
 // UTILS (mesmos padroes do restante do sistema)
@@ -464,7 +506,7 @@ function addLog(acao,det){
 }
 
 // ============================================================
-// LOGIN — mesmo no 'usuarios' do restante do sistema. Os 3 novos
+// LOGIN — mesmo no 'usuarios' do restante do sistema. Os 4 novos
 // setores precisam de um usuario cadastrado la com perfil:
 // 'expedicao_aqua' | 'expedicao_pet' | 'recebimento' (a criar
 // manualmente no Firebase/tela de usuarios — fora do escopo deste
@@ -518,7 +560,7 @@ function aplicarSessao(){
 
 function doLogout(){
   SES=null;
-  CACHE_SETOR = { expedicao_aqua: [], expedicao_pet: [], recebimento: [] };
+  CACHE_SETOR = { expedicao_aqua: [], expedicao_pet: [], recebimento: [], higienizacao: [] };
   G('pg-app').style.display='none';
   G('pg-login').style.display='flex';
 }
@@ -724,14 +766,21 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 // APONTAMENTO POR SETOR (Expedição Aqua / Expedição PET / Recebimento)
 // Um unico modal compartilhado — grava sempre em 'reprocesso_central',
 // campo 'setor' identifica de onde veio. Evita duplicar HTML/JS pros
-// 3 setores (mesma logica, so' muda o rotulo/prefixo).
+// 4 setores (mesma logica, so' muda o rotulo/prefixo e a taxonomia de Tipo).
 // ============================================================
 function abrirNovoReprocessoSetor(setorKey){
   var cfg=SETORES_CENTRAL[setorKey];
   if(!cfg) return;
   G('nr-setor').value=setorKey;
   G('nr-titulo').textContent='Novo Apontamento — '+cfg.label;
+
+  // Opcoes de Tipo mudam conforme o setor (taxonomia diferente pra
+  // Higienizacao Industrial/Exaustores — ver TIPOS_POR_SETOR).
+  var opts='<option value="">Selecione...</option>';
+  (TIPOS_POR_SETOR[setorKey]||[]).forEach(function(t){ opts+='<option>'+t+'</option>'; });
+  G('nr-tipo').innerHTML=opts;
   G('nr-tipo').value='';
+
   G('nr-peso').value=0;
   G('nr-produto').value='';
   G('nr-origem').value='';
@@ -851,7 +900,7 @@ function renderListaSetor(setorKey){
     var filtrada=ftipo ? lista.filter(function(v){return v.tipo===ftipo;}) : lista;
     filtrada.sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
 
-    var tipos=['Geral','Varredura','Finos','Qualidade'];
+    var tipos=TIPOS_POR_SETOR[setorKey]||['Geral','Varredura','Finos','Qualidade'];
     var totais={}; tipos.forEach(function(t){ totais[t]=0; });
     filtrada.forEach(function(v){ totais[v.tipo]=(totais[v.tipo]||0)+(Number(v.pesoKg)||0); });
     var rotulo = di===df ? 'no dia' : 'no periodo';
@@ -915,14 +964,15 @@ var FONTE_LABELS = {
   extrusao:        { nome:'Extrusão (agregado)',                css:'fonte-extrusao' },
   expedicao_aqua:  { nome:'Central — Expedição Aqua',           css:'fonte-central'  },
   expedicao_pet:   { nome:'Central — Expedição PET',            css:'fonte-central'  },
-  recebimento:     { nome:'Central — Recebimento',              css:'fonte-central'  }
+  recebimento:     { nome:'Central — Recebimento',              css:'fonte-central'  },
+  higienizacao:    { nome:'Central — Higienização Industrial',  css:'fonte-central'  }
 };
-var ORDEM_FONTES = ['ensaque_op','ensaque_geral','envasepet','extrusao','expedicao_aqua','expedicao_pet','recebimento'];
+var ORDEM_FONTES = ['ensaque_op','ensaque_geral','envasepet','extrusao','expedicao_aqua','expedicao_pet','recebimento','higienizacao'];
 var FONTE_CARD_CLASS = {
   ensaque_op:'mc-ensaque', ensaque_geral:'mc-ensaque',
   envasepet:'mc-envasepet',
   extrusao:'mc-extrusao',
-  expedicao_aqua:'mc-central', expedicao_pet:'mc-central', recebimento:'mc-central'
+  expedicao_aqua:'mc-central', expedicao_pet:'mc-central', recebimento:'mc-central', higienizacao:'mc-central'
 };
 var TIPO_GERAL_MAP = { 'Finos':'Finos', 'Finos Magisan':'Finos', 'Reprocesso Geral':'Geral', 'Varredura':'Varredura' };
 
@@ -939,7 +989,7 @@ var FONTE_COR_CHART = {
   ensaque_op:'#024f2b', ensaque_geral:'#024f2b',
   envasepet:'#739630',
   extrusao:'#8b5cf6',
-  expedicao_aqua:'#d29922', expedicao_pet:'#d29922', recebimento:'#d29922'
+  expedicao_aqua:'#d29922', expedicao_pet:'#d29922', recebimento:'#d29922', higienizacao:'#d29922'
 };
 
 function abrirGraficoMotivosSetor(fonteKey){
@@ -1110,7 +1160,7 @@ function renderDashboardConsolidado(){
     // Cards por tipo (so' contam linhas que carregam a taxonomia — Ensaque
     // vinculo-OP e Extrusao nao tem 'tipo', entao nao entram nesses 4
     // cards, so' no Total Geral).
-    var tipos=['Geral','Varredura','Finos','Qualidade'];
+    var tipos=['Geral','Varredura','Finos','Qualidade','Limpeza Exaustores','Geral Fábrica'];
     var totaisTipo={}; tipos.forEach(function(t){ totaisTipo[t]=0; });
     var totalGeral=0;
     rows.forEach(function(r){ totalGeral+=r.peso; if(totaisTipo[r.tipo]!=null) totaisTipo[r.tipo]+=r.peso; });
