@@ -975,6 +975,13 @@ function podeAprovarExcecao(){
   return SES && (SES.perfil==='qualidade' || SES.perfil==='supervisao' || SES.perfil==='admin');
 }
 
+// Quem pode corrigir um lançamento de inspeção já salvo: o próprio analista que lançou,
+// ou Supervisão/Admin. Usado tanto para decidir se o botão "Corrigir" aparece na
+// Rastreabilidade quanto como trava de segurança dentro da própria função de abertura.
+function podeEditarInspecao(insp){
+  return !!(SES && insp && (SES.login===insp.analista || SES.perfil==='supervisao' || SES.perfil==='admin'));
+}
+
 // ============================================================
 // APROVAÇÃO POR EXCEÇÃO — parâmetro fora da faixa, liberado tecnicamente pela Qualidade
 // ============================================================
@@ -1003,6 +1010,19 @@ function reconciliarExcecoes(excecoesAtuais, novosResultados, novasAprovacoes){
     if(Number(novosResultados[k])!==Number(out[k].valorObtido)){ delete out[k]; } // valor mudou — exceção antiga não se aplica
   });
   return out;
+}
+
+// Indica se uma inspeção já tem consequências vinculadas que podem ficar desatualizadas
+// se os valores forem corrigidos depois: NC aberta a partir dela, ou contraprova de
+// bancada já resolvida (substituiu o valor original). Exceções não entram aqui porque
+// reconciliarExcecoes() já as invalida automaticamente quando o valor/aprovação muda.
+function inspecaoTemConsequencias(insp){
+  if(!insp) return false;
+  if(insp.ncAberta) return true;
+  if(insp.contraprova){
+    return Object.keys(insp.contraprova).some(function(k){ return insp.contraprova[k] && insp.contraprova[k].status==='substituido'; });
+  }
+  return false;
 }
 
 function classeStatusInsp(status){
@@ -1748,6 +1768,13 @@ function salvarInspecao(){
 
   var op=INSP_CONTEXTO.op, linha=INSP_CONTEXTO.linha;
   var turno=turnoDeHora(hora);
+  var fbKeyExistente=INSP_CONTEXTO.editandoFbKey;
+
+  // Corrigindo um lançamento que já tem NC aberta e/ou contraprova de bancada resolvida —
+  // última confirmação antes de gravar, para o analista não sobrescrever sem perceber.
+  if(fbKeyExistente && INSP_CONTEXTO.possuiConsequencias){
+    if(!confirm('Esta inspeção já tem NC aberta e/ou contraprova de bancada resolvida vinculada a ela.\n\nCorrigir os valores agora pode deixar esses registros desatualizados.\n\nConfirma a correção mesmo assim?')) return;
+  }
 
   // Preserva exceções já concedidas, mas invalida as que ficaram obsoletas (parâmetro corrigido
   // ou valor alterado na edição) — nesse caso a Qualidade precisa reavaliar e aprovar de novo.
@@ -1774,7 +1801,22 @@ function salvarInspecao(){
     statusGeral:statusGeral, contraprova:contraprova, excecoes:excecoes
   };
 
-  var fbKeyExistente=INSP_CONTEXTO.editandoFbKey;
+  // Edição de lançamento existente: preserva autoria e data/hora do lançamento ORIGINAL
+  // (não sobrescreve com quem está corrigindo agora), registra separadamente quem corrigiu
+  // e quando, e guarda um snapshot do estado anterior em historicoEdicoes para auditoria.
+  if(fbKeyExistente && INSP_CONTEXTO.registroOriginal){
+    var orig=INSP_CONTEXTO.registroOriginal;
+    registro.analista=orig.analista; registro.analistaNome=orig.analistaNome; registro.ts=orig.ts;
+    registro.editadoPor=SES.login; registro.editadoPorNome=SES.nome||SES.login; registro.editadoEm=agora();
+    registro.historicoEdicoes=Object.assign({}, orig.historicoEdicoes||{});
+    registro.historicoEdicoes[String(Date.now())]={
+      resultados:orig.resultados||{}, aprovacoes:orig.aprovacoes||{}, statusGeral:orig.statusGeral||'',
+      hora:orig.hora, data:orig.data,
+      registradoPor:orig.editadoPor||orig.analista, registradoPorNome:orig.editadoPorNome||orig.analistaNome,
+      registradoEm:orig.editadoEm||orig.ts
+    };
+  }
+
   var ref = fbKeyExistente ? DB.ref('qualidade_inspecoes/'+fbKeyExistente) : DB.ref('qualidade_inspecoes').push();
   var fbKey = fbKeyExistente || ref.key;
 
@@ -3236,14 +3278,16 @@ function montarRastreioOP(op, destacarData, expandido){
 
     h+='<div class="ct" style="margin-bottom:6px">Resultados de Qualidade ('+insps.length+')</div>';
     if(insps.length){
-      h+='<div class="tw"><table><thead><tr><th>Data</th><th>Hora</th><th>Analista</th><th>Status</th><th style="min-width:220px">Parâmetros Lançados</th></tr></thead><tbody>';
+      h+='<div class="tw"><table><thead><tr><th>Data</th><th>Hora</th><th>Analista</th><th>Status</th><th style="min-width:220px">Parâmetros Lançados</th><th>Ações</th></tr></thead><tbody>';
       insps.forEach(function(i){
         var stCls=classeStatusInsp(i.statusGeral);
         var destaque=destacarData && i.data===destacarData;
         h+='<tr'+(destaque?' style="background:#eaf3e8"':'')+'>';
         h+='<td>'+(destaque?'📌 ':'')+(i.data?i.data.split('-').reverse().join('/'):'—')+'</td>';
         h+='<td>'+(i.hora||'—')+'</td>';
-        h+='<td>'+(i.analistaNome||i.analista||'—')+'</td>';
+        RAST_INSP_CACHE[i.fbKey]=i; // cache sempre — usado pelos botões Aprovar Exceção e Corrigir Lançamento
+        var tituloEdicao = i.editadoPor ? ('Corrigido por '+(i.editadoPorNome||i.editadoPor)+' em '+(i.editadoEm?new Date(i.editadoEm).toLocaleString('pt-BR'):'—')+'. Lançado originalmente por '+(i.analistaNome||i.analista||'—')+'.') : '';
+        h+='<td>'+(i.analistaNome||i.analista||'—')+(i.editadoPor?' <span title="'+tituloEdicao+'" style="color:#0a7a44;font-weight:700">✎</span>':'')+'</td>';
         h+='<td><span class="badge '+stCls+'">'+labelStatusInsp(i.statusGeral)+'</span></td>';
         h+='<td><div style="font-size:11px;line-height:1.7">';
         // Mostra todos os parâmetros lançados com destaque nos fora da faixa; parâmetro reprovado
@@ -3260,7 +3304,6 @@ function montarRastreioOP(op, destacarData, expandido){
             return;
           }
           var elegivelParam = fora && !exc && podeAprovarExcecao() && PARAMS_EXCECAO_PERMITIDOS.indexOf(c.key)>-1;
-          if(elegivelParam) RAST_INSP_CACHE[i.fbKey]=i;
 
           h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;'+(elegivelParam?'padding:2px 0':'')+'">';
           h+='<span style="'+(fora&&!exc?'color:#c0392b;font-weight:700':'')+'">';
@@ -3289,6 +3332,7 @@ function montarRastreioOP(op, destacarData, expandido){
           h+='<span style="color:#4a664a">Umid. Ar (coleta): '+fN(i.resultados.umidAr,1)+'%</span><br>';
         }
         h+='</div></td>';
+        h+='<td>'+(podeEditarInspecao(i)?'<button class="btn bxs" style="flex-shrink:0" onclick="event.stopPropagation();abrirEdicaoInspecaoDoRastreio(\''+esc(i.fbKey)+'\')">✎ Corrigir</button>':'')+'</td>';
         h+='</tr>';
       });
       h+='</tbody></table></div>';
@@ -4292,6 +4336,46 @@ function abrirInspecaoDaRastreabilidade(opFbKey){
   _abrirInspecaoComOP(op.linha, op);
 }
 
+// Botão "✎ Corrigir" na tabela de Resultados de Qualidade da Rastreabilidade. Diferente do
+// fluxo de duplicidade (mostrarEscolhaDuplicidade), aqui já sabemos exatamente qual registro
+// editar — não há checagem de hora/duplicidade a fazer, só abrir o formulário pré-preenchido.
+function abrirEdicaoInspecaoDoRastreio(inspFbKey){
+  var insp=RAST_INSP_CACHE[inspFbKey];
+  if(!insp){ toast('Inspeção não encontrada — refaça a busca de rastreabilidade','err'); return; }
+  if(!podeEditarInspecao(insp)){ toast('Apenas o analista que lançou ou Supervisão/Admin podem corrigir esta inspeção','err'); return; }
+
+  var dadosOP=RAST_CACHE.find(function(d){ return d.op && d.op.fbKey===insp.opFbKey; });
+  var op=dadosOP?dadosOP.op:null;
+  if(!op){ toast('OP não encontrada no resultado da busca — refaça a busca','err'); return; }
+
+  var pq=PARAMS_QUAL[op.cod];
+  INSP_CONTEXTO={
+    linha:insp.linha, op:op, pq:pq, editandoFbKey:inspFbKey,
+    contraprovaExistente:insp.contraprova||null, excecoesExistentes:insp.excecoes||null,
+    registroOriginal:insp, possuiConsequencias:inspecaoTemConsequencias(insp),
+    duplicatasHora:[]
+  };
+
+  G('insp-titulo').textContent='Corrigir Inspeção — '+(LINHA_CURTA[insp.linha]||insp.linha);
+  G('insp-op-info').innerHTML='<strong>OP '+op.id+'</strong> — '+(op.desc||op.cod)+
+    (op.lote?' &nbsp;|&nbsp; Lote: <strong>'+op.lote+'</strong>':'')+
+    ' &nbsp;|&nbsp; Código: '+op.cod;
+  G('insp-hora').value=insp.hora;
+  G('insp-data').value=insp.data;
+  G('insp-turno').value='Turno '+(insp.turno||turnoDeHora(insp.hora));
+
+  var avisoTxt='✎ Corrigindo lançamento original de <strong>'+(insp.analistaNome||insp.analista||'—')+'</strong> em '+fDtBR(insp.data)+' '+insp.hora+'.';
+  if(INSP_CONTEXTO.possuiConsequencias){
+    avisoTxt+='<br>⚠ Esta inspeção já tem NC aberta e/ou contraprova de bancada resolvida vinculada a ela — alterar os valores pode deixar esses registros desatualizados.';
+  }
+  G('insp-aviso-dup').style.display='block';
+  G('insp-aviso-dup').innerHTML=avisoTxt;
+  G('btn-salvar-insp').disabled=false;
+
+  montarFormularioInspecao(insp);
+  aM('ov-insp');
+}
+
 function _abrirInspecaoComOP(linha, op){
   var pq=PARAMS_QUAL[op.cod];
   var horaIni=horaAtual();
@@ -4299,7 +4383,8 @@ function _abrirInspecaoComOP(linha, op){
   var dataIni=hoje();
 
   INSP_CONTEXTO={
-    linha:linha, op:op, pq:pq, editandoFbKey:null, contraprovaExistente:null, excecoesExistentes:null
+    linha:linha, op:op, pq:pq, editandoFbKey:null, contraprovaExistente:null, excecoesExistentes:null,
+    registroOriginal:null, possuiConsequencias:false
   };
 
   G('insp-titulo').textContent='Inspeção — '+linha;
@@ -4402,6 +4487,8 @@ function escolherEditarInspecao(fbKey){
   INSP_CONTEXTO.editandoFbKey=item.fbKey;
   INSP_CONTEXTO.contraprovaExistente=item.dados.contraprova||null;
   INSP_CONTEXTO.excecoesExistentes=item.dados.excecoes||null;
+  INSP_CONTEXTO.registroOriginal=item.dados;
+  INSP_CONTEXTO.possuiConsequencias=inspecaoTemConsequencias(item.dados);
   G('insp-hora').value=item.dados.hora||G('insp-hora').value; // evita que o horário da leitura antiga seja trocado pelo horário de agora ao salvar
   montarFormularioInspecao(item.dados);
   G('insp-aviso-dup').innerHTML='✎ Editando a leitura das '+(item.dados.hora||'—')+'. Os campos abaixo foram carregados.';
@@ -4412,6 +4499,8 @@ function escolherNovaInspecao(){
   INSP_CONTEXTO.editandoFbKey=null;
   INSP_CONTEXTO.contraprovaExistente=null;
   INSP_CONTEXTO.excecoesExistentes=null;
+  INSP_CONTEXTO.registroOriginal=null;
+  INSP_CONTEXTO.possuiConsequencias=false;
   G('insp-aviso-dup').innerHTML='+ Registrando nova leitura adicional nesta hora. As leituras já existentes não serão alteradas.';
   G('btn-salvar-insp').disabled=false;
 }
