@@ -1965,6 +1965,7 @@ function renderLinhaCard(linha){
         if(isAdminRender) h+='<span style="font-size:9px;font-weight:700;background:#fde8d0;color:#c0392b;padding:1px 5px;border-radius:4px;margin-right:3px;flex-shrink:0">T'+p.turno+'</span>';
         h+='<span class="hist-hora">'+p.horaIni+' → '+(p.horaFim||'...')+'</span>';
         h+='<span class="hist-info" style="flex:1">'+p.descricao+(p.obs?' — '+p.obs:'')+'</span>';
+        if(p.reprocessoKg) h+='<span style="font-size:10px;font-weight:700;color:#8a5a00;background:#fff3cd;padding:1px 6px;border-radius:4px;margin-right:4px;flex-shrink:0">♻ '+fN(p.reprocessoKg)+'kg'+(p.reprocessoOpNum?' · '+p.reprocessoOpNum:'')+'</span>';
         h+='<button data-fk="'+p.fbKey+'" onclick="editarParadaOp(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0">✏️</button>';
         h+='<button data-fk="'+p.fbKey+'" onclick="excluirParadaOperador(this.dataset.fk)" style="background:#c0392b;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;margin-left:2px">🗑</button>';
         h+='</div>';
@@ -2325,8 +2326,12 @@ function excluirAptOperador(fbKey){
 function excluirParadaOperador(fbKey){
   if(!confirm("Excluir esta parada?")) return;
   if(!DB){toast("Firebase nao conectado","err");return;}
-  DB.ref("extrusao_paradas/"+fbKey).remove().then(function(){
-    toast("Parada excluida!","ok");
+  DB.ref("extrusao_paradas/"+fbKey).once("value").then(function(s){
+    var opVinculada=s.exists()?s.val().reprocessoOpFbKey:null;
+    DB.ref("extrusao_paradas/"+fbKey).remove().then(function(){
+      toast("Parada excluida!","ok");
+      if(opVinculada) recalcularReprocessoOp(opVinculada);
+    });
   });
 }
 
@@ -2960,34 +2965,16 @@ function abrirResumo(){
     h+="</div>";
   });
   G("resumo-corpo").innerHTML=h;
-  // Gera campos de reprocesso por linha do usuário
+  // Reprocesso por linha — não é mais digitado aqui: é a soma automática do
+  // reprocesso lançado no fechamento de cada parada do turno atual (ver
+  // calcularReprocessoLinha). Campo fica visível, mas bloqueado.
   var reprH="";
   LINHAS_USER.forEach(function(l){
     var nomeL=l;
-    reprH+='<div class="fg"><label class="fl">Reprocesso '+nomeL+' (kg)</label><input class="fi" type="number" id="repr-'+encId(l)+'" value="0" min="0"></div>';
+    var totalRepr=calcularReprocessoLinha(l);
+    reprH+='<div class="fg"><label class="fl">Reprocesso '+nomeL+' (kg) — soma automática das paradas</label><input class="fi" type="number" id="repr-'+encId(l)+'" value="'+totalRepr+'" min="0" readonly disabled style="background:#f2f5f2;color:#4a664a;font-weight:700"></div>';
   });
   G("repr-campos").innerHTML=reprH;
-  // Carrega reprocesso salvo — busca por data+turno (independente do login)
-  var dtBusca=DT_FILA||hoje();
-  var tBusca=SES.turno;
-  DB.ref("extrusao_turno").orderByChild("data").equalTo(dtBusca).once("value",function(s){
-    if(!s.exists()) return;
-    var reprocessoMerge={};
-    s.forEach(function(c){
-      var v=c.val();
-      // Considera apenas registros do turno correto
-      if(v.turno===tBusca && v.reprocesso){
-        // Mescla — último registro ganha (mais recente pelo ts)
-        Object.keys(v.reprocesso).forEach(function(k){
-          if(v.reprocesso[k]) reprocessoMerge[k]=v.reprocesso[k];
-        });
-      }
-    });
-    LINHAS_USER.forEach(function(l){
-      var el=G("repr-"+encId(l));
-      if(el && reprocessoMerge[encId(l)]) el.value=reprocessoMerge[encId(l)];
-    });
-  });
   aM("m-resumo");
 }
 
@@ -3190,9 +3177,10 @@ function gerarPDFResumoTurno(){
 }
 
 function finalizarTurno(){
+  // Calculado direto das paradas (não depende do input da tela estar aberto/atualizado)
   var reprocesso={};
   LINHAS_USER.forEach(function(l){
-    reprocesso[encId(l)]=parseInt(G("repr-"+encId(l))&&G("repr-"+encId(l)).value)||0;
+    reprocesso[encId(l)]=calcularReprocessoLinha(l);
   });
   if(!DB){toast("Firebase não conectado","err");return;}
   // Chave fixa: data_turno_login — permite sobrescrever sem duplicar
@@ -3977,6 +3965,70 @@ function paradaGrupo(p){
   var m=PARADAS.find(function(x){return x.cod===p.codMotivo;});
   if(!m) m=PARADAS.find(function(x){return x.desc===p.descricao;});
   return m?m.grupo:"Outros";
+}
+
+// ── REPROCESSO POR PARADA ──────────────────────────────────
+// Soma o reprocesso já lançado no fechamento de cada parada da linha (campo
+// reprocessoKg, gravado em admSalvar). Substitui a digitação manual que
+// existia na tela de Finalizar Turno — o valor agora é 100% derivado das
+// paradas, sem controle paralelo.
+function calcularReprocessoLinha(linha){
+  var e=EST[linha]||{paradas:[]};
+  return (e.paradas||[]).reduce(function(a,p){return a+(Number(p.reprocessoKg)||0);},0);
+}
+
+// Recalcula do zero o total de reprocesso vinculado a uma OP, somando todas
+// as paradas que apontam para ela (reprocessoOpFbKey). Sempre recalcula do
+// zero — nunca soma incremental — para não divergir quando um valor já
+// lançado é editado ou uma parada com reprocesso é excluída.
+function recalcularReprocessoOp(opFbKey){
+  if(!DB||!opFbKey) return;
+  DB.ref("extrusao_paradas").orderByChild("reprocessoOpFbKey").equalTo(opFbKey).once("value").then(function(s){
+    var total=0;
+    if(s.exists()){
+      s.forEach(function(c){ total+=Number(c.val().reprocessoKg)||0; });
+    }
+    DB.ref("ops/"+opFbKey+"/reprocessoAcumulado").set(total);
+  }).catch(function(e){console.warn("Recalcular reprocesso OP:",e.message);});
+}
+
+// Resolve qual OP está ativa na linha AGORA (momento do fechamento da parada),
+// para vinculação automática do reprocesso. Caminho rápido: cache local EST
+// (cobre o caso comum — operador fechando parada da própria linha). Caminho
+// de reserva: consulta extrusao_op_ativa direto no Firebase (cobre correção
+// feita por admin numa linha que ele não está com a tela aberta).
+function admResolverOpReprocesso(item){
+  var infoEl=G("adm-repr-op-info");
+  var fkEl=G("adm-repr-op-fk");
+  var numEl=G("adm-repr-op-num");
+  function aplicar(op){
+    if(op){
+      if(fkEl) fkEl.value=op.fbKey||"";
+      if(numEl) numEl.value=op.id||"";
+      if(infoEl) infoEl.innerHTML="Será vinculado à OP ativa: <strong>"+op.id+"</strong> — "+(op.desc||op.cod||"");
+    } else {
+      if(fkEl) fkEl.value="";
+      if(numEl) numEl.value="";
+      if(infoEl) infoEl.innerHTML="⚠ Nenhuma OP ativa identificada nesta linha agora — o reprocesso será salvo sem vínculo de OP.";
+    }
+  }
+  var estL=EST[item.linha];
+  if(estL && estL.opAtiva){
+    var opCache=OPS.find(function(o){return o.fbKey===estL.opAtiva;})||estL.opAtivaCache;
+    if(opCache){ aplicar(opCache); return; }
+  }
+  if(!DB){ aplicar(null); return; }
+  var turnoBusca=(SES&&SES.turno)||item.turno;
+  DB.ref("extrusao_op_ativa/"+encId(item.linha)+"/"+(DT_FILA||hoje())+"/t"+turnoBusca).once("value").then(function(s){
+    var fk=s.exists()?s.val():null;
+    if(!fk){ aplicar(null); return; }
+    var opLocal=OPS.find(function(o){return o.fbKey===fk;});
+    if(opLocal){ aplicar(opLocal); return; }
+    DB.ref("ops/"+fk).once("value").then(function(s2){
+      if(!s2.exists()){ aplicar(null); return; }
+      var v=s2.val(); v.fbKey=fk; aplicar(v);
+    });
+  }).catch(function(){ aplicar(null); });
 }
 
 function dashRender(apts, paradas, di, df, areaF){
@@ -5025,11 +5077,21 @@ function admEditar(fbKey){
     h+='<input type="hidden" id="adm-p-cod" value="'+item.codMotivo+'">';
     h+='<input type="hidden" id="adm-p-desc" value="'+item.descricao+'">';
     h+='</div>';
+    h+='<div class="fg" style="border-top:1px solid #e5e5e5;margin-top:10px;padding-top:10px">';
+    h+='<label class="fl">Reprocesso gerado (kg)</label>';
+    h+='<input class="fi fi-big" type="number" id="adm-repr-kg" min="0" value="'+(item.reprocessoKg||0)+'">';
+    h+='<div class="hint" id="adm-repr-op-info" style="margin-top:4px">Verificando OP ativa da linha...</div>';
+    h+='<input type="hidden" id="adm-repr-op-fk" value="'+(item.reprocessoOpFbKey||"")+'">';
+    h+='<input type="hidden" id="adm-repr-op-num" value="'+(item.reprocessoOpNum||"")+'">';
+    h+='</div>';
   }
 
   G("adm-corr-corpo").innerHTML=h;
 
-  if(ADM_ABA==="paradas") admFiltrarParadas("");
+  if(ADM_ABA==="paradas"){
+    admFiltrarParadas("");
+    admResolverOpReprocesso(item);
+  }
 
   G('adm-corr-btns').innerHTML='<button class="btn-cancel" onclick="fM(\"m-admin-corr\")">Cancelar</button><button class="btn-ok" data-fk="'+fbKey+'" onclick="admSalvar(this.dataset.fk)">✔ Salvar Correção</button>';
 
@@ -5090,8 +5152,20 @@ function admSalvar(fbKey){
     if(updates.horaIni&&updates.horaFim){
       updates.minutos=calcMinutos(updates.horaIni,updates.horaFim);
     }
+    // Reprocesso gerado na parada — vinculado à OP ativa da linha no momento do fechamento
+    var reprEl=G("adm-repr-kg");
+    updates.reprocessoKg=reprEl?(parseInt(reprEl.value)||0):0;
+    updates.reprocessoOpFbKey=(G("adm-repr-op-fk")&&G("adm-repr-op-fk").value)||"";
+    updates.reprocessoOpNum=(G("adm-repr-op-num")&&G("adm-repr-op-num").value)||"";
+    updates.operadorFechamento=SES.login;
+    // OP vinculada antes desta edição (se o registro já tinha reprocesso lançado),
+    // para recalcular os dois lados caso a OP ativa tenha mudado entre um fechamento e outro
+    var itemAnterior=ADM_DADOS.paradas.find(function(p){return p.fbKey===fbKey;});
+    var opAnteriorFk=itemAnterior?itemAnterior.reprocessoOpFbKey:"";
     DB.ref("extrusao_paradas/"+fbKey).update(updates).then(function(){
       fM("m-admin-corr");toast("Parada corrigida!","ok");admBuscar();
+      if(updates.reprocessoOpFbKey) recalcularReprocessoOp(updates.reprocessoOpFbKey);
+      if(opAnteriorFk && opAnteriorFk!==updates.reprocessoOpFbKey) recalcularReprocessoOp(opAnteriorFk);
     }).catch(function(e){toast("Erro: "+e.message,"err");});
   }
 }
@@ -5100,8 +5174,15 @@ function admExcluir(fbKey){
   if(!confirm("Confirma exclusão deste registro? Esta ação não pode ser desfeita.")) return;
   if(!DB){toast("Firebase não conectado","err");return;}
   var ref=ADM_ABA==="apts"?"extrusao_apts/":"extrusao_paradas/";
+  // Se a parada excluída tinha reprocesso vinculado a uma OP, recalcula o total dela depois de remover
+  var opParaRecalc=null;
+  if(ADM_ABA==="paradas"){
+    var itemExcluido=ADM_DADOS.paradas.find(function(p){return p.fbKey===fbKey;});
+    if(itemExcluido&&itemExcluido.reprocessoOpFbKey) opParaRecalc=itemExcluido.reprocessoOpFbKey;
+  }
   DB.ref(ref+fbKey).remove().then(function(){
     toast("Registro excluído!","ok");admBuscar();
+    if(opParaRecalc) recalcularReprocessoOp(opParaRecalc);
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
@@ -6984,6 +7065,7 @@ function confExcluirParada(btn){
     toast("Parada excluída","ok");
     registrarLog("conf_parada","Excluiu parada "+(parada?parada.horaIni+" "+parada.descricao:"fbKey:"+fbKey),parada?parada.linha:"");
     confGerar();
+    if(parada&&parada.reprocessoOpFbKey) recalcularReprocessoOp(parada.reprocessoOpFbKey);
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
