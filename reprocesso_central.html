@@ -144,6 +144,11 @@ tr:hover td{background:rgba(2,79,43,.03)}
 .mc-click:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(2,79,43,.14)}
 .mc-click .ml{display:flex;align-items:center;justify-content:space-between;gap:4px}
 .mc-click .ml::after{content:'▸';font-size:11px;color:#739630;opacity:.7}
+.mc-hero{padding:16px 18px}
+.mc-hero .ml{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+.mc-hero .mv{font-size:30px}
+.mc-hero.mc-sem-varredura{border:1.5px solid #024f2b;background:rgba(2,79,43,.04)}
+.mc-hero.mc-com-varredura{border:1.5px solid #d29922;background:rgba(210,153,34,.05)}
 </style>
 </head>
 <body>
@@ -211,7 +216,6 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="fg" style="margin-bottom:0"><label class="fl">Fonte</label>
       <select id="dash-ffonte" style="width:auto" onchange="renderDashboardConsolidado()">
         <option value="">Todas as fontes</option>
-        <option value="ensaque_op">Ensaque — vínculo OP</option>
         <option value="ensaque_geral">Ensaque — Finos/Varredura/Geral</option>
         <option value="envasepet">Envase PET</option>
         <option value="extrusao">Extrusão (agregado)</option>
@@ -240,6 +244,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <button class="btn bsm" onclick="dashFiltroRapido('mes')">Este mês</button>
   </div>
   <div id="dash-periodo-info" style="font-size:11px;color:#739630;margin-bottom:10px"></div>
+  <div class="mrow" id="dash-metrics-hero" style="grid-template-columns:repeat(2,1fr);margin-bottom:14px"></div>
   <div class="mrow" id="dash-metrics-tipo"></div>
 
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
@@ -406,7 +411,8 @@ tr:hover td{background:rgba(2,79,43,.03)}
 <div class="ov" id="mgraficomotivos">
   <div class="modal" style="width:640px">
     <div class="mt" id="gm-titulo">Motivos lançados</div>
-    <div id="gm-periodo" style="font-size:11px;color:#739630;margin:-10px 0 14px"></div>
+    <div id="gm-periodo" style="font-size:11px;color:#739630;margin:-10px 0 10px"></div>
+    <div id="gm-legenda" style="display:none;font-size:11px;color:#4a664a;margin-bottom:10px;gap:14px"></div>
     <div id="gm-vazio" style="display:none;text-align:center;color:#739630;font-size:13px;padding:30px 0">Nenhum motivo registrado nesse setor, no período selecionado.</div>
     <div id="gm-chart-wrap" style="position:relative;height:320px"><canvas id="gm-chart"></canvas></div>
     <div class="mfoot">
@@ -958,18 +964,17 @@ function dashFiltroRapido(qtd){
 }
 
 var FONTE_LABELS = {
-  ensaque_op:      { nome:'Ensaque — vínculo OP',              css:'fonte-ensaque'   },
   ensaque_geral:   { nome:'Ensaque — Finos/Varredura/Geral',   css:'fonte-ensaque'   },
   envasepet:       { nome:'Envase PET',                         css:'fonte-envasepet'},
-  extrusao:        { nome:'Extrusão (agregado)',                css:'fonte-extrusao' },
+  extrusao:        { nome:'Extrusão (inclui reprocesso vinc. a OP)', css:'fonte-extrusao' },
   expedicao_aqua:  { nome:'Central — Expedição Aqua',           css:'fonte-central'  },
   expedicao_pet:   { nome:'Central — Expedição PET',            css:'fonte-central'  },
   recebimento:     { nome:'Central — Recebimento',              css:'fonte-central'  },
   higienizacao:    { nome:'Central — Higienização Industrial',  css:'fonte-central'  }
 };
-var ORDEM_FONTES = ['ensaque_op','ensaque_geral','envasepet','extrusao','expedicao_aqua','expedicao_pet','recebimento','higienizacao'];
+var ORDEM_FONTES = ['ensaque_geral','envasepet','extrusao','expedicao_aqua','expedicao_pet','recebimento','higienizacao'];
 var FONTE_CARD_CLASS = {
-  ensaque_op:'mc-ensaque', ensaque_geral:'mc-ensaque',
+  ensaque_geral:'mc-ensaque',
   envasepet:'mc-envasepet',
   extrusao:'mc-extrusao',
   expedicao_aqua:'mc-central', expedicao_pet:'mc-central', recebimento:'mc-central', higienizacao:'mc-central'
@@ -986,7 +991,7 @@ var GRAFICO_MOTIVOS_CHART = null;
 // Cores fixas por fonte pro grafico de barras (mesma logica de cores dos
 // cards/badges, so' que em hex solido pra o Chart.js).
 var FONTE_COR_CHART = {
-  ensaque_op:'#024f2b', ensaque_geral:'#024f2b',
+  ensaque_geral:'#024f2b',
   envasepet:'#739630',
   extrusao:'#8b5cf6',
   expedicao_aqua:'#d29922', expedicao_pet:'#d29922', recebimento:'#d29922', higienizacao:'#d29922'
@@ -1007,39 +1012,64 @@ function abrirGraficoMotivosSetor(fonteKey){
   if(!linhas.length){
     G('gm-vazio').style.display='block';
     G('gm-chart-wrap').style.display='none';
+    G('gm-legenda').style.display='none';
     G('mgraficomotivos').classList.add('on');
     return;
   }
   G('gm-vazio').style.display='none';
   G('gm-chart-wrap').style.display='block';
 
-  // Agrupa por motivo, somando o peso (kg) — top 8 + "Outros" pra nao
-  // poluir o grafico quando o motivo for muito variado/texto livre.
+  // Agrupa por motivo — quando o registro carrega origemApontamento (caso
+  // da fonte "Extrusao", que junta vinculo-OP apontado no Ensaque com o
+  // apontamento por linha/turno da propria Extrusao), o agrupamento leva
+  // a origem junto na chave, pra nao misturar "Limpeza de linha" (Ensaque)
+  // com "sem detalhamento..." (Extrusao) na mesma barra — top 8 + "Outros"
+  // pra nao poluir quando o motivo for muito variado/texto livre.
   var porMotivo={};
+  var origensPresentes={};
   linhas.forEach(function(r){
     var m=(r.motivo||'—').trim() || '—';
-    porMotivo[m]=(porMotivo[m]||0)+r.peso;
+    var origem=r.origemApontamento||null;
+    if(origem) origensPresentes[origem]=true;
+    var chave=(origem||'')+'||'+m;
+    if(!porMotivo[chave]) porMotivo[chave]={motivo:m, origem:origem, peso:0};
+    porMotivo[chave].peso+=r.peso;
   });
-  var pares=Object.keys(porMotivo).map(function(m){ return {motivo:m, peso:porMotivo[m]}; });
+  var pares=Object.keys(porMotivo).map(function(k){ return porMotivo[k]; });
   pares.sort(function(a,b){ return b.peso-a.peso; });
 
   var top=pares.slice(0,8);
   var resto=pares.slice(8);
   if(resto.length){
     var somaResto=resto.reduce(function(s,p){ return s+p.peso; },0);
-    top.push({motivo:'Outros ('+resto.length+')', peso:somaResto});
+    top.push({motivo:'Outros ('+resto.length+')', origem:null, peso:somaResto});
   }
 
-  var cor=FONTE_COR_CHART[fonteKey]||'#024f2b';
+  var CORES_ORIGEM={ 'Ensaque':'#024f2b', 'Extrusão':'#8b5cf6' };
+  var corPadrao=FONTE_COR_CHART[fonteKey]||'#024f2b';
+
+  var multiOrigem = Object.keys(origensPresentes).length>1;
+  if(multiOrigem){
+    var lg='';
+    Object.keys(CORES_ORIGEM).forEach(function(o){
+      if(!origensPresentes[o]) return;
+      lg+='<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:'+CORES_ORIGEM[o]+';display:inline-block"></span>Apontado pelo '+o+'</span>';
+    });
+    G('gm-legenda').innerHTML=lg;
+    G('gm-legenda').style.display='flex';
+  } else {
+    G('gm-legenda').style.display='none';
+  }
+
   var ctx=G('gm-chart').getContext('2d');
   GRAFICO_MOTIVOS_CHART=new Chart(ctx,{
     type:'bar',
     data:{
-      labels: top.map(function(p){ return p.motivo; }),
+      labels: top.map(function(p){ return multiOrigem && p.origem ? (p.origem+' — '+p.motivo) : p.motivo; }),
       datasets:[{
         label:'kg',
         data: top.map(function(p){ return Math.round(p.peso*10)/10; }),
-        backgroundColor: cor+'cc',
+        backgroundColor: top.map(function(p){ return (p.origem&&CORES_ORIGEM[p.origem]?CORES_ORIGEM[p.origem]:corPadrao)+'cc'; }),
         borderRadius:4
       }]
     },
@@ -1081,19 +1111,36 @@ function renderDashboardConsolidado(){
   var pEnvasePet = DB.ref('envase_pet_reprocesso').orderByChild('data').startAt(di).endAt(df).once('value');
   var pExtrusao = DB.ref('extrusao_turno').orderByChild('data').startAt(di).endAt(df).once('value');
   var pCentral = DB.ref('reprocesso_central').orderByChild('data').startAt(di).endAt(df).once('value');
+  // Le todas as OPs de uma vez so' (nao por linha) pra montar um lookup
+  // fbKey -> numero real da OP + produto. O campo 'opId' gravado no
+  // apontamento e' a CHAVE do Firebase, nao o numero que o operador
+  // reconhece — o numero real fica em ops/{fbKey}.id (mesmo campo que o
+  // index.html usa pra imprimir a etiqueta).
+  var pOps = DB.ref('ops').once('value');
 
-  Promise.all([pEnsaqueOP,pEnsaqueGeral,pEnvasePet,pExtrusao,pCentral]).then(function(res){
+  Promise.all([pEnsaqueOP,pEnsaqueGeral,pEnvasePet,pExtrusao,pCentral,pOps]).then(function(res){
     ld(false);
     var rows=[];
 
-    // 1) Ensaque — vinculo OP (apontamentos, origem:'reprocesso')
+    var OP_LOOKUP={};
+    if(res[5].exists()) res[5].forEach(function(c){
+      var v=c.val();
+      OP_LOOKUP[c.key]={ numero:v.id||c.key, produto:v.desc||v.cod||'' };
+    });
+
+    // 1) Ensaque — vinculo OP (apontamentos, origem:'reprocesso'). A pedido:
+    //    entra junto com a fonte "Extrusao" (e' reprocesso que volta pra
+    //    extrusao, nao um destino proprio) — mostrando o numero real da OP,
+    //    nao mais a chave interna do Firebase.
     if(res[0].exists()) res[0].forEach(function(c){
       var v=c.val();
       if(v.origem!=='reprocesso' || v.substituido) return;
+      var op=OP_LOOKUP[v.opId]||{};
       rows.push({
-        data:v.data, fonte:'ensaque_op', setor:'OP '+(v.opId?String(v.opId).slice(-6):'—')+' • T'+(v.turno||'—'),
+        data:v.data, fonte:'extrusao', setor:'OP '+(op.numero||v.opId||'—')+' • T'+(v.turno||'—'),
         tipo:'', peso:Number(v.real)||0, motivo:v.motivoReprocesso||'—',
-        codigo:v.codigoEtiqueta||'—', lancadoPor:v.operador||'—'
+        codigo:v.codigoEtiqueta||'—', lancadoPor:v.operador||'—',
+        origemApontamento:'Ensaque'
       });
     });
 
@@ -1131,12 +1178,13 @@ function renderDashboardConsolidado(){
         rows.push({
           data:v.data, fonte:'extrusao', setor:nomeLinha+' • T'+(v.turno||'—'),
           tipo:'', peso:kg, motivo:'sem detalhamento por etiqueta (registro por linha/turno)',
-          codigo:'—', lancadoPor:v.operador||'—'
+          codigo:'—', lancadoPor:v.operador||'—',
+          origemApontamento:'Extrusão'
         });
       });
     });
 
-    // 5) Central — Expedicao Aqua / Expedicao PET / Recebimento (reprocesso_central)
+    // 5) Central — Expedicao Aqua / Expedicao PET / Recebimento / Higienizacao (reprocesso_central)
     if(res[4].exists()) res[4].forEach(function(c){
       var v=c.val();
       if(v.substituido) return;
@@ -1157,15 +1205,27 @@ function renderDashboardConsolidado(){
     DASH_ROWS_ATUAIS = rows.slice();
     DASH_PERIODO_ATUAL = { di:di, df:df };
 
-    // Cards por tipo (so' contam linhas que carregam a taxonomia — Ensaque
-    // vinculo-OP e Extrusao nao tem 'tipo', entao nao entram nesses 4
-    // cards, so' no Total Geral).
+    // Cards-destaque: Varredura e' descarte (nao volta pra fabrica), entao
+    // ela precisa ficar separada do que e' reprocesso de verdade — os 2
+    // cards abaixo respondem "quanto reprocesso reaproveitavel eu tenho"
+    // (sem Varredura) vs "quanto saiu de material no total, incluindo
+    // descarte" (com Varredura).
+    var totalGeral=0, totalVarredura=0;
+    rows.forEach(function(r){ totalGeral+=r.peso; if(r.tipo==='Varredura') totalVarredura+=r.peso; });
+    var totalSemVarredura=totalGeral-totalVarredura;
+    var hh='';
+    hh+='<div class="mc mc-hero mc-sem-varredura"><div class="ml">Total Reprocesso (sem Varredura)</div><div class="mv cg">'+fN(totalSemVarredura)+'</div><div class="ms">kg — material reaproveitavel no periodo</div></div>';
+    hh+='<div class="mc mc-hero mc-com-varredura"><div class="ml">Total com Varredura</div><div class="mv co">'+fN(totalGeral)+'</div><div class="ms">kg — inclui '+fN(totalVarredura)+' kg de varredura (descarte)</div></div>';
+    G('dash-metrics-hero').innerHTML=hh;
+
+    // Cards por tipo (so' contam linhas que carregam a taxonomia — reprocesso
+    // vinculado a OP/Extrusao nao tem 'tipo', entao nao entra aqui, so' nos
+    // 2 cards-destaque acima).
     var tipos=['Geral','Varredura','Finos','Qualidade','Limpeza Exaustores','Geral Fábrica'];
     var totaisTipo={}; tipos.forEach(function(t){ totaisTipo[t]=0; });
-    var totalGeral=0;
-    rows.forEach(function(r){ totalGeral+=r.peso; if(totaisTipo[r.tipo]!=null) totaisTipo[r.tipo]+=r.peso; });
+    rows.forEach(function(r){ if(totaisTipo[r.tipo]!=null) totaisTipo[r.tipo]+=r.peso; });
 
-    var hm='<div class="mc"><div class="ml">Total Geral</div><div class="mv cg">'+fN(totalGeral)+'</div><div class="ms">kg — todas as fontes</div></div>';
+    var hm='';
     tipos.forEach(function(t){
       hm+='<div class="mc"><div class="ml">'+t+'</div><div class="mv co">'+fN(totaisTipo[t])+'</div><div class="ms">kg</div></div>';
     });
