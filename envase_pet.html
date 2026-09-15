@@ -167,6 +167,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <button class="nb on" id="nb-dash" onclick="go('dashboard',this)">Dashboard</button>
     <button class="nb" id="nb-apt" onclick="go('apontamento',this)">Apontamento</button>
     <button class="nb" id="nb-reprocesso" onclick="go('reprocesso',this)">Reprocesso</button>
+    <button class="nb" id="nb-rastreamento" onclick="go('rastreamento',this)">Rastreamento</button>
   </div>
   <div class="ubar">
     <span class="rtdot"></span>
@@ -234,6 +235,43 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <thead><tr><th>Data</th><th>Tipo</th><th style="text-align:right">Quantidade</th><th>OP relacionada</th><th>Motivo do desvio</th><th>Observação</th><th>Lançado por</th><th>Código</th><th>Ações</th></tr></thead>
     <tbody id="repro-body"></tbody>
   </table></div></div>
+</div>
+
+<!-- RASTREAMENTO -->
+<div class="scr" id="scr-rastreamento">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Rastreamento <span style="font-size:11px;color:#739630;font-weight:500">— apontamentos por dia, período ou número da ordem</span></h2>
+  </div>
+
+  <div class="card">
+    <div class="ch"><span class="ct">Rastrear ordem especifica</span></div>
+    <div class="fg" style="margin-bottom:8px"><label class="fl">Numero da ordem</label>
+      <input type="text" id="rst-busca" placeholder="Ex: OP-2026-00123..." oninput="buscarRastreioOrdem()">
+    </div>
+    <div style="font-size:11px;color:#739630;margin-bottom:8px">Busca em todo o historico, independente do periodo abaixo. Ordens excluidas nao aparecem.</div>
+    <div id="rst-resultado-busca"></div>
+  </div>
+
+  <div class="card">
+    <div class="ch"><span class="ct">Apontamentos por dia ou periodo</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:flex-end">
+      <div class="fg" style="margin-bottom:0"><label class="fl">De</label><input type="date" id="rst-di" style="width:auto" onchange="renderRastreamento()"></div>
+      <div class="fg" style="margin-bottom:0"><label class="fl">Até</label><input type="date" id="rst-df" style="width:auto" onchange="renderRastreamento()"></div>
+      <select id="rst-maq" style="width:auto" onchange="renderRastreamento()"><option value="">Todas as maquinas</option><option>Haver</option><option>Dosetec</option><option>Raumak</option></select>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="btn bsm" onclick="rstFiltroRapido(0)">Hoje</button>
+      <button class="btn bsm" onclick="rstFiltroRapido(7)">Últimos 7 dias</button>
+      <button class="btn bsm" onclick="rstFiltroRapido(30)">Últimos 30 dias</button>
+      <button class="btn bsm" onclick="rstFiltroRapido('mes')">Este mês</button>
+    </div>
+    <div id="rst-periodo-info" style="font-size:11px;color:#739630;margin-bottom:10px"></div>
+    <div class="mrow" id="rst-metrics" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px"></div>
+    <div class="tw"><table>
+      <thead><tr><th>Data</th><th>OP Envase</th><th>Produto</th><th>Lote</th><th>Maquina</th><th style="text-align:right">Prog.</th><th style="text-align:right">Real.</th><th style="text-align:right">Perda</th><th>Status</th></tr></thead>
+      <tbody id="rst-body"></tbody>
+    </table></div>
+  </div>
 </div>
 
 </div>
@@ -440,6 +478,10 @@ function go(s,btn){
     if(!G('repro-di').value){ G('repro-di').value=hoje(); G('repro-df').value=hoje(); }
     renderReprocesso();
   }
+  else if(s==='rastreamento'){
+    if(!G('rst-di').value){ G('rst-di').value=hoje(); G('rst-df').value=hoje(); }
+    renderRastreamento();
+  }
 }
 
 // ============================================================
@@ -499,6 +541,7 @@ function iniciarApp(){
       var id=ativas[0].id;
       if(id==='scr-dashboard') renderDashEnvase();
       else if(id==='scr-apontamento') renderApontamento();
+      else if(id==='scr-rastreamento'){ renderRastreamento(); if(G('rst-busca').value) buscarRastreioOrdem(); }
     }
   }, function(err){
     ld(false); toast('Erro Firebase: '+err.message,'err');
@@ -510,6 +553,7 @@ function iniciarApp(){
     }
     var ativas=document.querySelectorAll('.scr.on');
     if(ativas.length && ativas[0].id==='scr-dashboard') renderDashEnvase();
+    if(ativas.length && ativas[0].id==='scr-rastreamento'){ renderRastreamento(); if(G('rst-busca').value) buscarRastreioOrdem(); }
   }, function(err){ console.warn('Erro ao carregar historico Envase:', err.message); });
   DB.ref('envase_pet_reprocesso').on('value', function(snap){
     ENVASE_REPROCESSO=[];
@@ -1113,6 +1157,222 @@ function gerarCodigoReprocesso(dt){
   var doDia=ENVASE_REPROCESSO.filter(function(r){return r.data===dt;}).length+1;
   var seq=String(doDia); while(seq.length<3) seq='0'+seq;
   return 'REP-'+ymd+'-'+seq;
+}
+
+// ============================================================
+// RASTREAMENTO — permite achar o que foi apontado por dia, por
+// periodo ou pelo numero da ordem. Nao adiciona no novo no Firebase:
+// so' cruza envase_pet_ops (dia atual/vivo de cada ordem) com
+// envase_pet_historico_dias (dias ja congelados), do mesmo jeito que
+// o Dashboard ja faz para um unico dia — aqui generalizado pra
+// periodo e para o rastro completo de uma ordem especifica.
+// Ordens excluidas (status='Excluida') nunca aparecem aqui.
+// ============================================================
+
+// Um "dia" de uma ordem: vivo (ainda em ops, e' o dia corrente dela)
+// ou congelado (ja fechado em historico_dias). Mesma logica da vivas/
+// congeladas do renderDashEnvase, isolada aqui pra nao tocar naquela
+// funcao.
+function obterOrdensDiaEnvase(dt,maq){
+  var vivas=ENVASE_OPS.filter(function(o){
+    if(o.status==='Excluida') return false;
+    if(o.data!==dt) return false;
+    if(maq && o.maquina!==maq) return false;
+    return true;
+  }).map(function(o){
+    return {data:dt,id:o.id,cod:o.cod,desc:o.desc,lote:o.lote,maquina:o.maquina,
+      prog:Number(o.prog)||0,real:Number(o.real)||0,perda:Number(o.perda)||0,
+      status:o.status,congelado:false,fbKey:o.fbKey};
+  });
+  var congeladas=ENVASE_HIST_DIAS.filter(function(h){
+    if(h.data!==dt) return false;
+    if(maq && h.maquina!==maq) return false;
+    return true;
+  }).map(function(h){
+    return {data:dt,id:h.opId,cod:h.cod,desc:h.desc,lote:h.lote,maquina:h.maquina,
+      prog:Number(h.progDia)||0,real:Number(h.realDia)||0,perda:Number(h.perdaDia)||0,
+      status:'Transferida',congelado:true,fbKey:h.opFbKey};
+  });
+  return vivas.concat(congeladas);
+}
+
+function listarDatasEntreEnvase(di,df){
+  var datas=[];
+  var d=new Date(di+'T12:00:00');
+  var fim=new Date(df+'T12:00:00');
+  var limite=0;
+  while(d<=fim && limite<3660){ // teto de ~10 anos, protege contra periodo invertido/gigante
+    datas.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'));
+    d.setDate(d.getDate()+1);
+    limite++;
+  }
+  return datas;
+}
+
+function obterApontamentosPeriodoEnvase(di,df,maq){
+  var out=[];
+  listarDatasEntreEnvase(di,df).forEach(function(dt){ out=out.concat(obterOrdensDiaEnvase(dt,maq)); });
+  return out;
+}
+
+function renderRastreamento(){
+  var di=G('rst-di').value, df=G('rst-df').value;
+  if(!di||!df) return;
+  if(di>df){ toast('Data inicial maior que a final — ajuste o periodo','err'); return; }
+  var maq=G('rst-maq')?G('rst-maq').value:'';
+
+  G('rst-periodo-info').textContent = di===df
+    ? 'Exibindo '+di.split('-').reverse().join('/')
+    : 'Periodo: '+di.split('-').reverse().join('/')+' a '+df.split('-').reverse().join('/');
+
+  var lista=obterApontamentosPeriodoEnvase(di,df,maq);
+  lista.sort(function(a,b){
+    if(a.data!==b.data) return a.data<b.data?1:-1;
+    return String(a.id||'').localeCompare(String(b.id||''));
+  });
+
+  var tp=0,tr=0,tperda=0;
+  lista.forEach(function(o){ tp+=o.prog; tr+=o.real; tperda+=o.perda; });
+  var idsUnicos={};
+  lista.forEach(function(o){ idsUnicos[o.id]=true; });
+  var qtdOrdens=Object.keys(idsUnicos).length;
+
+  G('rst-metrics').innerHTML=
+    '<div class="mc"><div class="ml">Programado</div><div class="mv cb">'+fN(tp)+'</div><div class="ms">kg no periodo</div></div>'+
+    '<div class="mc"><div class="ml">Realizado</div><div class="mv cg">'+fN(tr)+'</div><div class="ms">kg</div></div>'+
+    '<div class="mc"><div class="ml">Perda</div><div class="mv cr">'+fN(tperda)+'</div><div class="ms">kg</div></div>'+
+    '<div class="mc"><div class="ml">Ordens no periodo</div><div class="mv">'+qtdOrdens+'</div><div class="ms">'+lista.length+' apontamento(s)/dia</div></div>';
+
+  var tb=G('rst-body');
+  var h='';
+  if(!lista.length){
+    h='<tr><td colspan="9" style="text-align:center;color:#889;padding:20px">Nenhum apontamento de Envase para esse periodo.</td></tr>';
+  }
+  lista.forEach(function(o){
+    h+='<tr>'+
+       '<td>'+o.data.split('-').reverse().join('/')+'</td>'+
+       '<td>'+o.id+'</td>'+
+       '<td>'+o.cod+' - '+(o.desc||'')+'</td>'+
+       '<td>'+(o.lote||'-')+'</td>'+
+       '<td>'+(o.maquina||'-')+'</td>'+
+       '<td style="text-align:right">'+fN(o.prog)+'</td>'+
+       '<td style="text-align:right">'+fN(o.real)+'</td>'+
+       '<td style="text-align:right;color:#c0392b">'+(o.perda?fN(o.perda):'-')+'</td>'+
+       '<td>'+sbadge(o.status)+'</td>'+
+       '</tr>';
+  });
+  tb.innerHTML=h;
+}
+
+// Atalhos de periodo — mesmo padrao do Reprocesso.
+function rstFiltroRapido(qtd){
+  var fim=hoje();
+  var ini;
+  if(qtd==='mes'){
+    ini=fim.slice(0,8)+'01';
+  } else if(qtd===0){
+    ini=fim;
+  } else {
+    var d=new Date(fim+'T00:00:00');
+    d.setDate(d.getDate()-(qtd-1));
+    ini=d.toISOString().slice(0,10);
+  }
+  G('rst-di').value=ini;
+  G('rst-df').value=fim;
+  renderRastreamento();
+}
+
+// Busca por numero da ordem — ignora o periodo selecionado acima e
+// varre todo o historico. Se o termo bater em mais de uma ordem
+// distinta, mostra a lista pra escolher; se bater em uma so', mostra
+// o rastro completo dela direto.
+function buscarRastreioOrdem(){
+  var termo=(G('rst-busca').value||'').trim().toLowerCase();
+  var out=G('rst-resultado-busca');
+  if(!termo){ out.innerHTML=''; return; }
+
+  var idsSet={};
+  ENVASE_OPS.forEach(function(o){
+    if(o.status==='Excluida') return;
+    if(String(o.id||'').toLowerCase().indexOf(termo)!==-1) idsSet[o.id]=true;
+  });
+  ENVASE_HIST_DIAS.forEach(function(h){
+    var ordemViva=null;
+    for(var i=0;i<ENVASE_OPS.length;i++){ if(ENVASE_OPS[i].fbKey===h.opFbKey){ ordemViva=ENVASE_OPS[i]; break; } }
+    if(ordemViva && ordemViva.status==='Excluida') return;
+    if(String(h.opId||'').toLowerCase().indexOf(termo)!==-1) idsSet[h.opId]=true;
+  });
+
+  var ids=Object.keys(idsSet);
+  if(!ids.length){
+    out.innerHTML='<div style="color:#889;padding:12px;font-size:12px">Nenhuma ordem encontrada com "'+termo+'".</div>';
+    return;
+  }
+  if(ids.length>1){
+    var h='<div style="font-size:12px;color:#4a664a;margin-bottom:8px">'+ids.length+' ordens encontradas — selecione uma:</div><div style="display:flex;gap:6px;flex-wrap:wrap">';
+    ids.forEach(function(id){
+      h+='<button class="btn bsm" onclick="G(\'rst-busca\').value='+JSON.stringify(id)+';buscarRastreioOrdem()">'+id+'</button>';
+    });
+    h+='</div>';
+    out.innerHTML=h;
+    return;
+  }
+  renderRastreioOrdemUnica(ids[0]);
+}
+
+// Rastro completo de UMA ordem: junta todos os dias congelados
+// (historico) com o dia vivo (se ainda existir em ops), ordenado
+// cronologicamente, com totais acumulados.
+function renderRastreioOrdemUnica(id){
+  var out=G('rst-resultado-busca');
+  var ordemViva=null;
+  for(var i=0;i<ENVASE_OPS.length;i++){ if(ENVASE_OPS[i].id===id){ ordemViva=ENVASE_OPS[i]; break; } }
+  if(ordemViva && ordemViva.status==='Excluida'){
+    out.innerHTML='<div style="color:#c0392b;padding:12px;font-size:12px">Ordem '+id+' esta excluida — nao exibida no rastreamento.</div>';
+    return;
+  }
+
+  var dias=ENVASE_HIST_DIAS.filter(function(h){ return h.opId===id; }).map(function(h){
+    return {data:h.data,prog:Number(h.progDia)||0,real:Number(h.realDia)||0,perda:Number(h.perdaDia)||0,
+      maquina:h.maquina,status:'Transferida'};
+  });
+  if(ordemViva){
+    dias.push({data:ordemViva.data,prog:Number(ordemViva.prog)||0,real:Number(ordemViva.real)||0,
+      perda:Number(ordemViva.perda)||0,maquina:ordemViva.maquina,status:ordemViva.status});
+  }
+  dias.sort(function(a,b){ return a.data<b.data?-1:1; });
+
+  var tp=0,tr=0,tperda=0;
+  dias.forEach(function(d){ tp+=d.prog; tr+=d.real; tperda+=d.perda; });
+
+  var infoBase=ordemViva;
+  if(!infoBase){
+    var achouHist=ENVASE_HIST_DIAS.filter(function(h){ return h.opId===id; });
+    infoBase=achouHist.length?achouHist[0]:{};
+  }
+
+  var cabecalho='<div style="margin-bottom:10px"><strong style="font-size:15px;color:#024f2b">'+id+'</strong> — '+(infoBase.desc||infoBase.cod||'')+
+    (infoBase.lote?' · Lote '+infoBase.lote:'')+
+    '<div style="font-size:11px;color:#739630;margin-top:2px">'+dias.length+' dia(s) apontado(s)'+
+    (ordemViva?(' · status atual: '+ordemViva.status):' · ordem so existe em historico (dia atual ja nao esta mais aberta)')+'</div></div>';
+
+  var hm='<div class="mrow" style="grid-template-columns:repeat(3,1fr);margin-bottom:10px">'+
+    '<div class="mc"><div class="ml">Programado total</div><div class="mv cb">'+fN(tp)+'</div><div class="ms">kg</div></div>'+
+    '<div class="mc"><div class="ml">Realizado total</div><div class="mv cg">'+fN(tr)+'</div><div class="ms">kg</div></div>'+
+    '<div class="mc"><div class="ml">Perda total</div><div class="mv cr">'+fN(tperda)+'</div><div class="ms">kg</div></div>'+
+    '</div>';
+
+  var h='<div class="tw"><table><thead><tr><th>Data</th><th>Maquina</th><th style="text-align:right">Prog.</th>'+
+    '<th style="text-align:right">Real.</th><th style="text-align:right">Perda</th><th>Status do dia</th></tr></thead><tbody>';
+  dias.forEach(function(d){
+    h+='<tr><td>'+d.data.split('-').reverse().join('/')+'</td><td>'+(d.maquina||'-')+'</td>'+
+       '<td style="text-align:right">'+fN(d.prog)+'</td><td style="text-align:right">'+fN(d.real)+'</td>'+
+       '<td style="text-align:right;color:#c0392b">'+(d.perda?fN(d.perda):'-')+'</td>'+
+       '<td>'+sbadge(d.status)+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+
+  out.innerHTML='<div style="padding:4px 0">'+cabecalho+hm+h+'</div>';
 }
 
 function popularSelectOPsReprocesso(selectId){
