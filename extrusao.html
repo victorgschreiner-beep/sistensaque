@@ -379,7 +379,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <div class="mh">🔴 Parada — <span id="para-linha-nome"></span></div>
     <div style="display:flex;gap:10px">
       <div class="fg" style="flex:1"><label class="fl">Hora Início</label><input class="fi" type="time" id="para-hi"></div>
-      <div class="fg" style="flex:1"><label class="fl">Hora Retorno</label><input class="fi" type="time" id="para-hf"></div>
+      <div class="fg" style="flex:1"><label class="fl">Hora Retorno</label><input class="fi" type="time" id="para-hf" oninput="verificarReprocessoNaCriacao()"></div>
     </div>
     <div class="fg">
       <label class="fl">Buscar Motivo</label>
@@ -391,6 +391,14 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <input type="hidden" id="para-cod">
     <input type="hidden" id="para-desc">
     <div class="fg"><label class="fl">Observação (opcional)</label><input class="fi" type="text" id="para-obs" placeholder="Descreva detalhes da parada..."></div>
+    <!-- Só aparece quando a Hora Retorno já é preenchida junto (parada já nasce fechada) -->
+    <div class="fg" id="para-repr-bloco" style="display:none;border-top:1px solid #e5e5e5;margin-top:10px;padding-top:10px">
+      <label class="fl">Reprocesso gerado (kg)</label>
+      <input class="fi fi-big" type="number" id="para-repr-kg" min="0" value="0">
+      <div class="hint" id="para-repr-op-info" style="margin-top:4px"></div>
+      <input type="hidden" id="para-repr-op-fk">
+      <input type="hidden" id="para-repr-op-num">
+    </div>
     <div class="mr">
       <button class="btn-cancel" onclick="fM('m-para')">Cancelar</button>
       <button class="btn-danger" onclick="salvarParada()">🔴 Registrar Parada</button>
@@ -2460,6 +2468,8 @@ function abrirParadaSetup(linha){
   G("para-desc").value="Troca de Formato (SETUP)";
   G("para-sel-lbl").textContent="✔ Troca de Formato (SETUP)";
   G("para-setup-aviso").style.display="none"; // já é setup, não precisa do aviso
+  if(G("para-repr-bloco")) G("para-repr-bloco").style.display="none";
+  if(G("para-repr-kg")) G("para-repr-kg").value=0;
   renderParadas("");
   // Destaca o item selecionado após renderizar
   setTimeout(function(){
@@ -2634,6 +2644,8 @@ function abrirParada(linha){
   G("para-cod").value=""; G("para-desc").value="";
   if(G("para-obs")) G("para-obs").value="";
   G("para-sel-lbl").textContent="Nenhum motivo selecionado";
+  if(G("para-repr-bloco")) G("para-repr-bloco").style.display="none";
+  if(G("para-repr-kg")) G("para-repr-kg").value=0;
   renderParadas("");
   aM("m-para");
 }
@@ -2678,9 +2690,21 @@ function salvarParada(){
   if(!DB){toast("Firebase não conectado","err");return;}
   var turnoPara=turnoDeHora(hi);
   var dataPara=DT_FILA||hoje();
-  var novaParadaRef=DB.ref("extrusao_paradas").push({id:uid(),linha:linhaAtiva,turno:turnoPara,data:dataPara,horaIni:hi,horaFim:hf,codMotivo:cod,descricao:desc,obs:G("para-obs")?G("para-obs").value||"":"",minutos:min,operador:SES.login,ts:agora()});
+  var novaParada={id:uid(),linha:linhaAtiva,turno:turnoPara,data:dataPara,horaIni:hi,horaFim:hf,codMotivo:cod,descricao:desc,obs:G("para-obs")?G("para-obs").value||"":"",minutos:min,operador:SES.login,ts:agora()};
+  // Parada que já nasce fechada (início e fim informados juntos): captura o
+  // reprocesso agora, no mesmo lançamento — sem isso, ela nunca passaria pelo
+  // fluxo de fechamento (admEditar/admSalvar) onde o campo normalmente aparece
+  if(hf){
+    var reprKgEl=G("para-repr-kg");
+    novaParada.reprocessoKg=reprKgEl?(parseInt(reprKgEl.value)||0):0;
+    novaParada.reprocessoOpFbKey=(G("para-repr-op-fk")&&G("para-repr-op-fk").value)||"";
+    novaParada.reprocessoOpNum=(G("para-repr-op-num")&&G("para-repr-op-num").value)||"";
+    novaParada.operadorFechamento=SES.login;
+  }
+  var novaParadaRef=DB.ref("extrusao_paradas").push(novaParada);
   novaParadaRef.then(function(){
     fM("m-para");toast("Parada registrada!","ok");
+    if(novaParada.reprocessoOpFbKey) recalcularReprocessoOp(novaParada.reprocessoOpFbKey);
     // Efeito colateral aditivo — não interfere no fluxo acima nem impede o toast de sucesso
     try{
       if(MOTIVOS_AUTO_HABILITADOS&&MOTIVOS_AUTO_HABILITADOS[cod]){
@@ -3997,10 +4021,13 @@ function recalcularReprocessoOp(opFbKey){
 // (cobre o caso comum — operador fechando parada da própria linha). Caminho
 // de reserva: consulta extrusao_op_ativa direto no Firebase (cobre correção
 // feita por admin numa linha que ele não está com a tela aberta).
-function admResolverOpReprocesso(item){
-  var infoEl=G("adm-repr-op-info");
-  var fkEl=G("adm-repr-op-fk");
-  var numEl=G("adm-repr-op-num");
+// Genérico: resolve a OP ativa de uma linha AGORA e escreve o resultado nos
+// campos indicados (ids). Reusado tanto no fechamento/correção (admin) quanto
+// na criação de uma parada que já nasce fechada (hi+hf preenchidos juntos).
+function resolverOpAtivaReprocesso(linha, turnoBusca, ids){
+  var infoEl=G(ids.infoId);
+  var fkEl=G(ids.fkId);
+  var numEl=G(ids.numId);
   function aplicar(op){
     if(op){
       if(fkEl) fkEl.value=op.fbKey||"";
@@ -4012,14 +4039,13 @@ function admResolverOpReprocesso(item){
       if(infoEl) infoEl.innerHTML="⚠ Nenhuma OP ativa identificada nesta linha agora — o reprocesso será salvo sem vínculo de OP.";
     }
   }
-  var estL=EST[item.linha];
+  var estL=EST[linha];
   if(estL && estL.opAtiva){
     var opCache=OPS.find(function(o){return o.fbKey===estL.opAtiva;})||estL.opAtivaCache;
     if(opCache){ aplicar(opCache); return; }
   }
   if(!DB){ aplicar(null); return; }
-  var turnoBusca=(SES&&SES.turno)||item.turno;
-  DB.ref("extrusao_op_ativa/"+encId(item.linha)+"/"+(DT_FILA||hoje())+"/t"+turnoBusca).once("value").then(function(s){
+  DB.ref("extrusao_op_ativa/"+encId(linha)+"/"+(DT_FILA||hoje())+"/t"+turnoBusca).once("value").then(function(s){
     var fk=s.exists()?s.val():null;
     if(!fk){ aplicar(null); return; }
     var opLocal=OPS.find(function(o){return o.fbKey===fk;});
@@ -4029,6 +4055,28 @@ function admResolverOpReprocesso(item){
       var v=s2.val(); v.fbKey=fk; aplicar(v);
     });
   }).catch(function(){ aplicar(null); });
+}
+
+function admResolverOpReprocesso(item){
+  resolverOpAtivaReprocesso(item.linha, (SES&&SES.turno)||item.turno, {infoId:"adm-repr-op-info", fkId:"adm-repr-op-fk", numId:"adm-repr-op-num"});
+}
+
+// Fechamento simultâneo: mostra/esconde o campo de reprocesso na própria tela
+// de registrar parada, conforme a Hora Retorno vai sendo preenchida junto com
+// a Hora Início (parada que já nasce fechada, sem passar pelo fluxo de abrir/fechar depois)
+function paraResolverOpReprocesso(){
+  resolverOpAtivaReprocesso(linhaAtiva, SES.turno, {infoId:"para-repr-op-info", fkId:"para-repr-op-fk", numId:"para-repr-op-num"});
+}
+
+function verificarReprocessoNaCriacao(){
+  var bloco=G("para-repr-bloco");
+  if(!bloco) return;
+  if(G("para-hf").value){
+    bloco.style.display="";
+    paraResolverOpReprocesso();
+  } else {
+    bloco.style.display="none";
+  }
 }
 
 function dashRender(apts, paradas, di, df, areaF){
