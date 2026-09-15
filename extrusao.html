@@ -459,8 +459,8 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
         <div><label style="font-size:11px;font-weight:700;color:#4a664a;display:block;margin-bottom:3px">TURNO</label>
           <select id="resumo-adm-turno" class="fi" style="font-size:12px">
             <option value="1">Turno 1 (21h-06h)</option>
-            <option value="2">Turno 2 (06h-16h)</option>
-            <option value="3">Turno 3 (16h-21h)</option>
+            <option value="2">Turno 2 (06h-17h)</option>
+            <option value="3">Turno 3 (17h-21h) — inativo</option>
           </select></div>
         <div><label style="font-size:11px;font-weight:700;color:#4a664a;display:block;margin-bottom:3px">LINHA</label>
           <select id="resumo-adm-linha" class="fi" style="font-size:12px">
@@ -1040,13 +1040,19 @@ function fM(id){G(id).classList.remove("on");}
 function aM(id){G(id).classList.add("on");}
 var _pendingTroca=null;
 
-function turnoAtual(){var h=horaBrasilia(new Date());return h>=21||h<6?1:h<16?2:3;}
+// Boundary do fim do Turno 2 / início do Turno 3 — fonte única de verdade.
+// ALTERADO (14/09/2026): T2 estendido de 16h para 17h (T3 continua inativo).
+// Qualquer mudança futura de horário de turno deve alterar SÓ esta constante
+// (ver learnings.md: boundaries hardcoded duplicados já causaram bug antes).
+var FIM_TURNO2=17;
+
+function turnoAtual(){var h=horaBrasilia(new Date());return h>=21||h<6?1:h<FIM_TURNO2?2:3;}
 
 // Calcula turno baseado na hora do apontamento (não no horário atual)
 function turnoDeHora(horaStr){
   if(!horaStr) return turnoAtual();
   var h=parseInt(horaStr.split(":")[0]);
-  return h>=21||h<6?1:h<16?2:3;
+  return h>=21||h<6?1:h<FIM_TURNO2?2:3;
 }
 
 // Calcula data do apontamento baseado na hora inicial
@@ -1607,8 +1613,8 @@ function verificarParadasAbertas(){
     dtAnt=d.toISOString().slice(0,10);
   }
   // Último minuto do turno anterior e primeiro do atual
-  var ultimoMinTurno={1:"05:59",2:"15:59",3:"20:59"};
-  var inicioTurnos={1:"21:00",2:"06:00",3:"16:00"};
+  var ultimoMinTurno={1:"05:59",2:pad(FIM_TURNO2-1)+":59",3:"20:59"};
+  var inicioTurnos={1:"21:00",2:"06:00",3:pad(FIM_TURNO2)+":00"};
   var horaFimAnt=ultimoMinTurno[tAnt];  // ex: T3 fecha às 20:59
   var horaIniAtual=inicioTurnos[t];     // ex: T1 começa às 21:00
 
