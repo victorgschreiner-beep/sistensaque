@@ -4069,7 +4069,7 @@ function recalcularTotalTurno(data,turno,linha){
       var v=c.val();
       if(v.turno===turno && v.linha===linha) real+=Number(v.real)||0;
     });
-    var min=0;
+    var min=0, reproc=0;
     if(r[1].exists()) r[1].forEach(function(c){
       var v=c.val();
       if(v.turno===turno && v.linha===linha){
@@ -4080,13 +4080,18 @@ function recalcularTotalTurno(data,turno,linha){
           if(m<0)m+=1440;
         }
         min+=m;
+        reproc+=Number(v.reprocessoKg)||0;
       }
     });
     var lk=encId(linha);
     if(r[2].exists()) r[2].forEach(function(c){
       var v=c.val();
       if(v.turno===turno && v.linhas && v.linhas.indexOf(linha)>=0){
-        var upd={}; upd["producao/"+lk]=real; upd["paradasMin/"+lk]=min;
+        // Recongela os três juntos — produção, paradas e reprocesso — sempre
+        // do zero e sempre sobrescrevendo, nunca somando. Assim, editar uma
+        // parada de um turno já fechado (em qualquer dia posterior) atualiza
+        // o congelado inteiro, sem deixar um dos três desatualizado.
+        var upd={}; upd["producao/"+lk]=real; upd["paradasMin/"+lk]=min; upd["reprocesso/"+lk]=reproc;
         DB.ref("extrusao_turno/"+c.key).update(upd);
       }
     });
@@ -7455,26 +7460,43 @@ function carregarReprocessoAdm(dt,turno){
   var linhas=LINHAS_USER&&LINHAS_USER.length?LINHAS_USER:TODAS_LINHAS;
   var reprH="";
   linhas.forEach(function(l){
-    reprH+='<div class="fg"><label class="fl">Reprocesso '+l+' (kg)</label>'+
-           '<input class="fi" type="number" id="repr-'+encId(l)+'" value="0" min="0"></div>';
+    reprH+='<div class="fg"><label class="fl">Reprocesso '+l+' (kg) — soma automática das paradas</label>'+
+           '<input class="fi" type="number" id="repr-'+encId(l)+'" value="0" min="0" readonly disabled style="background:#f2f5f2;color:#4a664a;font-weight:700"></div>';
   });
   el.innerHTML=reprH;
-  // Carrega valores salvos do Firebase para essa data+turno
   if(!DB) return;
-  DB.ref("extrusao_turno").orderByChild("data").equalTo(dt).once("value",function(s){
-    if(!s.exists()) return;
-    var merge={};
-    s.forEach(function(c){
+  Promise.all([
+    DB.ref("extrusao_turno").orderByChild("data").equalTo(dt).once("value"),
+    DB.ref("extrusao_paradas").orderByChild("data").equalTo(dt).once("value")
+  ]).then(function(r){
+    // Ponto de partida: soma AO VIVO do reprocesso já lançado nas paradas deste
+    // turno/data (mesma lógica de calcularReprocessoLinha) — sem isso, um turno
+    // ainda em andamento aparecia zerado mesmo com reprocesso já lançado.
+    var vivo={};
+    if(r[1].exists()) r[1].forEach(function(c){
+      var v=c.val();
+      if(v.turno===turno && v.reprocessoKg){
+        var lk=encId(v.linha);
+        vivo[lk]=(vivo[lk]||0)+(Number(v.reprocessoKg)||0);
+      }
+    });
+    // Se o turno já foi fechado, o valor CONGELADO no fechamento é a fonte
+    // oficial e prevalece sobre o ao vivo (mesma prioridade usada em produção/paradas)
+    var congelado={};
+    if(r[0].exists()) r[0].forEach(function(c){
       var v=c.val();
       if(v.turno===turno && v.reprocesso){
         Object.keys(v.reprocesso).forEach(function(k){
-          if(v.reprocesso[k]) merge[k]=v.reprocesso[k];
+          if(v.reprocesso[k]) congelado[k]=v.reprocesso[k];
         });
       }
     });
     linhas.forEach(function(l){
-      var inp=G("repr-"+encId(l));
-      if(inp && merge[encId(l)]) inp.value=merge[encId(l)];
+      var lk=encId(l);
+      var inp=G("repr-"+lk);
+      if(!inp) return;
+      var val=congelado[lk]!=null?congelado[lk]:(vivo[lk]||0);
+      if(val) inp.value=val;
     });
   });
 }
