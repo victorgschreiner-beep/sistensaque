@@ -799,6 +799,16 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       </div>
     </div>
 
+    <!-- Reprocesso por motivo de parada -->
+    <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div style="font-weight:700;color:#024f2b;font-size:13px">♻️ Reprocesso por Motivo de Parada (kg)</div>
+        <span id="dash-g11-badge" style="display:none;font-size:10px;font-weight:700;color:#024f2b;background:#e6f0e6;border:1px solid #c8e0c8;border-radius:12px;padding:2px 8px"></span>
+      </div>
+      <div id="dash-g11-destaque" style="font-size:11px;color:#c0392b;font-weight:600;margin-bottom:8px"></div>
+      <canvas id="dash-g11" height="180"></canvas>
+    </div>
+
     <!-- Produtividade por Linha -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
       <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px">
@@ -2313,12 +2323,14 @@ function salvarEditApt(){
   DB.ref("extrusao_apts/"+fbKey).update(updates).then(function(){
     fM("m-edit-apt");
     toast("Apontamento atualizado!","ok");
-    // Recalcula realExtrusao na OP após edição
+    // Recalcula realExtrusao na OP após edição, e o total congelado do turno
+    // (se esse turno já foi fechado) — nunca deixa o congelado desatualizado
     DB.ref("extrusao_apts/"+fbKey).once("value").then(function(s){
       var a=s.val();
       if(a && a.opFbKey){
         recalcularRealExtrusao(a.opFbKey);
       }
+      if(a) recalcularTotalTurno(a.data,a.turno,a.linha);
     });
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
@@ -2333,6 +2345,7 @@ function excluirAptOperador(fbKey){
       toast("Apontamento excluido!","ok");
       // Recalcula realExtrusao da OP
       if(a.opFbKey) recalcularRealExtrusao(a.opFbKey);
+      recalcularTotalTurno(a.data,a.turno,a.linha);
     });
   });
 }
@@ -2341,10 +2354,12 @@ function excluirParadaOperador(fbKey){
   if(!confirm("Excluir esta parada?")) return;
   if(!DB){toast("Firebase nao conectado","err");return;}
   DB.ref("extrusao_paradas/"+fbKey).once("value").then(function(s){
-    var opVinculada=s.exists()?s.val().reprocessoOpFbKey:null;
+    var p=s.exists()?s.val():null;
+    var opVinculada=p?p.reprocessoOpFbKey:null;
     DB.ref("extrusao_paradas/"+fbKey).remove().then(function(){
       toast("Parada excluida!","ok");
       if(opVinculada) recalcularReprocessoOp(opVinculada);
+      if(p) recalcularTotalTurno(p.data,p.turno,p.linha);
     });
   });
 }
@@ -3215,8 +3230,13 @@ function finalizarTurno(){
   if(!DB){toast("Firebase não conectado","err");return;}
   // Chave fixa: data_turno_login — permite sobrescrever sem duplicar
   var chave=(DT_FILA||hoje())+"_t"+SES.turno+"_"+encId(SES.login);
-  DB.ref("extrusao_turno/"+chave).set({turno:SES.turno,data:DT_FILA||hoje(),linhas:LINHAS_USER,operador:SES.login,reprocesso:reprocesso,ts:agora()})
+  var dataFech=DT_FILA||hoje(), turnoFech=SES.turno;
+  DB.ref("extrusao_turno/"+chave).set({turno:turnoFech,data:dataFech,linhas:LINHAS_USER,operador:SES.login,reprocesso:reprocesso,producao:{},paradasMin:{},ts:agora()})
     .then(function(){
+      // Congela produção e paradas por linha — mesma função usada quando um
+      // admin corrige um lançamento depois do fechamento, para não haver
+      // duas lógicas de cálculo divergentes (ver recalcularTotalTurno)
+      LINHAS_USER.forEach(function(l){ recalcularTotalTurno(dataFech,turnoFech,l); });
       toast("Turno finalizado! Gerando PDF...","ok");
       // Gera PDF automaticamente após salvar
       setTimeout(function(){
@@ -3718,10 +3738,14 @@ function admEditarAptOp(btn){
 function admExcluirAptOp(btn){
   var fbKey=btn.dataset.fk, opFbKey=btn.dataset.opfk, opId=btn.dataset.opid, opDesc=btn.dataset.opdesc;
   if(!confirm("Excluir este apontamento?")) return;
-  DB.ref("extrusao_apts/"+fbKey).remove().then(function(){
-    toast("Excluído!","ok");
-    recalcularRealExtrusao(opFbKey);
-    admVerApts(opFbKey, opId, opDesc);
+  DB.ref("extrusao_apts/"+fbKey).once("value").then(function(s){
+    var a=s.exists()?s.val():null;
+    DB.ref("extrusao_apts/"+fbKey).remove().then(function(){
+      toast("Excluído!","ok");
+      recalcularRealExtrusao(opFbKey);
+      if(a) recalcularTotalTurno(a.data,a.turno,a.linha);
+      admVerApts(opFbKey, opId, opDesc);
+    });
   });
 }
 
@@ -4022,6 +4046,53 @@ function recalcularReprocessoOp(opFbKey){
   }).catch(function(e){console.warn("Recalcular reprocesso OP:",e.message);});
 }
 
+// ── TOTAL CONGELADO DO TURNO (produção + paradas) ──────────
+// Congela, por linha, o total produzido e o total de minutos parados dentro
+// do registro de fechamento (extrusao_turno), da mesma forma que o reprocesso
+// já é gravado por linha. SEMPRE recalcula do zero a partir de extrusao_apts/
+// extrusao_paradas e SOBRESCREVE (nunca soma) o valor já congelado — assim,
+// se um apontamento ou parada for corrigido depois do fechamento (em outro
+// dia, por um admin), o número congelado é atualizado, e nunca ficam dois
+// valores coexistindo inflando o total.
+// Se o turno daquela linha ainda não foi fechado (nenhum extrusao_turno
+// correspondente), não faz nada — o resumo continua sendo calculado ao vivo
+// até o fechamento, como já era.
+function recalcularTotalTurno(data,turno,linha){
+  if(!DB||!data||!turno||!linha) return;
+  Promise.all([
+    DB.ref("extrusao_apts").orderByChild("data").equalTo(data).once("value"),
+    DB.ref("extrusao_paradas").orderByChild("data").equalTo(data).once("value"),
+    DB.ref("extrusao_turno").orderByChild("data").equalTo(data).once("value")
+  ]).then(function(r){
+    var real=0;
+    if(r[0].exists()) r[0].forEach(function(c){
+      var v=c.val();
+      if(v.turno===turno && v.linha===linha) real+=Number(v.real)||0;
+    });
+    var min=0;
+    if(r[1].exists()) r[1].forEach(function(c){
+      var v=c.val();
+      if(v.turno===turno && v.linha===linha){
+        var m=Number(v.minutos)||0;
+        if(!m&&v.horaIni&&v.horaFim){
+          var hi=v.horaIni.split(":"),hf=v.horaFim.split(":");
+          m=(parseInt(hf[0])*60+parseInt(hf[1]))-(parseInt(hi[0])*60+parseInt(hi[1]));
+          if(m<0)m+=1440;
+        }
+        min+=m;
+      }
+    });
+    var lk=encId(linha);
+    if(r[2].exists()) r[2].forEach(function(c){
+      var v=c.val();
+      if(v.turno===turno && v.linhas && v.linhas.indexOf(linha)>=0){
+        var upd={}; upd["producao/"+lk]=real; upd["paradasMin/"+lk]=min;
+        DB.ref("extrusao_turno/"+c.key).update(upd);
+      }
+    });
+  }).catch(function(e){console.warn("Recalcular total turno:",e.message);});
+}
+
 // Resolve qual OP está ativa na linha AGORA (momento do fechamento da parada),
 // para vinculação automática do reprocesso. Caminho rápido: cache local EST
 // (cobre o caso comum — operador fechando parada da própria linha). Caminho
@@ -4146,6 +4217,18 @@ function dashRender(apts, paradas, di, df, areaF){
     var m=p.descricao||"Sem motivo";
     if(!porMotivo[m]) porMotivo[m]=0;
     porMotivo[m]+=(Number(p.minutos)||0);
+  });
+
+  // Motivos que geraram reprocesso — soma o reprocessoKg lançado no fechamento
+  // de cada parada (vínculo real, não estimativa por horário/janela). Só entram
+  // paradas que de fato tiveram reprocesso lançado (>0).
+  var porMotivoReproc={};
+  paradasArea.forEach(function(p){
+    var kg=Number(p.reprocessoKg)||0;
+    if(!kg) return;
+    var m=p.descricao||"Sem motivo";
+    if(!porMotivoReproc[m]) porMotivoReproc[m]=0;
+    porMotivoReproc[m]+=kg;
   });
 
   // Paradas por SKU (via opNum cruzando com apts) — respeita o filtro de ÁREA
@@ -4283,7 +4366,7 @@ function dashRender(apts, paradas, di, df, areaF){
     {indexAxis:"y",scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:9}}}}});
 
   // Badges visuais indicando o filtro de ÁREA ativo nos gráficos de paradas
-  ["dash-g5-badge","dash-g6-badge"].forEach(function(id){
+  ["dash-g5-badge","dash-g6-badge","dash-g11-badge"].forEach(function(id){
     var b=G(id);
     if(!b) return;
     if(areaF){ b.textContent="Área: "+areaF; b.style.display="inline-block"; }
@@ -4324,6 +4407,23 @@ function dashRender(apts, paradas, di, df, areaF){
   mkChart("dash-g6","bar",
     skuParadas.map(function(s){return s[0].slice(0,20);}),
     [{label:"minutos parado",data:skuParadas.map(function(s){return s[1];}),backgroundColor:"rgba(210,153,34,.75)"}],
+    {indexAxis:"y",scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:8}}}}});
+
+  // G11 — Reprocesso por motivo de parada (qual motivo mais gera reprocesso)
+  var motivosReproc=Object.entries(porMotivoReproc).sort(function(a,b){return b[1]-a[1];}).slice(0,10);
+  var destaqueEl=G("dash-g11-destaque");
+  if(destaqueEl){
+    if(motivosReproc.length){
+      var totalReprocPeriodo=Object.values(porMotivoReproc).reduce(function(a,b){return a+b;},0);
+      var pctTop=totalReprocPeriodo?Math.round(motivosReproc[0][1]/totalReprocPeriodo*100):0;
+      destaqueEl.textContent="Motivo que mais gera reprocesso: "+motivosReproc[0][0]+" — "+fN(motivosReproc[0][1])+" kg ("+pctTop+"% do reprocesso do período)";
+    } else {
+      destaqueEl.textContent="Nenhuma parada com reprocesso lançado no período/filtro selecionado.";
+    }
+  }
+  mkChart("dash-g11","bar",
+    motivosReproc.map(function(m){return m[0].slice(0,28);}),
+    [{label:"kg reprocessados",data:motivosReproc.map(function(m){return m[1];}),backgroundColor:"rgba(192,57,43,.75)"}],
     {indexAxis:"y",scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:8}}}}});
 
   // ── PRODUTIVIDADE POR LINHA ──────────────────────────────
@@ -4626,11 +4726,16 @@ function dashRenderOP(apts, cadeia, opFiltro, extraHtml){
   apts.forEach(function(a){porTurnoOP[a.turno||1].push(a);});
   var totalOP=apts.reduce(function(a,x){return a+(Number(x.real)||0);},0);
   var progOriginal=original?(Number(original.prog)||0):0;
+  // Reprocesso vinculado a esta OP — soma reprocessoAcumulado de cada elo da cadeia
+  // (mantido por recalcularReprocessoOp a partir do vínculo explícito reprocessoOpFbKey
+  // nas paradas — não é estimativa por horário, é o vínculo real lançado no fechamento)
+  var totalReproc=cadeia.reduce(function(a,elo){return a+(Number(elo.reprocessoAcumulado)||0);},0);
 
   var h='<div style="background:#f5f9f2;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;gap:20px;align-items:center;flex-wrap:wrap">';
   h+='<div><div style="font-size:11px;color:#739630;font-weight:700">ORDEM</div><div style="font-size:16px;font-weight:800;color:#024f2b">'+opFiltro+'</div></div>';
   if(op){h+='<div><div style="font-size:11px;color:#739630;font-weight:700">PRODUTO</div><div style="font-size:13px;font-weight:600">'+(op.desc||op.cod)+'</div></div>';}
   h+='<div><div style="font-size:11px;color:#739630;font-weight:700">REALIZADO (TOTAL)</div><div style="font-size:18px;font-weight:800;color:#024f2b">'+fN(totalOP)+' kg</div></div>';
+  h+='<div><div style="font-size:11px;color:#c0392b;font-weight:700">REPROCESSO (TOTAL)</div><div style="font-size:18px;font-weight:800;color:#c0392b">'+fN(totalReproc)+' kg'+(totalOP?' <span style="font-size:11px;font-weight:600;opacity:.75">('+Math.round(totalReproc/totalOP*100)+'% do realizado)</span>':'')+'</div></div>';
   if(progOriginal){
     var pctOP=Math.round(totalOP/progOriginal*100);
     var corOP=pctOP>=85?"#024f2b":pctOP>=70?"#d29922":"#c0392b";
@@ -5190,10 +5295,17 @@ function admSalvar(fbKey){
     updates.linha=G("adm-linha-sel").value;
     var opSel=OPS.find(function(o){return o.fbKey===G("adm-op-sel").value;});
     if(opSel){updates.opFbKey=opSel.fbKey;updates.opNum=opSel.id;updates.cod=opSel.cod;}
+    var aptAnterior=ADM_DADOS.apts.find(function(a){return a.fbKey===fbKey;});
     DB.ref("extrusao_apts/"+fbKey).update(updates).then(function(){
       fM("m-admin-corr");toast("Apontamento corrigido!","ok");
     var aptEditado=ADM_DADOS.apts.find(function(a){return a.fbKey===fbKey;});
     if(aptEditado && aptEditado.opFbKey) recalcularRealExtrusao(aptEditado.opFbKey);
+    // Recongela o total do turno — na linha nova e, se a linha foi trocada
+    // nesta correção, também na linha antiga (que perdeu esse kg)
+    if(aptAnterior){
+      recalcularTotalTurno(aptAnterior.data,aptAnterior.turno,updates.linha||aptAnterior.linha);
+      if(updates.linha && updates.linha!==aptAnterior.linha) recalcularTotalTurno(aptAnterior.data,aptAnterior.turno,aptAnterior.linha);
+    }
     registrarLog("apontamento","Editou apontamento "+fbKey+" — OP: "+(aptEditado?aptEditado.opNum:"")+" Linha: "+(aptEditado?aptEditado.linha:""),
       aptEditado?"real:"+aptEditado.real+" horaIni:"+aptEditado.horaIni:"");
     if(ADM_DADOS.apts.length===1&&G("m-op-apts").classList.contains("on")){var a=ADM_DADOS.apts[0];admVerApts(a.opFbKey,a.opNum,a.desc);}else{admBuscar();}
@@ -5220,6 +5332,7 @@ function admSalvar(fbKey){
       fM("m-admin-corr");toast("Parada corrigida!","ok");admBuscar();
       if(updates.reprocessoOpFbKey) recalcularReprocessoOp(updates.reprocessoOpFbKey);
       if(opAnteriorFk && opAnteriorFk!==updates.reprocessoOpFbKey) recalcularReprocessoOp(opAnteriorFk);
+      if(itemAnterior) recalcularTotalTurno(itemAnterior.data,itemAnterior.turno,itemAnterior.linha);
     }).catch(function(e){toast("Erro: "+e.message,"err");});
   }
 }
@@ -5228,15 +5341,17 @@ function admExcluir(fbKey){
   if(!confirm("Confirma exclusão deste registro? Esta ação não pode ser desfeita.")) return;
   if(!DB){toast("Firebase não conectado","err");return;}
   var ref=ADM_ABA==="apts"?"extrusao_apts/":"extrusao_paradas/";
-  // Se a parada excluída tinha reprocesso vinculado a uma OP, recalcula o total dela depois de remover
+  // Captura o registro antes de excluir — precisa de data/turno/linha pra recongelar
+  // o total do turno, e (se for parada) da OP vinculada pra recalcular o reprocesso
   var opParaRecalc=null;
-  if(ADM_ABA==="paradas"){
-    var itemExcluido=ADM_DADOS.paradas.find(function(p){return p.fbKey===fbKey;});
-    if(itemExcluido&&itemExcluido.reprocessoOpFbKey) opParaRecalc=itemExcluido.reprocessoOpFbKey;
-  }
+  var itemExcluido=ADM_ABA==="apts"?
+    ADM_DADOS.apts.find(function(a){return a.fbKey===fbKey;}):
+    ADM_DADOS.paradas.find(function(p){return p.fbKey===fbKey;});
+  if(ADM_ABA==="paradas" && itemExcluido && itemExcluido.reprocessoOpFbKey) opParaRecalc=itemExcluido.reprocessoOpFbKey;
   DB.ref(ref+fbKey).remove().then(function(){
     toast("Registro excluído!","ok");admBuscar();
     if(opParaRecalc) recalcularReprocessoOp(opParaRecalc);
+    if(itemExcluido) recalcularTotalTurno(itemExcluido.data,itemExcluido.turno,itemExcluido.linha);
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
@@ -5927,6 +6042,7 @@ function batTrocar(i){
   DB.ref("extrusao_apts/"+r.fbKey).update({real:novoValor}).then(function(){
     r._feito=true;
     if(r.opFbKey) recalcularRealExtrusao(r.opFbKey);
+    recalcularTotalTurno(r.data,r.turno,r.linha);
     registrarLog("apontamento","Corrigido via Conferência de Bateladas (Excel) — apontamento "+r.fbKey+" linha "+r.linha+" ("+r.data+" "+r.horaIni+"–"+r.horaFim+")",
       "real anterior:"+r.real+" → novo:"+novoValor+" (baseado em "+r.qtdBatidas+" bateladas)");
     toast("Apontamento atualizado a partir das bateladas!","ok");
@@ -7104,6 +7220,7 @@ function confExcluirApt(btn){
     }
     toast("Apontamento excluído","ok");
     registrarLog("conf_apt","Excluiu apontamento "+(apt?apt.horaIni+"-"+apt.horaFim+" "+kg+"kg":"fbKey:"+fbKey),apt?apt.linha:"");
+    if(apt) recalcularTotalTurno(apt.data,apt.turno,apt.linha);
     confGerar();
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
@@ -7120,6 +7237,7 @@ function confExcluirParada(btn){
     registrarLog("conf_parada","Excluiu parada "+(parada?parada.horaIni+" "+parada.descricao:"fbKey:"+fbKey),parada?parada.linha:"");
     confGerar();
     if(parada&&parada.reprocessoOpFbKey) recalcularReprocessoOp(parada.reprocessoOpFbKey);
+    if(parada) recalcularTotalTurno(parada.data,parada.turno,parada.linha);
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
@@ -7157,28 +7275,42 @@ function resumoAdmBuscar(){
     DB.ref("extrusao_apts").orderByChild("data").equalTo(dt).once("value"),
     DB.ref("extrusao_paradas").orderByChild("data").equalTo(dt).once("value"),
     DB.ref("ops").orderByChild("data").equalTo(dt).once("value"),
-    DB.ref("extrusao_qualidade").orderByChild("data").equalTo(dt).once("value")
+    DB.ref("extrusao_qualidade").orderByChild("data").equalTo(dt).once("value"),
+    DB.ref("extrusao_turno").orderByChild("data").equalTo(dt).once("value")
   ]).then(function(results){
-    var apts=[], paradas=[], ops=[], qualid=[];
+    var apts=[], paradas=[], ops=[], qualid=[], turnosFechados=[];
     if(results[0].exists()) results[0].forEach(function(c){var v=c.val();v.fbKey=c.key;apts.push(v);});
     if(results[1].exists()) results[1].forEach(function(c){var v=c.val();v.fbKey=c.key;paradas.push(v);});
     if(results[2].exists()) results[2].forEach(function(c){var v=c.val();v.fbKey=c.key;ops.push(v);});
     if(results[3].exists()) results[3].forEach(function(c){var v=c.val();v.fbKey=c.key;qualid.push(v);});
+    if(results[4].exists()) results[4].forEach(function(c){var v=c.val();v.fbKey=c.key;turnosFechados.push(v);});
 
     // Filtrar por turno e linha
     apts=apts.filter(function(a){ return a.turno===turno && (!linha||a.linha===linha); });
     paradas=paradas.filter(function(p){ return p.turno===turno && (!linha||p.linha===linha); });
     qualid=qualid.filter(function(q){ return q.turno===turno && (!linha||q.linha===linha); });
+    turnosFechados=turnosFechados.filter(function(t){ return t.turno===turno; });
 
     _resumoAdmDados={apts:apts,paradas:paradas,ops:ops,qualid:qualid,dt:dt,turno:turno,linha:linha};
-    resumoAdmRenderizar(apts,paradas,ops,dt,turno,linha,qualid);
+    resumoAdmRenderizar(apts,paradas,ops,dt,turno,linha,qualid,turnosFechados);
     // Recarrega campos de reprocesso para o turno/data selecionado pelo admin
     carregarReprocessoAdm(dt,turno);
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
-function resumoAdmRenderizar(apts,paradas,ops,dt,turno,linhaFiltro,qualid){
+function resumoAdmRenderizar(apts,paradas,ops,dt,turno,linhaFiltro,qualid,turnosFechados){
   qualid=qualid||[];
+  turnosFechados=turnosFechados||[];
+  // Mapa por linha (encId) dos valores CONGELADOS no fechamento — fonte oficial
+  // quando o turno já foi finalizado. Mescla registros de múltiplos operadores
+  // (cada um pode ter fechado linhas diferentes do mesmo turno/data).
+  var congelado={};
+  turnosFechados.forEach(function(tf){
+    if(!tf.producao) return;
+    Object.keys(tf.producao).forEach(function(lk){
+      congelado[lk]={producao:Number(tf.producao[lk])||0, paradasMin:Number((tf.paradasMin||{})[lk])||0};
+    });
+  });
   var linhas=linhaFiltro?[linhaFiltro]:["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
   var h='<div style="font-size:11px;color:#739630;margin-bottom:10px">'+
         'Turno '+turno+' · '+dt+(linhaFiltro?' · '+nomeCurto(linhaFiltro):'')+'</div>';
@@ -7191,8 +7323,8 @@ function resumoAdmRenderizar(apts,paradas,ops,dt,turno,linhaFiltro,qualid){
     var qualidL=qualid.filter(function(q){return q.linha===linha;});
     if(!aptsL.length&&!parasL.length&&!qualidL.length) return;
 
-    var totalReal=aptsL.reduce(function(s,a){return s+(Number(a.real)||0);},0);
-    var minPara=parasL.reduce(function(s,p){
+    var totalRealVivo=aptsL.reduce(function(s,a){return s+(Number(a.real)||0);},0);
+    var minParaVivo=parasL.reduce(function(s,p){
       var m=Number(p.minutos)||0;
       if(!m&&p.horaIni&&p.horaFim){
         var hi=p.horaIni.split(":"),hf=p.horaFim.split(":");
@@ -7201,6 +7333,12 @@ function resumoAdmRenderizar(apts,paradas,ops,dt,turno,linhaFiltro,qualid){
       }
       return s+m;
     },0);
+    // Se o turno já foi fechado para esta linha, usa o valor CONGELADO (oficial,
+    // gravado no fechamento e mantido em sincronia por qualquer correção posterior)
+    // em vez de recalcular ao vivo — é o valor que deve ser "pego no outro dia".
+    var frz=congelado[encId(linha)];
+    var totalReal=frz?frz.producao:totalRealVivo;
+    var minPara=frz?frz.paradasMin:minParaVivo;
     totalGeralReal+=totalReal; totalGeralMin+=minPara;
 
     // OP mais produzida nessa linha nesse turno
@@ -7214,7 +7352,7 @@ function resumoAdmRenderizar(apts,paradas,ops,dt,turno,linhaFiltro,qualid){
 
     h+='<div style="border:1px solid #d4e8d4;border-radius:8px;margin-bottom:10px;overflow:hidden">';
     h+='<div style="background:#024f2b;color:#fff;padding:7px 12px;font-size:12px;font-weight:700;display:flex;justify-content:space-between">';
-    h+='<span>'+nomeCurto(linha)+'</span>';
+    h+='<span>'+nomeCurto(linha)+(frz?' <span style="font-size:9px;font-weight:600;opacity:.85">🔒 turno fechado</span>':' <span style="font-size:9px;font-weight:600;opacity:.7">⏳ turno em aberto (ao vivo)</span>')+'</span>';
     h+='<span style="font-size:10px;opacity:.8">'+(opPrinc?opPrinc.num:'sem apontamentos')+'</span></div>';
 
     // Cards resumo
