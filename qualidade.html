@@ -371,6 +371,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div style="display:flex;gap:8px;margin-bottom:14px">
       <button class="btn bsm bp" id="rast-tab-lote" style="flex:1" onclick="rastMudarAba('lote')">🔍 Por Lote/OP</button>
       <button class="btn bsm" id="rast-tab-data" style="flex:1" onclick="rastMudarAba('data')">📅 Por Data de Inspeção</button>
+      <button class="btn bsm" id="rast-tab-sku" style="flex:1" onclick="rastMudarAba('sku')">🏷️ Por SKU / Período</button>
     </div>
     <div id="rast-painel-lote" class="fr">
       <div class="fg"><label class="fl">Buscar por Lote ou OP</label><input type="text" id="rast-busca" placeholder="Digite o lote ou número da OP" onkeydown="if(event.key==='Enter')buscarRastreio()"></div>
@@ -383,6 +384,15 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <div class="fg" style="align-self:flex-end;display:flex;gap:8px">
         <button class="btn bp" style="flex:1" onclick="buscarRastreioPorData()">🔍 Buscar</button>
       </div>
+    </div>
+    <div id="rast-painel-sku" class="fr" style="display:none">
+      <div class="fg" style="grid-column:1/-1"><label class="fl">Código ou nome do SKU</label><input type="text" id="rast-sku-busca" placeholder="Digite o código ou parte do nome do SKU" onkeydown="if(event.key==='Enter')buscarRastreioPorSku()"></div>
+      <div class="fg"><label class="fl">Período — De</label><input type="date" id="rast-sku-de"></div>
+      <div class="fg"><label class="fl">Período — Até</label><input type="date" id="rast-sku-ate" onkeydown="if(event.key==='Enter')buscarRastreioPorSku()"></div>
+      <div class="fg" style="align-self:flex-end;display:flex;gap:8px">
+        <button class="btn bp" style="flex:1" onclick="buscarRastreioPorSku()">🔍 Buscar</button>
+      </div>
+      <div class="alw" style="grid-column:1/-1;margin-bottom:0">Considera o SKU produzido no período <strong>ou</strong> com inspeção de qualidade lançada no período (o que for mais amplo).</div>
     </div>
     <div style="text-align:right">
       <button class="btn bsm" id="btn-rast-pdf" style="display:none" onclick="exportarRastreabilidadePDF()">⇣ Exportar PDF</button>
@@ -3126,11 +3136,12 @@ function abrirModalExcecaoDoRastreio(inspFbKey, somenteChave){
 }
 
 function rastMudarAba(aba){
-  var lote=aba==='lote';
-  G('rast-painel-lote').style.display=lote?'':'none';
-  G('rast-painel-data').style.display=lote?'none':'';
-  G('rast-tab-lote').className='btn bsm'+(lote?' bp':'');
-  G('rast-tab-data').className='btn bsm'+(lote?'':' bp');
+  G('rast-painel-lote').style.display=aba==='lote'?'':'none';
+  G('rast-painel-data').style.display=aba==='data'?'':'none';
+  G('rast-painel-sku').style.display=aba==='sku'?'':'none';
+  G('rast-tab-lote').className='btn bsm'+(aba==='lote'?' bp':'');
+  G('rast-tab-data').className='btn bsm'+(aba==='data'?' bp':'');
+  G('rast-tab-sku').className='btn bsm'+(aba==='sku'?' bp':'');
   G('rast-resultado').innerHTML='';
   G('btn-rast-pdf').style.display='none';
   RAST_CACHE=[];
@@ -3182,6 +3193,88 @@ function buscarRastreioPorData(){
   });
 }
 
+function buscarRastreioPorSku(){
+  var termo=(G('rast-sku-busca').value||'').trim();
+  var de=G('rast-sku-de').value, ate=G('rast-sku-ate').value;
+  if(!termo){ toast('Digite o código ou nome do SKU','err'); return; }
+  if(!de||!ate){ toast('Informe o período (De / Até)','err'); return; }
+  if(de>ate){ toast('A data "De" não pode ser depois da data "Até"','err'); return; }
+
+  // Períodos muito longos varrem muitos registros (ops + inspeções) — avisa antes de seguir.
+  var dias=Math.round((new Date(ate)-new Date(de))/86400000)+1;
+  if(dias>120 && !confirm('Período de '+dias+' dias — a busca pode demorar mais que o normal. Continuar?')) return;
+
+  G('rast-resultado').innerHTML='<div style="text-align:center;padding:30px;color:#739630">Buscando...</div>';
+  G('btn-rast-pdf').style.display='none';
+  RAST_CACHE=[];
+
+  Promise.all([
+    DB.ref('ops').orderByChild('data').startAt(de).endAt(ate).once('value'),
+    DB.ref('qualidade_inspecoes').orderByChild('data').startAt(de).endAt(ate).once('value')
+  ]).then(function(r){
+    var mapaOps={};
+    // OPs produzidas dentro do período (data de produção da OP)
+    if(r[0].exists()) r[0].forEach(function(c){ var o=c.val(); o.fbKey=c.key; mapaOps[c.key]=o; });
+    // + OPs com inspeção de qualidade lançada no período, mesmo que produzidas fora dele
+    var chavesFaltantes=[];
+    if(r[1].exists()) r[1].forEach(function(c){
+      var v=c.val();
+      if(v.opFbKey && !mapaOps[v.opFbKey] && chavesFaltantes.indexOf(v.opFbKey)===-1) chavesFaltantes.push(v.opFbKey);
+    });
+    return Promise.all(chavesFaltantes.map(function(k){ return DB.ref('ops/'+k).once('value'); })).then(function(snaps){
+      snaps.forEach(function(sn){ if(sn.exists()){ var o=sn.val(); o.fbKey=sn.key; mapaOps[sn.key]=o; } });
+      var termoLower=termo.toLowerCase();
+      var ops=Object.keys(mapaOps).map(function(k){return mapaOps[k];}).filter(function(o){
+        return (String(o.cod||'').toLowerCase().indexOf(termoLower)!==-1) || (String(o.desc||'').toLowerCase().indexOf(termoLower)!==-1);
+      });
+      ops.sort(function(a,b){ return (a.data||'')>(b.data||'')?1:-1; });
+      renderizarRastreioResultadosSku(ops, termo, de, ate, 'Nenhuma OP do SKU "'+termo+'" encontrada no período de '+de.split('-').reverse().join('/')+' a '+ate.split('-').reverse().join('/'));
+    });
+  }).catch(function(e){
+    G('rast-resultado').innerHTML='<div style="color:#c0392b;padding:20px">Erro: '+e.message+'</div>';
+  });
+}
+
+function renderizarRastreioResultadosSku(ops, termo, de, ate, msgVazio){
+  RAST_INSP_CACHE={};
+  if(!ops.length){
+    G('rast-resultado').innerHTML='<div class="card" style="text-align:center;color:#999">'+msgVazio+'</div>';
+    return;
+  }
+  var expandirPadrao = ops.length===1;
+  Promise.all(ops.map(function(op){ return montarRastreioOP(op, null, expandirPadrao); })).then(function(resultados){
+    RAST_CACHE=resultados.map(function(r){return r.dados;});
+
+    // Agregados do período — soma o que foi encontrado, separado por destino de produção
+    var totExtrusao=0, totSilo=0, totSacariaKg=0, totBigBagKg=0;
+    resultados.forEach(function(r){
+      var d=r.dados;
+      totExtrusao+=d.totalReal||0;
+      totSilo+=d.silosKg||0;
+      totSacariaKg+=d.sacariaKg||0;
+      totBigBagKg+=d.bigbagKg||0;
+    });
+
+    var resumo='<div class="card" style="background:#f5faf5">';
+    resumo+='<div class="ct" style="margin-bottom:8px">Resumo do período — '+ops.length+' OP(s) do SKU "'+esc(termo)+'" entre '+de.split('-').reverse().join('/')+' e '+ate.split('-').reverse().join('/')+'</div>';
+    resumo+='<div class="fr3" style="gap:14px;margin-bottom:0">';
+    resumo+='<div><div class="fl">Produzido (Extrusão)</div><div style="font-weight:700;color:#024f2b">'+fN(totExtrusao)+' kg</div></div>';
+    if(totSilo>0) resumo+='<div><div class="fl">Destinado a Silo (Granel)</div><div style="font-weight:700;color:#024f2b">'+fN(totSilo)+' kg</div></div>';
+    if(totSacariaKg>0) resumo+='<div><div class="fl">Sacaria Apontada</div><div style="font-weight:700;color:#024f2b">'+fN(Math.round(totSacariaKg/25))+' sc ('+fN(totSacariaKg)+' kg)</div></div>';
+    if(totBigBagKg>0) resumo+='<div><div class="fl">Big Bag Apontado</div><div style="font-weight:700;color:#024f2b">'+fN(Math.round(totBigBagKg/750))+' bg ('+fN(totBigBagKg)+' kg)</div></div>';
+    resumo+='</div></div>';
+
+    if(ops.length>1){
+      resumo+='<div style="text-align:right;margin-bottom:10px">';
+      resumo+='<button class="btn bxs" onclick="rastExpandirTodos(true)">Expandir todos</button> ';
+      resumo+='<button class="btn bxs" onclick="rastExpandirTodos(false)">Recolher todos</button>';
+      resumo+='</div>';
+    }
+    G('rast-resultado').innerHTML=resumo+resultados.map(function(r){return r.html;}).join('');
+    G('btn-rast-pdf').style.display='';
+  });
+}
+
 function renderizarRastreioResultados(ops, destacarData, msgVazio){
   RAST_INSP_CACHE={};
   if(!ops.length){
@@ -3205,12 +3298,18 @@ function renderizarRastreioResultados(ops, destacarData, msgVazio){
 }
 
 function montarRastreioOP(op, destacarData, expandido){
+  // Destino da produção (Ensaque) é lido do mesmo Firebase, nós próprios do módulo Ensaque
+  // (apontamentos/silos_registros) — leitura apenas, Qualidade nunca escreve nesses nós.
+  var precisaSilo = op.tipo==='KG';
+  var precisaEnsaque = op.tipo==='SC' || op.tipo==='BG';
   return Promise.all([
     DB.ref('extrusao_apts').orderByChild('opFbKey').equalTo(op.fbKey).once('value'),
     DB.ref('extrusao_paradas').orderByChild('opFbKey').equalTo(op.fbKey).once('value'),
     DB.ref('qualidade_inspecoes').orderByChild('opFbKey').equalTo(op.fbKey).once('value'),
     DB.ref('qualidade_nc').orderByChild('opFbKey').equalTo(op.fbKey).once('value'),
-    DB.ref('qualidade_op_concluida/'+op.fbKey).once('value')
+    DB.ref('qualidade_op_concluida/'+op.fbKey).once('value'),
+    precisaSilo ? DB.ref('silos_registros').orderByChild('opId').equalTo(op.fbKey).once('value') : Promise.resolve(null),
+    precisaEnsaque ? DB.ref('apontamentos').orderByChild('opId').equalTo(op.fbKey).once('value') : Promise.resolve(null)
   ]).then(function(r){
     var apts=[]; r[0].forEach(function(c){apts.push(c.val());});
     var paradas=[]; r[1].forEach(function(c){paradas.push(c.val());});
@@ -3219,6 +3318,20 @@ function montarRastreioOP(op, destacarData, expandido){
     var qualConcluida = r[4].exists() ? r[4].val() : null;
     var totalReal = apts.reduce(function(s,a){return s+(Number(a.real)||0);},0);
     var pq = PARAMS_QUAL[op.cod] || {};
+
+    // Silo (OP tipo Granel/KG) — cada registro traz operador, hora e o(s) silo(s) com quantidade
+    var silosHist=[];
+    if(r[5]) r[5].forEach(function(c){ silosHist.push(c.val()); });
+    silosHist.sort(function(a,b){ return (a.ts||0)-(b.ts||0); });
+    var silosKg=silosHist.reduce(function(s,reg){ return s+somarKgDeSilos(reg.silos); },0);
+
+    // Sacaria/Big Bag (OP tipo SC/BG) — soma apenas apontamentos normais, excluindo reprocesso
+    // (reprocesso é material reaproveitado, não é sacaria/bigbag pronto — mesmo critério usado no Ensaque)
+    var ensApts=[];
+    if(r[6]) r[6].forEach(function(c){ ensApts.push(c.val()); });
+    var ensApontadosBons = ensApts.filter(function(a){ return a.origem!=='reprocesso'; });
+    var sacariaKg = op.tipo==='SC' ? ensApontadosBons.reduce(function(s,a){return s+(Number(a.real)||0);},0) : 0;
+    var bigbagKg = op.tipo==='BG' ? ensApontadosBons.reduce(function(s,a){return s+(Number(a.real)||0);},0) : 0;
 
     // Ordena inspeções por hora
     insps.sort(function(a,b){ return (a.data+a.hora)>(b.data+b.hora)?1:-1; });
@@ -3275,6 +3388,27 @@ function montarRastreioOP(op, destacarData, expandido){
 
     h+='<div class="ct" style="margin-bottom:6px">Produção (Extrusão)</div>';
     h+='<div style="font-size:12px;color:#4a664a;margin-bottom:12px">Total apontado: <strong>'+fN(totalReal)+' kg</strong> em '+apts.length+' apontamento(s) — '+paradas.length+' parada(s) registrada(s)</div>';
+
+    // Destino da produção (Ensaque) — Silo para OPs Granel, Sacaria/Big Bag para OPs ensacadas
+    if(op.tipo==='KG'){
+      h+='<div class="ct" style="margin-bottom:6px">Destino: Silo(s)</div>';
+      if(silosHist.length){
+        h+='<div class="tw" style="margin-bottom:12px"><table><thead><tr><th>Data</th><th>Turno</th><th>Hora</th><th>Apontador</th><th>Silo(s) / Quantidade</th></tr></thead><tbody>';
+        silosHist.forEach(function(reg){
+          h+='<tr><td>'+(reg.data?reg.data.split('-').reverse().join('/'):'—')+'</td><td>T'+(reg.turno||'—')+'</td><td>'+(reg.hora||'—')+'</td><td>'+(reg.operador||'—')+'</td><td>'+(reg.silos||'—')+'</td></tr>';
+        });
+        h+='</tbody></table></div>';
+        h+='<div style="font-size:12px;color:#4a664a;margin-bottom:12px">Total destinado a silo: <strong>'+fN(silosKg)+' kg</strong></div>';
+      } else {
+        h+='<div style="font-size:12px;color:#999;margin-bottom:12px">Nenhum registro de silo para esta OP</div>';
+      }
+    } else if(op.tipo==='SC'){
+      h+='<div class="ct" style="margin-bottom:6px">Sacaria Apontada</div>';
+      h+='<div style="font-size:12px;color:#4a664a;margin-bottom:12px">Total: <strong>'+fN(Math.round(sacariaKg/25))+' sc</strong> ('+fN(sacariaKg)+' kg)</div>';
+    } else if(op.tipo==='BG'){
+      h+='<div class="ct" style="margin-bottom:6px">Big Bag Apontado</div>';
+      h+='<div style="font-size:12px;color:#4a664a;margin-bottom:12px">Total: <strong>'+fN(Math.round(bigbagKg/750))+' bg</strong> ('+fN(bigbagKg)+' kg)</div>';
+    }
 
     h+='<div class="ct" style="margin-bottom:6px">Resultados de Qualidade ('+insps.length+')</div>';
     if(insps.length){
@@ -3355,12 +3489,23 @@ function montarRastreioOP(op, destacarData, expandido){
     h+='</div>'; // fecha rast-body
     h+='</div>'; // fecha card
 
-    // Retorna HTML + dados brutos para o PDF
+    // Retorna HTML + dados brutos para o PDF e para o resumo agregado da busca por SKU
     return {
       html: h,
-      dados: {op:op, apts:apts, paradas:paradas, insps:insps, ncs:ncs, totalReal:totalReal, pq:pq, qualConcluida:qualConcluida}
+      dados: {op:op, apts:apts, paradas:paradas, insps:insps, ncs:ncs, totalReal:totalReal, pq:pq, qualConcluida:qualConcluida,
+              silosHist:silosHist, silosKg:silosKg, sacariaKg:sacariaKg, bigbagKg:bigbagKg}
     };
   });
+}
+
+// Soma o kg embutido na string de silos gravada pelo Ensaque, ex: "1-A(25000kg), 2-B(30000kg)"
+function somarKgDeSilos(str){
+  if(!str) return 0;
+  var total=0, re=/\(([\d.,]+)\s*kg\)/gi, m;
+  while((m=re.exec(str))!==null){
+    total += parseFloat(m[1].replace(/\./g,'').replace(',','.')) || 0;
+  }
+  return total;
 }
 
 function rastToggleCard(domId){
