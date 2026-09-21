@@ -1722,6 +1722,9 @@ function renderDash(){
     if(snapApts.exists()) snapApts.forEach(function(c){
       var a=c.val();
       if(a.substituido) return;
+      // Reprocesso de "Limpeza de linha" conta na Extrusao, nao no Ensaque —
+      // fica de fora de todo o dashboard/relatorios do Ensaque (ver salvarApt).
+      if(a.origem==='reprocesso'&&a.motivoReprocesso==='Limpeza de linha') return;
       if(ln&&fbKeyToLinhaLocal[a.opId]!==ln) return;
       var t=Number(a.turno);
       if(t<1||t>3) return;
@@ -2597,6 +2600,15 @@ function salvarApt(){
       motivoReprocesso='Outro: '+motivoTxt;
     }
   }
+  // "Limpeza de linha" vinculada a OP: a partir desta mudanca, esse reprocesso
+  // NAO soma mais no reprocesso/producao do Ensaque (op.reprocessado, op.real,
+  // realPorData/realPorDataTurno, dashboards) — passa a contar so no reprocesso
+  // da Extrusao daquela OP (ops/{fbKey}.reprocessoLimpezaEnsaque). O apontamento
+  // continua sendo gravado normalmente (etiqueta, rastreabilidade e auditoria de
+  // mass-balance Extrusao x Ensaque, que le direto de 'apontamentos' e precisa
+  // continuar enxergando esse kg). Ver recalcularReprocessoLimpezaEnsaque().
+  var isLimpezaLinha=reprocessoKG>0&&motivoReprocesso==='Limpeza de linha';
+  var reprocessoParaEnsaque=isLimpezaLinha?0:reprocessoKG;
 
   // Valores anteriores do turno (em SC/BG/KG)
   var antT1sc=op?Math.round((op.t1||0)/fator):0;
@@ -2620,13 +2632,13 @@ function salvarApt(){
   // simplesmente nao recebe mais gravacoes novas). Reprocesso SOMA no total
   // produzido da OP, ao contrario de perda (que era descontada a parte).
   var antReprocessado=op?Number(op.reprocessado)||0:0;
-  var totalReprocessado=antReprocessado+reprocessoKG;
+  var totalReprocessado=antReprocessado+reprocessoParaEnsaque;
 
   var t1=t1sc*fator, t2=t2sc*fator, t3=t3sc*fator;
   var real=t1+t2+t3+totalReprocessado;
   var novosStr=tipo==='SC'?fN(novoT1sc+novoT2sc+novoT3sc)+' SC':tipo==='BG'?fN(novoT1sc+novoT2sc+novoT3sc)+' BG':fN((novoT1sc+novoT2sc+novoT3sc)*fator)+' kg';
   var totalStr=tipo==='SC'?fN(t1sc+t2sc+t3sc)+' SC = '+fN(t1+t2+t3)+' kg':tipo==='BG'?fN(t1sc+t2sc+t3sc)+' BG = '+fN(t1+t2+t3)+' kg':fN(t1+t2+t3)+' kg';
-  var fatorStr=' (+'+novosStr+(reprocessoKG>0?' | +Reprocesso: '+fN(reprocessoKG)+' kg':'')+' | Total OP: '+fN(real)+' kg)';
+  var fatorStr=' (+'+novosStr+(reprocessoKG>0?' | +Reprocesso: '+fN(reprocessoKG)+' kg'+(isLimpezaLinha?' (conta na Extrusao)':''):'')+' | Total OP: '+fN(real)+' kg)';
 
   // Data do apontamento = data do filtro selecionado na tela (Cards do Operador),
   // capturada em abrirApt() e guardada no campo hidden 'adtctx'.
@@ -2660,9 +2672,11 @@ function salvarApt(){
     if(novoT2sc>0){ rpd[dtT2]=(rpd[dtT2]||0)+novoT2sc*fator; rpdt[dtT2]=rpdt[dtT2]||{}; rpdt[dtT2]['2']=(rpdt[dtT2]['2']||0)+novoT2sc*fator; }
     if(novoT3sc>0){ rpd[dtT3]=(rpd[dtT3]||0)+novoT3sc*fator; rpdt[dtT3]=rpdt[dtT3]||{}; rpdt[dtT3]['3']=(rpdt[dtT3]['3']||0)+novoT3sc*fator; }
     // Reprocesso soma no total do dia da OP tambem (mesmo criterio de bom/produzido)
-    if(reprocessoKG>0){
-      rpd[dtApt]=(rpd[dtApt]||0)+reprocessoKG;
-      if(turno>=1&&turno<=3){ rpdt[dtApt]=rpdt[dtApt]||{}; rpdt[dtApt][String(turno)]=(rpdt[dtApt][String(turno)]||0)+reprocessoKG; }
+    // — exceto Limpeza de linha, que fica de fora do total do Ensaque (vai pra
+    // Extrusao via reprocessoLimpezaEnsaque, recalculado depois do save).
+    if(reprocessoParaEnsaque>0){
+      rpd[dtApt]=(rpd[dtApt]||0)+reprocessoParaEnsaque;
+      if(turno>=1&&turno<=3){ rpdt[dtApt]=rpdt[dtApt]||{}; rpdt[dtApt][String(turno)]=(rpdt[dtApt][String(turno)]||0)+reprocessoParaEnsaque; }
     }
 
     var opUpdate={
@@ -2673,7 +2687,7 @@ function salvarApt(){
     };
     // op.perda NAO recebe mais gravacoes a partir de agora (corte limpo) — historico
     // anterior fica congelado, so nao escrevemos essa chave no update.
-    if(reprocessoKG>0) opUpdate.reprocessado=totalReprocessado;
+    if(reprocessoParaEnsaque>0) opUpdate.reprocessado=totalReprocessado;
 
     var promises=[ DB.ref('ops/'+fbKey).update(opUpdate) ];
   // Apontamento T1
@@ -2714,6 +2728,7 @@ function salvarApt(){
     return Promise.all(promises);
   }).then(function(){
     ld(false);
+    if(isLimpezaLinha) recalcularReprocessoLimpezaEnsaque(fbKey);
     var dtsStr='';
     if(novoT1sc>0&&dtT1!==hoje()) dtsStr+=' T1:'+dtT1;
     if(novoT2sc>0&&dtT2!==hoje()) dtsStr+=' T2:'+dtT2;
@@ -2724,7 +2739,7 @@ function salvarApt(){
     G('arp').value=0; G('arp-motivo').value=''; G('arp-motivo-txt').value='';
     G('arp-motivo-row').style.display='none'; G('arp-motivo-outro').style.display='none';
     fM('mapt');
-    addLog('APONTAMENTO', fbKey+' '+dtApt+' T'+turno+' '+fN(real)+'kg'+(reprocessoKG>0?' (reprocesso: '+fN(reprocessoKG)+'kg — '+codigoEtiqueta+')':''));
+    addLog('APONTAMENTO', fbKey+' '+dtApt+' T'+turno+' '+fN(real)+'kg'+(reprocessoKG>0?' (reprocesso: '+fN(reprocessoKG)+'kg — '+codigoEtiqueta+(isLimpezaLinha?' — conta na Extrusao':'')+')':''));
     if(reprocessoKG>0){
       var opAtualizada=null;
       for(var ix=0;ix<OPS.length;ix++){if(OPS[ix].fbKey===fbKey){opAtualizada=OPS[ix];break;}}
@@ -2740,6 +2755,28 @@ function salvarApt(){
     }
     if(tipo==='KG') setTimeout(function(){abrirSilos(fbKey);},400);
   }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
+}
+
+// Reprocesso de "Limpeza de linha" apontado no Ensaque mas vinculado a uma OP:
+// nao conta mais no reprocesso/producao do Ensaque (op.reprocessado ja fica de
+// fora desde salvarApt) — este campo e o equivalente, do lado do Ensaque, ao
+// reprocessoAcumulado da Extrusao: sempre recalculado do ZERO a partir dos
+// apontamentos ativos (nunca soma incremental), pra nao dessincronizar se um
+// apontamento for substituido/corrigido depois. A Extrusao le este campo em
+// ops/{fbKey}.reprocessoLimpezaEnsaque pra somar no reprocesso total da OP dela
+// (ver dashRenderOP em extrusao.html). O comparativo Extrusao x Ensaque (mass
+// balance) tambem usa este campo — ver linha "reprocesso=" em gerarComparativo.
+function recalcularReprocessoLimpezaEnsaque(fbKey){
+  if(!fbKey||!DB) return;
+  DB.ref('apontamentos').orderByChild('opId').equalTo(fbKey).once('value').then(function(s){
+    var total=0;
+    if(s.exists()) s.forEach(function(c){
+      var a=c.val();
+      if(a.substituido) return;
+      if(a.origem==='reprocesso'&&a.motivoReprocesso==='Limpeza de linha') total+=Number(a.real)||0;
+    });
+    DB.ref('ops/'+fbKey+'/reprocessoLimpezaEnsaque').set(total);
+  }).catch(function(e){console.warn('Recalcular reprocesso limpeza (Extrusao):',e.message);});
 }
 
 // ============================================================
@@ -4124,6 +4161,8 @@ function genRelPDF(tipo){
     if(snapApts.exists()) snapApts.forEach(function(c){
       var a=c.val();
       if(a.substituido) return;
+      // Limpeza de linha conta na Extrusao, nao no relatorio do Ensaque.
+      if(a.origem==='reprocesso'&&a.motivoReprocesso==='Limpeza de linha') return;
       if(lnFiltro&&fbKeyToLinhaPdf[a.opId]!==lnFiltro) return;
       var t=Number(a.turno);
       if(t<1||t>3) return;
@@ -4475,9 +4514,14 @@ function gerarComparativo(){
         var ensacado=rodadas.reduce(function(a,o){return a+(Number(o.real)||0);},0);
         // Reprocesso da cadeia = soma do campo legado 'perda' (registros antigos,
         // gravados antes da mudanca de nome — na pratica sempre foi reprocesso)
-        // + 'reprocessado' (campo atual). Preserva 100% do que ja foi apontado,
-        // so muda o rotulo de exibicao.
-        var reprocesso=rodadas.reduce(function(a,o){return a+(Number(o.perda)||0)+(Number(o.reprocessado)||0);},0);
+        // + 'reprocessado' (campo atual) + 'reprocessoLimpezaEnsaque' (Limpeza de
+        // linha apontada no Ensaque, que deixou de contar em op.reprocessado e
+        // passou a contar no reprocesso da Extrusao — mas o material ainda passou
+        // fisicamente pelo Ensaque, entao PRECISA continuar entrando aqui, senao
+        // este comparativo de mass-balance acusa "sumico" de material que na
+        // verdade so foi realocado de contador). Preserva 100% do que ja foi
+        // apontado, so muda o rotulo de exibicao.
+        var reprocesso=rodadas.reduce(function(a,o){return a+(Number(o.perda)||0)+(Number(o.reprocessado)||0)+(Number(o.reprocessoLimpezaEnsaque)||0);},0);
         var extrusado=extPorBase[baseId]||0;
         var extPorRodada=extPorRodadaPorBase[baseId]||{};
         // Programado da cadeia inteira: usa progOriginal se alguma rodada tiver
@@ -5374,6 +5418,8 @@ function gerarRelPeriodo(){
     if(aptsSnap.exists()) aptsSnap.forEach(function(c){
       var a=c.val();
       if(a.substituido) return;
+      // Limpeza de linha conta na Extrusao, nao no relatorio de periodo do Ensaque.
+      if(a.origem==='reprocesso'&&a.motivoReprocesso==='Limpeza de linha') return;
       if(!turnoPorDia.hasOwnProperty(a.data)) return;
       if(ln&&fbKeyToLinha[a.opId]!==ln) return;
       var t=Number(a.turno);
@@ -6627,6 +6673,10 @@ function auditarConsistencia(){
     if(snap.exists()) snap.forEach(function(c){
       var a=c.val();
       if(a.substituido) return;
+      // Limpeza de linha nao entra em realPorData do Ensaque (conta na Extrusao) —
+      // precisa ficar de fora daqui tambem, senao a auditoria acusa divergencia
+      // falsa (apontamentos > realPorData) nas OPs com esse motivo.
+      if(a.origem==='reprocesso'&&a.motivoReprocesso==='Limpeza de linha') return;
       var t=Number(a.turno);
       if(t<1||t>3) return; // ignora registro-resumo (turno:0) e outros tipos
       var real=a.real!==undefined?(Number(a.real)||0):((Number(a.t1)||0)+(Number(a.t2)||0)+(Number(a.t3)||0));
