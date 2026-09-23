@@ -742,7 +742,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <div id="dash-cards" style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px"></div>
 
     <!-- Cards por Família -->
-    <div style="font-weight:700;color:#024f2b;font-size:12px;margin-bottom:8px">📦 Produção por Família (AQUA / PET / HORSE)</div>
+    <div style="font-weight:700;color:#024f2b;font-size:12px;margin-bottom:8px">📦 Produção por Família (AQUA / PET / HORSE) — kg e horas apontadas</div>
     <div id="dash-cards-familia" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px"></div>
 
     <!-- Família e Granulometria AQUA -->
@@ -4206,9 +4206,20 @@ function dashRender(apts, paradas, di, df, areaF){
   // Por família (AQUA / PET / HORSE) e, dentro de AQUA, por granulometria
   var porFamilia={AQUA:0,PET:0,HORSE:0};
   var porGranAqua={};
+  // Horas apontadas por família: soma da duração (horaIni→horaFim) de cada
+  // apontamento. É tempo de linha ocupado com a família (inclui paradas que
+  // ocorreram dentro do intervalo do apontamento). Intervalos acima de
+  // MAX_MIN_APT_HORAS são tratados como lançamento inconsistente (ex.: hora
+  // fim digitada antes da início → virada de 24h) e ficam fora da soma.
+  var MAX_MIN_APT_HORAS=600; // 10h — maior que qualquer turno
+  var minPorFamilia={AQUA:0,PET:0,HORSE:0};
+  var aptsHoraInvalida=0;
   apts.forEach(function(a){
     var fam=familiaProduto(a.cod);
     porFamilia[fam]+=(Number(a.real)||0);
+    var minApt=calcMinutos(a.horaIni,a.horaFim);
+    if(minApt>0 && minApt<=MAX_MIN_APT_HORAS) minPorFamilia[fam]+=minApt;
+    else aptsHoraInvalida++;
     if(fam==="AQUA"){
       var gran=granulometriaProduto(a.desc||a.cod||"");
       if(!porGranAqua[gran]) porGranAqua[gran]=0;
@@ -4273,20 +4284,32 @@ function dashRender(apts, paradas, di, df, areaF){
 
   // ── CARDS POR FAMÍLIA ────────────────────────────────────
   var totFamGeral=porFamilia.AQUA+porFamilia.PET+porFamilia.HORSE;
+  var totMinFamGeral=minPorFamilia.AQUA+minPorFamilia.PET+minPorFamilia.HORSE;
   var cardsFam=[
-    {l:"AQUA",n:porFamilia.AQUA,c:"#024f2b"},
-    {l:"PET",n:porFamilia.PET,c:"#739630"},
-    {l:"HORSE",n:porFamilia.HORSE,c:"#d29922"}
+    {l:"AQUA",n:porFamilia.AQUA,min:minPorFamilia.AQUA,c:"#024f2b"},
+    {l:"PET",n:porFamilia.PET,min:minPorFamilia.PET,c:"#739630"},
+    {l:"HORSE",n:porFamilia.HORSE,min:minPorFamilia.HORSE,c:"#d29922"}
   ];
   var elFam=G("dash-cards-familia");
   if(elFam){
     elFam.innerHTML=cardsFam.map(function(card){
       var pct=totFamGeral?Math.round(card.n/totFamGeral*100):0;
+      var pctH=totMinFamGeral?Math.round(card.min/totMinFamGeral*100):0;
+      var kgH=card.min?Math.round(card.n/(card.min/60)):0;
       return '<div style="background:#fff;border-radius:10px;border:1px solid #d4e8d4;padding:12px;text-align:center">'+
         '<div style="font-size:10px;font-weight:700;color:#739630;margin-bottom:4px">'+card.l+'</div>'+
         '<div style="font-size:18px;font-weight:800;color:'+card.c+'">'+fN(card.n)+' kg</div>'+
-        '<div style="font-size:11px;color:#4a664a;margin-top:2px">'+pct+'% do total</div></div>';
-    }).join("");
+        '<div style="font-size:11px;color:#4a664a;margin-top:2px">'+pct+'% do total</div>'+
+        '<div style="border-top:1px dashed #d4e8d4;margin-top:8px;padding-top:8px;display:flex;justify-content:space-around;gap:6px">'+
+          '<div><div style="font-size:9px;font-weight:700;color:#739630">⏱ HORAS</div>'+
+            '<div style="font-size:15px;font-weight:800;color:'+card.c+'">'+minH(card.min)+'</div>'+
+            '<div style="font-size:10px;color:#4a664a">'+pctH+'% do tempo</div></div>'+
+          '<div><div style="font-size:9px;font-weight:700;color:#739630">KG/H</div>'+
+            '<div style="font-size:15px;font-weight:800;color:'+card.c+'">'+(card.min?fN(kgH):"—")+'</div>'+
+            '<div style="font-size:10px;color:#4a664a">média</div></div>'+
+        '</div></div>';
+    }).join("")+
+    (aptsHoraInvalida?'<div style="grid-column:1/-1;font-size:11px;color:#d29922;background:#fff8e6;border:1px solid #f0d99a;border-radius:8px;padding:6px 10px">⚠ '+aptsHoraInvalida+' apontamento(s) com horário vazio ou inconsistente (acima de '+(MAX_MIN_APT_HORAS/60)+'h) ficaram fora da soma de horas — o kg deles continua contando.</div>':'');
   }
 
   // ── GRÁFICOS ─────────────────────────────────────────────
