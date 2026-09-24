@@ -4387,10 +4387,10 @@ function exportarHorasDispPDF(){
   // (seção 1), mas não é exibido aqui — por isso o total da tabela é a soma das famílias.
   var minFam=HR.min.AQUA+HR.min.PET+HR.min.HORSE, kgFam=(PF.AQUA||0)+(PF.PET||0)+(PF.HORSE||0);
   var famRows=["AQUA","PET","HORSE"].map(function(f){
-    var m=HR.min[f]; return [f,fN(PF[f]||0),h1(m),pct(m,minFam),m?fN(Math.round((PF[f]||0)/(m/60))):"-"];
+    var m=HR.min[f]; return [f,fN(PF[f]||0),pct(PF[f]||0,kgFam),h1(m),pct(m,minFam),m?fN(Math.round((PF[f]||0)/(m/60))):"-"];
   });
-  tabela([{t:"FAMÍLIA",w:W-4*30},{t:"KG",w:30,al:"r"},{t:"HORAS DISP.",w:30,al:"r"},{t:"% DO TEMPO",w:30,al:"r"},{t:"KG/H",w:30,al:"r"}],
-    famRows,["TOTAL",fN(kgFam),h1(minFam),"100%",minFam?fN(Math.round(kgFam/(minFam/60))):"-"]);
+  tabela([{t:"FAMÍLIA",w:W-5*28},{t:"KG",w:28,al:"r"},{t:"% DO KG",w:28,al:"r"},{t:"HORAS DISP.",w:28,al:"r"},{t:"% DO TEMPO",w:28,al:"r"},{t:"KG/H",w:28,al:"r"}],
+    famRows,["TOTAL",fN(kgFam),"100%",h1(minFam),"100%",minFam?fN(Math.round(kgFam/(minFam/60))):"-"]);
   // Regra e alertas
   titulo("4. Regra de cálculo");
   doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(60,60,60);
