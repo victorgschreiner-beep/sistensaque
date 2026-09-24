@@ -4347,12 +4347,10 @@ function exportarHorasDispPDF(){
   });
   y+=3;
   // Indicadores
-  var semTot=HR.semApt.AQUA+HR.semApt.PET+HR.semApt.HORSE+HR.semApt.SEM;
   var kp=[["BASE (TURNOS DA ESCALA)",h1(HR.bruto)+" h","",[74,74,74]],
           ["(-) FATOR EXTERNO / PLANEJADA",h1(HR.fe)+" h",pct(HR.fe,HR.bruto)+" da base",[192,57,43]],
-          ["= HORAS DISPONÍVEIS",h1(HR.disp)+" h",pct(HR.disp,HR.bruto)+" da base",[2,79,43]],
-          ["SEM APONTAMENTO (INCLUÍDAS)",h1(semTot)+" h",pct(semTot,HR.disp)+" do disponível",[210,153,34]]];
-  var bw=(W-9)/4;
+          ["= HORAS DISPONÍVEIS",h1(HR.disp)+" h",pct(HR.disp,HR.bruto)+" da base",[2,79,43]]];
+  var bw=(W-6)/3;
   kp.forEach(function(k,i){
     var x=ML+i*(bw+3);
     doc.setDrawColor(212,232,212); doc.setFillColor(255,255,255); doc.roundedRect(x,y,bw,20,2,2,"FD");
@@ -4365,16 +4363,16 @@ function exportarHorasDispPDF(){
   titulo("1. Horas disponíveis por linha e turno (h)");
   var tcs=Object.keys(HR.turnosEscala).map(Number).sort();
   var linhas=Object.keys(HR.porLinha).sort();
-  var wT=Math.min(20,(W-50-4*24)/Math.max(tcs.length,1));
-  var cols=[{t:"LINHA",w:W-tcs.length*wT-4*24}].concat(tcs.map(function(t){return {t:"T"+t,w:wT,al:"r"};}))
-    .concat([{t:"BASE",w:24,al:"r"},{t:"FATOR EXT.",w:24,al:"r"},{t:"SEM APONT.",w:24,al:"r"},{t:"DISPONÍVEL",w:24,al:"r"}]);
-  var totT={},totSem=0; tcs.forEach(function(t){totT[t]=0;});
+  var wT=Math.min(22,(W-50-3*26)/Math.max(tcs.length,1));
+  var cols=[{t:"LINHA",w:W-tcs.length*wT-3*26}].concat(tcs.map(function(t){return {t:"T"+t,w:wT,al:"r"};}))
+    .concat([{t:"BASE",w:26,al:"r"},{t:"FATOR EXT.",w:26,al:"r"},{t:"DISPONÍVEL",w:26,al:"r"}]);
+  var totT={}; tcs.forEach(function(t){totT[t]=0;});
   var rows=linhas.map(function(l){
-    var P=HR.porLinha[l]; totSem+=(P.semApt||0);
+    var P=HR.porLinha[l];
     return [l].concat(tcs.map(function(t){var v=(P.porTurno[t]||{disp:0}).disp; totT[t]+=v; return h1(v);}))
-      .concat([h1(P.bruto),h1(P.fe),h1(P.semApt||0),h1(P.disp)]);
+      .concat([h1(P.bruto),h1(P.fe),h1(P.disp)]);
   });
-  tabela(cols,rows,["TOTAL"].concat(tcs.map(function(t){return h1(totT[t]);})).concat([h1(HR.bruto),h1(HR.fe),h1(totSem),h1(HR.disp)]));
+  tabela(cols,rows,["TOTAL"].concat(tcs.map(function(t){return h1(totT[t]);})).concat([h1(HR.bruto),h1(HR.fe),h1(HR.disp)]));
   // FE por motivo
   titulo("2. Horas paradas por Fator Externo / Parada Planejada - por motivo");
   var mot=Object.entries(HR.fePorMotivo).sort(function(a,b){return b[1]-a[1];});
@@ -4385,24 +4383,23 @@ function exportarHorasDispPDF(){
   // Famílias
   titulo("3. Horas disponíveis por família");
   var PF=C.porFamilia||{AQUA:0,PET:0,HORSE:0};
+  // Só as famílias; o tempo de turnos sem produto definido continua no total geral
+  // (seção 1), mas não é exibido aqui — por isso o total da tabela é a soma das famílias.
+  var minFam=HR.min.AQUA+HR.min.PET+HR.min.HORSE, kgFam=(PF.AQUA||0)+(PF.PET||0)+(PF.HORSE||0);
   var famRows=["AQUA","PET","HORSE"].map(function(f){
-    var m=HR.min[f]; return [f,fN(PF[f]||0),h1(m),pct(m,HR.disp),m?fN(Math.round((PF[f]||0)/(m/60))):"-",h1(HR.semApt[f])];
+    var m=HR.min[f]; return [f,fN(PF[f]||0),h1(m),pct(m,minFam),m?fN(Math.round((PF[f]||0)/(m/60))):"-"];
   });
-  if(HR.min.SEM) famRows.push(["Turno sem apontamento (sem família)","-",h1(HR.min.SEM),pct(HR.min.SEM,HR.disp),"-",h1(HR.semApt.SEM)]);
-  tabela([{t:"FAMÍLIA",w:W-5*27},{t:"KG",w:27,al:"r"},{t:"HORAS DISP.",w:27,al:"r"},{t:"% DO TEMPO",w:27,al:"r"},{t:"KG/H",w:27,al:"r"},{t:"SEM APONT.",w:27,al:"r"}],
-    famRows,["TOTAL",fN((PF.AQUA||0)+(PF.PET||0)+(PF.HORSE||0)),h1(HR.disp),"100%","-",h1(semTot)]);
+  tabela([{t:"FAMÍLIA",w:W-4*30},{t:"KG",w:30,al:"r"},{t:"HORAS DISP.",w:30,al:"r"},{t:"% DO TEMPO",w:30,al:"r"},{t:"KG/H",w:30,al:"r"}],
+    famRows,["TOTAL",fN(kgFam),h1(minFam),"100%",minFam?fN(Math.round(kgFam/(minFam/60))):"-"]);
   // Regra e alertas
   titulo("4. Regra de cálculo");
   doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(60,60,60);
   ["Base = para cada dia operacional com produção na fábrica, cada linha x todos os turnos da escala vigente.",
    "Horas disponíveis = Base - paradas do grupo "+GRUPO_PARADA_NAO_RODANDO+", descontadas só na parte que cai dentro",
-   "de cada turno da base (sem contar sobreposições em dobro). Demais paradas e horas sem apontamento contam como disponível.",
-   "Hora sem apontamento herda a família do apontamento anterior do turno; turno inteiro sem apontamento conta sem família.",
+   "de cada turno da base (sem contar sobreposições em dobro). As demais paradas contam como disponível.",
    "Parada ainda aberta conta até o fim do turno (ou até o momento da geração, se o turno estiver em andamento)."
   ].forEach(function(t){ precisa(5); doc.text(t,ML,y); y+=4.3; });
   var al=[];
-  if(HR.turnosSemApt) al.push(HR.turnosSemApt+" turno(s)-linha da base sem nenhum apontamento - contaram como disponível (fora o Fator Externo).");
-  if(HR.aptsInvalidos) al.push(HR.aptsInvalidos+" apontamento(s) com horário vazio ou inconsistente - tratados como hora sem apontamento.");
   if(C.skuF) al.push("Filtro de SKU ativo: contam só os minutos em que o SKU estava na linha.");
   if(al.length){
     y+=2; precisa(6+al.length*4.5);
