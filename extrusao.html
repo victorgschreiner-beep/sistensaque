@@ -4296,6 +4296,16 @@ function calcHorasDisponiveis(aptsTL, paradas, skuF, opts){
 }
 
 
+// Minutos de um apontamento para kg/h efetiva: trata virada da meia-noite
+// (23:00→00:00 = 60 min; antes contava 0 e inflava o kg/h). Sem horário ou
+// horaIni=horaFim → assume 60 min (apontamento horário). Acima de
+// MAX_MIN_APT_HORAS → lançamento inconsistente, assume 60 min.
+function minApontamento(a){
+  if(!a.horaIni||!a.horaFim||a.horaIni===a.horaFim) return 60;
+  var m=calcMinutos(a.horaIni,a.horaFim);
+  return (m>0&&m<=MAX_MIN_APT_HORAS)?m:60;
+}
+
 // ── PDF: DETALHAMENTO DAS HORAS DISPONÍVEIS ────────────────
 // Usa o cálculo já feito na tela (window._HD_CACHE) — o PDF sai com exatamente
 // os mesmos números do dashboard, sem nova consulta ao Firebase.
@@ -4413,6 +4423,136 @@ function exportarHorasDispPDF(){
     doc.text("Raguife - Apontamento Extrusão | Horas disponíveis "+dBR(C.di)+" a "+dBR(C.df),ML,PH-7);
     doc.text("Página "+i+" de "+n,ML+W,PH-7,{align:"right"}); }
   doc.save("Horas_Disponiveis_"+C.di+"_"+C.df+(C.opts.linhaF?"_"+C.opts.linhaF.replace(/[^A-Za-z0-9]+/g,"_"):"")+".pdf");
+  toast("PDF gerado!","ok");
+}
+
+
+// ── PDF: PRODUTIVIDADE POR SKU E POR FAMÍLIA ───────────────
+// kg/h efetiva = kg ÷ horas apontadas (mesma conta do card SKU × Máquina).
+// kg/h disponível (família) = kg ÷ horas disponíveis do painel de Horas Disponíveis.
+function exportarProdutividadePDF(){
+  if(typeof jspdf==="undefined"){toast("jsPDF não disponível","err");return;}
+  var C=window._PROD_CACHE;
+  if(!C||!C.skuMaq||!Object.keys(C.skuMaq).length){toast("Gere o dashboard antes de exportar","err");return;}
+  var doc=new jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  var ML=10, W=277, PH=210, y=0;
+  var FAMS=["AQUA","PET","HORSE"], COR={AQUA:[2,79,43],PET:[115,150,48],HORSE:[210,153,34]};
+  function h1(m){ return (Math.round(m/6)/10).toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1}); }
+  function dBR(d){ return d?d.slice(8,10)+"/"+d.slice(5,7)+"/"+d.slice(0,4):""; }
+  function pct(a,b){ return b?(Math.round(a/b*1000)/10).toLocaleString("pt-BR")+"%":"-"; }
+  function fK(n){ return fN(Math.round(Number(n)||0)); }
+  function kgh(kg,min){ return min>0?fN(Math.round(kg/(min/60))):"-"; }
+  function precisa(h){ if(y+h>PH-12){ doc.addPage(); y=14; return true; } return false; }
+  function titulo(t,cor){ precisa(16); y+=3; doc.setFont("helvetica","bold"); doc.setFontSize(10.5); var c=cor||[2,79,43]; doc.setTextColor(c[0],c[1],c[2]); doc.text(t,ML,y); y+=2; doc.setDrawColor(c[0],c[1],c[2]); doc.setLineWidth(0.4); doc.line(ML,y,ML+W,y); y+=4; }
+  // tabela: cols [{t,w,al}], rows [[v | {v,sub}]], total, rh
+  function tabela(cols,rows,total,rh,cabCor){
+    rh=rh||6; var cc=cabCor||[2,79,43];
+    function cab(){
+      doc.setFillColor(cc[0],cc[1],cc[2]); doc.rect(ML,y,W,6.5,"F");
+      doc.setFont("helvetica","bold"); doc.setFontSize(7.5); doc.setTextColor(255,255,255);
+      var x=ML; cols.forEach(function(c){ doc.text(c.t, c.al==="r"?x+c.w-2:(c.al==="c"?x+c.w/2:x+2), y+4.4, {align:c.al==="r"?"right":(c.al==="c"?"center":"left")}); x+=c.w; }); y+=6.5;
+    }
+    precisa(6.5+rh); cab();
+    rows.concat(total?[total]:[]).forEach(function(r,i){
+      if(y+rh>PH-12){ doc.addPage(); y=14; cab(); }
+      var isTot=total&&i===rows.length;
+      if(isTot){ doc.setFillColor(220,235,220); doc.rect(ML,y,W,rh,"F"); }
+      else if(i%2){ doc.setFillColor(246,250,246); doc.rect(ML,y,W,rh,"F"); }
+      var x=ML;
+      r.forEach(function(v,j){
+        var c=cols[j], al=c.al==="r"?"right":(c.al==="c"?"center":"left"), tx=c.al==="r"?x+c.w-2:(c.al==="c"?x+c.w/2:x+2);
+        var main=(v&&typeof v==="object")?v.v:v, sub=(v&&typeof v==="object")?v.sub:null;
+        doc.setFont("helvetica",isTot||(v&&v.b)?"bold":"normal"); doc.setFontSize(8); doc.setTextColor(40,40,40);
+        if(v&&v.cor) doc.setTextColor(v.cor[0],v.cor[1],v.cor[2]);
+        var txt=String(main); if(c.max&&txt.length>c.max) txt=txt.slice(0,c.max-1)+"…";
+        doc.text(txt,tx,y+(sub?3.6:rh/2+1.4),{align:al});
+        if(sub){ doc.setFont("helvetica","normal"); doc.setFontSize(6.5); doc.setTextColor(130,130,130); doc.text(String(sub),tx,y+7,{align:al}); }
+        x+=c.w;
+      });
+      y+=rh;
+    });
+    y+=3;
+  }
+  function corKgh(v){ return v>=4000?[2,79,43]:v>=3000?[115,150,48]:v>=2000?[176,125,20]:[192,57,43]; }
+
+  // Agregações
+  var reg=Object.values(C.skuMaq).filter(function(r){return r.real>0;});
+  var maqs=[]; reg.forEach(function(r){ if(maqs.indexOf(r.maq)<0) maqs.push(r.maq); }); maqs.sort();
+  var skus={};
+  reg.forEach(function(r){
+    var s=skus[r.sku]=skus[r.sku]||{sku:r.sku,cod:r.cod,fam:familiaProduto(r.cod),real:0,min:0,maq:{}};
+    s.real+=r.real; s.min+=r.minProd; s.maq[r.maq]=r;
+  });
+  var fam={}; FAMS.forEach(function(f){ fam[f]={real:0,min:0,skus:0,maq:{}}; });
+  Object.values(skus).forEach(function(s){
+    var F=fam[s.fam]; F.real+=s.real; F.min+=s.min; F.skus++;
+    Object.keys(s.maq).forEach(function(m){ var q=F.maq[m]=F.maq[m]||{real:0,min:0}; q.real+=s.maq[m].real; q.min+=s.maq[m].minProd; });
+  });
+  var totKg=FAMS.reduce(function(a,f){return a+fam[f].real;},0), totMin=FAMS.reduce(function(a,f){return a+fam[f].min;},0);
+  var HR=C.HR||null;
+
+  // Cabeçalho
+  doc.setFillColor(2,79,43); doc.rect(0,0,297,19,"F");
+  doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(255,255,255);
+  doc.text("RAGUIFE - Produtividade por SKU e por Família (Extrusão)",ML,10);
+  doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(190,225,190);
+  doc.text("Período: "+dBR(C.di)+" a "+dBR(C.df)+"   |   Filtros: Linha = "+(C.filtros.linha||"Todas")+", Turno = "+(C.filtros.turno?"T"+C.filtros.turno:"Todos")+", SKU = "+(C.filtros.sku||"Todos")+"   |   Gerado em: "+new Date().toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})+(SES&&SES.login?"   |   Por: "+SES.login:""),ML,15.5);
+  y=24;
+
+  // 1) Por família
+  titulo("1. Produtividade por família");
+  var cols1=[{t:"FAMÍLIA",w:40},{t:"SKUs",w:22,al:"r"},{t:"KG",w:36,al:"r"},{t:"% DO KG",w:26,al:"r"},{t:"HORAS APONTADAS",w:34,al:"r"},{t:"KG/H EFETIVA",w:32,al:"r"}];
+  if(HR) cols1=cols1.concat([{t:"HORAS DISPONÍVEIS",w:36,al:"r"},{t:"KG/H DISPONÍVEL",w:W-40-22-36-26-34-32-36,al:"r"}]);
+  else cols1[cols1.length-1].w+=W-40-22-36-26-34-32;
+  var rows1=FAMS.map(function(f){
+    var F=fam[f], r=[{v:f,b:1,cor:COR[f]},F.skus,fK(F.real),pct(F.real,totKg),h1(F.min),{v:kgh(F.real,F.min),b:1}];
+    if(HR) r=r.concat([h1(HR.min[f]||0),{v:kgh(F.real,HR.min[f]||0),b:1}]);
+    return r;
+  });
+  var tot1=["TOTAL",FAMS.reduce(function(a,f){return a+fam[f].skus;},0),fK(totKg),"100%",h1(totMin),kgh(totKg,totMin)];
+  if(HR){ var hf=(HR.min.AQUA||0)+(HR.min.PET||0)+(HR.min.HORSE||0); tot1=tot1.concat([h1(hf),kgh(totKg,hf)]); }
+  tabela(cols1,rows1,tot1);
+
+  // 2) Família × máquina
+  titulo("2. Família x máquina - kg/h efetiva (kg produzido abaixo)");
+  var wM=Math.min(40,(W-40-40)/Math.max(maqs.length,1));
+  var cols2=[{t:"FAMÍLIA",w:W-40-maqs.length*wM}].concat(maqs.map(function(m){return {t:m,w:wM,al:"c"};})).concat([{t:"TOTAL",w:40,al:"c"}]);
+  var rows2=FAMS.map(function(f){
+    var F=fam[f];
+    return [{v:f,b:1,cor:COR[f]}].concat(maqs.map(function(m){ var q=F.maq[m]; if(!q||!q.real) return "-"; var v=Math.round(q.real/(q.min/60)); return {v:fN(v),sub:fK(q.real)+" kg",b:1,cor:corKgh(v)}; }))
+      .concat([{v:kgh(F.real,F.min),sub:fK(F.real)+" kg",b:1}]);
+  });
+  var tot2=["TOTAL"].concat(maqs.map(function(m){ var kg=0,mi=0; FAMS.forEach(function(f){var q=fam[f].maq[m]; if(q){kg+=q.real;mi+=q.min;}}); return kg?{v:kgh(kg,mi),sub:fK(kg)+" kg"}:"-"; })).concat([{v:kgh(totKg,totMin),sub:fK(totKg)+" kg"}]);
+  tabela(cols2,rows2,tot2,9);
+
+  // 3) Todos os SKUs, por família
+  var wM3=Math.min(30,(W-95-26-26-24)/Math.max(maqs.length,1));
+  var cols3=[{t:"SKU",w:W-wM3*maqs.length-26-26-24-26,max:62},{t:"CÓDIGO",w:26}].concat(maqs.map(function(m){return {t:m,w:wM3,al:"c"};}))
+    .concat([{t:"KG TOTAL",w:26,al:"r"},{t:"HORAS",w:24,al:"r"},{t:"KG/H MÉDIO",w:26,al:"r"}]);
+  var n=3;
+  FAMS.forEach(function(f){
+    var lista=Object.values(skus).filter(function(s){return s.fam===f;}).sort(function(a,b){return b.real-a.real;});
+    if(!lista.length) return;
+    titulo(n+". "+f+" - produtividade por SKU ("+lista.length+" SKU"+(lista.length>1?"s":"")+", "+fK(fam[f].real)+" kg)",COR[f]); n++;
+    var rows3=lista.map(function(s){
+      return [{v:s.sku,b:1},s.cod||"-"].concat(maqs.map(function(m){ var r=s.maq[m]; if(!r) return "-"; var v=r.minProd>0?Math.round(r.real/(r.minProd/60)):0; return {v:fN(v),sub:fK(r.real)+" kg",b:1,cor:corKgh(v)}; }))
+        .concat([fK(s.real),h1(s.min),{v:kgh(s.real,s.min),b:1}]);
+    });
+    tabela(cols3,rows3,["TOTAL "+f,""].concat(maqs.map(function(m){ var q=fam[f].maq[m]; return q&&q.real?{v:kgh(q.real,q.min),sub:fK(q.real)+" kg"}:"-"; })).concat([fK(fam[f].real),h1(fam[f].min),kgh(fam[f].real,fam[f].min)]),9,COR[f]);
+  });
+
+  // Notas
+  precisa(22); y+=2;
+  doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(90,90,90);
+  ["kg/h efetiva = kg produzido / horas apontadas (duração dos apontamentos; virada da meia-noite tratada; apontamento sem horário = 1 h).",
+   "kg/h disponível = kg produzido / horas disponíveis (turnos da escala - Fator Externo/Parada Planejada), mesma conta do painel Horas Disponíveis.",
+   "Cores do kg/h: verde >= 4.000 | verde-claro >= 3.000 | amarelo >= 2.000 | vermelho < 2.000.  Família pelo código: CAT/DOG = PET, HOR = HORSE, demais = AQUA."
+  ].forEach(function(t){ doc.text(t,ML,y); y+=4; });
+  var np=doc.getNumberOfPages();
+  for(var i=1;i<=np;i++){ doc.setPage(i); doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(140,140,140);
+    doc.text("Raguife - Apontamento Extrusão | Produtividade "+dBR(C.di)+" a "+dBR(C.df),ML,PH-6);
+    doc.text("Página "+i+" de "+np,ML+W,PH-6,{align:"right"}); }
+  doc.save("Produtividade_SKU_Familia_"+C.di+"_"+C.df+".pdf");
   toast("PDF gerado!","ok");
 }
 
@@ -4789,14 +4929,8 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
     var l=a.linha||"";
     if(!prodLinha[l]) prodLinha[l]={real:0,minProd:0,minPara:0};
     prodLinha[l].real+=(Number(a.real)||0);
-    // Calcula minutos produzindo
-    if(a.horaIni&&a.horaIni!==a.horaFim){
-      var hi=a.horaIni.split(":"), hf=(a.horaFim||"00:00").split(":");
-      var min=(parseInt(hf[0])*60+parseInt(hf[1]))-(parseInt(hi[0])*60+parseInt(hi[1]));
-      if(min>0) prodLinha[l].minProd+=min;
-    } else {
-      prodLinha[l].minProd+=60; // assume 1h por apontamento
-    }
+    // Calcula minutos produzindo (trata virada da meia-noite)
+    prodLinha[l].minProd+=minApontamento(a);
   });
   paradas.forEach(function(p){
     var l=p.linha||"";
@@ -4810,13 +4944,7 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
     var k=(a.desc||a.cod||"");
     if(!prodSKU[k]) prodSKU[k]={real:0,minProd:0};
     prodSKU[k].real+=(Number(a.real)||0);
-    if(a.horaIni&&a.horaFim&&a.horaIni!==a.horaFim){
-      var hi=a.horaIni.split(":"),hf=a.horaFim.split(":");
-      var min2=(parseInt(hf[0])*60+parseInt(hf[1]))-(parseInt(hi[0])*60+parseInt(hi[1]));
-      if(min2>0) prodSKU[k].minProd+=min2;
-    } else {
-      prodSKU[k].minProd+=60;
-    }
+    prodSKU[k].minProd+=minApontamento(a);
   });
 
   // ── G7 — Produtividade por Linha ─────────────────────────
@@ -4936,17 +5064,18 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
   var skuMaq={};
   apts.forEach(function(a){
     var sku=(a.desc||a.cod||"Desconhecido");
-    var maq=(a.linha||"").replace(" (E-240)","L1").replace(" (E-200)","L2").replace(" (Andritz I)","L4").replace(" (Andritz II)","L5");
+    // "Linha 1 (E-240)" → "L1" (antes gerava "Linha 1L1" no cabeçalho)
+    var mNum=(a.linha||"").match(/Linha\s*(\d+)/);
+    var maq=mNum?("L"+mNum[1]):(a.linha||"?");
     var k=sku+"|||"+maq;
-    if(!skuMaq[k]) skuMaq[k]={sku:sku,maq:maq,real:0,minProd:0,count:0};
+    if(!skuMaq[k]) skuMaq[k]={sku:sku,cod:a.cod||"",maq:maq,real:0,minProd:0,count:0};
     skuMaq[k].real+=(Number(a.real)||0);
     skuMaq[k].count++;
-    if(a.horaIni&&a.horaFim&&a.horaIni!==a.horaFim){
-      var hi=a.horaIni.split(":"),hf=a.horaFim.split(":");
-      var mm=(parseInt(hf[0])*60+parseInt(hf[1]))-(parseInt(hi[0])*60+parseInt(hi[1]));
-      if(mm>0) skuMaq[k].minProd+=mm;
-    } else { skuMaq[k].minProd+=60; }
+    skuMaq[k].minProd+=minApontamento(a);
   });
+
+  // Cache para o PDF de produtividade (mesmos números da tela, todos os SKUs)
+  window._PROD_CACHE={skuMaq:skuMaq, di:di, df:df, HR:HR, filtros:{linha:(hdOpts&&hdOpts.linhaF)||"",turno:(hdOpts&&hdOpts.turnoF)||"",sku:skuF||""}};
 
   // Agrega SKUs unicos e maquinas unicas
   var skusUnicos=[],maqUnicas=[];
@@ -4991,7 +5120,8 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
       });
       rows+='<tr>'+td+'</tr>';
     });
-    tbl.innerHTML='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;border:1px solid #d4e8d4">'+
+    tbl.innerHTML='<div style="display:flex;justify-content:flex-end;margin:-4px 0 8px"><button onclick="exportarProdutividadePDF()" style="background:#024f2b;color:#fff;border:none;padding:6px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">📄 PDF — todos os SKUs e famílias</button></div>'+
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;border:1px solid #d4e8d4">'+
       '<thead><tr>'+th+'</tr></thead><tbody>'+rows+'</tbody></table>'+
       '<div style="margin-top:6px;font-size:10px;color:#739630">kg/h efetiva (sem paradas) · top 15 SKUs por volume</div></div>';
   } else if(tbl){
