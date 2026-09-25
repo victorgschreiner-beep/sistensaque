@@ -1,0 +1,2086 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Raguife — Moagem</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--gr:#024f2b;--gr2:#739630;--or:#d29922;--rd:#c0392b;--bg:#f0f4f0;--card:#fff;--brd:#d4e8d4;--tx:#1a1a1a;--tx2:#4a664a;--mut:#7a8f7a}
+body{font-family:"Segoe UI",sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;font-size:14px}
+button{font-family:inherit}
+input,select,textarea{font-family:inherit;font-size:14px}
+
+/* LOGIN */
+#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#024f2b,#1a6b3a);padding:16px}
+.login-box{background:#fff;border-radius:16px;padding:32px;width:100%;max-width:340px;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.login-logo{text-align:center;margin-bottom:22px}
+.login-logo h1{color:var(--gr);font-size:20px;font-weight:800;margin-bottom:2px}
+.login-logo p{color:var(--gr2);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
+.login-box input{width:100%;padding:11px 13px;border:2px solid var(--brd);border-radius:8px;margin-bottom:10px;outline:none}
+.login-box input:focus{border-color:var(--gr)}
+.btn-login{width:100%;padding:13px;background:var(--gr);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer}
+.login-err{color:var(--rd);font-size:12px;text-align:center;margin-top:8px;min-height:16px}
+
+/* TOPBAR */
+#app{display:none}
+.topbar{background:var(--gr);min-height:52px;padding:6px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.tb-l,.tb-r{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tb-logo{color:#fff;font-weight:800;font-size:15px}
+.tb-badge{background:rgba(255,255,255,.15);color:#fff;font-size:11px;padding:3px 10px;border-radius:20px;font-weight:600;white-space:nowrap}
+.tb-user{color:rgba(255,255,255,.8);font-size:12px}
+.btn-sair{background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600}
+.tabs{display:flex;gap:4px;background:#fff;border-bottom:1px solid var(--brd);padding:0 12px;overflow-x:auto;position:sticky;top:52px;z-index:90}
+.tab{border:none;background:none;padding:12px 16px;font-size:13px;font-weight:700;color:var(--tx2);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+.tab.on{color:var(--gr);border-bottom-color:var(--gr)}
+.content{padding:16px;max-width:1280px;margin:0 auto}
+.sec{display:none}.sec.on{display:block}
+
+/* ALERTAS */
+.alertas{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.al{display:flex;align-items:center;gap:10px;padding:9px 14px;border-radius:8px;font-size:13px;font-weight:600;border:1px solid}
+.al-rd{background:#fdecea;border-color:#e6b0aa;color:#922b21}
+.al-or{background:#fff6e0;border-color:#f0d68a;color:#7a5a00}
+.al-bl{background:#eaf2fd;border-color:#b8d0f5;color:#1d4f91}
+.al b{font-weight:800}
+
+/* CARDS LINHA */
+.grid-l{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.grid-l{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--brd);border-radius:12px;overflow:hidden}
+.card-h{background:var(--gr);color:#fff;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.card-h h3{font-size:15px;font-weight:800}
+.card-h .sub{font-size:11px;opacity:.8}
+.card-b{padding:12px 14px}
+.op-box{background:#f5f9f2;border:1px solid var(--brd);border-radius:8px;padding:10px 12px;margin-bottom:10px}
+.op-id{font-weight:800;font-size:15px;color:var(--gr)}
+.op-desc{font-size:12px;color:var(--tx2);margin-top:1px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+.kpi{background:#fff;border:1px solid #e3eee3;border-radius:6px;padding:6px;text-align:center}
+.kpi .v{font-size:15px;font-weight:800;color:var(--gr)}
+.kpi .l{font-size:9px;color:var(--tx2);font-weight:700;text-transform:uppercase;margin-top:1px}
+.bar{background:#e6eee6;border-radius:4px;height:6px;overflow:hidden;margin-top:8px}
+.bar>div{height:100%;background:var(--gr);border-radius:4px}
+.row-info{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:4px 9px;border-radius:14px;border:1px solid var(--brd);background:#fff;color:var(--tx2)}
+.chip.ok{background:#e8f5e9;border-color:#a5d6a7;color:#1b5e20}
+.chip.pa{background:#fdecea;border-color:#e6b0aa;color:#922b21}
+.chip.wa{background:#fff6e0;border-color:#f0d68a;color:#7a5a00}
+.chip.in{background:#eaf2fd;border-color:#b8d0f5;color:#1d4f91}
+.btns{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.btn{border:none;border-radius:7px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;background:var(--gr);color:#fff}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.sec2{background:#fff;color:var(--gr);border:2px solid var(--gr);padding:7px 12px}
+.btn.rd{background:var(--rd)}
+.btn.or{background:var(--or)}
+.btn.sm{padding:5px 10px;font-size:12px}
+.btn.xs{padding:3px 8px;font-size:11px;border-radius:5px}
+.btn.ghost{background:transparent;color:var(--tx2);border:1px solid var(--brd)}
+.strip{display:flex;gap:3px;margin:8px 0 4px;flex-wrap:wrap}
+.hr{flex:1;min-width:34px;border-radius:5px;padding:4px 2px;text-align:center;font-size:10px;font-weight:700;border:1px solid transparent}
+.hr .h{font-size:9px;opacity:.75}
+.hr.fu{background:#f3f5f3;color:#aab5aa}
+.hr.ok{background:#d9f0dd;color:#1b5e20}
+.hr.lo{background:#fff0c2;color:#7a5a00}
+.hr.bd{background:#fbd5d0;color:#922b21}
+.hr.mi{background:#fff;color:var(--rd);border:1px dashed var(--rd)}
+.hr.pa{background:#e4e7eb;color:#555}
+.hr.nw{outline:2px solid var(--gr);outline-offset:1px}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:10px;color:var(--tx2);margin-bottom:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:3px;vertical-align:-1px}
+table.t{width:100%;border-collapse:collapse;font-size:12px}
+table.t th{background:#f0f6f0;color:var(--tx2);font-size:10px;text-transform:uppercase;font-weight:800;text-align:left;padding:6px 8px;border-bottom:1px solid var(--brd);white-space:nowrap}
+table.t td{padding:6px 8px;border-bottom:1px solid #edf3ed;vertical-align:middle}
+table.t td.n,table.t th.n{text-align:right;font-variant-numeric:tabular-nums}
+.tw{overflow-x:auto}
+.muted{color:var(--mut);font-size:11px}
+.bdg{display:inline-block;font-size:10px;font-weight:800;padding:2px 7px;border-radius:10px;background:#eef2ee;color:var(--tx2)}
+.bdg.g{background:#d9f0dd;color:#1b5e20}.bdg.y{background:#fff0c2;color:#7a5a00}.bdg.r{background:#fbd5d0;color:#922b21}.bdg.b{background:#dbe8fb;color:#1d4f91}
+details.pt{margin-top:8px;border:1px solid var(--brd);border-radius:8px}
+details.pt summary{cursor:pointer;padding:7px 10px;font-size:12px;font-weight:700;color:var(--tx2)}
+details.pt .tw{padding:0 6px 8px}
+tr.hl td{background:#fff6d6}
+.empty{padding:18px;text-align:center;color:var(--mut);font-size:13px}
+
+/* FILA */
+.fila-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:1100px){.fila-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.fila-grid{grid-template-columns:1fr}}
+.fila-col{background:#fff;border:1px solid var(--brd);border-radius:10px;padding:10px}
+.fila-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.fila-hd b{color:var(--gr);font-size:14px}
+.fi{border:1px solid #e3eee3;border-radius:8px;padding:8px;margin-bottom:6px;background:#fbfdfb}
+.fi.at{border-color:var(--gr);background:#eef8ee}
+.fi-top{display:flex;align-items:center;gap:6px}
+.pos{min-width:22px;height:22px;border-radius:50%;background:var(--gr);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.fi-ctl{display:flex;gap:3px;margin-left:auto}
+
+/* DASH */
+.filtros{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;background:#fff;border:1px solid var(--brd);border-radius:10px;padding:10px 12px;margin-bottom:14px}
+.fg{display:flex;flex-direction:column;gap:3px}
+.fg label{font-size:10px;font-weight:800;color:var(--tx2);text-transform:uppercase}
+.inp{padding:8px 10px;border:1.5px solid var(--brd);border-radius:7px;outline:none;background:#fff}
+.inp:focus{border-color:var(--gr)}
+.tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px}
+@media(max-width:1000px){.tiles{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:560px){.tiles{grid-template-columns:1fr 1fr}}
+.tile{background:#fff;border:1px solid var(--brd);border-radius:10px;padding:10px 12px}
+.tile .v{font-size:20px;font-weight:800;color:var(--gr)}
+.tile .l{font-size:10px;font-weight:800;color:var(--tx2);text-transform:uppercase}
+.tile .s{font-size:11px;color:var(--mut);margin-top:2px}
+.panel{background:#fff;border:1px solid var(--brd);border-radius:10px;padding:12px;margin-bottom:14px}
+.panel h4{font-size:13px;color:var(--gr);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:900px){.g2{grid-template-columns:1fr}}
+.chart-box{position:relative;height:260px}
+
+/* ADMIN */
+.subtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.subtab{border:1px solid var(--brd);background:#fff;color:var(--tx2);font-weight:700;font-size:12px;padding:7px 12px;border-radius:18px;cursor:pointer}
+.subtab.on{background:var(--gr);color:#fff;border-color:var(--gr)}
+.adm-sec{display:none}.adm-sec.on{display:block}
+.inp.sm{padding:5px 7px;font-size:12px}
+
+/* MODAL */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-start;justify-content:center;z-index:500;padding:24px 12px;overflow-y:auto}
+.ov.on{display:flex}
+.modal{background:#fff;border-radius:12px;width:100%;max-width:520px;padding:18px 18px 14px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal h3{font-size:16px;color:var(--gr);margin-bottom:4px}
+.modal .msub{font-size:12px;color:var(--tx2);margin-bottom:12px}
+.mrow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.mrow.one{grid-template-columns:1fr}
+.mrow .inp{width:100%}
+.mfoot{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.calc{background:#f5f9f2;border:1px solid var(--brd);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:10px}
+.calc b{color:var(--gr)}
+.calc.err{background:#fdecea;border-color:#e6b0aa;color:#922b21}
+.calc.warn{background:#fff6e0;border-color:#f0d68a;color:#7a5a00}
+.mot-list{max-height:260px;overflow-y:auto;border:1px solid var(--brd);border-radius:8px}
+.mot-g{font-size:10px;font-weight:800;text-transform:uppercase;color:var(--tx2);background:#f0f6f0;padding:5px 10px}
+.mot{padding:8px 10px;border-top:1px solid #edf3ed;cursor:pointer;font-size:13px;display:flex;justify-content:space-between;gap:6px}
+.mot.on{background:var(--gr);color:#fff}
+.mol{display:flex;flex-wrap:wrap;gap:6px}
+.mol label{display:flex;align-items:center;gap:5px;border:1px solid var(--brd);border-radius:7px;padding:6px 10px;font-size:13px;font-weight:600;cursor:pointer}
+.opsel{border:1px solid var(--brd);border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:pointer;display:flex;gap:8px;align-items:center}
+.opsel.on{border-color:var(--gr);background:#eef8ee;box-shadow:0 0 0 1px var(--gr) inset}
+.silo-opt{border:1px solid var(--brd);border-radius:8px;padding:8px 10px;cursor:pointer;flex:1;min-width:140px}
+.silo-opt.on{border-color:var(--gr);background:#eef8ee;box-shadow:0 0 0 1px var(--gr) inset}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:999;display:none;max-width:92vw;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+#loader{position:fixed;inset:0;background:rgba(255,255,255,.6);display:none;align-items:center;justify-content:center;z-index:900;font-weight:700;color:var(--gr)}
+#loader.on{display:flex}
+</style>
+</head>
+<body>
+
+<!-- ═════════ LOGIN ═════════ -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo"><h1>Raguife</h1><p>Moagem · Automação</p></div>
+    <input id="lg-user" placeholder="Usuário" autocomplete="username" onkeydown="if(event.key==='Enter')G('lg-pass').focus()">
+    <input id="lg-pass" type="password" placeholder="Senha" autocomplete="current-password" onkeydown="if(event.key==='Enter')fazerLogin()">
+    <button class="btn-login" onclick="fazerLogin()">Entrar</button>
+    <div class="login-err" id="lg-err"></div>
+  </div>
+</div>
+
+<!-- ═════════ APP ═════════ -->
+<div id="app">
+  <div class="topbar">
+    <div class="tb-l">
+      <span class="tb-logo">⚙️ Moagem</span>
+      <span class="tb-badge" id="tb-dia">—</span>
+      <span class="tb-badge" id="tb-turno">—</span>
+      <span class="tb-badge" id="tb-hora">—</span>
+    </div>
+    <div class="tb-r">
+      <span class="tb-user" id="tb-user"></span>
+      <button class="btn-sair" onclick="sair()">Sair</button>
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="tab on" data-tab="op" onclick="abrirTab('op')">Operação</button>
+    <button class="tab" data-tab="fila" onclick="abrirTab('fila')">Fila de OPs</button>
+    <button class="tab" data-tab="dash" onclick="abrirTab('dash')">Dashboard</button>
+    <button class="tab" data-tab="adm" id="tab-btn-adm" onclick="abrirTab('adm')">Admin</button>
+  </div>
+
+  <div class="content">
+    <!-- OPERAÇÃO -->
+    <div class="sec on" id="sec-op">
+      <div class="alertas" id="alertas"></div>
+      <div class="grid-l" id="grid-linhas"></div>
+    </div>
+
+    <!-- FILA -->
+    <div class="sec" id="sec-fila">
+      <div class="panel" style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <div>
+            <b style="color:var(--gr)">Fila da moagem</b>
+            <div class="muted" id="fila-info">Nasce na ordem do ensaque. O PCP reordena aqui — sem alterar a fila do ensaque.</div>
+          </div>
+        </div>
+      </div>
+      <div class="fila-grid" id="fila-grid"></div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div class="sec" id="sec-dash">
+      <div class="filtros">
+        <div class="fg"><label>De (dia operacional)</label><input type="date" class="inp" id="dsh-di"></div>
+        <div class="fg"><label>Até</label><input type="date" class="inp" id="dsh-df"></div>
+        <div class="fg"><label>Linha</label><select class="inp" id="dsh-linha"><option value="">Todas</option></select></div>
+        <div class="fg"><label>Turno</label><select class="inp" id="dsh-turno"><option value="">Todos</option><option value="1">T1</option><option value="2">T2</option><option value="3">T3</option></select></div>
+        <button class="btn" onclick="gerarDashboard()">Atualizar</button>
+        <button class="btn sec2" onclick="exportarAptsCSV()">⬇ Apontamentos (CSV)</button>
+        <button class="btn sec2" onclick="exportarCompCSV()">⬇ Comparativo OP (CSV)</button>
+      </div>
+      <div id="dsh-body"><div class="empty">Selecione o período e clique em Atualizar.</div></div>
+    </div>
+
+    <!-- ADMIN -->
+    <div class="sec" id="sec-adm">
+      <div class="subtabs">
+        <button class="subtab on" data-st="apts" onclick="admAba('apts')">Apontamentos</button>
+        <button class="subtab" data-st="paradas" onclick="admAba('paradas')">Paradas</button>
+        <button class="subtab" data-st="cfg" onclick="admAba('cfg')">Configuração</button>
+        <button class="subtab" data-st="log" onclick="admAba('log')">Log</button>
+      </div>
+      <div class="adm-sec on" id="adm-apts">
+        <div class="filtros">
+          <div class="fg"><label>Dia operacional</label><input type="date" class="inp" id="adm-a-data"></div>
+          <div class="fg"><label>Linha</label><select class="inp" id="adm-a-linha"><option value="">Todas</option></select></div>
+          <button class="btn" onclick="admCarregarApts()">Buscar</button>
+          <button class="btn sec2" onclick="admNovoApt()">+ Apontamento</button>
+        </div>
+        <div class="panel"><div class="tw" id="adm-a-lista"><div class="empty">Busque um dia.</div></div></div>
+      </div>
+      <div class="adm-sec" id="adm-paradas">
+        <div class="filtros">
+          <div class="fg"><label>Dia operacional</label><input type="date" class="inp" id="adm-p-data"></div>
+          <button class="btn" onclick="admCarregarParadas()">Buscar</button>
+        </div>
+        <div class="panel"><div class="tw" id="adm-p-lista"><div class="empty">Busque um dia.</div></div></div>
+      </div>
+      <div class="adm-sec" id="adm-cfg"></div>
+      <div class="adm-sec" id="adm-log">
+        <div class="panel"><h4>Últimos 200 registros <button class="btn sm" onclick="admCarregarLog()">Atualizar</button></h4><div class="tw" id="adm-log-lista"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════ MODAL: APONTAMENTO ═════════ -->
+<div class="ov" id="m-apt"><div class="modal">
+  <h3 id="apt-tit">Apontamento</h3>
+  <div class="msub" id="apt-sub"></div>
+  <div class="mrow" id="apt-row-adm" style="display:none">
+    <div class="fg"><label>Dia operacional</label><input type="date" class="inp" id="apt-data" onchange="aptPreview()"></div>
+    <div class="fg"><label>OP</label><select class="inp" id="apt-op" onchange="aptTrocarOpAdm()"></select></div>
+  </div>
+  <div class="mrow">
+    <div class="fg"><label>Hora início</label><input type="time" class="inp" id="apt-hi" onchange="aptPreview()"></div>
+    <div class="fg"><label>Hora fim</label><input type="time" class="inp" id="apt-hf" onchange="aptPreview()"></div>
+  </div>
+  <div class="mrow">
+    <div class="fg"><label>Acumulado da ordem no Libracom (kg)</label><input type="number" inputmode="numeric" min="0" step="1" class="inp" id="apt-acum" oninput="aptPreview()" placeholder="Ex.: 12450"></div>
+    <div class="fg"><label>Silo destino</label><select class="inp" id="apt-silo"></select></div>
+  </div>
+  <div class="calc" id="apt-calc">—</div>
+  <div class="mrow one" id="apt-row-reinicio" style="display:none">
+    <label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="apt-reinicio" onchange="aptPreview()"> Contador da ordem reiniciou no Libracom (o acumulado conta do zero)</label>
+  </div>
+  <div class="mrow one"><div class="fg"><label>Observação (opcional)</label><input class="inp" id="apt-obs" maxlength="200"></div></div>
+  <div class="mfoot">
+    <button class="btn ghost" onclick="fM('m-apt')">Cancelar</button>
+    <button class="btn" id="apt-btn" onclick="salvarApt()">Salvar</button>
+  </div>
+</div></div>
+
+<!-- ═════════ MODAL: FECHAMENTO (concluir / pausar OP / trocar silo) ═════════ -->
+<div class="ov" id="m-fech"><div class="modal">
+  <h3 id="fech-tit">Fechamento</h3>
+  <div class="msub" id="fech-sub"></div>
+  <div class="mrow">
+    <div class="fg"><label>Hora do fechamento</label><input type="time" class="inp" id="fech-hf" onchange="fechPreview()"></div>
+    <div class="fg"><label>Acumulado atual no Libracom (kg)</label><input type="number" inputmode="numeric" min="0" step="1" class="inp" id="fech-acum" oninput="fechPreview()"></div>
+  </div>
+  <div class="calc" id="fech-calc">—</div>
+  <div id="fech-extra"></div>
+  <div class="mfoot">
+    <button class="btn ghost" onclick="fM('m-fech')">Cancelar</button>
+    <button class="btn" id="fech-btn" onclick="confirmarFechamento()">Confirmar</button>
+  </div>
+</div></div>
+
+<!-- ═════════ MODAL: SELECIONAR OP ═════════ -->
+<div class="ov" id="m-selop"><div class="modal" style="max-width:600px">
+  <h3>Iniciar OP na moagem</h3>
+  <div class="msub" id="selop-sub"></div>
+  <div class="fg" style="margin-bottom:6px"><label>1. OP (na ordem da fila)</label></div>
+  <div id="selop-lista" style="max-height:260px;overflow-y:auto;margin-bottom:10px"></div>
+  <div class="mrow one" id="selop-just-row" style="display:none">
+    <div class="fg"><label style="color:var(--rd)">Justificativa — OP fora da ordem da fila (obrigatório)</label><input class="inp" id="selop-just" maxlength="200" placeholder="Ex.: falta de MP da 1ª OP, pedido do PCP..."></div>
+  </div>
+  <div class="fg" style="margin-bottom:6px"><label>2. Silo destino</label></div>
+  <div id="selop-silos" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
+  <div id="selop-silo-aviso"></div>
+  <div class="mrow">
+    <div class="fg"><label>Hora de início</label><input type="time" class="inp" id="selop-hi"></div>
+    <div class="fg"><label>Acumulado inicial no Libracom (kg)</label><input type="number" min="0" step="1" class="inp" id="selop-acum" value="0"></div>
+  </div>
+  <div class="muted" style="margin-bottom:6px">Deixe 0 se a ordem está começando agora. Se já foi moída parte da ordem antes (sem apontamento), informe o acumulado atual — ele entra no total da OP, mas não distorce o kg/h.</div>
+  <div class="mfoot">
+    <button class="btn ghost" onclick="fM('m-selop')">Cancelar</button>
+    <button class="btn" onclick="confirmarSelOp()">Iniciar OP</button>
+  </div>
+</div></div>
+
+<!-- ═════════ MODAL: TROCAR SILO (destino) ═════════ -->
+<div class="ov" id="m-silo"><div class="modal">
+  <h3>Trocar silo destino</h3>
+  <div class="msub" id="silo-sub"></div>
+  <div id="silo-opts" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
+  <div id="silo-aviso"></div>
+  <div class="mfoot">
+    <button class="btn ghost" onclick="fM('m-silo')">Cancelar</button>
+    <button class="btn" onclick="siloAvancar()">Avançar</button>
+  </div>
+</div></div>
+
+<!-- ═════════ MODAL: PARADA ═════════ -->
+<div class="ov" id="m-par"><div class="modal" style="max-width:580px">
+  <h3 id="par-tit">Registrar parada</h3>
+  <div class="msub" id="par-sub"></div>
+  <div class="fg" style="margin-bottom:6px"><label>Moinho(s) parado(s)</label></div>
+  <div class="mol" id="par-moinhos" style="margin-bottom:10px"></div>
+  <div class="fg" style="margin-bottom:6px"><label>Motivo</label></div>
+  <div class="mot-list" id="par-motivos" style="margin-bottom:10px"></div>
+  <div class="mrow one" id="par-silo-row" style="display:none">
+    <div class="fg"><label>Linha do silo cheio</label><select class="inp" id="par-silo-linha"></select></div>
+  </div>
+  <div class="mrow">
+    <div class="fg"><label>Hora início</label><input type="time" class="inp" id="par-hi"></div>
+    <div class="fg"><label>Hora fim <span class="muted">(vazio = parada em aberto)</span></label><input type="time" class="inp" id="par-hf" onchange="parChkMalha()"></div>
+  </div>
+  <div class="mrow one" id="par-malha-row" style="display:none">
+    <div class="fg"><label>Malha instalada (mm) — opcional</label><input type="number" step="0.1" min="0" class="inp" id="par-malha"></div>
+  </div>
+  <div class="mrow one"><div class="fg"><label>Observação</label><input class="inp" id="par-obs" maxlength="200"></div></div>
+  <div class="mfoot">
+    <button class="btn ghost" onclick="fM('m-par')">Cancelar</button>
+    <button class="btn" onclick="salvarParada()">Salvar parada</button>
+  </div>
+</div></div>
+
+<!-- ═════════ MODAL: FECHAR / EDITAR PARADA ═════════ -->
+<div class="ov" id="m-parfim"><div class="modal">
+  <h3 id="pf-tit">Fechar parada</h3>
+  <div class="msub" id="pf-sub"></div>
+  <div class="mrow" id="pf-row-adm" style="display:none">
+    <div class="fg"><label>Hora início</label><input type="time" class="inp" id="pf-hi"></div>
+    <div class="fg"><label>Motivo</label><select class="inp" id="pf-mot"></select></div>
+  </div>
+  <div class="mrow">
+    <div class="fg"><label>Hora de retorno</label><input type="time" class="inp" id="pf-hf"></div>
+    <div class="fg" id="pf-malha-fg"><label>Malha instalada (mm)</label><input type="number" step="0.1" min="0" class="inp" id="pf-malha"></div>
+  </div>
+  <div class="mrow one"><div class="fg"><label>Observação</label><input class="inp" id="pf-obs" maxlength="200"></div></div>
+  <div class="mfoot">
+    <button class="btn ghost" onclick="fM('m-parfim')">Cancelar</button>
+    <button class="btn" onclick="salvarParadaFim()">Salvar</button>
+  </div>
+</div></div>
+
+<div id="toast"></div>
+<div id="loader">Processando...</div>
+<script>
+// ════════════════════════════════════════════════════════════════════
+// RAGUIFE — MÓDULO MOAGEM / ABASTECIMENTO (moagem.html)
+// ────────────────────────────────────────────────────────────────────
+// Isolamento entre módulos (regra do projeto):
+//   ESCREVE somente em nós moagem_*  (config, fila, op_ativa, op_concluida,
+//   op_hist, op_totais, apts, paradas, silos_estado, log).
+//   LÊ (nunca escreve): usuarios/, ops/, config/metas/, extrusao_op_ativa/,
+//   extrusao_op_concluida/, extrusao_paradas/.
+// Fonte da verdade do apontamento = ACUMULADO DA ORDEM no Libracom.
+//   kg do intervalo = acumulado − acumulado anterior da mesma OP, SEMPRE
+//   recalculado do zero por recalcularOpMoagem() (nunca soma incremental).
+// ════════════════════════════════════════════════════════════════════
+var firebaseConfig={apiKey:"AIzaSyB52cXfvtmY2xXu9vMkMPhCWU-rp6NXhxc",authDomain:"sistema-ensaque.firebaseapp.com",databaseURL:"https://sistema-ensaque-default-rtdb.firebaseio.com",projectId:"sistema-ensaque"};
+var DB=null;
+try{firebase.initializeApp(firebaseConfig);DB=firebase.database();}catch(e){console.warn("Firebase:",e.message);}
+
+// ── CONSTANTES ─────────────────────────────────────────────────────
+// Boundary T2/T3 — MESMO valor de extrusao.html (FIM_TURNO2). Se o horário de
+// turno mudar (ex.: volta do T3 em outubro), alterar aqui também.
+var FIM_TURNO2=17;
+var INICIO_T1=21;          // dia operacional começa às 21h
+var FIM_T1=6;
+var TZ_OFFSET="-03:00";    // Brasil sem horário de verão desde 2019
+var MIN_MS=60000, DIA_MS=86400000;
+var TOL_FUTURO_MS=10*MIN_MS;   // tolerância de relógio para horário "no futuro"
+var MAX_MIN_APT=12*60;         // intervalo máximo de um apontamento
+var AVISO_MIN_APT=150;         // acima disso pede confirmação (hora esquecida?)
+var FATOR_KGH_SUSPEITO=2;      // kg/h > 2× meta → confirmação (provável erro de digitação)
+var STATUS_ABERTOS=["Liberada","Em andamento","Reprogramada"];
+var GRUPOS=["Manutenção","Operacional","Fator Externo/Parada Planejada"]; // mesmos nomes da extrusão
+var GRUPO_EXTERNO="Fator Externo/Parada Planejada";
+
+var LINHAS=[
+  {k:"L1",nome:"Linha 1 (E-240)",cur:"Linha 1",maq:"E-240",cor:"#1f6feb"},
+  {k:"L2",nome:"Linha 2 (E-200)",cur:"Linha 2",maq:"E-200",cor:"#d29922"},
+  {k:"L4",nome:"Linha 4 (Andritz I)",cur:"Linha 4",maq:"Andritz I",cor:"#2e8b57"},
+  {k:"L5",nome:"Linha 5 (Andritz II)",cur:"Linha 5",maq:"Andritz II",cor:"#8b5cf6"}
+];
+
+// Configuração padrão — usada até existir moagem_config no Firebase.
+// O admin grava a configuração na primeira entrada (semeadura automática).
+var CFG_PADRAO={
+  moinhos:{
+    M1000:{nome:"MM 1000",linhas:{L1:true,L2:true},rateio:0.40,ativo:true,ordem:1,obs:"Compartilhado L1/L2 — kg estimado por rateio"},
+    M1200:{nome:"MM 1200",linhas:{L1:true,L2:true},rateio:0.60,ativo:true,ordem:2,obs:"Compartilhado L1/L2 — kg estimado por rateio"},
+    M05:{nome:"MM 05",linhas:{L4:true},rateio:1,ativo:true,ordem:3,obs:"Série com MM 06 (pré-moagem)"},
+    M06:{nome:"MM 06",linhas:{L4:true},rateio:1,ativo:true,ordem:4,obs:"Série com MM 05 (moagem fina — micro)"},
+    M07:{nome:"MM 07",linhas:{L5:true},rateio:1,ativo:true,ordem:5,obs:""}
+  },
+  silos:{
+    S1:{nome:"Silo 1",linha:"L1"},S2:{nome:"Silo 2",linha:"L1"},
+    S3:{nome:"Silo 3",linha:"L2"},S4:{nome:"Silo 4",linha:"L2"},
+    S5:{nome:"Silo 5",linha:"L4"},S6:{nome:"Silo 6",linha:"L4"},
+    S7:{nome:"Silo 7",linha:"L5"},S8:{nome:"Silo 8",linha:"L5"}
+  },
+  params:{fatorMeta:1.15,tolSemAptMin:15,avisoPeneiraT:5,limitePeneiraT:{}},
+  motivos:{
+    m01:{cod:1,desc:"Troca de peneira",grupo:"Manutenção",zeraPeneira:true,ativo:true},
+    m02:{cod:2,desc:"Estouro de peneira",grupo:"Manutenção",zeraPeneira:true,ativo:true},
+    m03:{cod:3,desc:"Manutenção redler / rosca",grupo:"Manutenção",ativo:true},
+    m04:{cod:4,desc:"Manutenção elétrica",grupo:"Manutenção",ativo:true},
+    m05:{cod:5,desc:"Manutenção na balança",grupo:"Manutenção",ativo:true},
+    m06:{cod:6,desc:"Embuchamento",grupo:"Operacional",ativo:true},
+    m07:{cod:7,desc:"Mistura de MP",grupo:"Operacional",ativo:true},
+    m08:{cod:8,desc:"Silo cheio",grupo:"AUTO",siloCheio:true,ativo:true},
+    m09:{cod:9,desc:"Falta de MP",grupo:GRUPO_EXTERNO,ativo:true}
+  },
+  // Fonte: planilha "Parametros Moinhos (Automação)" — Victor, 14/09/2026
+  parametrosTec:[
+    {moinho:"M05",prod:"1.0",ampMin:115,ampMax:130,kit1:1.3,kit2:1.5,tubo:1},
+    {moinho:"M06",prod:"1.0",ampMin:500,ampMax:550,kit1:0.3,kit2:0.3,tubo:null},
+    {moinho:"M05",prod:"1.3",ampMin:120,ampMax:150,kit1:1.5,kit2:1.5,tubo:1},
+    {moinho:"M06",prod:"1.3",ampMin:500,ampMax:550,kit1:0.5,kit2:0.5,tubo:null},
+    {moinho:"M05",prod:"1.7",ampMin:230,ampMax:250,kit1:1.5,kit2:1.5,tubo:1.5},
+    {moinho:"M06",prod:"1.7",ampMin:450,ampMax:500,kit1:0.6,kit2:0.6,tubo:null},
+    {moinho:"M05",prod:"2",ampMin:230,ampMax:250,kit1:1.5,kit2:1.5,tubo:1.5},
+    {moinho:"M06",prod:"2",ampMin:500,ampMax:550,kit1:0.8,kit2:0.8,tubo:null},
+    {moinho:"M05",prod:"3",ampMin:250,ampMax:300,kit1:1.5,kit2:1.5,tubo:2},
+    {moinho:"M06",prod:"3",ampMin:500,ampMax:550,kit1:0.8,kit2:1.2,tubo:null},
+    {moinho:"M05",prod:"4",ampMin:300,ampMax:350,kit1:2,kit2:2,tubo:2},
+    {moinho:"M06",prod:"4",ampMin:500,ampMax:550,kit1:1.2,kit2:1.2,tubo:null},
+    {moinho:"M1000",prod:"3",ampMin:550,ampMax:580,kit1:0.8,kit2:0.8,tubo:2},
+    {moinho:"M1000",prod:"4",ampMin:550,ampMax:580,kit1:0.8,kit2:0.8,tubo:2},
+    {moinho:"M1200",prod:"3",ampMin:550,ampMax:580,kit1:1,kit2:0.8,tubo:2},
+    {moinho:"M1200",prod:"4",ampMin:550,ampMax:600,kit1:1,kit2:0.8,tubo:2},
+    {moinho:"M07",prod:"4",ampMin:550,ampMax:600,kit1:1.2,kit2:1.2,tubo:2},
+    {moinho:"M05",prod:"Horse R700 12%",ampMin:115,ampMax:130,kit1:1.5,kit2:1.5,tubo:2},
+    {moinho:"M06",prod:"Horse R700 12%",ampMin:500,ampMax:550,kit1:0.8,kit2:0.8,tubo:null}
+  ]
+};
+
+// ── ESTADO ─────────────────────────────────────────────────────────
+var SES=null;
+var S={
+  cfg:JSON.parse(JSON.stringify(CFG_PADRAO)), cfgFbOk:false,
+  opAtiva:{}, opConc:{}, opTot:{}, fila:{}, silos:{},
+  apts:[], paradasRange:[], paradasAbertas:[],
+  opsBy:{}, ops:{}, extAtiva:{}, extConc:{}, metas:{}, metasOk:false,
+  peneira:{}, dataOpAtual:null
+};
+var _renderT=null, _tickN=0;
+
+// ── UTILITÁRIOS ────────────────────────────────────────────────────
+function G(id){return document.getElementById(id);}
+function pad(n){return String(n).padStart(2,"0");}
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+function fN(n,d){return (Number(n)||0).toLocaleString("pt-BR",{minimumFractionDigits:d||0,maximumFractionDigits:d||0});}
+function fT(kg){return fN((Number(kg)||0)/1000,1)+" t";}
+function agora(){return new Date().toISOString();}
+function uid(){return Math.random().toString(36).slice(2,10);}
+function toast(msg,tipo){var t=G("toast");t.textContent=msg;t.style.background=tipo==="err"?"#c0392b":tipo==="warn"?"#b8860b":"#024f2b";t.style.display="block";clearTimeout(t._h);t._h=setTimeout(function(){t.style.display="none";},4800);}
+function fM(id){G(id).classList.remove("on");}
+function aM(id){G(id).classList.add("on");}
+function ld(on){G("loader").classList.toggle("on",!!on);}
+function encId(s){return String(s).replace(/[^a-zA-Z0-9]/g,"_");}
+function linhaK(k){for(var i=0;i<LINHAS.length;i++) if(LINHAS[i].k===k) return LINHAS[i]; return null;}
+function linhaNome(n){for(var i=0;i<LINHAS.length;i++) if(LINHAS[i].nome===n) return LINHAS[i]; return null;}
+function num(v){var n=parseFloat(String(v==null?"":v).replace(",","."));return isNaN(n)?null:n;}
+
+// ── DATA / HORA (fuso nomeado, independente do relógio do PC) ─────
+function dataBrasilia(d){return new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(d);}
+function horaBrasilia(d){return parseInt(new Intl.DateTimeFormat("en-US",{timeZone:"America/Sao_Paulo",hour:"2-digit",hour12:false}).format(d),10)%24;}
+function minutoBrasilia(d){return parseInt(new Intl.DateTimeFormat("en-US",{timeZone:"America/Sao_Paulo",minute:"2-digit"}).format(d),10);}
+function hhmmDeTs(ts){var d=new Date(ts);return pad(horaBrasilia(d))+":"+pad(minutoBrasilia(d));}
+function horaAtual(){return hhmmDeTs(Date.now());}
+function horaCheia(){return pad(horaBrasilia(new Date()))+":00";}
+// Dia operacional: a partir das 21h pertence ao dia seguinte (mesma regra da extrusão)
+function dataOpDeTs(ts){var d=new Date(ts);if(horaBrasilia(d)>=INICIO_T1) d=new Date(ts+DIA_MS);return dataBrasilia(d);}
+function hoje(){return dataOpDeTs(Date.now());}
+function addDias(dataStr,n){var p=dataStr.split("-");var d=new Date(Date.UTC(+p[0],+p[1]-1,+p[2]+n,12));return d.toISOString().slice(0,10);}
+function fData(dataStr){if(!dataStr) return "—";var p=dataStr.split("-");return p[2]+"/"+p[1];}
+function fDataHora(ts){return ts?fData(dataBrasilia(new Date(ts)))+" "+hhmmDeTs(ts):"—";}
+function tsDe(dataCal,hhmm){return Date.parse(dataCal+"T"+hhmm+":00"+TZ_OFFSET);}
+// hh:mm de um dia operacional → data de calendário (21h–23h59 é o dia anterior)
+function dataCalDeDataOp(dataOp,hhmm){return parseInt(hhmm,10)>=INICIO_T1?addDias(dataOp,-1):dataOp;}
+function tsDeDataOp(dataOp,hhmm){return tsDe(dataCalDeDataOp(dataOp,hhmm),hhmm);}
+// Ocorrência mais recente de hh:mm (até +10 min de tolerância de relógio)
+function tsUltimaOcorrencia(hhmm){var t=tsDe(dataBrasilia(new Date()),hhmm);if(t>Date.now()+TOL_FUTURO_MS) t-=DIA_MS;return t;}
+function calcMinutos(hi,hf){if(!hi||!hf) return 0;var a=hi.split(":"),b=hf.split(":");var m=(+b[0]*60+ +b[1])-(+a[0]*60+ +a[1]);if(m<0) m+=1440;return m;}
+function turnoDeHora(hhmm){var h=parseInt(hhmm,10);return (h>=INICIO_T1||h<FIM_T1)?1:(h<FIM_TURNO2?2:3);}
+function turnoAtual(){return turnoDeHora(horaAtual());}
+// Janela [ini,fim) do turno t no dia operacional dataOp
+function janelaTurno(dataOp,t){
+  if(t===1) return {ini:tsDeDataOp(dataOp,pad(INICIO_T1)+":00"),fim:tsDeDataOp(dataOp,pad(FIM_T1)+":00")};
+  if(t===2) return {ini:tsDeDataOp(dataOp,pad(FIM_T1)+":00"),fim:tsDeDataOp(dataOp,pad(FIM_TURNO2)+":00")};
+  return {ini:tsDeDataOp(dataOp,pad(FIM_TURNO2)+":00"),fim:tsDe(dataOp,pad(INICIO_T1)+":00")};
+}
+
+// ── PRODUTO ────────────────────────────────────────────────────────
+function familiaProduto(cod){var c=(cod||"").toUpperCase().trim();if(c.indexOf("CAT")===0||c.indexOf("DOG")===0) return "PET";if(c.indexOf("HOR")===0) return "HORSE";return "AQUA";}
+// Programado em KG — mesma regra de getExtProgressoOP() da extrusão
+function progKg(op){if(!op) return 0;return Number(op.progExtOriginal)||Number(op.prog)||0;}
+function metaExtrusao(cod,linhaNm){
+  var chave={"Linha 1 (E-240)":"metaL1","Linha 2 (E-200)":"metaL2","Linha 4 (Andritz I)":"metaL4","Linha 5 (Andritz II)":"metaL5"}[linhaNm];
+  var m=S.metas[cod]||S.metas[String(cod||"").replace(/[.#$\[\]]/g,"_")];
+  return (m&&chave)?(Number(m[chave])||0):0;
+}
+function metaMoagem(cod,linhaNm){var m=metaExtrusao(cod,linhaNm);return m?m*(Number(S.cfg.params.fatorMeta)||1.15):0;}
+
+// ── CONFIG ─────────────────────────────────────────────────────────
+function moinhosDaLinha(lk){
+  var mo=S.cfg.moinhos||{};
+  return Object.keys(mo).filter(function(m){return mo[m].ativo!==false&&mo[m].linhas&&mo[m].linhas[lk];})
+    .sort(function(a,b){return (mo[a].ordem||99)-(mo[b].ordem||99);});
+}
+function todosMoinhos(){var mo=S.cfg.moinhos||{};return Object.keys(mo).sort(function(a,b){return (mo[a].ordem||99)-(mo[b].ordem||99);});}
+function nomeMoinho(m){return (S.cfg.moinhos[m]&&S.cfg.moinhos[m].nome)||m;}
+function silosDaLinha(lk){var si=S.cfg.silos||{};return Object.keys(si).filter(function(s){return si[s].linha===lk;}).sort();}
+function nomeSilo(s){return (S.cfg.silos[s]&&S.cfg.silos[s].nome)||s;}
+function rateioSnap(lk){var r={};moinhosDaLinha(lk).forEach(function(m){r[m]=Number(S.cfg.moinhos[m].rateio);if(isNaN(r[m])) r[m]=1;});return r;}
+function moinhoEstimado(m){var mo=S.cfg.moinhos[m];return !!(mo&&Number(mo.rateio)<1);}
+function motivoPorId(id){return (S.cfg.motivos||{})[id]||null;}
+
+// ── LOG ────────────────────────────────────────────────────────────
+function log(tipo,desc){if(!DB||!SES) return;try{DB.ref("moagem_log").push({ts:agora(),usuario:SES.login,tipo:tipo,descricao:String(desc||"")});}catch(e){}}
+
+// ── PERMISSÕES ─────────────────────────────────────────────────────
+function isAdmin(){return SES&&SES.perfil==="admin";}
+function podeApontar(){return SES&&(SES.perfil==="moagem"||SES.perfil==="admin");}
+function podeFila(){return SES&&(SES.perfil==="pcp"||SES.perfil==="admin");}
+
+// ════════════════════════════════════════════════════════════════════
+// LOGIN
+// ════════════════════════════════════════════════════════════════════
+var PERFIS_OK={moagem:1,pcp:1,admin:1};
+function fazerLogin(){
+  var u=G("lg-user").value.trim(), p=G("lg-pass").value;
+  G("lg-err").textContent="";
+  if(!u||!p){G("lg-err").textContent="Informe usuário e senha";return;}
+  if(!DB){G("lg-err").textContent="Sem conexão com o servidor";return;}
+  ld(true);
+  DB.ref("usuarios").orderByChild("login").equalTo(u).once("value").then(function(snap){
+    ld(false);
+    var found=null;
+    if(snap.exists()) snap.forEach(function(c){var v=c.val();if(v&&v.senha===p&&v.ativo!==false) found=v;});
+    if(!found){G("lg-err").textContent="Usuário ou senha inválidos";return;}
+    if(!PERFIS_OK[found.perfil]){G("lg-err").textContent="Sem acesso à moagem (perfil: "+(found.perfil||"—")+")";return;}
+    SES={login:found.login,nome:found.nome||found.login,perfil:found.perfil};
+    try{sessionStorage.setItem("moagem_ses",JSON.stringify(SES));}catch(e){}
+    G("lg-pass").value="";
+    log("login","Login ("+SES.perfil+")");
+    iniciarApp();
+  }).catch(function(e){ld(false);G("lg-err").textContent="Erro: "+e.message;});
+}
+function sair(){
+  try{sessionStorage.removeItem("moagem_ses");}catch(e){}
+  location.reload();
+}
+function restaurarSessao(){
+  var s=null;
+  try{s=JSON.parse(sessionStorage.getItem("moagem_ses")||"null");}catch(e){}
+  if(!s||!DB) return;
+  // Revalida no banco: usuário pode ter sido desativado
+  DB.ref("usuarios").orderByChild("login").equalTo(s.login).once("value").then(function(snap){
+    var ok=null;
+    if(snap.exists()) snap.forEach(function(c){var v=c.val();if(v&&v.ativo!==false&&PERFIS_OK[v.perfil]) ok=v;});
+    if(!ok){try{sessionStorage.removeItem("moagem_ses");}catch(e){}return;}
+    SES={login:ok.login,nome:ok.nome||ok.login,perfil:ok.perfil};
+    iniciarApp();
+  }).catch(function(){});
+}
+
+// ════════════════════════════════════════════════════════════════════
+// INICIALIZAÇÃO / LISTENERS
+// ════════════════════════════════════════════════════════════════════
+function iniciarApp(){
+  G("login-screen").style.display="none";
+  G("app").style.display="block";
+  G("tb-user").textContent=SES.nome+" · "+SES.perfil.toUpperCase();
+  G("tab-btn-adm").style.display=isAdmin()?"":"none";
+  // Filtros de linha
+  ["dsh-linha","adm-a-linha"].forEach(function(id){
+    var el=G(id);LINHAS.forEach(function(l){var o=document.createElement("option");o.value=l.k;o.textContent=l.cur+" · "+l.maq;el.appendChild(o);});
+  });
+  var h=hoje();
+  G("dsh-di").value=addDias(h,-6);G("dsh-df").value=h;
+  G("adm-a-data").value=h;G("adm-p-data").value=h;
+  S.dataOpAtual=h;
+  if(!DB){toast("Sem conexão com o servidor","err");return;}
+
+  DB.ref("moagem_config").on("value",function(s){
+    var v=s.val();
+    if(v){
+      S.cfgFbOk=true;
+      S.cfg={
+        moinhos:v.moinhos||CFG_PADRAO.moinhos,
+        silos:v.silos||CFG_PADRAO.silos,
+        params:Object.assign({},CFG_PADRAO.params,v.params||{}),
+        motivos:v.motivos||CFG_PADRAO.motivos,
+        parametrosTec:v.parametrosTec||CFG_PADRAO.parametrosTec
+      };
+      if(!S.cfg.params.limitePeneiraT) S.cfg.params.limitePeneiraT={};
+    } else {
+      S.cfgFbOk=false;
+      S.cfg=JSON.parse(JSON.stringify(CFG_PADRAO));
+      if(isAdmin()){
+        DB.ref("moagem_config").set(CFG_PADRAO).then(function(){
+          toast("Configuração padrão da moagem criada (moinhos, silos, motivos, parâmetros)","ok");
+          log("config","Semeadura da configuração padrão");
+        });
+      }
+    }
+    agendarRender();
+    if(G("sec-adm").classList.contains("on")) admRenderCfg();
+  });
+  DB.ref("moagem_op_ativa").on("value",function(s){S.opAtiva=s.val()||{};agendarRender();});
+  DB.ref("moagem_op_concluida").on("value",function(s){S.opConc=s.val()||{};agendarRender();});
+  DB.ref("moagem_op_totais").on("value",function(s){S.opTot=s.val()||{};agendarRender();});
+  DB.ref("moagem_fila").on("value",function(s){S.fila=s.val()||{};agendarRender();});
+  DB.ref("moagem_silos_estado").on("value",function(s){S.silos=s.val()||{};agendarRender();});
+  DB.ref("moagem_paradas").orderByChild("aberta").equalTo(true).on("value",function(s){
+    S.paradasAbertas=[];
+    if(s.exists()) s.forEach(function(c){var p=c.val();p.fbKey=c.key;S.paradasAbertas.push(p);});
+    agendarRender();
+  });
+  STATUS_ABERTOS.forEach(function(st){
+    DB.ref("ops").orderByChild("status").equalTo(st).on("value",function(s){
+      var b={};
+      if(s.exists()) s.forEach(function(c){var v=c.val();if(v){v.fbKey=c.key;b[c.key]=v;}});
+      S.opsBy[st]=b;
+      S.ops={};
+      Object.keys(S.opsBy).forEach(function(k){Object.assign(S.ops,S.opsBy[k]);});
+      agendarRender();
+    });
+  });
+  DB.ref("config/metas").once("value").then(function(s){
+    S.metas={};
+    if(s.exists()) s.forEach(function(c){var v=c.val();if(!v) return;S.metas[c.key]=v;if(v.cod) S.metas[v.cod]=v;});
+    S.metasOk=true;agendarRender();
+  }).catch(function(){});
+  anexarListenersDia();
+  calcPeneiras();
+  setInterval(tick,30000);
+  tick();
+}
+
+// Listeners dependentes do dia operacional — reanexados na virada das 21h
+var _lsDia=[];
+function anexarListenersDia(){
+  _lsDia.forEach(function(off){try{off();}catch(e){}});
+  _lsDia=[];
+  var h=S.dataOpAtual, ini=addDias(h,-1), fim=addDias(h,1);
+  var qA=DB.ref("moagem_apts").orderByChild("data").startAt(ini).endAt(fim);
+  var cbA=qA.on("value",function(s){
+    S.apts=[];
+    if(s.exists()) s.forEach(function(c){var a=c.val();if(!a) return;a.fbKey=c.key;S.apts.push(a);});
+    S.apts.sort(function(a,b){return (a.tsIni||0)-(b.tsIni||0);});
+    agendarRender();
+  });
+  _lsDia.push(function(){qA.off("value",cbA);});
+  var qP=DB.ref("moagem_paradas").orderByChild("data").startAt(ini).endAt(fim);
+  var cbP=qP.on("value",function(s){
+    S.paradasRange=[];
+    if(s.exists()) s.forEach(function(c){var p=c.val();if(!p) return;p.fbKey=c.key;S.paradasRange.push(p);});
+    agendarRender();
+  });
+  _lsDia.push(function(){qP.off("value",cbP);});
+  // OP rodando na extrusão (somente leitura) — dia operacional atual
+  LINHAS.forEach(function(l){
+    var r=DB.ref("extrusao_op_ativa/"+encId(l.nome)+"/"+h);
+    var cb=r.on("value",function(s){
+      var v=s.val()||{}, fk=v["t"+turnoAtual()]||null;
+      if(!fk){ // pega o turno mais recente com OP gravada
+        var best=null,bt="";
+        [1,2,3].forEach(function(t){if(v["t"+t]&&(v["t"+t+"_ts"]||"")>=bt){best=v["t"+t];bt=v["t"+t+"_ts"]||"";}});
+        fk=best;
+      }
+      S.extAtiva[l.k]=fk;
+      if(fk&&!S.ops[fk]) buscarOpAvulsa(fk);
+      agendarRender();
+    });
+    _lsDia.push(function(){r.off("value",cb);});
+  });
+}
+var _opAvulsa={};
+function buscarOpAvulsa(fk){
+  if(!fk||_opAvulsa[fk]) return;
+  _opAvulsa[fk]={carregando:true};
+  DB.ref("ops/"+fk).once("value").then(function(s){var v=s.val();if(v){v.fbKey=fk;_opAvulsa[fk]=v;}agendarRender();}).catch(function(){});
+}
+function opPorFk(fk){if(!fk) return null;return S.ops[fk]||(_opAvulsa[fk]&&!_opAvulsa[fk].carregando?_opAvulsa[fk]:null);}
+function checarExtConcluida(fk){
+  if(!fk||S.extConc[fk]!==undefined) return;
+  S.extConc[fk]=null;
+  DB.ref("extrusao_op_concluida/"+fk).once("value").then(function(s){S.extConc[fk]=s.exists()?s.val():false;agendarRender();}).catch(function(){});
+}
+
+function tick(){
+  var h=hoje();
+  G("tb-dia").textContent="Dia op. "+fData(h);
+  G("tb-turno").textContent="Turno "+turnoAtual();
+  G("tb-hora").textContent=horaAtual();
+  if(h!==S.dataOpAtual){S.dataOpAtual=h;anexarListenersDia();}
+  _tickN++;
+  if(_tickN%10===0) calcPeneiras();
+  agendarRender();
+}
+function agendarRender(){clearTimeout(_renderT);_renderT=setTimeout(renderTudo,120);}
+function renderTudo(){
+  if(!SES) return;
+  if(G("sec-op").classList.contains("on")) renderOperacao();
+  if(G("sec-fila").classList.contains("on")) renderFila();
+}
+function abrirTab(t){
+  document.querySelectorAll(".tab").forEach(function(b){b.classList.toggle("on",b.dataset.tab===t);});
+  ["op","fila","dash","adm"].forEach(function(s){G("sec-"+s).classList.toggle("on",s===t);});
+  if(t==="adm"){admAba("apts");}
+  if(t==="dash"&&!G("dsh-body").dataset.ok) gerarDashboard();
+  renderTudo();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CADEIA / RECÁLCULO (sempre do zero)
+// ════════════════════════════════════════════════════════════════════
+// Cadeia de reprogramação legada (reprogramadaDeFbKey) — [elo mais antigo … atual]
+function buscarCadeia(fk){
+  return new Promise(function(res){
+    var cad=[], vistos={};
+    function passo(k){
+      if(!k||vistos[k]){res(cad);return;}
+      vistos[k]=1;
+      DB.ref("ops/"+k).once("value").then(function(s){
+        var v=s.val();
+        if(!v){ if(!cad.length) cad.unshift({fbKey:k}); res(cad); return; }
+        v.fbKey=k;cad.unshift(v);
+        if(v.reprogramadaDeFbKey) passo(v.reprogramadaDeFbKey); else res(cad);
+      }).catch(function(){ if(!cad.length) cad.unshift({fbKey:k}); res(cad); });
+    }
+    passo(fk);
+  });
+}
+function aptsDaCadeia(fk){
+  return buscarCadeia(fk).then(function(cad){
+    var keys=cad.map(function(e){return e.fbKey;});
+    return Promise.all(keys.map(function(k){return DB.ref("moagem_apts").orderByChild("opFbKey").equalTo(k).once("value");})).then(function(snaps){
+      var lista=[];
+      snaps.forEach(function(s){if(s&&s.exists()) s.forEach(function(c){var a=c.val();if(a){a.fbKey=c.key;lista.push(a);}});});
+      lista.sort(function(a,b){return (a.tsFim||0)-(b.tsFim||0)||(a.tsIni||0)-(b.tsIni||0);});
+      return {cadeia:keys,apts:lista};
+    });
+  });
+}
+// Acumulado anterior e posterior a um instante (para validar um novo valor)
+function vizinhosAcum(fk,tsFim,ignorarKey){
+  return aptsDaCadeia(fk).then(function(r){
+    var prev=0, prevTs=null, next=null, nextTs=null;
+    r.apts.forEach(function(a){
+      if(a.fbKey===ignorarKey) return;
+      var ac=Number(a.acumulado)||0;
+      if((a.tsFim||0)<=tsFim){prev=a.reinicio?ac:Math.max(prev,ac);prevTs=a.tsFim;}
+      else if(next===null){next=a.reinicio?null:ac;nextTs=a.tsFim;if(a.reinicio) next=Infinity;}
+    });
+    if(next===Infinity) next=null;
+    return {prev:prev,prevTs:prevTs,next:next,nextTs:nextTs};
+  });
+}
+// Recalcula kg, kg/h e kg por moinho de TODOS os apontamentos da OP (e cadeia)
+// a partir dos acumulados, e grava os totais em moagem_op_totais. Nunca incremental.
+function recalcularOpMoagem(fk){
+  if(!DB||!fk) return Promise.resolve();
+  return aptsDaCadeia(fk).then(function(r){
+    var upd={}, prev=0, porElo={}, totCad=0, ultimo=null;
+    r.cadeia.forEach(function(k){porElo[k]={kg:0,n:0};});
+    r.apts.forEach(function(a){
+      var ac=Number(a.acumulado)||0;
+      var kg=a.reinicio?ac:ac-prev;
+      var incons=kg<0;
+      if(kg<0) kg=0;
+      prev=a.reinicio?ac:Math.max(prev,ac);
+      var min=Number(a.minutos)||0;
+      var kgH=(!a.marco&&min>0)?Math.round(kg/(min/60)):0;
+      var kpm={};
+      // Marco inicial (material moído antes do controle, horário desconhecido) não
+      // entra no kg por moinho — não conta para a vida da peneira nem para o kg/moinho.
+      if(!a.marco) Object.keys(a.rateioSnap||{}).forEach(function(m){kpm[m]=Math.round(kg*Number(a.rateioSnap[m])*10)/10;});
+      var base="moagem_apts/"+a.fbKey+"/";
+      if(Number(a.kg)!==kg) upd[base+"kg"]=kg;
+      if(Number(a.kgH)!==kgH) upd[base+"kgH"]=kgH;
+      if(!!a.inconsistente!==incons) upd[base+"inconsistente"]=incons||null;
+      if(JSON.stringify(a.kgPorMoinho||{})!==JSON.stringify(kpm)) upd[base+"kgPorMoinho"]=kpm;
+      if(porElo[a.opFbKey]){porElo[a.opFbKey].kg+=kg;porElo[a.opFbKey].n++;}
+      totCad+=kg;ultimo=a;
+    });
+    var ts=agora();
+    r.cadeia.forEach(function(k){
+      upd["moagem_op_totais/"+k]={kg:porElo[k].kg,nApts:porElo[k].n,kgCadeia:totCad,
+        acumulado:prev,ultimoTsFim:ultimo?ultimo.tsFim:null,atualizadoEm:ts};
+    });
+    return DB.ref().update(upd);
+  }).catch(function(e){console.warn("recalcularOpMoagem",e);toast("Falha ao recalcular totais da OP: "+e.message,"err");});
+}
+
+// ════════════════════════════════════════════════════════════════════
+// PENEIRA — toneladas desde a última troca (sempre recalculado do zero)
+// ════════════════════════════════════════════════════════════════════
+function calcPeneiras(){
+  if(!DB) return;
+  DB.ref("moagem_paradas").orderByChild("zeraPeneira").equalTo(true).once("value").then(function(s){
+    var ult={}, malha={}, trocas={};
+    if(s.exists()) s.forEach(function(c){
+      var p=c.val();if(!p||!p.tsFim||p.aberta) return;
+      (trocas[p.moinho]=trocas[p.moinho]||[]).push({ts:p.tsFim,malha:p.malhaInstalada||null,desc:p.descricao});
+      if(!ult[p.moinho]||p.tsFim>ult[p.moinho]){ult[p.moinho]=p.tsFim;malha[p.moinho]=p.malhaInstalada||null;}
+    });
+    S.trocasPeneira=trocas;
+    var ms=todosMoinhos(), minTs=Infinity;
+    ms.forEach(function(m){minTs=Math.min(minTs,ult[m]||0);});
+    if(minTs===Infinity) minTs=0;
+    return DB.ref("moagem_apts").orderByChild("tsFim").startAt(minTs+1).once("value").then(function(sa){
+      var soma={};ms.forEach(function(m){soma[m]=0;});
+      if(sa.exists()) sa.forEach(function(c){
+        var a=c.val();if(!a||!a.kgPorMoinho) return;
+        Object.keys(a.kgPorMoinho).forEach(function(m){if(soma[m]!==undefined&&(a.tsFim||0)>(ult[m]||0)) soma[m]+=Number(a.kgPorMoinho[m])||0;});
+      });
+      ms.forEach(function(m){S.peneira[m]={kg:soma[m],desde:ult[m]||null,malha:malha[m]||null};});
+      agendarRender();
+    });
+  }).catch(function(e){console.warn("calcPeneiras",e);});
+}
+function statusPeneira(m){
+  var p=S.peneira[m];if(!p) return null;
+  var lim=Number((S.cfg.params.limitePeneiraT||{})[m])||0, av=Number(S.cfg.params.avisoPeneiraT)||5;
+  var t=p.kg/1000, st="ok";
+  if(lim>0){ if(t>=lim) st="bd"; else if(t>=lim-av) st="wa"; }
+  return {t:t,lim:lim,st:st,desde:p.desde,malha:p.malha};
+}
+
+// ════════════════════════════════════════════════════════════════════
+// OPERAÇÃO — CARDS POR LINHA
+// ════════════════════════════════════════════════════════════════════
+function aptsLinha(lk){return S.apts.filter(function(a){return a.lk===lk;});}
+function ultimoAptLinha(lk){var u=null;aptsLinha(lk).forEach(function(a){if(!a.marco&&(!u||(a.tsFim||0)>(u.tsFim||0))) u=a;});return u;}
+function paradasAbertasMoinho(m){return S.paradasAbertas.filter(function(p){return p.moinho===m;});}
+function linhaParadaTotal(lk){var ms=moinhosDaLinha(lk);if(!ms.length) return false;return ms.every(function(m){return paradasAbertasMoinho(m).length>0;});}
+function paradasSobrepoe(lk,ini,fim){
+  var ms=moinhosDaLinha(lk), agoraTs=Date.now();
+  var todas=S.paradasRange.concat(S.paradasAbertas.filter(function(p){return !S.paradasRange.some(function(x){return x.fbKey===p.fbKey;});}));
+  return todas.filter(function(p){
+    if(ms.indexOf(p.moinho)<0) return false;
+    var pi=p.tsIni||0, pf=p.tsFim||agoraTs;
+    return pi<fim&&pf>ini;
+  });
+}
+function baseInicioApt(lk){
+  var oa=S.opAtiva[lk], u=ultimoAptLinha(lk), base=null;
+  if(u&&u.tsFim) base=u.tsFim;
+  if(oa&&oa.inicioTs&&(!base||oa.inicioTs>base)) base=oa.inicioTs;
+  if(base&&Date.now()-base>MAX_MIN_APT*MIN_MS) base=null;
+  return base;
+}
+function alertasLinha(lk){
+  var al=[], l=linhaK(lk), oa=S.opAtiva[lk], tol=Number(S.cfg.params.tolSemAptMin)||15;
+  if(oa){
+    var base=baseInicioApt(lk);
+    if(base){
+      var atraso=Math.round((Date.now()-base)/MIN_MS);
+      if(atraso>60+tol&&!linhaParadaTotal(lk))
+        al.push({c:"rd",t:"<b>"+l.cur+"</b> — sem apontamento desde "+hhmmDeTs(base)+" ("+Math.floor(atraso/60)+"h"+pad(atraso%60)+")"});
+    }
+    var u=ultimoAptLinha(lk);
+    if(u&&u.opFbKey===oa.opFbKey&&u.metaH>0&&u.kgH<u.metaH&&!paradasSobrepoe(lk,u.tsIni,u.tsFim).length&&Date.now()-u.tsFim<2*3600000)
+      al.push({c:"or",t:"<b>"+l.cur+"</b> — último intervalo abaixo da meta: "+fN(u.kgH)+" kg/h (meta "+fN(u.metaH)+")"});
+  }
+  moinhosDaLinha(lk).forEach(function(m){
+    var sp=statusPeneira(m);
+    if(sp&&sp.st!=="ok"&&al.every(function(x){return x.m!==m;}))
+      al.push({c:sp.st==="bd"?"rd":"or",m:m,t:"<b>"+esc(nomeMoinho(m))+"</b> — peneira com "+fN(sp.t,1)+" t"+(sp.st==="bd"?" (limite de "+fN(sp.lim,1)+" t atingido)":" — faltam "+fN(Math.max(sp.lim-sp.t,0),1)+" t para a troca")});
+  });
+  // Cruzamento extrusão x silos: extrusora rodando OP que não está em nenhum silo da linha
+  var ef=S.extAtiva[lk], sl=silosDaLinha(lk);
+  var usaSilos=sl.some(function(s){return S.silos[s]&&S.silos[s].opFbKey;});
+  if(ef&&usaSilos&&!sl.some(function(s){return S.silos[s]&&S.silos[s].opFbKey===ef;})){
+    var eo=opPorFk(ef);
+    al.push({c:"bl",t:"<b>"+l.cur+"</b> — extrusora roda OP "+esc(eo?eo.id:ef)+", que não consta em nenhum silo da linha (confira o silo em uso)"});
+  }
+  return al;
+}
+function renderOperacao(){
+  var al=[];LINHAS.forEach(function(l){al=al.concat(alertasLinha(l.k));});
+  G("alertas").innerHTML=al.map(function(a){return '<div class="al al-'+a.c+'">'+(a.c==="rd"?"⛔":a.c==="or"?"⚠️":"ℹ️")+" <span>"+a.t+"</span></div>";}).join("");
+  G("grid-linhas").innerHTML=LINHAS.map(function(l){return cardLinha(l);}).join("");
+}
+function cardLinha(l){
+  var lk=l.k, oa=S.opAtiva[lk], op=oa?opPorFk(oa.opFbKey):null, pa=podeApontar();
+  var h='<div class="card"><div class="card-h"><div><h3>'+l.cur+' <span style="font-weight:600;opacity:.8">· '+l.maq+'</span></h3>';
+  h+='<div class="sub">Moinhos: '+moinhosDaLinha(lk).map(nomeMoinho).map(esc).join(" + ")+' · Silos: '+silosDaLinha(lk).map(nomeSilo).join(", ")+'</div></div>';
+  var ef=S.extAtiva[lk], eo=opPorFk(ef);
+  h+='<div style="text-align:right;font-size:11px"><div style="opacity:.75">Extrusora rodando</div><b>'+(ef?esc(eo?eo.id:"…"):"—")+'</b></div></div><div class="card-b">';
+
+  // Moinhos: status + peneira
+  h+='<div class="row-info">';
+  moinhosDaLinha(lk).forEach(function(m){
+    var pa2=paradasAbertasMoinho(m), sp=statusPeneira(m);
+    if(pa2.length){
+      var p=pa2[0];
+      h+='<span class="chip pa" title="'+esc(p.descricao)+'">🔴 '+esc(nomeMoinho(m))+' parado · '+esc(p.descricao)+' desde '+esc(p.horaIni)+(pa?' <button class="btn xs rd" onclick="abrirFecharParada(\''+p.fbKey+'\')">Fechar</button>':'')+'</span>';
+    } else h+='<span class="chip ok">🟢 '+esc(nomeMoinho(m))+'</span>';
+    if(sp){
+      var cls=sp.st==="bd"?"pa":sp.st==="wa"?"wa":"in";
+      h+='<span class="chip '+cls+'" title="Desde '+(sp.desde?fDataHora(sp.desde):"o início do registro")+(sp.malha?" · malha "+sp.malha+" mm":"")+(moinhoEstimado(m)?" · kg estimado por rateio":"")+'">🔩 '+fN(sp.t,1)+' t'+(sp.lim?' / '+fN(sp.lim,0)+' t':'')+(moinhoEstimado(m)?'*':'')+'</span>';
+    }
+  });
+  h+='</div>';
+
+  // OP ativa na moagem
+  if(oa){
+    var tot=S.opTot[oa.opFbKey]||{}, moido=Number(tot.kgCadeia)||0, prog=progKg(op), pct=prog?Math.round(moido/prog*100):0;
+    var meta=metaMoagem(oa.cod,l.nome), u=ultimoAptLinha(lk);
+    var kghU=(u&&u.opFbKey===oa.opFbKey)?u.kgH:null;
+    h+='<div class="op-box"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div class="op-id">'+esc(oa.opNum)+'</div><div class="op-desc">'+esc(oa.cod)+' · '+esc(oa.desc)+'</div></div>';
+    h+='<div style="text-align:right"><span class="bdg b">'+esc(nomeSilo(oa.silo))+'</span>'+(oa.foraOrdem?'<div class="muted" title="'+esc(oa.justificativa||"")+'">fora da ordem</div>':'')+'</div></div>';
+    h+='<div class="kpis"><div class="kpi"><div class="v">'+fN(moido)+'</div><div class="l">kg moídos</div></div>';
+    h+='<div class="kpi"><div class="v">'+(prog?fN(prog):"—")+'</div><div class="l">prog. kg</div></div>';
+    h+='<div class="kpi"><div class="v">'+(prog?fN(Math.max(prog-moido,0)):"—")+'</div><div class="l">saldo kg</div></div>';
+    h+='<div class="kpi"><div class="v" style="color:'+(kghU==null||!meta?"var(--gr)":kghU>=meta?"#1b5e20":"var(--rd)")+'">'+(kghU==null?"—":fN(kghU))+'</div><div class="l">kg/h · meta '+(meta?fN(meta):"—")+'</div></div></div>';
+    if(prog) h+='<div class="bar"><div style="width:'+Math.min(pct,100)+'%"></div></div><div class="muted" style="margin-top:3px">'+pct+'% do programado · acumulado Libracom: '+fN(tot.acumulado||0)+' kg</div>';
+    if(!meta) h+='<div class="muted" style="color:var(--or);margin-top:3px">⚠ SKU sem meta na extrusão para esta linha — kg/h sem referência.</div>';
+    h+='</div>';
+  } else {
+    h+='<div class="op-box" style="text-align:center;color:var(--tx2)">Nenhuma OP ativa na moagem desta linha.</div>';
+  }
+
+  // Botões
+  h+='<div class="btns">';
+  if(oa){
+    h+='<button class="btn" '+(pa?'':'disabled')+' onclick="abrirApt(\''+lk+'\')">＋ Apontar hora</button>';
+    h+='<button class="btn sec2" '+(pa?'':'disabled')+' onclick="abrirParada(\''+lk+'\')">Parada</button>';
+    h+='<button class="btn sec2" '+(pa?'':'disabled')+' onclick="abrirTrocaSilo(\''+lk+'\')">⇄ Silo</button>';
+    h+='<button class="btn sec2" '+(pa?'':'disabled')+' onclick="abrirFechamento(\''+lk+'\',\'pausar\')">Pausar OP</button>';
+    h+='<button class="btn or" '+(pa?'':'disabled')+' onclick="abrirFechamento(\''+lk+'\',\'concluir\')">✔ Concluir OP</button>';
+  } else {
+    h+='<button class="btn" '+(pa?'':'disabled')+' onclick="abrirSelOp(\''+lk+'\')">▶ Iniciar OP</button>';
+    h+='<button class="btn sec2" '+(pa?'':'disabled')+' onclick="abrirParada(\''+lk+'\')">Parada</button>';
+  }
+  h+='</div>';
+
+  // Faixa de horas do turno
+  h+=faixaTurno(lk);
+
+  // Silos da linha
+  h+='<div class="row-info" style="margin-top:8px">';
+  silosDaLinha(lk).forEach(function(s){
+    var st=S.silos[s], txt="sem registro", cls="";
+    if(st&&st.opFbKey){
+      var consome=(ef&&st.opFbKey===ef);
+      txt=esc(st.opNum)+" · "+esc(st.cod)+(consome?" · 🔄 extrusora consumindo":"");
+      cls=consome?"ok":(oa&&oa.silo===s?"in":"");
+    }
+    h+='<span class="chip '+cls+'">🛢 '+esc(nomeSilo(s))+': '+txt+'</span>';
+  });
+  h+='</div>';
+
+  // Apontamentos do turno
+  h+=tabelaAptsTurno(lk);
+
+  // Parâmetros técnicos
+  h+=parametrosTecHtml(lk,oa);
+  h+='</div></div>';
+  return h;
+}
+function faixaTurno(lk){
+  var dOp=hoje(), t=turnoAtual(), j=janelaTurno(dOp,t), agoraTs=Date.now();
+  var aps=aptsLinha(lk).filter(function(a){return !a.marco;});
+  // Hora só é cobrada ("sem apontamento") dentro do período em que a linha teve OP na moagem
+  var oa=S.opAtiva[lk], ini=null, fimRef=null;
+  aps.forEach(function(a){if(a.tsFim>j.ini&&(ini===null||a.tsIni<ini)) ini=a.tsIni;if(fimRef===null||a.tsFim>fimRef) fimRef=a.tsFim;});
+  if(oa&&oa.inicioTs&&(ini===null||oa.inicioTs<ini)) ini=oa.inicioTs;
+  if(oa) fimRef=agoraTs;
+  var h='<div class="legend"><span style="font-weight:700">t/h por hora:</span><span><i style="background:#d9f0dd"></i>≥ meta</span><span><i style="background:#fff0c2"></i>80–99%</span><span><i style="background:#fbd5d0"></i>&lt; 80%</span><span><i style="background:#fff;border:1px dashed #c0392b"></i>sem apontamento</span><span><i style="background:#e4e7eb"></i>parada</span></div><div class="strip">';
+  for(var ts=j.ini;ts<j.fim;ts+=3600000){
+    var fim=ts+3600000, lbl=hhmmDeTs(ts).slice(0,2)+"h";
+    var cls="fu", val="";
+    var sob=aps.filter(function(a){return a.tsIni<fim&&a.tsFim>ts;});
+    if(ts>agoraTs){cls="fu";}
+    else if(sob.length){
+      var kgPond=0,minT=0,metaP=0;
+      sob.forEach(function(a){var ov=(Math.min(a.tsFim,fim)-Math.max(a.tsIni,ts))/MIN_MS;kgPond+=(Number(a.kgH)||0)*ov;metaP+=(Number(a.metaH)||0)*ov;minT+=ov;});
+      var kgh=minT?kgPond/minT:0, meta=minT?metaP/minT:0;
+      val=fN(kgh/1000,1)+"t";
+      if(!meta) cls="ok"; else {var r=kgh/meta;cls=r>=1?"ok":r>=0.8?"lo":"bd";}
+      if(minT<55&&fim<=agoraTs) val+="·"; // hora parcialmente coberta
+    }
+    else if(paradasSobrepoe(lk,ts,fim).length){cls="pa";val="⏸";}
+    else if(fim<=agoraTs&&ini!==null&&fim>ini&&ts<fimRef){cls="mi";val="—";}
+    else {cls="fu";}
+    var now=(agoraTs>=ts&&agoraTs<fim)?" nw":"";
+    h+='<div class="hr '+cls+now+'"><div class="h">'+lbl+'</div>'+(val||"&nbsp;")+'</div>';
+  }
+  return h+'</div>';
+}
+function tabelaAptsTurno(lk){
+  var dOp=hoje(), t=turnoAtual(), j=janelaTurno(dOp,t);
+  var lista=aptsLinha(lk).filter(function(a){return a.tsFim>j.ini-3600000;}).slice(-12);
+  if(!lista.length) return '<div class="muted" style="margin-top:4px">Sem apontamentos neste turno.</div>';
+  var u=ultimoAptLinha(lk);
+  var h='<div class="tw" style="margin-top:6px"><table class="t"><thead><tr><th>Intervalo</th><th>OP</th><th>Silo</th><th class="n">Acumulado</th><th class="n">kg</th><th class="n">kg/h</th><th class="n">% meta</th><th></th></tr></thead><tbody>';
+  lista.slice().reverse().forEach(function(a){
+    var pm=a.metaH?Math.round(a.kgH/a.metaH*100):null;
+    var bc=pm==null?"":pm>=100?"g":pm>=80?"y":"r";
+    var podeEd=isAdmin()||(podeApontar()&&u&&u.fbKey===a.fbKey);
+    h+='<tr><td>'+(a.marco?'<span class="bdg">marco inicial</span>':esc(a.horaIni)+'–'+esc(a.horaFim))+(a.inconsistente?' <span class="bdg r" title="Acumulado menor que o anterior">!</span>':'')+'</td><td>'+esc(a.opNum)+'</td><td>'+esc(nomeSilo(a.silo))+'</td>';
+    h+='<td class="n">'+fN(a.acumulado)+'</td><td class="n">'+fN(a.kg)+'</td><td class="n">'+(a.marco?"—":fN(a.kgH))+'</td><td class="n">'+(pm==null||a.marco?"—":'<span class="bdg '+bc+'">'+pm+'%</span>')+'</td>';
+    h+='<td style="white-space:nowrap">'+(podeEd&&!a.marco?'<button class="btn xs ghost" title="Editar" onclick="editarApt(\''+a.fbKey+'\')">✏️</button> ':'')+(podeEd?'<button class="btn xs ghost" title="Excluir" onclick="excluirApt(\''+a.fbKey+'\')">🗑</button>':'')+'</td></tr>';
+  });
+  return h+'</tbody></table></div>';
+}
+// Correspondência OP → linha da planilha de parâmetros (sugestão, pela descrição)
+function prodRefDaOp(oa){
+  if(!oa) return null;
+  if(familiaProduto(oa.cod)==="HORSE"&&/R700/i.test(oa.desc||"")) return "HORSE";
+  var m=String(oa.desc||"").toUpperCase().match(/(\d+(?:[.,]\d+)?)\s*(?:A\s*\d+(?:[.,]\d+)?\s*)?MM/);
+  return m?parseFloat(m[1].replace(",",".")):null;
+}
+function parametrosTecHtml(lk,oa){
+  var ms=moinhosDaLinha(lk), ref=prodRefDaOp(oa);
+  var rows=(S.cfg.parametrosTec||[]).filter(function(r){return ms.indexOf(r.moinho)>=0;});
+  if(!rows.length) return "";
+  var achou=false;
+  var h='<details class="pt"><summary>📋 Parâmetros dos moinhos (amperagem / peneira)</summary><div class="tw"><table class="t"><thead><tr><th>Moinho</th><th>Prod.</th><th class="n">Amp. mín</th><th class="n">Amp. máx</th><th class="n">Kit peneira (mm)</th><th class="n">Tubo clean</th></tr></thead><tbody>';
+  rows.forEach(function(r){
+    var hl=false;
+    if(ref==="HORSE") hl=/horse/i.test(r.prod); else if(ref!=null) hl=(parseFloat(r.prod)===ref);
+    if(hl) achou=true;
+    h+='<tr class="'+(hl?"hl":"")+'"><td>'+esc(nomeMoinho(r.moinho))+'</td><td>'+esc(r.prod)+'</td><td class="n">'+fN(r.ampMin)+'</td><td class="n">'+fN(r.ampMax)+'</td><td class="n">'+esc(r.kit1)+(r.kit2!=null&&r.kit2!==r.kit1?" / "+esc(r.kit2):"")+'</td><td class="n">'+(r.tubo==null?"—":esc(r.tubo))+'</td></tr>';
+  });
+  h+='</tbody></table><div class="muted" style="margin-top:4px">'+(oa?(achou?"Destacado: sugestão pela descrição da OP — confirme antes de usar.":"Sem correspondência automática para esta OP — consulte a tabela."):"")+'</div></div></details>';
+  return h;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// APONTAMENTO (acumulado da ordem no Libracom)
+// ════════════════════════════════════════════════════════════════════
+var MA=null; // contexto do modal de apontamento
+function preencherSilosSelect(sel,lk,valor,travar){
+  sel.innerHTML=silosDaLinha(lk).map(function(s){return '<option value="'+s+'"'+(s===valor?" selected":"")+'>'+esc(nomeSilo(s))+'</option>';}).join("");
+  sel.disabled=!!travar;
+}
+function abrirApt(lk){
+  if(!podeApontar()) return;
+  var oa=S.opAtiva[lk];
+  if(!oa){toast("Inicie uma OP antes de apontar","err");return;}
+  var base=baseInicioApt(lk);
+  var hi=base?hhmmDeTs(base):pad((horaBrasilia(new Date())+23)%24)+":00";
+  var hf=horaCheia();
+  if(tsUltimaOcorrencia(hf)<=(base||0)) hf=horaAtual();
+  MA={modo:"novo",lk:lk,opFbKey:oa.opFbKey,opNum:oa.opNum,cod:oa.cod,desc:oa.desc,viz:null,fbKey:null};
+  G("apt-tit").textContent="Apontar — "+linhaK(lk).cur;
+  G("apt-sub").textContent=oa.opNum+" · "+oa.cod+" · "+oa.desc;
+  G("apt-row-adm").style.display="none";
+  G("apt-row-reinicio").style.display=isAdmin()?"":"none";
+  G("apt-reinicio").checked=false;
+  G("apt-hi").value=hi;G("apt-hf").value=hf;G("apt-acum").value="";G("apt-obs").value="";
+  preencherSilosSelect(G("apt-silo"),lk,oa.silo,true);
+  G("apt-calc").className="calc";G("apt-calc").innerHTML="Carregando último acumulado…";
+  aM("m-apt");
+  carregarVizinhosModal();
+  setTimeout(function(){G("apt-acum").focus();},150);
+}
+function editarApt(fbKey){
+  var a=S.apts.find(function(x){return x.fbKey===fbKey;});
+  if(!a){toast("Apontamento não encontrado (recarregue)","err");return;}
+  abrirEdicaoApt(a);
+}
+function abrirEdicaoApt(a){
+  MA={modo:"editar",lk:a.lk,opFbKey:a.opFbKey,opNum:a.opNum,cod:a.cod,desc:a.desc,viz:null,fbKey:a.fbKey,orig:a};
+  G("apt-tit").textContent="Editar apontamento — "+linhaK(a.lk).cur;
+  G("apt-sub").textContent=a.opNum+" · "+a.cod+" · lançado por "+a.operador;
+  G("apt-row-adm").style.display=isAdmin()?"":"none";
+  if(isAdmin()){G("apt-data").value=a.data;G("apt-op").innerHTML='<option value="'+esc(a.opFbKey)+'">'+esc(a.opNum)+'</option>';G("apt-op").disabled=true;}
+  G("apt-row-reinicio").style.display=isAdmin()?"":"none";
+  G("apt-reinicio").checked=!!a.reinicio;
+  G("apt-hi").value=a.horaIni;G("apt-hf").value=a.horaFim;G("apt-acum").value=a.acumulado;G("apt-obs").value=a.obs||"";
+  preencherSilosSelect(G("apt-silo"),a.lk,a.silo,!isAdmin());
+  aM("m-apt");
+  carregarVizinhosModal();
+}
+// Admin: novo apontamento em qualquer dia/OP (correção)
+function admNovoApt(){
+  var lk=G("adm-a-linha").value||"L1";
+  var dOp=G("adm-a-data").value||hoje();
+  var opts=[], vistos={};
+  function add(fk,num,cod,desc){if(!fk||vistos[fk]) return;vistos[fk]=1;opts.push({fk:fk,num:num,cod:cod,desc:desc});}
+  var oa=S.opAtiva[lk];if(oa) add(oa.opFbKey,oa.opNum,oa.cod,oa.desc);
+  (ADM_APTS||[]).forEach(function(a){if(a.lk===lk) add(a.opFbKey,a.opNum,a.cod,a.desc);});
+  S.apts.forEach(function(a){if(a.lk===lk) add(a.opFbKey,a.opNum,a.cod,a.desc);});
+  filaLinha(lk).forEach(function(o){add(o.fbKey,o.id,o.cod,o.desc||o.cod);});
+  if(!opts.length){toast("Nenhuma OP disponível para "+linhaK(lk).cur,"err");return;}
+  MA={modo:"novo",lk:lk,admin:true,opts:opts,viz:null,fbKey:null};
+  var o=opts[0];MA.opFbKey=o.fk;MA.opNum=o.num;MA.cod=o.cod;MA.desc=o.desc;
+  G("apt-tit").textContent="Novo apontamento (admin) — "+linhaK(lk).cur;
+  G("apt-sub").textContent="Correção administrativa — o kg é recalculado a partir dos acumulados.";
+  G("apt-row-adm").style.display="";
+  G("apt-data").value=dOp;
+  G("apt-op").disabled=false;
+  G("apt-op").innerHTML=opts.map(function(x){return '<option value="'+esc(x.fk)+'">'+esc(x.num)+' · '+esc(x.cod)+'</option>';}).join("");
+  G("apt-row-reinicio").style.display="";G("apt-reinicio").checked=false;
+  G("apt-hi").value="";G("apt-hf").value="";G("apt-acum").value="";G("apt-obs").value="";
+  preencherSilosSelect(G("apt-silo"),lk,oa&&oa.opFbKey===o.fk?oa.silo:silosDaLinha(lk)[0],false);
+  aM("m-apt");
+  carregarVizinhosModal();
+}
+function aptTrocarOpAdm(){
+  var fk=G("apt-op").value, o=(MA.opts||[]).find(function(x){return x.fk===fk;});
+  if(!o) return;
+  MA.opFbKey=o.fk;MA.opNum=o.num;MA.cod=o.cod;MA.desc=o.desc;
+  carregarVizinhosModal();
+}
+function aptTempos(){
+  var hi=G("apt-hi").value, hf=G("apt-hf").value;
+  if(!hi||!hf) return null;
+  var tsIni;
+  if(MA.admin||(MA.modo==="editar"&&isAdmin())) tsIni=tsDeDataOp(G("apt-data").value||hoje(),hi);
+  else if(MA.modo==="editar") tsIni=tsDeDataOp(MA.orig.data,hi);
+  else tsIni=tsUltimaOcorrencia(hi);
+  var min=calcMinutos(hi,hf);
+  return {hi:hi,hf:hf,tsIni:tsIni,tsFim:tsIni+min*MIN_MS,min:min,data:dataOpDeTs(tsIni),turno:turnoDeHora(hi)};
+}
+function carregarVizinhosModal(){
+  var tp=aptTempos(), ref=tp?tp.tsFim:Date.now()+DIA_MS;
+  var ctx=MA;
+  vizinhosAcum(MA.opFbKey,ref,MA.fbKey).then(function(v){if(MA!==ctx) return;MA.viz=v;aptPreview();})
+    .catch(function(e){if(MA!==ctx) return;G("apt-calc").className="calc err";G("apt-calc").textContent="Erro ao ler apontamentos anteriores: "+e.message;});
+}
+// Validação síncrona (usa MA.viz). Retorna {erros:[], avisos:[], calc:{}}
+function aptValidar(){
+  var r={erros:[],avisos:[],c:null};
+  var tp=aptTempos(), acum=num(G("apt-acum").value), reinicio=G("apt-reinicio").checked;
+  if(!tp){r.erros.push("Informe hora início e fim");return r;}
+  if(tp.min<=0){r.erros.push("Hora fim deve ser maior que a hora início");return r;}
+  if(tp.min>MAX_MIN_APT) r.erros.push("Intervalo de "+Math.round(tp.min/60)+"h é longo demais (máx. "+(MAX_MIN_APT/60)+"h)");
+  if(tp.tsFim>Date.now()+TOL_FUTURO_MS) r.erros.push("Hora fim está no futuro");
+  if(acum==null||acum<0){r.erros.push("Informe o acumulado da ordem (kg)");}
+  // Sobreposição com outros apontamentos da linha
+  var lista=MA.admin||MA.modo==="editar"?(ADM_APTS||[]).concat(S.apts):S.apts;
+  var conf=null, vis={};
+  lista.forEach(function(a){
+    if(vis[a.fbKey]||a.fbKey===MA.fbKey||a.lk!==MA.lk||a.marco) return;vis[a.fbKey]=1;
+    if(a.tsIni<tp.tsFim&&a.tsFim>tp.tsIni) conf=a;
+  });
+  if(conf) r.erros.push("Conflito com o apontamento "+conf.horaIni+"–"+conf.horaFim+" ("+conf.opNum+") desta linha");
+  if(!MA.viz){r.erros.push("Aguarde a leitura do último acumulado…");return r;}
+  if(acum!=null){
+    var prev=MA.viz.prev||0;
+    // Se o intervalo foi movido no tempo, os vizinhos podem ter mudado — recarrega
+    var kg=reinicio?acum:acum-prev;
+    if(!reinicio&&acum<prev) r.erros.push("Acumulado menor que o último apontado desta OP ("+fN(prev)+" kg"+(MA.viz.prevTs?" às "+hhmmDeTs(MA.viz.prevTs):"")+"). Confira no Libracom"+(isAdmin()?" ou marque 'contador reiniciou'":"")+".");
+    if(MA.viz.next!=null&&acum>MA.viz.next) r.erros.push("Acumulado maior que o do apontamento seguinte ("+fN(MA.viz.next)+" kg às "+hhmmDeTs(MA.viz.nextTs)+")");
+    var kgH=tp.min>0?kg/(tp.min/60):0;
+    var meta=metaMoagem(MA.cod,linhaK(MA.lk).nome);
+    r.c={kg:Math.max(kg,0),kgH:Math.round(Math.max(kgH,0)),meta:meta,prev:prev,tp:tp};
+    if(meta&&kgH>meta*FATOR_KGH_SUSPEITO) r.avisos.push("kg/h "+fN(kgH)+" é mais que o dobro da meta ("+fN(meta)+"). Confira o acumulado digitado.");
+    if(kg===0&&!paradasSobrepoe(MA.lk,tp.tsIni,tp.tsFim).length) r.avisos.push("Nenhum kg no intervalo e nenhuma parada registrada. Se o moinho parou, registre a parada.");
+  }
+  if(tp.min>AVISO_MIN_APT) r.avisos.push("Intervalo de "+Math.floor(tp.min/60)+"h"+pad(tp.min%60)+" — confira se não houve horas esquecidas.");
+  return r;
+}
+function aptPreview(){
+  if(!MA) return;
+  var v=aptValidar(), el=G("apt-calc"), h="";
+  if(MA.viz) h+='Último acumulado desta OP: <b>'+fN(MA.viz.prev)+' kg</b>'+(MA.viz.prevTs?" ("+fDataHora(MA.viz.prevTs)+")":" (primeiro apontamento)")+'<br>';
+  if(v.c){
+    var pm=v.c.meta?Math.round(v.c.kgH/v.c.meta*100):null;
+    h+='Moído no intervalo: <b>'+fN(v.c.kg)+' kg</b> em '+v.c.tp.min+' min → <b>'+fN(v.c.kgH)+' kg/h</b>'+(v.c.meta?' · meta '+fN(v.c.meta)+' kg/h ('+pm+'%)':' · sem meta cadastrada')+'<br>';
+    h+='<span class="muted">Dia operacional '+fData(v.c.tp.data)+' · Turno '+v.c.tp.turno+'</span>';
+  }
+  if(v.erros.length) h+='<div style="margin-top:6px;color:#922b21;font-weight:700">⛔ '+v.erros.map(esc).join("<br>⛔ ")+'</div>';
+  if(v.avisos.length) h+='<div style="margin-top:6px;color:#7a5a00;font-weight:700">⚠️ '+v.avisos.map(esc).join("<br>⚠️ ")+'</div>';
+  el.className="calc"+(v.erros.length?" err":v.avisos.length?" warn":"");
+  el.innerHTML=h||"—";
+}
+function montarApt(tp,acum,silo,extra){
+  var l=linhaK(MA.lk);
+  var a={lk:MA.lk,linha:l.nome,opFbKey:MA.opFbKey,opNum:MA.opNum,cod:MA.cod,desc:MA.desc,silo:silo,
+    data:tp.data,turno:tp.turno,horaIni:tp.hi,horaFim:tp.hf,tsIni:tp.tsIni,tsFim:tp.tsFim,minutos:tp.min,
+    acumulado:acum,metaH:Math.round(metaMoagem(MA.cod,l.nome)),rateioSnap:rateioSnap(MA.lk),
+    kg:0,kgH:0,kgPorMoinho:{},operador:SES.login,ts:agora()};
+  return Object.assign(a,extra||{});
+}
+function salvarApt(){
+  if(!MA) return;
+  var tp=aptTempos();
+  // Relê vizinhos no momento do salvamento (evita corrida com outro terminal)
+  G("apt-btn").disabled=true;
+  vizinhosAcum(MA.opFbKey,tp?tp.tsFim:Date.now(),MA.fbKey).then(function(v){
+    MA.viz=v;
+    var r=aptValidar();aptPreview();
+    if(r.erros.length){toast(r.erros[0],"err");return;}
+    if(r.avisos.length&&!confirm("Atenção:\n\n• "+r.avisos.join("\n• ")+"\n\nSalvar mesmo assim?")) return;
+    var acum=num(G("apt-acum").value), silo=G("apt-silo").value, obs=G("apt-obs").value.trim(), reinicio=G("apt-reinicio").checked;
+    var p;
+    if(MA.modo==="editar"){
+      var o=MA.orig, upd={horaIni:tp.hi,horaFim:tp.hf,tsIni:tp.tsIni,tsFim:tp.tsFim,minutos:tp.min,data:tp.data,turno:tp.turno,
+        acumulado:acum,silo:silo,obs:obs,reinicio:reinicio||null,editadoPor:SES.login,editadoEm:agora()};
+      p=DB.ref("moagem_apts/"+MA.fbKey).update(upd).then(function(){
+        log("apt_editar",o.opNum+" "+linhaK(o.lk).cur+" "+o.horaIni+"–"+o.horaFim+" acum "+o.acumulado+" → "+tp.hi+"–"+tp.hf+" acum "+acum);
+      });
+    } else {
+      var a=montarApt(tp,acum,silo,{obs:obs,reinicio:reinicio||null,admin:MA.admin?true:null});
+      p=DB.ref("moagem_apts").push(a).then(function(){
+        log("apt_novo",a.opNum+" "+linhaK(a.lk).cur+" "+a.horaIni+"–"+a.horaFim+" acum "+acum+(MA.admin?" (admin)":""));
+      });
+    }
+    var fk=MA.opFbKey;
+    return p.then(function(){fM("m-apt");toast("Apontamento salvo","ok");return recalcularOpMoagem(fk);}).then(function(){calcPeneiras();if(G("adm-apts").classList.contains("on")&&G("sec-adm").classList.contains("on")) admCarregarApts();});
+  }).catch(function(e){toast("Erro: "+e.message,"err");}).then(function(){G("apt-btn").disabled=false;});
+}
+function excluirApt(fbKey){
+  var a=S.apts.find(function(x){return x.fbKey===fbKey;})||(ADM_APTS||[]).find(function(x){return x.fbKey===fbKey;});
+  if(!a) return;
+  if(!isAdmin()){var u=ultimoAptLinha(a.lk);if(!(u&&u.fbKey===a.fbKey)&&!a.marco){toast("Só o último apontamento da linha pode ser excluído pelo operador","err");return;}}
+  if(!confirm("Excluir o apontamento "+(a.marco?"(marco inicial)":a.horaIni+"–"+a.horaFim)+" da OP "+a.opNum+"?\nO kg dos apontamentos vizinhos será recalculado.")) return;
+  DB.ref("moagem_apts/"+fbKey).remove().then(function(){
+    log("apt_excluir",a.opNum+" "+linhaK(a.lk).cur+" "+a.horaIni+"–"+a.horaFim+" acum "+a.acumulado+" kg "+a.kg);
+    toast("Apontamento excluído","ok");
+    return recalcularOpMoagem(a.opFbKey);
+  }).then(function(){calcPeneiras();if(G("sec-adm").classList.contains("on")) admCarregarApts();}).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+// ════════════════════════════════════════════════════════════════════
+// FECHAMENTO — Concluir OP / Pausar OP / Trocar silo
+// Sempre grava um apontamento de fechamento até o instante da ação,
+// para que kg por OP e kg por silo fiquem exatos.
+// ════════════════════════════════════════════════════════════════════
+var MF=null;
+function abrirFechamento(lk,acao,siloNovo){
+  var oa=S.opAtiva[lk];if(!oa) return;
+  MF={lk:lk,acao:acao,siloNovo:siloNovo||null,viz:null};
+  MA={modo:"novo",lk:lk,opFbKey:oa.opFbKey,opNum:oa.opNum,cod:oa.cod,desc:oa.desc,fbKey:null};
+  var tit={concluir:"Concluir OP na moagem",pausar:"Pausar OP (volta para a fila)",silo:"Trocar silo destino"}[acao];
+  G("fech-tit").textContent=tit+" — "+linhaK(lk).cur;
+  G("fech-sub").textContent=oa.opNum+" · "+oa.cod+" · "+oa.desc+(acao==="silo"?" · "+nomeSilo(oa.silo)+" → "+nomeSilo(siloNovo):"");
+  G("fech-hf").value=horaAtual();G("fech-acum").value="";
+  G("fech-extra").innerHTML=acao==="concluir"?'<div class="muted">A OP sai da fila da moagem. A extrusão e o ensaque não são alterados. O silo continua registrado com esta OP até receber a próxima.</div>':
+    acao==="pausar"?'<div class="muted">A OP volta para a fila (mantém o acumulado). Use quando a ordem foi interrompida e vai continuar depois.</div>':"";
+  G("fech-calc").className="calc";G("fech-calc").textContent="Carregando…";
+  aM("m-fech");
+  vizinhosAcum(oa.opFbKey,Date.now()+DIA_MS,null).then(function(v){MF.viz=v;fechPreview();});
+  setTimeout(function(){G("fech-acum").focus();},150);
+}
+function fechTempos(){
+  var base=baseInicioApt(MF.lk), hf=G("fech-hf").value;
+  if(!hf) return null;
+  var tsFim=tsUltimaOcorrencia(hf);
+  if(!base||base>=tsFim) return {semIntervalo:true,tsFim:tsFim,hf:hf};
+  var hi=hhmmDeTs(base), tsIni=tsUltimaOcorrencia(hi);
+  if(tsIni>tsFim) tsIni-=DIA_MS;
+  var min=Math.round((tsFim-tsIni)/MIN_MS);
+  return {hi:hi,hf:hf,tsIni:tsIni,tsFim:tsFim,min:min,data:dataOpDeTs(tsIni),turno:turnoDeHora(hi)};
+}
+function fechPreview(){
+  if(!MF) return;
+  var el=G("fech-calc"), tp=fechTempos(), acum=num(G("fech-acum").value), h="", err="";
+  if(!MF.viz){el.textContent="Carregando…";return;}
+  h+='Último acumulado: <b>'+fN(MF.viz.prev)+' kg</b>'+(MF.viz.prevTs?' ('+fDataHora(MF.viz.prevTs)+')':'')+'<br>';
+  if(!tp) err="Informe a hora";
+  else if(tp.tsFim>Date.now()+TOL_FUTURO_MS) err="Hora no futuro";
+  else if(tp.semIntervalo) h+='<span class="muted">Sem intervalo aberto desde o último apontamento — nenhum apontamento extra será criado.</span>';
+  else {
+    if(acum!=null){
+      var kg=acum-MF.viz.prev;
+      if(kg<0) err="Acumulado menor que o último apontado ("+fN(MF.viz.prev)+" kg)";
+      else h+='Fechamento '+tp.hi+'–'+tp.hf+': <b>'+fN(kg)+' kg</b>'+(tp.min>0?' → '+fN(kg/(tp.min/60))+' kg/h':'');
+    } else err="Informe o acumulado atual no Libracom";
+    if(tp.min>MAX_MIN_APT) err="Intervalo aberto há mais de "+(MAX_MIN_APT/60)+"h — lance os apontamentos pendentes antes";
+  }
+  if(err) h+='<div style="margin-top:6px;color:#922b21;font-weight:700">⛔ '+esc(err)+'</div>';
+  el.className="calc"+(err?" err":"");el.innerHTML=h;
+  return err;
+}
+function confirmarFechamento(){
+  if(!MF) return;
+  var err=fechPreview();if(err){toast(err,"err");return;}
+  var lk=MF.lk, oa=S.opAtiva[lk], tp=fechTempos(), acum=num(G("fech-acum").value);
+  if(!oa) return;
+  if(!tp.semIntervalo){
+    // sobreposição
+    var conf=S.apts.find(function(a){return a.lk===lk&&!a.marco&&a.tsIni<tp.tsFim&&a.tsFim>tp.tsIni;});
+    if(conf){toast("Conflito com apontamento "+conf.horaIni+"–"+conf.horaFim,"err");return;}
+  }
+  G("fech-btn").disabled=true;
+  var p=Promise.resolve();
+  if(!tp.semIntervalo){
+    var a=montarApt(tp,acum,oa.silo,{fechamento:MF.acao});
+    p=DB.ref("moagem_apts").push(a);
+  }
+  var acao=MF.acao, siloNovo=MF.siloNovo, ts=agora();
+  p.then(function(){
+    var upd={};
+    if(acao==="silo"){
+      upd["moagem_op_ativa/"+lk+"/silo"]=siloNovo;
+      upd["moagem_silos_estado/"+siloNovo]=estadoSilo(oa,MF.confirmouVazio);
+      var hk=DB.ref("moagem_op_hist").push().key;
+      upd["moagem_op_hist/"+hk]={evento:"troca_silo",lk:lk,opFbKey:oa.opFbKey,opNum:oa.opNum,de:oa.silo,para:siloNovo,acumulado:acum,confirmouVazio:MF.confirmouVazio||null,operador:SES.login,ts:ts,tsMs:tp.tsFim};
+    } else {
+      upd["moagem_op_ativa/"+lk]=null;
+      if(acao==="concluir") upd["moagem_op_concluida/"+oa.opFbKey]={lk:lk,linha:linhaK(lk).nome,opNum:oa.opNum,acumuladoFinal:acum,operador:SES.login,ts:ts,tsMs:tp.tsFim};
+      var hk2=DB.ref("moagem_op_hist").push().key;
+      upd["moagem_op_hist/"+hk2]={evento:acao,lk:lk,opFbKey:oa.opFbKey,opNum:oa.opNum,silo:oa.silo,acumulado:acum,operador:SES.login,ts:ts,tsMs:tp.tsFim};
+    }
+    return DB.ref().update(upd);
+  }).then(function(){
+    log(acao==="silo"?"troca_silo":"op_"+acao,oa.opNum+" "+linhaK(lk).cur+" acum "+acum+(acao==="silo"?" "+oa.silo+"→"+siloNovo:""));
+    fM("m-fech");
+    toast(acao==="concluir"?"OP concluída na moagem":acao==="pausar"?"OP pausada — voltou para a fila":"Silo destino alterado","ok");
+    return recalcularOpMoagem(oa.opFbKey);
+  }).then(function(){calcPeneiras();if(acao!=="silo") setTimeout(function(){abrirSelOp(lk);},400);})
+    .catch(function(e){toast("Erro: "+e.message,"err");}).then(function(){G("fech-btn").disabled=false;});
+}
+function estadoSilo(oa,confirmouVazio){
+  return {opFbKey:oa.opFbKey,opNum:oa.opNum,cod:oa.cod,desc:oa.desc,desde:agora(),desdeMs:Date.now(),por:SES.login,confirmouVazio:confirmouVazio||null};
+}
+
+// ════════════════════════════════════════════════════════════════════
+// FILA DA MOAGEM
+// Nasce na ordem do ensaque (ops.filaPosicao → criadoEm); o PCP reordena
+// em moagem_fila/{lk}/ordem — nunca escreve em ops/.
+// ════════════════════════════════════════════════════════════════════
+function opsAbertasLinha(lk){
+  var nome=linhaK(lk).nome, superadas={};
+  Object.keys(S.ops).forEach(function(k){var o=S.ops[k];if(o.reprogramadaDeFbKey) superadas[o.reprogramadaDeFbKey]=1;});
+  var oaFk=S.opAtiva[lk]&&S.opAtiva[lk].opFbKey;
+  return Object.keys(S.ops).map(function(k){return S.ops[k];}).filter(function(o){
+    return o.linha===nome&&STATUS_ABERTOS.indexOf(o.status)>=0&&!superadas[o.fbKey]&&!S.opConc[o.fbKey]&&o.fbKey!==oaFk;
+  });
+}
+function cmpEnsaque(a,b){
+  var pa=a.filaPosicao!==undefined?a.filaPosicao:9999, pb=b.filaPosicao!==undefined?b.filaPosicao:9999;
+  if((a.data||"")!==(b.data||"")) return (a.data||"")<(b.data||"")?-1:1;
+  return pa!==pb?pa-pb:((a.criadoEm||"")>(b.criadoEm||"")?1:-1);
+}
+function filaLinha(lk){
+  var lista=opsAbertasLinha(lk), ord=(S.fila[lk]&&S.fila[lk].ordem)||[], pos={};
+  ord.forEach(function(fk,i){pos[fk]=i;});
+  return lista.sort(function(a,b){
+    var pa=pos[a.fbKey], pb=pos[b.fbKey];
+    if(pa!=null&&pb!=null) return pa-pb;
+    if(pa!=null) return -1;
+    if(pb!=null) return 1;
+    return cmpEnsaque(a,b);
+  });
+}
+function renderFila(){
+  var pf=podeFila(), h="";
+  G("fila-info").textContent=pf?"Nasce na ordem do ensaque. Use ▲ ▼ para reordenar — altera só a fila da moagem.":"Somente leitura — a ordem é definida pelo PCP.";
+  LINHAS.forEach(function(l){
+    var lista=filaLinha(l.k), oa=S.opAtiva[l.k], reord=S.fila[l.k]&&S.fila[l.k].ordem;
+    h+='<div class="fila-col"><div class="fila-hd"><div><b>'+l.cur+'</b> <span class="muted">'+l.maq+'</span></div><span class="bdg">'+lista.length+' OPs</span></div>';
+    if(pf&&reord) h+='<div style="margin-bottom:6px"><button class="btn xs ghost" onclick="restaurarFila(\''+l.k+'\')">↺ Voltar à ordem do ensaque</button> <span class="muted">por '+esc(S.fila[l.k].por||"")+'</span></div>';
+    if(oa){
+      var tot=S.opTot[oa.opFbKey]||{};
+      h+='<div class="fi at"><div class="fi-top"><span class="pos">▶</span><div><b>'+esc(oa.opNum)+'</b> <span class="bdg g">na moagem</span></div></div><div class="muted" style="margin-top:3px">'+esc(oa.desc)+'</div><div class="muted">Moído: '+fN(tot.kgCadeia||0)+' kg · '+esc(nomeSilo(oa.silo))+'</div></div>';
+    }
+    if(!lista.length) h+='<div class="empty">Nenhuma OP aberta</div>';
+    lista.forEach(function(o,i){
+      var tot=S.opTot[o.fbKey]||{}, moido=Number(tot.kgCadeia)||0, prog=progKg(o);
+      h+='<div class="fi"><div class="fi-top"><span class="pos">'+(i+1)+'</span><div style="min-width:0"><b>'+esc(o.id)+'</b> <span class="bdg">'+esc(o.status)+'</span>'+(moido>0?' <span class="bdg y">parcial</span>':'')+'</div>';
+      if(pf) h+='<div class="fi-ctl"><button class="btn xs ghost" title="Topo" '+(i===0?"disabled":"")+' onclick="moverFila(\''+l.k+'\','+i+',-999)">⤒</button><button class="btn xs ghost" '+(i===0?"disabled":"")+' onclick="moverFila(\''+l.k+'\','+i+',-1)">▲</button><button class="btn xs ghost" '+(i===lista.length-1?"disabled":"")+' onclick="moverFila(\''+l.k+'\','+i+',1)">▼</button></div>';
+      h+='</div><div class="muted" style="margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(o.desc)+'">'+esc(o.cod)+' · '+esc(o.desc)+'</div>';
+      h+='<div class="muted">Ensaque '+fData(o.data)+' · Prog. '+fN(prog)+' kg'+(moido?' · Moído '+fN(moido)+' kg':'')+'</div></div>';
+    });
+    h+='</div>';
+  });
+  G("fila-grid").innerHTML=h;
+}
+function moverFila(lk,idx,delta){
+  if(!podeFila()) return;
+  var lista=filaLinha(lk).map(function(o){return o.fbKey;});
+  var fk=lista.splice(idx,1)[0];
+  var novo=delta===-999?0:Math.max(0,Math.min(lista.length,idx+delta));
+  lista.splice(novo,0,fk);
+  DB.ref("moagem_fila/"+lk).set({ordem:lista,por:SES.login,ts:agora()}).then(function(){
+    log("fila_reordenar",linhaK(lk).cur+": "+(S.ops[fk]?S.ops[fk].id:fk)+" → posição "+(novo+1));
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+function restaurarFila(lk){
+  if(!podeFila()||!confirm("Voltar a fila da "+linhaK(lk).cur+" para a ordem do ensaque?")) return;
+  DB.ref("moagem_fila/"+lk).remove().then(function(){log("fila_restaurar",linhaK(lk).cur);toast("Fila restaurada","ok");});
+}
+
+// ════════════════════════════════════════════════════════════════════
+// INICIAR OP / SILO
+// ════════════════════════════════════════════════════════════════════
+var MS=null;
+function abrirSelOp(lk){
+  if(!podeApontar()) return;
+  if(S.opAtiva[lk]){toast("Já existe OP ativa — conclua ou pause antes","err");return;}
+  var lista=filaLinha(lk);
+  MS={lk:lk,fk:null,silo:null,lista:lista};
+  G("selop-sub").textContent=linhaK(lk).cur+" · "+linhaK(lk).maq;
+  G("selop-just").value="";G("selop-just-row").style.display="none";
+  G("selop-hi").value=horaAtual();G("selop-acum").value="0";
+  if(!lista.length) G("selop-lista").innerHTML='<div class="empty">Nenhuma OP aberta para esta linha no ensaque.</div>';
+  else G("selop-lista").innerHTML=lista.map(function(o,i){
+    var tot=S.opTot[o.fbKey]||{};
+    return '<div class="opsel" id="selop-'+o.fbKey+'" onclick="selOpEscolher(\''+o.fbKey+'\')"><span class="pos">'+(i+1)+'</span><div style="min-width:0;flex:1"><b>'+esc(o.id)+'</b> <span class="muted">'+esc(o.cod)+'</span><div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.desc)+'</div><div class="muted">Prog. '+fN(progKg(o))+' kg'+(tot.kgCadeia?' · já moído '+fN(tot.kgCadeia)+' kg (acum. '+fN(tot.acumulado)+')':'')+'</div></div></div>';
+  }).join("");
+  G("selop-silos").innerHTML='<div class="muted">Verificando silos…</div>';G("selop-silo-aviso").innerHTML="";
+  aM("m-selop");
+  atualizarExtConcSilos(lk).then(function(){
+    if(MS.lk!==lk) return;
+    if(lista[0]) selOpEscolher(lista[0].fbKey);
+    else renderSilosOpcoes("selop-silos","selop-silo-aviso",lk,null,function(s){MS.silo=s;});
+  });
+}
+// Relê extrusao_op_concluida das OPs registradas nos silos da linha (sempre fresco)
+function atualizarExtConcSilos(lk){
+  var fks=silosDaLinha(lk).map(function(s){return S.silos[s]&&S.silos[s].opFbKey;}).filter(Boolean);
+  return Promise.all(fks.map(function(fk){
+    return DB.ref("extrusao_op_concluida/"+fk).once("value").then(function(s){S.extConc[fk]=s.exists()?s.val():false;}).catch(function(){});
+  }));
+}
+function selOpEscolher(fk){
+  MS.fk=fk;
+  MS.lista.forEach(function(o){var el=G("selop-"+o.fbKey);if(el) el.classList.toggle("on",o.fbKey===fk);});
+  var idx=MS.lista.findIndex(function(o){return o.fbKey===fk;});
+  G("selop-just-row").style.display=idx>0?"":"none";
+  var tot=S.opTot[fk];
+  G("selop-acum").value=tot&&tot.acumulado?tot.acumulado:0;
+  G("selop-acum").disabled=!!(tot&&tot.nApts); // retomada: acumulado já conhecido
+  renderSilosOpcoes("selop-silos","selop-silo-aviso",MS.lk,fk,function(s){MS.silo=s;});
+}
+// Opções de silo com validação de ocupação (silo recebe OP nova só vazio ou mesmo SKU)
+var _siloCtx={};
+function renderSilosOpcoes(contId,avisoId,lk,opFk,onSel,excluir){
+  var op=opFk?(S.ops[opFk]||opPorFk(opFk)):null;
+  var ctx={contId:contId,avisoId:avisoId,lk:lk,op:op,onSel:onSel,sel:null};
+  _siloCtx[contId]=ctx;
+  var silos=silosDaLinha(lk).filter(function(s){return s!==excluir;});
+  var h="";
+  silos.forEach(function(s){
+    var st=S.silos[s], info="Sem registro", tag="";
+    if(st&&st.opFbKey){
+      var ec=S.extConc[st.opFbKey];
+      info="Última: "+esc(st.opNum)+" · "+esc(st.cod);
+      if(op&&st.cod===op.cod) tag='<span class="bdg g">mesmo SKU</span>';
+      else if(ec) tag='<span class="bdg g">extrusão concluiu</span>';
+      else tag='<span class="bdg y">confirmar vazio</span>';
+      if(S.extAtiva[lk]===st.opFbKey) tag='<span class="bdg r">extrusora consumindo</span>';
+    }
+    h+='<div class="silo-opt" data-s="'+s+'" onclick="siloEscolher(\''+contId+'\',\''+s+'\')"><b>'+esc(nomeSilo(s))+'</b> '+tag+'<div class="muted">'+info+'</div></div>';
+  });
+  G(contId).innerHTML=h||'<div class="empty">Nenhum silo cadastrado para a linha</div>';
+  G(avisoId).innerHTML="";
+  // pré-seleciona o silo livre / mesmo SKU
+  var pref=silos.find(function(s){var st=S.silos[s];return !st||!st.opFbKey||(op&&st.cod===op.cod);})||silos.find(function(s){return S.extConc[(S.silos[s]||{}).opFbKey];});
+  if(pref) siloEscolher(contId,pref);
+}
+function siloEscolher(contId,s){
+  var ctx=_siloCtx[contId];if(!ctx) return;
+  ctx.sel=s;
+  G(contId).querySelectorAll(".silo-opt").forEach(function(el){el.classList.toggle("on",el.dataset.s===s);});
+  var st=S.silos[s], av="";
+  var precisa=siloPrecisaConfirmar(ctx.lk,s,ctx.op);
+  if(precisa==="bloq") av='<div class="calc err"><label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="'+contId+'-conf" style="margin-top:3px"> <span>⛔ A extrusora está rodando a OP <b>'+esc(st.opNum)+'</b>, registrada neste silo. Só marque se tiver <b>certeza</b> de que o <b>'+esc(nomeSilo(s))+'</b> já esvaziou (a extrusora está puxando de outro silo).</span></label></div>';
+  else if(precisa) av='<div class="calc warn"><label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="'+contId+'-conf" style="margin-top:3px"> <span>Confirmo que o <b>'+esc(nomeSilo(s))+'</b> está <b>vazio</b> (última OP '+esc(st.opNum)+' · '+esc(st.cod)+' — SKU diferente e sem conclusão na extrusão).</span></label></div>';
+  G(ctx.avisoId).innerHTML=av;
+  if(ctx.onSel) ctx.onSel(s);
+}
+function siloPrecisaConfirmar(lk,s,op){
+  var st=S.silos[s];
+  if(!st||!st.opFbKey) return false;
+  if(op&&st.opFbKey===op.fbKey) return false;
+  if(S.extAtiva[lk]===st.opFbKey&&!(op&&st.cod===op.cod)) return "bloq";
+  if(op&&st.cod===op.cod) return false;
+  if(S.extConc[st.opFbKey]) return false;
+  return true;
+}
+function siloConfirmado(contId){
+  var ctx=_siloCtx[contId];if(!ctx||!ctx.sel) return {ok:false,msg:"Selecione o silo"};
+  var p=siloPrecisaConfirmar(ctx.lk,ctx.sel,ctx.op);
+  if(p){var cb=G(contId+"-conf");if(!cb||!cb.checked) return {ok:false,msg:"Confirme que o silo está vazio"};return {ok:true,conf:true};}
+  return {ok:true,conf:false};
+}
+function confirmarSelOp(){
+  if(!MS||!MS.fk){toast("Selecione a OP","err");return;}
+  var lk=MS.lk, op=S.ops[MS.fk];
+  if(!op){toast("OP não encontrada","err");return;}
+  var idx=MS.lista.findIndex(function(o){return o.fbKey===MS.fk;});
+  var just=G("selop-just").value.trim();
+  if(idx>0&&just.length<5){toast("Informe a justificativa para iniciar fora da ordem","err");return;}
+  var sc=siloConfirmado("selop-silos");
+  if(!sc.ok){toast(sc.msg,"err");return;}
+  var silo=_siloCtx["selop-silos"].sel, hi=G("selop-hi").value||horaAtual();
+  var inicioTs=tsUltimaOcorrencia(hi);
+  if(inicioTs>Date.now()+TOL_FUTURO_MS){toast("Hora de início no futuro","err");return;}
+  var u=ultimoAptLinha(lk);
+  if(u&&inicioTs<u.tsFim){toast("Início antes do último apontamento da linha ("+u.horaFim+")","err");return;}
+  var acumIni=num(G("selop-acum").value)||0, tot=S.opTot[MS.fk];
+  var retomada=!!(tot&&tot.nApts);
+  var oa={opFbKey:op.fbKey,opNum:op.id,cod:op.cod,desc:op.desc||op.cod,silo:silo,inicioTs:inicioTs,inicio:agora(),operador:SES.login,
+    foraOrdem:idx>0||null,justificativa:idx>0?just:null,posFila:idx+1};
+  var upd={}, ts=agora();
+  upd["moagem_op_ativa/"+lk]=oa;
+  upd["moagem_silos_estado/"+silo]=estadoSilo(oa,sc.conf);
+  var hk=DB.ref("moagem_op_hist").push().key;
+  upd["moagem_op_hist/"+hk]={evento:retomada?"retomada":"inicio",lk:lk,opFbKey:op.fbKey,opNum:op.id,silo:silo,posFila:idx+1,foraOrdem:idx>0||null,justificativa:idx>0?just:null,confirmouVazio:sc.conf||null,acumuladoInicial:acumIni,operador:SES.login,ts:ts,tsMs:inicioTs};
+  // Marco inicial: material já moído antes do controle — entra no total da OP, não no kg/h
+  var criarMarco=!retomada&&acumIni>0;
+  if(criarMarco){
+    var mk=DB.ref("moagem_apts").push().key, l=linhaK(lk), hh=hhmmDeTs(inicioTs);
+    upd["moagem_apts/"+mk]={lk:lk,linha:l.nome,opFbKey:op.fbKey,opNum:op.id,cod:op.cod,desc:op.desc||op.cod,silo:silo,
+      data:dataOpDeTs(inicioTs),turno:turnoDeHora(hh),horaIni:hh,horaFim:hh,tsIni:inicioTs,tsFim:inicioTs,minutos:0,
+      acumulado:acumIni,marco:true,metaH:0,rateioSnap:rateioSnap(lk),kg:0,kgH:0,kgPorMoinho:{},operador:SES.login,ts:ts};
+  }
+  DB.ref().update(upd).then(function(){
+    log("op_inicio",op.id+" "+linhaK(lk).cur+" → "+silo+(idx>0?" (fora da ordem: "+just+")":"")+(sc.conf?" [silo confirmado vazio]":""));
+    fM("m-selop");toast("OP "+op.id+" iniciada na moagem","ok");
+    if(criarMarco) return recalcularOpMoagem(op.fbKey);
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+var MSI=null;
+function abrirTrocaSilo(lk){
+  var oa=S.opAtiva[lk];if(!oa) return;
+  var outros=silosDaLinha(lk).filter(function(s){return s!==oa.silo;});
+  if(!outros.length){toast("Não há outro silo cadastrado para a linha","err");return;}
+  MSI={lk:lk};
+  G("silo-sub").textContent=oa.opNum+" · atual: "+nomeSilo(oa.silo);
+  G("silo-opts").innerHTML='<div class="muted">Verificando silos…</div>';G("silo-aviso").innerHTML="";
+  aM("m-silo");
+  atualizarExtConcSilos(lk).then(function(){renderSilosOpcoes("silo-opts","silo-aviso",lk,oa.opFbKey,null,oa.silo);});
+}
+function siloAvancar(){
+  var sc=siloConfirmado("silo-opts");
+  if(!sc.ok){toast(sc.msg,"err");return;}
+  var s=_siloCtx["silo-opts"].sel;
+  fM("m-silo");
+  abrirFechamento(MSI.lk,"silo",s);
+  MF.confirmouVazio=sc.conf;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// PARADAS DE MOINHO
+// ════════════════════════════════════════════════════════════════════
+var MP=null;
+function motivosAtivos(){var mo=S.cfg.motivos||{};return Object.keys(mo).filter(function(k){return mo[k].ativo!==false;}).map(function(k){var m=Object.assign({id:k},mo[k]);return m;});}
+function abrirParada(lk){
+  if(!podeApontar()) return;
+  MP={lk:lk,mot:null};
+  G("par-tit").textContent="Registrar parada — "+linhaK(lk).cur;
+  G("par-sub").textContent="Marque todos os moinhos que pararam pelo mesmo motivo.";
+  var ms=moinhosDaLinha(lk);
+  G("par-moinhos").innerHTML=ms.map(function(m){
+    var ab=paradasAbertasMoinho(m).length;
+    return '<label><input type="checkbox" value="'+m+'" '+(ms.length===1?"checked":"")+(ab?" disabled":"")+'> '+esc(nomeMoinho(m))+(ab?' <span class="bdg r">já parado</span>':'')+'</label>';
+  }).join("");
+  var porG={};motivosAtivos().forEach(function(m){var g=m.grupo==="AUTO"?"Automático (conforme extrusão)":m.grupo;(porG[g]=porG[g]||[]).push(m);});
+  var h="";
+  Object.keys(porG).forEach(function(g){
+    h+='<div class="mot-g">'+esc(g)+'</div>';
+    porG[g].sort(function(a,b){return (a.cod||0)-(b.cod||0);}).forEach(function(m){
+      h+='<div class="mot" data-id="'+m.id+'" onclick="parEscolher(\''+m.id+'\')"><span>'+esc(m.desc)+'</span>'+(m.zeraPeneira?'<span class="bdg b">zera peneira</span>':'')+'</div>';
+    });
+  });
+  G("par-motivos").innerHTML=h;
+  G("par-hi").value=horaAtual();G("par-hf").value="";G("par-obs").value="";G("par-malha").value="";
+  G("par-silo-row").style.display="none";G("par-malha-row").style.display="none";
+  var ls=[];ms.forEach(function(m){Object.keys(S.cfg.moinhos[m].linhas||{}).forEach(function(k){if(ls.indexOf(k)<0) ls.push(k);});});
+  G("par-silo-linha").innerHTML=ls.map(function(k){return '<option value="'+k+'"'+(k===lk?" selected":"")+'>'+linhaK(k).cur+'</option>';}).join("");
+  aM("m-par");
+}
+function parEscolher(id){
+  MP.mot=id;
+  G("par-motivos").querySelectorAll(".mot").forEach(function(el){el.classList.toggle("on",el.dataset.id===id);});
+  var m=motivoPorId(id)||{};
+  G("par-silo-row").style.display=m.siloCheio?"":"none";
+  parChkMalha();
+}
+function parChkMalha(){
+  var m=MP&&motivoPorId(MP.mot);
+  G("par-malha-row").style.display=(m&&m.zeraPeneira&&G("par-hf").value)?"":"none";
+}
+// Silo cheio: se a extrusão da linha está parada no instante → Fator Externo;
+// se está rodando → Operacional (moagem adiantada). Leitura de extrusao_paradas.
+function classificarSiloCheio(lkSilo,tsIni){
+  var l=linhaK(lkSilo), dOp=dataOpDeTs(tsIni);
+  return Promise.all([dOp,addDias(dOp,-1)].map(function(d){return DB.ref("extrusao_paradas").orderByChild("data").equalTo(d).once("value");})).then(function(snaps){
+    var achou=null;
+    snaps.forEach(function(s){if(s.exists()) s.forEach(function(c){
+      var p=c.val();if(!p||p.linha!==l.nome||!p.horaIni) return;
+      var pi=tsDeDataOp(p.data,p.horaIni), pf=p.horaFim?pi+calcMinutos(p.horaIni,p.horaFim)*MIN_MS:Infinity;
+      if(pi<=tsIni+MIN_MS&&pf>=tsIni) achou=p;
+    });});
+    if(achou) return {grupo:GRUPO_EXTERNO,info:"Extrusão "+l.cur+" parada: "+(achou.descricao||"")+" desde "+achou.horaIni,verificado:true};
+    return {grupo:"Operacional",info:"Extrusão "+l.cur+" rodando — moagem adiantada",verificado:true};
+  }).catch(function(){return {grupo:"Operacional",info:"Não foi possível verificar a extrusão",verificado:false};});
+}
+function salvarParada(){
+  if(!MP) return;
+  var ms=[].slice.call(G("par-moinhos").querySelectorAll("input:checked")).map(function(i){return i.value;});
+  var mot=motivoPorId(MP.mot), hi=G("par-hi").value, hf=G("par-hf").value;
+  if(!ms.length){toast("Selecione o(s) moinho(s)","err");return;}
+  if(!mot){toast("Selecione o motivo","err");return;}
+  if(!hi){toast("Informe a hora de início","err");return;}
+  var tsIni=tsUltimaOcorrencia(hi), tsFim=null, min=null;
+  if(tsIni>Date.now()+TOL_FUTURO_MS){toast("Hora de início no futuro","err");return;}
+  if(hf){min=calcMinutos(hi,hf);tsFim=tsIni+min*MIN_MS;if(min<=0||tsFim>Date.now()+TOL_FUTURO_MS){toast("Hora fim inválida","err");return;}}
+  // Sobreposição com parada do mesmo moinho
+  var conflito=null;
+  ms.forEach(function(m){
+    S.paradasRange.concat(S.paradasAbertas).forEach(function(p){
+      if(p.moinho!==m) return;
+      var pf=p.tsFim||Infinity, nf=tsFim||Infinity;
+      if(p.tsIni<nf&&pf>tsIni) conflito=p;
+    });
+  });
+  if(conflito){toast("Já existe parada de "+nomeMoinho(conflito.moinho)+" nesse horário ("+conflito.horaIni+(conflito.horaFim?"–"+conflito.horaFim:" em aberto")+")","err");return;}
+  var lkSilo=G("par-silo-linha").value;
+  var cls=mot.siloCheio?classificarSiloCheio(lkSilo,tsIni):Promise.resolve({grupo:mot.grupo,info:null,verificado:null});
+  ld(true);
+  cls.then(function(c){
+    var upd={}, grp=uid(), ts=agora();
+    ms.forEach(function(m){
+      var k=DB.ref("moagem_paradas").push().key;
+      upd["moagem_paradas/"+k]={moinho:m,linhas:S.cfg.moinhos[m].linhas||{},lkRef:MP.lk,motivoId:mot.id,codMotivo:mot.cod||null,descricao:mot.desc,
+        grupo:c.grupo,grupoInfo:c.info||null,grupoVerificado:c.verificado,siloLinha:mot.siloCheio?lkSilo:null,zeraPeneira:!!mot.zeraPeneira,
+        data:dataOpDeTs(tsIni),turno:turnoDeHora(hi),horaIni:hi,horaFim:hf||null,tsIni:tsIni,tsFim:tsFim,minutos:min,aberta:!hf,
+        malhaInstalada:(hf&&mot.zeraPeneira&&num(G("par-malha").value))||null,obs:G("par-obs").value.trim()||null,
+        grupoLanc:ms.length>1?grp:null,operador:SES.login,operadorFechamento:hf?SES.login:null,ts:ts};
+    });
+    return DB.ref().update(upd).then(function(){
+      ld(false);fM("m-par");
+      toast("Parada registrada"+(mot.siloCheio?" — classificada como "+c.grupo:""),"ok");
+      log("parada_nova",ms.join("+")+" · "+mot.desc+" "+hi+(hf?"–"+hf:" (aberta)")+(c.info?" · "+c.info:""));
+      if(hf&&mot.zeraPeneira) calcPeneiras();
+    });
+  }).catch(function(e){ld(false);toast("Erro: "+e.message,"err");});
+}
+var MPF=null;
+function paradaPorKey(k){return S.paradasAbertas.concat(S.paradasRange).concat(ADM_PARADAS||[]).find(function(p){return p.fbKey===k;});}
+function abrirFecharParada(fbKey){
+  var p=paradaPorKey(fbKey);if(!p) return;
+  MPF={p:p,admin:false};
+  G("pf-tit").textContent="Fechar parada — "+nomeMoinho(p.moinho);
+  G("pf-sub").textContent=p.descricao+" · desde "+p.horaIni+" ("+fData(p.data)+")";
+  G("pf-row-adm").style.display="none";
+  G("pf-hf").value=horaAtual();G("pf-obs").value=p.obs||"";G("pf-malha").value="";
+  G("pf-malha-fg").style.display=p.zeraPeneira?"":"none";
+  aM("m-parfim");
+}
+function admEditarParada(fbKey){
+  var p=paradaPorKey(fbKey);if(!p) return;
+  MPF={p:p,admin:true};
+  G("pf-tit").textContent="Editar parada — "+nomeMoinho(p.moinho);
+  G("pf-sub").textContent="Dia operacional "+fData(p.data)+" · lançada por "+p.operador;
+  G("pf-row-adm").style.display="";
+  G("pf-hi").value=p.horaIni;
+  G("pf-mot").innerHTML=motivosAtivos().map(function(m){return '<option value="'+m.id+'"'+(m.id===p.motivoId?" selected":"")+'>'+esc(m.desc)+'</option>';}).join("");
+  G("pf-hf").value=p.horaFim||"";G("pf-obs").value=p.obs||"";G("pf-malha").value=p.malhaInstalada||"";
+  G("pf-malha-fg").style.display="";
+  aM("m-parfim");
+}
+function salvarParadaFim(){
+  var p=MPF.p, hf=G("pf-hf").value, hi=MPF.admin?G("pf-hi").value:p.horaIni;
+  if(!MPF.admin&&!hf){toast("Informe a hora de retorno","err");return;}
+  var tsIni=MPF.admin?tsDeDataOp(p.data,hi):p.tsIni;
+  var min=hf?calcMinutos(hi,hf):null, tsFim=hf?tsIni+min*MIN_MS:null;
+  if(hf&&(min<=0||min>24*60)){toast("Hora de retorno inválida","err");return;}
+  if(tsFim&&tsFim>Date.now()+TOL_FUTURO_MS){toast("Hora de retorno no futuro","err");return;}
+  var upd={horaFim:hf||null,tsFim:tsFim,minutos:min,aberta:!hf,obs:G("pf-obs").value.trim()||null,malhaInstalada:num(G("pf-malha").value)||null};
+  if(hf&&!p.horaFim) upd.operadorFechamento=SES.login;
+  var pr=Promise.resolve();
+  if(MPF.admin){
+    var mot=motivoPorId(G("pf-mot").value)||{};
+    upd.horaIni=hi;upd.tsIni=tsIni;upd.turno=turnoDeHora(hi);upd.editadoPor=SES.login;upd.editadoEm=agora();
+    if(mot.desc&&G("pf-mot").value!==p.motivoId){
+      upd.motivoId=G("pf-mot").value;upd.codMotivo=mot.cod||null;upd.descricao=mot.desc;upd.zeraPeneira=!!mot.zeraPeneira;
+      if(mot.siloCheio) pr=classificarSiloCheio(p.siloLinha||p.lkRef,tsIni).then(function(c){upd.grupo=c.grupo;upd.grupoInfo=c.info;upd.grupoVerificado=c.verificado;upd.siloLinha=p.siloLinha||p.lkRef;});
+      else {upd.grupo=mot.grupo;upd.grupoInfo=null;}
+    }
+  }
+  pr.then(function(){return DB.ref("moagem_paradas/"+p.fbKey).update(upd);}).then(function(){
+    fM("m-parfim");toast(MPF.admin?"Parada atualizada":"Parada fechada","ok");
+    log(MPF.admin?"parada_editar":"parada_fechar",nomeMoinho(p.moinho)+" · "+(upd.descricao||p.descricao)+" "+hi+"–"+(hf||"aberta"));
+    calcPeneiras();
+    if(MPF.admin) admCarregarParadas();
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+function admExcluirParada(fbKey){
+  var p=paradaPorKey(fbKey);if(!p) return;
+  if(!confirm("Excluir a parada "+p.descricao+" de "+nomeMoinho(p.moinho)+" ("+p.horaIni+")?")) return;
+  DB.ref("moagem_paradas/"+fbKey).remove().then(function(){
+    log("parada_excluir",nomeMoinho(p.moinho)+" · "+p.descricao+" "+p.horaIni+"–"+(p.horaFim||"aberta"));
+    toast("Parada excluída","ok");calcPeneiras();admCarregarParadas();
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+
+// ════════════════════════════════════════════════════════════════════
+// DASHBOARD
+// ════════════════════════════════════════════════════════════════════
+var DSH={apts:[],paradas:[],comp:[],chart:null};
+function gerarDashboard(){
+  var di=G("dsh-di").value, df=G("dsh-df").value;
+  if(!di||!df||di>df){toast("Período inválido","err");return;}
+  if(addDias(di,93)<df){toast("Período máximo: 93 dias","err");return;}
+  G("dsh-body").dataset.ok="1";
+  G("dsh-body").innerHTML='<div class="empty">Carregando…</div>';
+  Promise.all([
+    DB.ref("moagem_apts").orderByChild("data").startAt(di).endAt(df).once("value"),
+    DB.ref("moagem_paradas").orderByChild("data").startAt(di).endAt(df).once("value")
+  ]).then(function(sn){
+    var lk=G("dsh-linha").value, tf=G("dsh-turno").value;
+    var apts=[], par=[];
+    if(sn[0].exists()) sn[0].forEach(function(c){var a=c.val();if(!a) return;a.fbKey=c.key;if(lk&&a.lk!==lk) return;if(tf&&String(a.turno)!==tf) return;apts.push(a);});
+    var msLinha=lk?moinhosDaLinha(lk):null;
+    if(sn[1].exists()) sn[1].forEach(function(c){var p=c.val();if(!p) return;p.fbKey=c.key;if(msLinha&&msLinha.indexOf(p.moinho)<0) return;if(tf&&String(p.turno)!==tf) return;par.push(p);});
+    DSH.apts=apts;DSH.paradas=par;
+    return montarComparativo(apts).then(function(comp){DSH.comp=comp;renderDashboard(di,df);});
+  }).catch(function(e){G("dsh-body").innerHTML='<div class="empty">Erro: '+esc(e.message)+'</div>';});
+}
+// Moído (moagem) × produzido (extrusão) por OP — produzido = ops/{fk}/realExtrusao,
+// que a extrusão já mantém acumulado na cadeia de reprogramação.
+function montarComparativo(apts){
+  var fks={};apts.forEach(function(a){fks[a.opFbKey]=a;});
+  var lista=Object.keys(fks);
+  return Promise.all(lista.map(function(fk){
+    return Promise.all([
+      DB.ref("ops/"+fk).once("value"),
+      DB.ref("extrusao_op_concluida/"+fk).once("value"),
+      DB.ref("moagem_op_totais/"+fk).once("value")
+    ]).then(function(r){
+      var op=r[0].val()||{}, tot=r[2].val()||{}, a=fks[fk];
+      var moido=Number(tot.kgCadeia)||0, prod=Number(op.realExtrusao)||0;
+      var concExt=r[1].exists(), concMo=!!S.opConc[fk];
+      return {fk:fk,opNum:op.id||a.opNum,cod:op.cod||a.cod,desc:op.desc||a.desc,lk:a.lk,familia:familiaProduto(op.cod||a.cod),
+        moido:moido,prod:prod,dif:prod-moido,difPct:(moido&&prod)?((prod/moido)-1)*100:null,concExt:concExt,concMo:concMo,fechada:concExt&&concMo};
+    });
+  }));
+}
+function agrupar(lista,chave,val){var r={};lista.forEach(function(x){var k=chave(x);r[k]=(r[k]||0)+val(x);});return r;}
+function renderDashboard(di,df){
+  var ap=DSH.apts.filter(function(a){return !a.marco;}), par=DSH.paradas;
+  var kg=0,min=0,nMeta=0,nOk=0;
+  ap.forEach(function(a){kg+=Number(a.kg)||0;min+=Number(a.minutos)||0;if(a.metaH>0){nMeta++;if(a.kgH>=a.metaH) nOk++;}});
+  var parMinG={};GRUPOS.forEach(function(g){parMinG[g]=0;});
+  var agoraTs=Date.now();
+  par.forEach(function(p){var m=p.minutos!=null?Number(p.minutos):Math.round(((p.tsFim||agoraTs)-p.tsIni)/MIN_MS);p._min=m;parMinG[p.grupo]=(parMinG[p.grupo]||0)+m;});
+  var trocas=par.filter(function(p){return p.zeraPeneira&&!p.aberta;}).length;
+  var h='<div class="tiles">';
+  h+='<div class="tile"><div class="l">Kg moídos</div><div class="v">'+fT(kg)+'</div><div class="s">'+fN(kg)+' kg</div></div>';
+  h+='<div class="tile"><div class="l">Horas apontadas</div><div class="v">'+fN(min/60,1)+' h</div><div class="s">'+ap.length+' intervalos</div></div>';
+  h+='<div class="tile"><div class="l">Kg/h médio</div><div class="v">'+(min?fN(kg/(min/60)):"—")+'</div><div class="s">bruto (inclui paradas)</div></div>';
+  h+='<div class="tile"><div class="l">Intervalos ≥ meta</div><div class="v">'+(nMeta?Math.round(nOk/nMeta*100)+"%":"—")+'</div><div class="s">'+nOk+' de '+nMeta+' com meta</div></div>';
+  h+='<div class="tile"><div class="l">Paradas moagem</div><div class="v">'+fN((parMinG["Manutenção"]+parMinG["Operacional"])/60,1)+' h</div><div class="s">+ '+fN((parMinG[GRUPO_EXTERNO]||0)/60,1)+' h fator externo</div></div>';
+  h+='<div class="tile"><div class="l">Trocas de peneira</div><div class="v">'+trocas+'</div><div class="s">troca + estouro</div></div>';
+  h+='</div>';
+
+  // Gráfico kg/dia por linha
+  h+='<div class="panel"><h4>Kg moídos por dia operacional</h4><div class="chart-box"><canvas id="dsh-ch"></canvas></div></div>';
+
+  // Linha x turno
+  var lt={};ap.forEach(function(a){var k=a.lk;lt[k]=lt[k]||{t1:0,t2:0,t3:0,kg:0,min:0};lt[k]["t"+a.turno]+=Number(a.kg)||0;lt[k].kg+=Number(a.kg)||0;lt[k].min+=Number(a.minutos)||0;});
+  h+='<div class="g2"><div class="panel"><h4>Kg por linha e turno</h4><div class="tw"><table class="t"><thead><tr><th>Linha</th><th class="n">T1</th><th class="n">T2</th><th class="n">T3</th><th class="n">Total</th><th class="n">kg/h</th></tr></thead><tbody>';
+  LINHAS.forEach(function(l){var r=lt[l.k];if(!r) return;h+='<tr><td>'+l.cur+'</td><td class="n">'+fN(r.t1)+'</td><td class="n">'+fN(r.t2)+'</td><td class="n">'+fN(r.t3)+'</td><td class="n"><b>'+fN(r.kg)+'</b></td><td class="n">'+(r.min?fN(r.kg/(r.min/60)):"—")+'</td></tr>';});
+  h+='</tbody></table></div></div>';
+
+  // Silo
+  var ps=agrupar(ap,function(a){return a.silo;},function(a){return Number(a.kg)||0;});
+  h+='<div class="panel"><h4>Kg por silo destino</h4><div class="tw"><table class="t"><thead><tr><th>Silo</th><th>Linha</th><th class="n">Kg</th><th class="n">%</th></tr></thead><tbody>';
+  Object.keys(ps).sort().forEach(function(s){var li=S.cfg.silos[s]?linhaK(S.cfg.silos[s].linha):null;h+='<tr><td>'+esc(nomeSilo(s))+'</td><td>'+(li?li.cur:"—")+'</td><td class="n">'+fN(ps[s])+'</td><td class="n">'+(kg?Math.round(ps[s]/kg*100):0)+'%</td></tr>';});
+  h+='</tbody></table></div></div></div>';
+
+  // Moinho
+  var pm={};ap.forEach(function(a){Object.keys(a.kgPorMoinho||{}).forEach(function(m){pm[m]=(pm[m]||0)+(Number(a.kgPorMoinho[m])||0);});});
+  var parMo={};par.forEach(function(p){parMo[p.moinho]=(parMo[p.moinho]||0)+p._min;});
+  h+='<div class="g2"><div class="panel"><h4>Por moinho</h4><div class="tw"><table class="t"><thead><tr><th>Moinho</th><th class="n">Kg</th><th class="n">Parado (h)</th><th class="n">Peneira atual</th></tr></thead><tbody>';
+  todosMoinhos().forEach(function(m){var sp=statusPeneira(m);h+='<tr><td>'+esc(nomeMoinho(m))+(moinhoEstimado(m)?' <span class="bdg y" title="Balança pesa por ordem — kg rateado ('+Math.round(S.cfg.moinhos[m].rateio*100)+'%)">estimado</span>':'')+'</td><td class="n">'+fN(pm[m]||0)+'</td><td class="n">'+fN((parMo[m]||0)/60,1)+'</td><td class="n">'+(sp?fN(sp.t,1)+" t":"—")+'</td></tr>';});
+  h+='</tbody></table></div><div class="muted" style="margin-top:6px">MM 05 e MM 06 trabalham em série: cada um recebe 100% do kg da L4.</div></div>';
+
+  // Paradas por motivo
+  var pmo={};par.forEach(function(p){var k=p.descricao+"|"+p.grupo;pmo[k]=pmo[k]||{d:p.descricao,g:p.grupo,n:0,min:0,ms:{}};pmo[k].n++;pmo[k].min+=p._min;pmo[k].ms[nomeMoinho(p.moinho)]=1;});
+  var pml=Object.keys(pmo).map(function(k){return pmo[k];}).sort(function(a,b){return b.min-a.min;});
+  h+='<div class="panel"><h4>Paradas por motivo</h4><div class="tw"><table class="t"><thead><tr><th>Motivo</th><th>Grupo</th><th class="n">Qtd</th><th class="n">Horas</th><th>Moinhos</th></tr></thead><tbody>';
+  if(!pml.length) h+='<tr><td colspan="5" class="muted">Sem paradas no período.</td></tr>';
+  pml.forEach(function(r){h+='<tr><td>'+esc(r.d)+'</td><td><span class="bdg">'+esc(r.g)+'</span></td><td class="n">'+r.n+'</td><td class="n">'+fN(r.min/60,1)+'</td><td class="muted">'+esc(Object.keys(r.ms).join(", "))+'</td></tr>';});
+  h+='</tbody></table></div></div></div>';
+
+  // Peneira: ciclos
+  h+='<div class="panel"><h4>Vida da peneira — ciclos entre trocas <span class="muted" style="font-weight:600">base para definir o limite de toneladas</span></h4><div class="tw" id="dsh-pen"><div class="muted">Calculando…</div></div></div>';
+
+  // Comparativo OP
+  var comp=DSH.comp.slice().sort(function(a,b){return (a.opNum||"")>(b.opNum||"")?1:-1;});
+  var fam={};comp.filter(function(c){return c.fechada&&c.moido>0;}).forEach(function(c){fam[c.familia]=fam[c.familia]||{m:0,p:0,n:0};fam[c.familia].m+=c.moido;fam[c.familia].p+=c.prod;fam[c.familia].n++;});
+  h+='<div class="panel"><h4>Moído × produzido na extrusão, por OP <span class="muted" style="font-weight:600">diferença = ganho de água/vapor/óleo no processo</span></h4>';
+  var fk=Object.keys(fam);
+  if(fk.length){h+='<div class="row-info">';fk.forEach(function(f){var x=fam[f];h+='<span class="chip in">'+f+': '+(x.m?(x.p/x.m-1>=0?"+":"")+fN((x.p/x.m-1)*100,1)+"%":"—")+' ('+x.n+' OPs fechadas)</span>';});h+='</div>';}
+  h+='<div class="tw"><table class="t"><thead><tr><th>OP</th><th>SKU</th><th>Linha</th><th class="n">Moído kg</th><th class="n">Produzido kg</th><th class="n">Diferença kg</th><th class="n">Dif. %</th><th>Status</th></tr></thead><tbody>';
+  if(!comp.length) h+='<tr><td colspan="8" class="muted">Sem OPs no período.</td></tr>';
+  comp.forEach(function(c){
+    var st=c.fechada?'<span class="bdg g">fechada</span>':'<span class="bdg y">em andamento</span>'+(c.concMo?' <span class="muted">moagem ✔</span>':'')+(c.concExt?' <span class="muted">extrusão ✔</span>':'');
+    h+='<tr><td><b>'+esc(c.opNum)+'</b></td><td title="'+esc(c.desc)+'">'+esc(c.cod)+' <span class="muted">'+c.familia+'</span></td><td>'+(linhaK(c.lk)?linhaK(c.lk).cur:"")+'</td><td class="n">'+fN(c.moido)+'</td><td class="n">'+fN(c.prod)+'</td><td class="n">'+(c.dif>=0?"+":"")+fN(c.dif)+'</td><td class="n">'+(c.difPct==null?"—":(c.difPct>=0?"+":"")+fN(c.difPct,1)+"%")+'</td><td>'+st+'</td></tr>';
+  });
+  h+='</tbody></table></div><div class="muted" style="margin-top:6px">A média por família considera só OPs fechadas nas duas pontas. Totais de moído são da OP inteira (não só do período).</div></div>';
+
+  G("dsh-body").innerHTML=h;
+  desenharGrafico(di,df);
+  renderCiclosPeneira();
+}
+function desenharGrafico(di,df){
+  if(typeof Chart==="undefined") return;
+  var dias=[];for(var d=di;d<=df;d=addDias(d,1)) dias.push(d);
+  var ap=DSH.apts.filter(function(a){return !a.marco;});
+  var lks=G("dsh-linha").value?[G("dsh-linha").value]:LINHAS.map(function(l){return l.k;});
+  var ds=lks.map(function(k){var l=linhaK(k);return {label:l.cur,backgroundColor:l.cor,borderRadius:4,borderSkipped:"start",borderColor:"#fff",borderWidth:{left:1,right:1},
+    data:dias.map(function(d){return Math.round(ap.filter(function(a){return a.lk===k&&a.data===d;}).reduce(function(s,a){return s+(Number(a.kg)||0);},0)/100)/10;})};});
+  if(DSH.chart){DSH.chart.destroy();DSH.chart=null;}
+  DSH.chart=new Chart(G("dsh-ch"),{type:"bar",data:{labels:dias.map(fData),datasets:ds},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
+      plugins:{legend:{position:"top",labels:{boxWidth:12,color:"#4a664a"}},tooltip:{callbacks:{label:function(c){return c.dataset.label+": "+fN(c.parsed.y,1)+" t";}}}},
+      scales:{x:{grid:{display:false},ticks:{color:"#4a664a"}},y:{beginAtZero:true,grid:{color:"#eef2ee"},ticks:{color:"#4a664a",callback:function(v){return v+" t";}}}}}});
+}
+function renderCiclosPeneira(){
+  var tr=S.trocasPeneira||{}, di=G("dsh-di").value, df=G("dsh-df").value;
+  var ini=tsDeDataOp(di,"06:00")-DIA_MS, fim=tsDeDataOp(addDias(df,1),"06:00");
+  var ciclos=[], minTs=Infinity;
+  Object.keys(tr).forEach(function(m){
+    var l=tr[m].slice().sort(function(a,b){return a.ts-b.ts;});
+    for(var i=1;i<l.length;i++) if(l[i].ts>=ini&&l[i].ts<=fim){ciclos.push({m:m,de:l[i-1].ts,ate:l[i].ts,malha:l[i-1].malha,fim:l[i].desc});minTs=Math.min(minTs,l[i-1].ts);}
+  });
+  var el=G("dsh-pen");if(!el) return;
+  if(!ciclos.length){el.innerHTML='<div class="muted">Nenhum ciclo completo (troca → troca) no período. Os ciclos aparecem a partir da 2ª troca registrada de cada moinho.</div>';return;}
+  DB.ref("moagem_apts").orderByChild("tsFim").startAt(minTs).endAt(fim).once("value").then(function(s){
+    var ap=[];if(s.exists()) s.forEach(function(c){ap.push(c.val());});
+    ciclos.forEach(function(c){c.kg=ap.reduce(function(t,a){return (a.tsFim>c.de&&a.tsFim<=c.ate)?t+(Number((a.kgPorMoinho||{})[c.m])||0):t;},0);});
+    var st={};ciclos.forEach(function(c){(st[c.m]=st[c.m]||[]).push(c.kg/1000);});
+    var h='<table class="t"><thead><tr><th>Moinho</th><th class="n">Ciclos</th><th class="n">Média (t)</th><th class="n">Mín (t)</th><th class="n">Máx (t)</th><th class="n">Desvio (t)</th><th class="n">Limite atual</th></tr></thead><tbody>';
+    Object.keys(st).forEach(function(m){
+      var v=st[m], md=v.reduce(function(a,b){return a+b;},0)/v.length;
+      var dp=Math.sqrt(v.reduce(function(a,b){return a+(b-md)*(b-md);},0)/v.length);
+      var lim=Number((S.cfg.params.limitePeneiraT||{})[m])||0;
+      h+='<tr><td>'+esc(nomeMoinho(m))+(moinhoEstimado(m)?' <span class="bdg y">estimado</span>':'')+'</td><td class="n">'+v.length+'</td><td class="n"><b>'+fN(md,1)+'</b></td><td class="n">'+fN(Math.min.apply(null,v),1)+'</td><td class="n">'+fN(Math.max.apply(null,v),1)+'</td><td class="n">'+fN(dp,1)+'</td><td class="n">'+(lim?fN(lim,0)+" t":"monitorando")+'</td></tr>';
+    });
+    h+='</tbody></table><div class="tw" style="margin-top:8px"><table class="t"><thead><tr><th>Moinho</th><th>De</th><th>Até</th><th>Encerrado por</th><th class="n">Malha</th><th class="n">Toneladas</th></tr></thead><tbody>';
+    ciclos.sort(function(a,b){return b.ate-a.ate;}).forEach(function(c){h+='<tr><td>'+esc(nomeMoinho(c.m))+'</td><td>'+fDataHora(c.de)+'</td><td>'+fDataHora(c.ate)+'</td><td>'+esc(c.fim)+'</td><td class="n">'+(c.malha||"—")+'</td><td class="n">'+fN(c.kg/1000,1)+'</td></tr>';});
+    el.innerHTML=h+'</tbody></table></div>';
+  }).catch(function(e){el.innerHTML='<div class="muted">Erro: '+esc(e.message)+'</div>';});
+}
+function baixarCSV(nome,linhas){
+  var csv="﻿"+linhas.map(function(r){return r.map(function(v){var s=v==null?"":String(v);return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(";");}).join("\r\n");
+  var b=new Blob([csv],{type:"text/csv;charset=utf-8"}), a=document.createElement("a");
+  a.href=URL.createObjectURL(b);a.download=nome;document.body.appendChild(a);a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},500);
+}
+function nBR(v,d){return v==null||v===""?"":(Number(v)||0).toFixed(d||0).replace(".",",");}
+function exportarAptsCSV(){
+  if(!DSH.apts.length){toast("Gere o dashboard com dados antes de exportar","err");return;}
+  var ms=todosMoinhos();
+  var rows=[["Dia operacional","Turno","Linha","Início","Fim","Minutos","OP","SKU","Descrição","Silo","Acumulado Libracom (kg)","Kg intervalo","Kg/h","Meta moagem kg/h","% meta"].concat(ms.map(function(m){return "Kg "+nomeMoinho(m)+(moinhoEstimado(m)?" (estimado)":"");})).concat(["Tipo","Operador","Obs"])];
+  DSH.apts.slice().sort(function(a,b){return a.tsIni-b.tsIni;}).forEach(function(a){
+    rows.push([a.data,a.turno,linhaK(a.lk)?linhaK(a.lk).cur:a.lk,a.horaIni,a.horaFim,a.minutos,a.opNum,a.cod,a.desc,nomeSilo(a.silo),nBR(a.acumulado),nBR(a.kg),a.marco?"":nBR(a.kgH),nBR(a.metaH),a.metaH&&!a.marco?nBR(a.kgH/a.metaH*100,1):""]
+      .concat(ms.map(function(m){return nBR((a.kgPorMoinho||{})[m],1);})).concat([a.marco?"marco inicial":a.fechamento?"fechamento ("+a.fechamento+")":"hora",a.operador,a.obs||""]));
+  });
+  baixarCSV("moagem_apontamentos_"+G("dsh-di").value+"_"+G("dsh-df").value+".csv",rows);
+}
+function exportarCompCSV(){
+  if(!DSH.comp.length){toast("Gere o dashboard com dados antes de exportar","err");return;}
+  var rows=[["OP","SKU","Descrição","Família","Linha","Moído (kg)","Produzido extrusão (kg)","Diferença (kg)","Diferença (%)","Concluída moagem","Concluída extrusão"]];
+  DSH.comp.forEach(function(c){rows.push([c.opNum,c.cod,c.desc,c.familia,linhaK(c.lk)?linhaK(c.lk).cur:"",nBR(c.moido),nBR(c.prod),nBR(c.dif),c.difPct==null?"":nBR(c.difPct,1),c.concMo?"sim":"não",c.concExt?"sim":"não"]);});
+  baixarCSV("moagem_comparativo_op_"+G("dsh-di").value+"_"+G("dsh-df").value+".csv",rows);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// ADMIN
+// ════════════════════════════════════════════════════════════════════
+var ADM_APTS=[], ADM_PARADAS=[];
+function admAba(a){
+  if(!isAdmin()) return;
+  document.querySelectorAll(".subtab").forEach(function(b){b.classList.toggle("on",b.dataset.st===a);});
+  ["apts","paradas","cfg","log"].forEach(function(s){G("adm-"+s).classList.toggle("on",s===a);});
+  if(a==="cfg") admRenderCfg();
+  if(a==="log") admCarregarLog();
+}
+function admCarregarApts(){
+  var d=G("adm-a-data").value, lk=G("adm-a-linha").value;
+  if(!d) return;
+  DB.ref("moagem_apts").orderByChild("data").equalTo(d).once("value").then(function(s){
+    ADM_APTS=[];
+    if(s.exists()) s.forEach(function(c){var a=c.val();if(!a) return;a.fbKey=c.key;ADM_APTS.push(a);});
+    var l=ADM_APTS.filter(function(a){return !lk||a.lk===lk;}).sort(function(a,b){return (a.lk>b.lk?1:a.lk<b.lk?-1:0)||a.tsIni-b.tsIni;});
+    var h='<table class="t"><thead><tr><th>Linha</th><th>Turno</th><th>Intervalo</th><th>OP</th><th>Silo</th><th class="n">Acumulado</th><th class="n">Kg</th><th class="n">Kg/h</th><th>Operador</th><th></th></tr></thead><tbody>';
+    if(!l.length) h+='<tr><td colspan="10" class="muted">Nenhum apontamento.</td></tr>';
+    l.forEach(function(a){
+      h+='<tr><td>'+linhaK(a.lk).cur+'</td><td>T'+a.turno+'</td><td>'+(a.marco?'<span class="bdg">marco</span> '+esc(a.horaIni):esc(a.horaIni)+'–'+esc(a.horaFim))+(a.fechamento?' <span class="bdg b">'+esc(a.fechamento)+'</span>':'')+(a.inconsistente?' <span class="bdg r">inconsistente</span>':'')+(a.reinicio?' <span class="bdg y">reinício</span>':'')+'</td>';
+      h+='<td>'+esc(a.opNum)+'</td><td>'+esc(nomeSilo(a.silo))+'</td><td class="n">'+fN(a.acumulado)+'</td><td class="n">'+fN(a.kg)+'</td><td class="n">'+(a.marco?"—":fN(a.kgH))+'</td><td class="muted">'+esc(a.operador)+(a.editadoPor?" (ed. "+esc(a.editadoPor)+")":"")+'</td>';
+      h+='<td style="white-space:nowrap">'+(a.marco?'':'<button class="btn xs ghost" onclick="admEditarApt(\''+a.fbKey+'\')">✏️</button> ')+'<button class="btn xs ghost" onclick="excluirApt(\''+a.fbKey+'\')">🗑</button> <button class="btn xs ghost" title="Recalcular OP" onclick="admRecalc(\''+a.opFbKey+'\')">↻</button></td></tr>';
+    });
+    G("adm-a-lista").innerHTML=h+'</tbody></table>';
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+function admEditarApt(k){var a=ADM_APTS.find(function(x){return x.fbKey===k;});if(a) abrirEdicaoApt(a);}
+function admRecalc(fk){recalcularOpMoagem(fk).then(function(){toast("OP recalculada","ok");admCarregarApts();calcPeneiras();});}
+function admCarregarParadas(){
+  var d=G("adm-p-data").value;if(!d) return;
+  DB.ref("moagem_paradas").orderByChild("data").equalTo(d).once("value").then(function(s){
+    ADM_PARADAS=[];
+    if(s.exists()) s.forEach(function(c){var p=c.val();if(!p) return;p.fbKey=c.key;ADM_PARADAS.push(p);});
+    ADM_PARADAS.sort(function(a,b){return a.tsIni-b.tsIni;});
+    var h='<table class="t"><thead><tr><th>Moinho</th><th>Turno</th><th>Início</th><th>Fim</th><th class="n">Min</th><th>Motivo</th><th>Grupo</th><th class="n">Malha</th><th>Operador</th><th></th></tr></thead><tbody>';
+    if(!ADM_PARADAS.length) h+='<tr><td colspan="10" class="muted">Nenhuma parada.</td></tr>';
+    ADM_PARADAS.forEach(function(p){
+      h+='<tr><td>'+esc(nomeMoinho(p.moinho))+'</td><td>T'+p.turno+'</td><td>'+esc(p.horaIni)+'</td><td>'+(p.horaFim?esc(p.horaFim):'<span class="bdg r">aberta</span>')+'</td><td class="n">'+(p.minutos!=null?p.minutos:"—")+'</td>';
+      h+='<td>'+esc(p.descricao)+(p.zeraPeneira?' <span class="bdg b">peneira</span>':'')+'</td><td><span class="bdg" title="'+esc(p.grupoInfo||"")+'">'+esc(p.grupo)+'</span></td><td class="n">'+(p.malhaInstalada||"—")+'</td><td class="muted">'+esc(p.operador)+'</td>';
+      h+='<td style="white-space:nowrap"><button class="btn xs ghost" onclick="admEditarParada(\''+p.fbKey+'\')">✏️</button> <button class="btn xs ghost" onclick="admExcluirParada(\''+p.fbKey+'\')">🗑</button></td></tr>';
+    });
+    G("adm-p-lista").innerHTML=h+'</tbody></table>';
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+function admCarregarLog(){
+  DB.ref("moagem_log").limitToLast(200).once("value").then(function(s){
+    var l=[];if(s.exists()) s.forEach(function(c){l.unshift(c.val());});
+    G("adm-log-lista").innerHTML='<table class="t"><thead><tr><th>Data/hora</th><th>Usuário</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody>'+
+      l.map(function(x){return '<tr><td style="white-space:nowrap">'+fDataHora(Date.parse(x.ts))+'</td><td>'+esc(x.usuario)+'</td><td><span class="bdg">'+esc(x.tipo)+'</span></td><td>'+esc(x.descricao)+'</td></tr>';}).join("")+'</tbody></table>';
+  });
+}
+function admRenderCfg(){
+  if(!isAdmin()) return;
+  var c=S.cfg, h="";
+  if(!S.cfgFbOk) h+='<div class="al al-or" style="margin-bottom:10px">⚠️ Configuração ainda não gravada no Firebase — usando padrão.</div>';
+  // Moinhos
+  h+='<div class="panel"><h4>Moinhos <button class="btn sm" onclick="admSalvarMoinhos()">Salvar moinhos</button></h4><div class="tw"><table class="t"><thead><tr><th>Código</th><th>Nome</th>'+LINHAS.map(function(l){return '<th>'+l.k+'</th>';}).join("")+'<th class="n">Rateio %</th><th>Ativo</th><th>Obs.</th></tr></thead><tbody>';
+  todosMoinhos().forEach(function(m){
+    var mo=c.moinhos[m];
+    h+='<tr data-m="'+m+'"><td><b>'+m+'</b></td><td><input class="inp sm" data-f="nome" value="'+esc(mo.nome)+'" style="width:110px"></td>'+
+      LINHAS.map(function(l){return '<td><input type="checkbox" data-l="'+l.k+'" '+(mo.linhas&&mo.linhas[l.k]?"checked":"")+'></td>';}).join("")+
+      '<td class="n"><input class="inp sm" type="number" min="0" max="100" data-f="rateio" value="'+Math.round((Number(mo.rateio)||0)*100)+'" style="width:70px"></td><td><input type="checkbox" data-f="ativo" '+(mo.ativo!==false?"checked":"")+'></td><td><input class="inp sm" data-f="obs" value="'+esc(mo.obs||"")+'" style="width:220px"></td></tr>';
+  });
+  h+='</tbody></table></div><div class="muted" style="margin-top:6px">Rateio = % do kg da linha atribuído ao moinho. Paralelo (M1000+M1200): soma 100%. Em série (M05→M06): cada um 100%. Mudanças valem para apontamentos novos — o histórico guarda o rateio da época.</div></div>';
+  // Silos
+  h+='<div class="panel"><h4>Silos <button class="btn sm" onclick="admSalvarSilos()">Salvar silos</button></h4><div class="tw"><table class="t"><thead><tr><th>Código</th><th>Nome</th><th>Linha</th></tr></thead><tbody>';
+  Object.keys(c.silos).sort().forEach(function(s){
+    h+='<tr data-s="'+s+'"><td><b>'+s+'</b></td><td><input class="inp sm" data-f="nome" value="'+esc(c.silos[s].nome)+'"></td><td><select class="inp sm" data-f="linha">'+LINHAS.map(function(l){return '<option value="'+l.k+'"'+(c.silos[s].linha===l.k?" selected":"")+'>'+l.cur+'</option>';}).join("")+'</select></td></tr>';
+  });
+  h+='</tbody></table></div></div>';
+  // Parâmetros
+  var p=c.params;
+  h+='<div class="panel"><h4>Parâmetros e alertas <button class="btn sm" onclick="admSalvarParams()">Salvar parâmetros</button></h4><div class="filtros" style="border:none;padding:0">';
+  h+='<div class="fg"><label>Fator meta moagem × extrusão</label><input class="inp" type="number" step="0.01" id="cfg-fator" value="'+p.fatorMeta+'"></div>';
+  h+='<div class="fg"><label>Tolerância sem apontamento (min)</label><input class="inp" type="number" id="cfg-tol" value="'+p.tolSemAptMin+'"></div>';
+  h+='<div class="fg"><label>Avisar peneira quando faltar (t)</label><input class="inp" type="number" step="0.5" id="cfg-avpen" value="'+p.avisoPeneiraT+'"></div></div>';
+  h+='<div style="margin-top:10px"><b style="font-size:12px;color:var(--tx2)">Limite de vida da peneira (t) — vazio = só monitorar</b><div class="filtros" style="border:none;padding:6px 0 0">';
+  todosMoinhos().forEach(function(m){var v=(p.limitePeneiraT||{})[m];h+='<div class="fg"><label>'+esc(nomeMoinho(m))+'</label><input class="inp" type="number" step="1" min="0" data-lim="'+m+'" value="'+(v||"")+'" style="width:110px"></div>';});
+  h+='</div></div></div>';
+  // Motivos
+  h+='<div class="panel"><h4>Motivos de parada <span><button class="btn sm sec2" onclick="admNovoMotivo()">+ Motivo</button> <button class="btn sm" onclick="admSalvarMotivos()">Salvar motivos</button></span></h4><div class="tw"><table class="t" id="cfg-mot"><thead><tr><th>Cód.</th><th>Descrição</th><th>Grupo</th><th>Zera peneira</th><th>Ativo</th></tr></thead><tbody>';
+  Object.keys(c.motivos).sort(function(a,b){return (c.motivos[a].cod||0)-(c.motivos[b].cod||0);}).forEach(function(k){h+=linhaMotivoCfg(k,c.motivos[k]);});
+  h+='</tbody></table></div><div class="muted" style="margin-top:6px">"Silo cheio" é classificado automaticamente: Fator Externo se a extrusão da linha estava parada no horário; Operacional se estava rodando. Não exclua motivos usados — desative.</div></div>';
+  // Parâmetros técnicos
+  h+='<div class="panel"><h4>Parâmetros técnicos dos moinhos (planilha de automação) <button class="btn sm" onclick="admSalvarParamTec()">Salvar tabela</button></h4><div class="tw"><table class="t" id="cfg-pt"><thead><tr><th>Moinho</th><th>Prod.</th><th>Amp. mín</th><th>Amp. máx</th><th>Kit 1 (mm)</th><th>Kit 2 (mm)</th><th>Tubo clean</th><th></th></tr></thead><tbody>';
+  (c.parametrosTec||[]).forEach(function(r){h+=linhaParamTec(r);});
+  h+='</tbody></table></div><button class="btn sm sec2" style="margin-top:6px" onclick="admNovaLinhaPT()">+ Linha</button></div>';
+  // Regras Firebase
+  h+='<div class="panel"><h4>Índices recomendados (regras do Firebase)</h4><div class="muted">Sem estes índices, as consultas funcionam, mas baixam o nó inteiro. Adicionar em Realtime Database → Regras:</div><pre style="background:#f5f9f2;border:1px solid var(--brd);border-radius:8px;padding:10px;font-size:11px;overflow-x:auto;margin-top:6px">"moagem_apts":     { ".indexOn": ["data", "opFbKey", "tsFim"] },\n"moagem_paradas":  { ".indexOn": ["data", "aberta", "zeraPeneira"] }</pre></div>';
+  G("adm-cfg").innerHTML=h;
+}
+function linhaMotivoCfg(k,m){
+  var gs=GRUPOS.concat(["AUTO"]);
+  return '<tr data-k="'+k+'"><td><input class="inp sm" type="number" data-f="cod" value="'+(m.cod||"")+'" style="width:60px"></td><td><input class="inp sm" data-f="desc" value="'+esc(m.desc)+'" style="width:220px"></td><td><select class="inp sm" data-f="grupo" '+(m.siloCheio?"disabled":"")+'>'+gs.map(function(g){return '<option value="'+esc(g)+'"'+(m.grupo===g?" selected":"")+'>'+(g==="AUTO"?"Automático (silo cheio)":esc(g))+'</option>';}).join("")+'</select></td><td><input type="checkbox" data-f="zeraPeneira" '+(m.zeraPeneira?"checked":"")+'></td><td><input type="checkbox" data-f="ativo" '+(m.ativo!==false?"checked":"")+'></td></tr>';
+}
+function linhaParamTec(r){
+  var ms=todosMoinhos();
+  return '<tr><td><select class="inp sm" data-f="moinho">'+ms.map(function(m){return '<option value="'+m+'"'+(r.moinho===m?" selected":"")+'>'+esc(nomeMoinho(m))+'</option>';}).join("")+'</select></td>'+
+    ["prod","ampMin","ampMax","kit1","kit2","tubo"].map(function(f){return '<td><input class="inp sm" data-f="'+f+'" value="'+(r[f]==null?"":esc(r[f]))+'" style="width:'+(f==="prod"?120:70)+'px"></td>';}).join("")+
+    '<td><button class="btn xs ghost" onclick="this.closest(\'tr\').remove()">🗑</button></td></tr>';
+}
+function admNovaLinhaPT(){G("cfg-pt").querySelector("tbody").insertAdjacentHTML("beforeend",linhaParamTec({moinho:todosMoinhos()[0],prod:""}));}
+function admNovoMotivo(){G("cfg-mot").querySelector("tbody").insertAdjacentHTML("beforeend",linhaMotivoCfg("m"+Date.now().toString(36),{cod:"",desc:"",grupo:"Operacional",ativo:true}));}
+function admGravarCfg(no,val,desc){
+  return DB.ref("moagem_config/"+no).set(val).then(function(){toast("Configuração salva","ok");log("config",desc);}).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+function admSalvarMoinhos(){
+  var novo={}, erro=null;
+  G("adm-cfg").querySelectorAll("tr[data-m]").forEach(function(tr){
+    var m=tr.dataset.m, o=Object.assign({},S.cfg.moinhos[m]);
+    o.nome=tr.querySelector('[data-f="nome"]').value.trim()||m;
+    o.rateio=(num(tr.querySelector('[data-f="rateio"]').value)||0)/100;
+    o.ativo=tr.querySelector('[data-f="ativo"]').checked;
+    o.obs=tr.querySelector('[data-f="obs"]').value.trim();
+    o.linhas={};tr.querySelectorAll("[data-l]").forEach(function(cb){if(cb.checked) o.linhas[cb.dataset.l]=true;});
+    if(o.rateio<=0||o.rateio>1) erro="Rateio de "+m+" deve estar entre 1 e 100%";
+    if(o.ativo&&!Object.keys(o.linhas).length) erro=m+" ativo sem linha";
+    novo[m]=o;
+  });
+  if(erro){toast(erro,"err");return;}
+  admGravarCfg("moinhos",novo,"Moinhos atualizados: "+Object.keys(novo).map(function(m){return m+" "+Math.round(novo[m].rateio*100)+"%";}).join(", "));
+}
+function admSalvarSilos(){
+  var novo={};
+  G("adm-cfg").querySelectorAll("tr[data-s]").forEach(function(tr){novo[tr.dataset.s]={nome:tr.querySelector('[data-f="nome"]').value.trim()||tr.dataset.s,linha:tr.querySelector('[data-f="linha"]').value};});
+  admGravarCfg("silos",novo,"Silos atualizados");
+}
+function admSalvarParams(){
+  var f=num(G("cfg-fator").value), t=num(G("cfg-tol").value), a=num(G("cfg-avpen").value);
+  if(!f||f<1||f>2){toast("Fator de meta deve estar entre 1,00 e 2,00","err");return;}
+  var lim={};G("adm-cfg").querySelectorAll("[data-lim]").forEach(function(i){var v=num(i.value);if(v>0) lim[i.dataset.lim]=v;});
+  admGravarCfg("params",{fatorMeta:f,tolSemAptMin:t||15,avisoPeneiraT:a||5,limitePeneiraT:lim},"Parâmetros: fator "+f+", tol "+t+" min, aviso peneira "+a+" t, limites "+JSON.stringify(lim));
+}
+function admSalvarMotivos(){
+  var novo={}, erro=null, cods={};
+  G("cfg-mot").querySelectorAll("tr[data-k]").forEach(function(tr){
+    var k=tr.dataset.k, o=Object.assign({},S.cfg.motivos[k]||{});
+    o.cod=num(tr.querySelector('[data-f="cod"]').value);
+    o.desc=tr.querySelector('[data-f="desc"]').value.trim();
+    if(!o.siloCheio) o.grupo=tr.querySelector('[data-f="grupo"]').value;
+    o.zeraPeneira=tr.querySelector('[data-f="zeraPeneira"]').checked;
+    o.ativo=tr.querySelector('[data-f="ativo"]').checked;
+    if(!o.desc) return;
+    if(o.grupo==="AUTO"&&!o.siloCheio) erro="Grupo automático só vale para 'Silo cheio'";
+    if(o.cod!=null){if(cods[o.cod]) erro="Código "+o.cod+" repetido";cods[o.cod]=1;}
+    novo[k]=o;
+  });
+  if(erro){toast(erro,"err");return;}
+  admGravarCfg("motivos",novo,"Motivos atualizados ("+Object.keys(novo).length+")");
+}
+function admSalvarParamTec(){
+  var l=[];
+  G("cfg-pt").querySelectorAll("tbody tr").forEach(function(tr){
+    var r={};tr.querySelectorAll("[data-f]").forEach(function(i){var f=i.dataset.f, v=i.value.trim();r[f]=(f==="moinho"||f==="prod")?v:(v===""?null:num(v));});
+    if(r.prod) l.push(r);
+  });
+  admGravarCfg("parametrosTec",l,"Parâmetros técnicos ("+l.length+" linhas)");
+}
+
+// ── BOOT ───────────────────────────────────────────────────────────
+restaurarSessao();
+</script>
+</body>
+</html>
