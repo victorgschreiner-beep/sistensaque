@@ -168,6 +168,9 @@ tr.hl td{background:#fff6d6}
 .opsel.on{border-color:var(--gr);background:#eef8ee;box-shadow:0 0 0 1px var(--gr) inset}
 .silo-opt{border:1px solid var(--brd);border-radius:8px;padding:8px 10px;cursor:pointer;flex:1;min-width:140px}
 .silo-opt.on{border-color:var(--gr);background:#eef8ee;box-shadow:0 0 0 1px var(--gr) inset}
+.lote{display:inline-block;font-size:11px;font-weight:800;color:#024f2b;background:rgba(2,79,43,.09);border:1px solid rgba(2,79,43,.18);padding:1px 7px;border-radius:4px;white-space:nowrap;vertical-align:1px}
+.lote.lg{font-size:14px;padding:2px 9px}
+.lote.sem{color:#7a5a00;background:#fff6e0;border-color:#f0d68a}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:999;display:none;max-width:92vw;box-shadow:0 6px 20px rgba(0,0,0,.25)}
 #loader{position:fixed;inset:0;background:rgba(255,255,255,.6);display:none;align-items:center;justify-content:center;z-index:900;font-weight:700;color:var(--gr)}
 #loader.on{display:flex}
@@ -222,6 +225,7 @@ tr.hl td{background:#fff6d6}
             <b style="color:var(--gr)">Fila da moagem</b>
             <div class="muted" id="fila-info">Nasce na ordem do ensaque. O PCP reordena aqui — sem alterar a fila do ensaque.</div>
           </div>
+          <input class="inp" id="fila-busca" placeholder="Buscar lote ou nº da OP…" oninput="renderFila()" style="min-width:220px">
         </div>
       </div>
       <div class="fila-grid" id="fila-grid"></div>
@@ -286,7 +290,7 @@ tr.hl td{background:#fff6d6}
     <div class="fg"><label>Hora fim</label><input type="time" class="inp" id="apt-hf" onchange="aptPreview()"></div>
   </div>
   <div class="mrow">
-    <div class="fg"><label>Acumulado da ordem no Libracom (kg)</label><input type="number" inputmode="numeric" min="0" step="1" class="inp" id="apt-acum" oninput="aptPreview()" placeholder="Ex.: 12450"></div>
+    <div class="fg"><label id="apt-acum-lbl">Acumulado da ordem no Libracom (kg)</label><input type="number" inputmode="numeric" min="0" step="1" class="inp" id="apt-acum" oninput="aptPreview()" placeholder="Ex.: 12450"></div>
     <div class="fg"><label>Silo destino</label><select class="inp" id="apt-silo"></select></div>
   </div>
   <div class="calc" id="apt-calc">—</div>
@@ -306,7 +310,7 @@ tr.hl td{background:#fff6d6}
   <div class="msub" id="fech-sub"></div>
   <div class="mrow">
     <div class="fg"><label>Hora do fechamento</label><input type="time" class="inp" id="fech-hf" onchange="fechPreview()"></div>
-    <div class="fg"><label>Acumulado atual no Libracom (kg)</label><input type="number" inputmode="numeric" min="0" step="1" class="inp" id="fech-acum" oninput="fechPreview()"></div>
+    <div class="fg"><label id="fech-acum-lbl">Acumulado atual no Libracom (kg)</label><input type="number" inputmode="numeric" min="0" step="1" class="inp" id="fech-acum" oninput="fechPreview()"></div>
   </div>
   <div class="calc" id="fech-calc">—</div>
   <div id="fech-extra"></div>
@@ -320,7 +324,7 @@ tr.hl td{background:#fff6d6}
 <div class="ov" id="m-selop"><div class="modal" style="max-width:600px">
   <h3>Iniciar OP na moagem</h3>
   <div class="msub" id="selop-sub"></div>
-  <div class="fg" style="margin-bottom:6px"><label>1. OP (na ordem da fila)</label></div>
+  <div class="fg" style="margin-bottom:6px"><label>1. OP (na ordem da fila)</label><input class="inp" id="selop-busca" placeholder="Buscar lote ou nº da OP…" oninput="selOpFiltrar()"></div>
   <div id="selop-lista" style="max-height:260px;overflow-y:auto;margin-bottom:10px"></div>
   <div class="mrow one" id="selop-just-row" style="display:none">
     <div class="fg"><label style="color:var(--rd)">Justificativa — OP fora da ordem da fila (obrigatório)</label><input class="inp" id="selop-just" maxlength="200" placeholder="Ex.: falta de MP da 1ª OP, pedido do PCP..."></div>
@@ -550,6 +554,27 @@ function janelaTurno(dataOp,t){
 function familiaProduto(cod){var c=(cod||"").toUpperCase().trim();if(c.indexOf("CAT")===0||c.indexOf("DOG")===0) return "PET";if(c.indexOf("HOR")===0) return "HORSE";return "AQUA";}
 // Programado em KG — mesma regra de getExtProgressoOP() da extrusão
 function progKg(op){if(!op) return 0;return Number(op.progExtOriginal)||Number(op.prog)||0;}
+// Lote da ordem — é por ele que o Libracom identifica a ordem. Lido AO VIVO de
+// ops/{fk}/lote (o ensaque permite corrigir o lote depois); o valor gravado nos
+// registros da moagem é só histórico (fallback se a OP sumir de ops/).
+// "LOT-<timestamp>" é o lote automático do ensaque quando ninguém preencheu → tratado como sem lote.
+function loteAuto(l){return /^LOT-\d{10,}$/.test(String(l||""));}
+function loteOp(fk,snap){
+  var o=opPorFk(fk);
+  if(!o&&fk&&!_opAvulsa[fk]) buscarOpAvulsa(fk);
+  var l=(o&&o.lote)||snap||"";
+  return loteAuto(l)?"":String(l).trim();
+}
+function loteHtml(fk,snap,cls){
+  var l=loteOp(fk,snap);
+  return l?'<span class="lote'+(cls?" "+cls:"")+'">Lote '+esc(l)+'</span>'
+          :'<span class="lote sem'+(cls?" "+cls:"")+'" title="OP sem lote preenchido no ensaque — confira no Libracom pelo nº da OP">sem lote</span>';
+}
+function loteTxt(fk,snap){var l=loteOp(fk,snap);return l?"Lote "+l:"sem lote";}
+function casaBusca(q,op,fk,loteSnap){
+  if(!q) return true;q=q.toLowerCase();
+  return (loteOp(fk,loteSnap)+" "+(op&&op.id||"")+" "+(op&&op.cod||"")).toLowerCase().indexOf(q)>=0;
+}
 function metaExtrusao(cod,linhaNm){
   var chave={"Linha 1 (E-240)":"metaL1","Linha 2 (E-200)":"metaL2","Linha 4 (Andritz I)":"metaL4","Linha 5 (Andritz II)":"metaL5"}[linhaNm];
   var m=S.metas[cod]||S.metas[String(cod||"").replace(/[.#$\[\]]/g,"_")];
@@ -967,7 +992,7 @@ function cardLinha(l){
     var tot=S.opTot[oa.opFbKey]||{}, moido=Number(tot.kgCadeia)||0, prog=progKg(op), pct=prog?Math.round(moido/prog*100):0;
     var meta=metaMoagem(oa.cod,l.nome), u=ultimoAptLinha(lk);
     var kghU=(u&&u.opFbKey===oa.opFbKey)?u.kgH:null;
-    h+='<div class="op-box"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div class="op-id">'+esc(oa.opNum)+'</div><div class="op-desc">'+esc(oa.cod)+' · '+esc(oa.desc)+'</div></div>';
+    h+='<div class="op-box"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div class="op-id">'+loteHtml(oa.opFbKey,oa.lote,"lg")+' '+esc(oa.opNum)+'</div><div class="op-desc">'+esc(oa.cod)+' · '+esc(oa.desc)+'</div></div>';
     h+='<div style="text-align:right"><span class="bdg b">'+esc(nomeSilo(oa.silo))+'</span>'+(oa.foraOrdem?'<div class="muted" title="'+esc(oa.justificativa||"")+'">fora da ordem</div>':'')+'</div></div>';
     h+='<div class="kpis"><div class="kpi"><div class="v">'+fN(moido)+'</div><div class="l">kg moídos</div></div>';
     h+='<div class="kpi"><div class="v">'+(prog?fN(prog):"—")+'</div><div class="l">prog. kg</div></div>';
@@ -1003,7 +1028,7 @@ function cardLinha(l){
     var st=S.silos[s], txt="sem registro", cls="";
     if(st&&st.opFbKey){
       var consome=(ef&&st.opFbKey===ef);
-      txt=esc(st.opNum)+" · "+esc(st.cod)+(consome?" · 🔄 extrusora consumindo":"");
+      txt=esc(loteTxt(st.opFbKey,st.lote))+" · "+esc(st.opNum)+" · "+esc(st.cod)+(consome?" · 🔄 extrusora consumindo":"");
       cls=consome?"ok":(oa&&oa.silo===s?"in":"");
     }
     h+='<span class="chip '+cls+'">🛢 '+esc(nomeSilo(s))+': '+txt+'</span>';
@@ -1058,7 +1083,7 @@ function tabelaAptsTurno(lk){
     var pm=a.metaH?Math.round(a.kgH/a.metaH*100):null;
     var bc=pm==null?"":pm>=100?"g":pm>=80?"y":"r";
     var podeEd=isAdmin()||(podeApontar()&&u&&u.fbKey===a.fbKey);
-    h+='<tr><td>'+(a.marco?'<span class="bdg">marco inicial</span>':esc(a.horaIni)+'–'+esc(a.horaFim))+(a.inconsistente?' <span class="bdg r" title="Acumulado menor que o anterior">!</span>':'')+'</td><td>'+esc(a.opNum)+'</td><td>'+esc(nomeSilo(a.silo))+'</td>';
+    h+='<tr><td>'+(a.marco?'<span class="bdg">marco inicial</span>':esc(a.horaIni)+'–'+esc(a.horaFim))+(a.inconsistente?' <span class="bdg r" title="Acumulado menor que o anterior">!</span>':'')+'</td><td>'+esc(a.opNum)+'<div class="muted">'+esc(loteTxt(a.opFbKey,a.lote))+'</div></td><td>'+esc(nomeSilo(a.silo))+'</td>';
     h+='<td class="n">'+fN(a.acumulado)+'</td><td class="n">'+fN(a.kg)+'</td><td class="n">'+(a.marco?"—":fN(a.kgH))+'</td><td class="n">'+(pm==null||a.marco?"—":'<span class="bdg '+bc+'">'+pm+'%</span>')+'</td>';
     h+='<td style="white-space:nowrap">'+(podeEd&&!a.marco?'<button class="btn xs ghost" title="Editar" onclick="editarApt(\''+a.fbKey+'\')">✏️</button> ':'')+(podeEd?'<button class="btn xs ghost" title="Excluir" onclick="excluirApt(\''+a.fbKey+'\')">🗑</button>':'')+'</td></tr>';
   });
@@ -1103,9 +1128,10 @@ function abrirApt(lk){
   var hi=base?hhmmDeTs(base):pad((horaBrasilia(new Date())+23)%24)+":00";
   var hf=horaCheia();
   if(tsUltimaOcorrencia(hf)<=(base||0)) hf=horaAtual();
-  MA={modo:"novo",lk:lk,opFbKey:oa.opFbKey,opNum:oa.opNum,cod:oa.cod,desc:oa.desc,viz:null,fbKey:null};
+  MA={modo:"novo",lk:lk,opFbKey:oa.opFbKey,opNum:oa.opNum,cod:oa.cod,desc:oa.desc,lote:oa.lote,viz:null,fbKey:null};
   G("apt-tit").textContent="Apontar — "+linhaK(lk).cur;
-  G("apt-sub").textContent=oa.opNum+" · "+oa.cod+" · "+oa.desc;
+  G("apt-sub").innerHTML=loteHtml(oa.opFbKey,oa.lote,"lg")+" "+esc(oa.opNum+" · "+oa.cod+" · "+oa.desc);
+  rotuloAcum("apt-acum-lbl",oa.opFbKey,oa.lote);
   G("apt-row-adm").style.display="none";
   G("apt-row-reinicio").style.display=isAdmin()?"":"none";
   G("apt-reinicio").checked=false;
@@ -1122,11 +1148,12 @@ function editarApt(fbKey){
   abrirEdicaoApt(a);
 }
 function abrirEdicaoApt(a){
-  MA={modo:"editar",lk:a.lk,opFbKey:a.opFbKey,opNum:a.opNum,cod:a.cod,desc:a.desc,viz:null,fbKey:a.fbKey,orig:a};
+  MA={modo:"editar",lk:a.lk,opFbKey:a.opFbKey,opNum:a.opNum,cod:a.cod,desc:a.desc,lote:a.lote,viz:null,fbKey:a.fbKey,orig:a};
   G("apt-tit").textContent="Editar apontamento — "+linhaK(a.lk).cur;
-  G("apt-sub").textContent=a.opNum+" · "+a.cod+" · lançado por "+a.operador;
+  G("apt-sub").innerHTML=loteHtml(a.opFbKey,a.lote,"lg")+" "+esc(a.opNum+" · "+a.cod+" · lançado por "+a.operador);
+  rotuloAcum("apt-acum-lbl",a.opFbKey,a.lote);
   G("apt-row-adm").style.display=isAdmin()?"":"none";
-  if(isAdmin()){G("apt-data").value=a.data;G("apt-op").innerHTML='<option value="'+esc(a.opFbKey)+'">'+esc(a.opNum)+'</option>';G("apt-op").disabled=true;}
+  if(isAdmin()){G("apt-data").value=a.data;G("apt-op").innerHTML='<option value="'+esc(a.opFbKey)+'">'+esc(a.opNum+" · "+loteTxt(a.opFbKey,a.lote))+'</option>';G("apt-op").disabled=true;}
   G("apt-row-reinicio").style.display=isAdmin()?"":"none";
   G("apt-reinicio").checked=!!a.reinicio;
   G("apt-hi").value=a.horaIni;G("apt-hf").value=a.horaFim;G("apt-acum").value=a.acumulado;G("apt-obs").value=a.obs||"";
@@ -1146,13 +1173,14 @@ function admNovoApt(){
   filaLinha(lk).forEach(function(o){add(o.fbKey,o.id,o.cod,o.desc||o.cod);});
   if(!opts.length){toast("Nenhuma OP disponível para "+linhaK(lk).cur,"err");return;}
   MA={modo:"novo",lk:lk,admin:true,opts:opts,viz:null,fbKey:null};
-  var o=opts[0];MA.opFbKey=o.fk;MA.opNum=o.num;MA.cod=o.cod;MA.desc=o.desc;
+  var o=opts[0];MA.opFbKey=o.fk;MA.opNum=o.num;MA.cod=o.cod;MA.desc=o.desc;MA.lote=null;
+  rotuloAcum("apt-acum-lbl",o.fk,null);
   G("apt-tit").textContent="Novo apontamento (admin) — "+linhaK(lk).cur;
   G("apt-sub").textContent="Correção administrativa — o kg é recalculado a partir dos acumulados.";
   G("apt-row-adm").style.display="";
   G("apt-data").value=dOp;
   G("apt-op").disabled=false;
-  G("apt-op").innerHTML=opts.map(function(x){return '<option value="'+esc(x.fk)+'">'+esc(x.num)+' · '+esc(x.cod)+'</option>';}).join("");
+  G("apt-op").innerHTML=opts.map(function(x){return '<option value="'+esc(x.fk)+'">'+esc(x.num)+' · '+esc(loteTxt(x.fk))+' · '+esc(x.cod)+'</option>';}).join("");
   G("apt-row-reinicio").style.display="";G("apt-reinicio").checked=false;
   G("apt-hi").value="";G("apt-hf").value="";G("apt-acum").value="";G("apt-obs").value="";
   preencherSilosSelect(G("apt-silo"),lk,oa&&oa.opFbKey===o.fk?oa.silo:silosDaLinha(lk)[0],false);
@@ -1162,7 +1190,8 @@ function admNovoApt(){
 function aptTrocarOpAdm(){
   var fk=G("apt-op").value, o=(MA.opts||[]).find(function(x){return x.fk===fk;});
   if(!o) return;
-  MA.opFbKey=o.fk;MA.opNum=o.num;MA.cod=o.cod;MA.desc=o.desc;
+  MA.opFbKey=o.fk;MA.opNum=o.num;MA.cod=o.cod;MA.desc=o.desc;MA.lote=null;
+  rotuloAcum("apt-acum-lbl",o.fk,null);
   carregarVizinhosModal();
 }
 function aptTempos(){
@@ -1230,7 +1259,7 @@ function aptPreview(){
 }
 function montarApt(tp,acum,silo,extra){
   var l=linhaK(MA.lk);
-  var a={lk:MA.lk,linha:l.nome,opFbKey:MA.opFbKey,opNum:MA.opNum,cod:MA.cod,desc:MA.desc,silo:silo,
+  var a={lk:MA.lk,linha:l.nome,opFbKey:MA.opFbKey,opNum:MA.opNum,lote:loteOp(MA.opFbKey,MA.lote)||null,cod:MA.cod,desc:MA.desc,silo:silo,
     data:tp.data,turno:tp.turno,horaIni:tp.hi,horaFim:tp.hf,tsIni:tp.tsIni,tsFim:tp.tsFim,minutos:tp.min,
     acumulado:acum,metaH:Math.round(metaMoagem(MA.cod,l.nome)),rateioSnap:rateioSnap(MA.lk),
     kg:0,kgH:0,kgPorMoinho:{},operador:SES.login,ts:agora()};
@@ -1285,10 +1314,11 @@ var MF=null;
 function abrirFechamento(lk,acao,siloNovo){
   var oa=S.opAtiva[lk];if(!oa) return;
   MF={lk:lk,acao:acao,siloNovo:siloNovo||null,viz:null};
-  MA={modo:"novo",lk:lk,opFbKey:oa.opFbKey,opNum:oa.opNum,cod:oa.cod,desc:oa.desc,fbKey:null};
+  MA={modo:"novo",lk:lk,opFbKey:oa.opFbKey,opNum:oa.opNum,cod:oa.cod,desc:oa.desc,lote:oa.lote,fbKey:null};
   var tit={concluir:"Concluir OP na moagem",pausar:"Pausar OP (volta para a fila)",silo:"Trocar silo destino"}[acao];
   G("fech-tit").textContent=tit+" — "+linhaK(lk).cur;
-  G("fech-sub").textContent=oa.opNum+" · "+oa.cod+" · "+oa.desc+(acao==="silo"?" · "+nomeSilo(oa.silo)+" → "+nomeSilo(siloNovo):"");
+  G("fech-sub").innerHTML=loteHtml(oa.opFbKey,oa.lote,"lg")+" "+esc(oa.opNum+" · "+oa.cod+" · "+oa.desc+(acao==="silo"?" · "+nomeSilo(oa.silo)+" → "+nomeSilo(siloNovo):""));
+  rotuloAcum("fech-acum-lbl",oa.opFbKey,oa.lote);
   G("fech-hf").value=horaAtual();G("fech-acum").value="";
   G("fech-extra").innerHTML=acao==="concluir"?'<div class="muted">A OP sai da fila da moagem. A extrusão e o ensaque não são alterados. O silo continua registrado com esta OP até receber a próxima.</div>':
     acao==="pausar"?'<div class="muted">A OP volta para a fila (mantém o acumulado). Use quando a ordem foi interrompida e vai continuar depois.</div>':"";
@@ -1366,8 +1396,10 @@ function confirmarFechamento(){
   }).then(function(){calcPeneiras();if(acao!=="silo") setTimeout(function(){abrirSelOp(lk);},400);})
     .catch(function(e){toast("Erro: "+e.message,"err");}).then(function(){G("fech-btn").disabled=false;});
 }
+// Rótulo do campo de acumulado diz exatamente qual lote procurar no Libracom
+function rotuloAcum(id,fk,snap){var l=loteOp(fk,snap);G(id).textContent=l?"Acumulado do lote "+l+" no Libracom (kg)":"Acumulado da ordem no Libracom (kg) — OP sem lote";}
 function estadoSilo(oa,confirmouVazio){
-  return {opFbKey:oa.opFbKey,opNum:oa.opNum,cod:oa.cod,desc:oa.desc,desde:agora(),desdeMs:Date.now(),por:SES.login,confirmouVazio:confirmouVazio||null};
+  return {opFbKey:oa.opFbKey,opNum:oa.opNum,lote:loteOp(oa.opFbKey,oa.lote)||null,cod:oa.cod,desc:oa.desc,desde:agora(),desdeMs:Date.now(),por:SES.login,confirmouVazio:confirmouVazio||null};
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1402,18 +1434,20 @@ function filaLinha(lk){
 function renderFila(){
   var pf=podeFila(), h="";
   G("fila-info").textContent=pf?"Nasce na ordem do ensaque. Use ▲ ▼ para reordenar — altera só a fila da moagem.":"Somente leitura — a ordem é definida pelo PCP.";
+  var q=(G("fila-busca").value||"").trim();
   LINHAS.forEach(function(l){
     var lista=filaLinha(l.k), oa=S.opAtiva[l.k], reord=S.fila[l.k]&&S.fila[l.k].ordem;
     h+='<div class="fila-col"><div class="fila-hd"><div><b>'+l.cur+'</b> <span class="muted">'+l.maq+'</span></div><span class="bdg">'+lista.length+' OPs</span></div>';
     if(pf&&reord) h+='<div style="margin-bottom:6px"><button class="btn xs ghost" onclick="restaurarFila(\''+l.k+'\')">↺ Voltar à ordem do ensaque</button> <span class="muted">por '+esc(S.fila[l.k].por||"")+'</span></div>';
     if(oa){
       var tot=S.opTot[oa.opFbKey]||{};
-      h+='<div class="fi at"><div class="fi-top"><span class="pos">▶</span><div><b>'+esc(oa.opNum)+'</b> <span class="bdg g">na moagem</span></div></div><div class="muted" style="margin-top:3px">'+esc(oa.desc)+'</div><div class="muted">Moído: '+fN(tot.kgCadeia||0)+' kg · '+esc(nomeSilo(oa.silo))+'</div></div>';
+      h+='<div class="fi at"><div class="fi-top"><span class="pos">▶</span><div><b>'+esc(oa.opNum)+'</b> '+loteHtml(oa.opFbKey,oa.lote)+' <span class="bdg g">na moagem</span></div></div><div class="muted" style="margin-top:3px">'+esc(oa.desc)+'</div><div class="muted">Moído: '+fN(tot.kgCadeia||0)+' kg · '+esc(nomeSilo(oa.silo))+'</div></div>';
     }
     if(!lista.length) h+='<div class="empty">Nenhuma OP aberta</div>';
     lista.forEach(function(o,i){
       var tot=S.opTot[o.fbKey]||{}, moido=Number(tot.kgCadeia)||0, prog=progKg(o);
-      h+='<div class="fi"><div class="fi-top"><span class="pos">'+(i+1)+'</span><div style="min-width:0"><b>'+esc(o.id)+'</b> <span class="bdg">'+esc(o.status)+'</span>'+(moido>0?' <span class="bdg y">parcial</span>':'')+'</div>';
+      var bate=casaBusca(q,o,o.fbKey);
+      h+='<div class="fi" style="'+(bate?(q?'box-shadow:0 0 0 2px #d29922 inset':''):'opacity:.3')+'"><div class="fi-top"><span class="pos">'+(i+1)+'</span><div style="min-width:0"><b>'+esc(o.id)+'</b> '+loteHtml(o.fbKey)+' <span class="bdg">'+esc(o.status)+'</span>'+(moido>0?' <span class="bdg y">parcial</span>':'')+'</div>';
       if(pf) h+='<div class="fi-ctl"><button class="btn xs ghost" title="Topo" '+(i===0?"disabled":"")+' onclick="moverFila(\''+l.k+'\','+i+',-999)">⤒</button><button class="btn xs ghost" '+(i===0?"disabled":"")+' onclick="moverFila(\''+l.k+'\','+i+',-1)">▲</button><button class="btn xs ghost" '+(i===lista.length-1?"disabled":"")+' onclick="moverFila(\''+l.k+'\','+i+',1)">▼</button></div>';
       h+='</div><div class="muted" style="margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(o.desc)+'">'+esc(o.cod)+' · '+esc(o.desc)+'</div>';
       h+='<div class="muted">Ensaque '+fData(o.data)+' · Prog. '+fN(prog)+' kg'+(moido?' · Moído '+fN(moido)+' kg':'')+'</div></div>';
@@ -1448,11 +1482,11 @@ function abrirSelOp(lk){
   MS={lk:lk,fk:null,silo:null,lista:lista};
   G("selop-sub").textContent=linhaK(lk).cur+" · "+linhaK(lk).maq;
   G("selop-just").value="";G("selop-just-row").style.display="none";
-  G("selop-hi").value=horaAtual();G("selop-acum").value="0";
+  G("selop-hi").value=horaAtual();G("selop-acum").value="0";G("selop-busca").value="";
   if(!lista.length) G("selop-lista").innerHTML='<div class="empty">Nenhuma OP aberta para esta linha no ensaque.</div>';
   else G("selop-lista").innerHTML=lista.map(function(o,i){
     var tot=S.opTot[o.fbKey]||{};
-    return '<div class="opsel" id="selop-'+o.fbKey+'" onclick="selOpEscolher(\''+o.fbKey+'\')"><span class="pos">'+(i+1)+'</span><div style="min-width:0;flex:1"><b>'+esc(o.id)+'</b> <span class="muted">'+esc(o.cod)+'</span><div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.desc)+'</div><div class="muted">Prog. '+fN(progKg(o))+' kg'+(tot.kgCadeia?' · já moído '+fN(tot.kgCadeia)+' kg (acum. '+fN(tot.acumulado)+')':'')+'</div></div></div>';
+    return '<div class="opsel" id="selop-'+o.fbKey+'" onclick="selOpEscolher(\''+o.fbKey+'\')"><span class="pos">'+(i+1)+'</span><div style="min-width:0;flex:1">'+loteHtml(o.fbKey,null,"lg")+' <b>'+esc(o.id)+'</b> <span class="muted">'+esc(o.cod)+'</span><div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.desc)+'</div><div class="muted">Prog. '+fN(progKg(o))+' kg'+(tot.kgCadeia?' · já moído '+fN(tot.kgCadeia)+' kg (acum. '+fN(tot.acumulado)+')':'')+'</div></div></div>';
   }).join("");
   G("selop-silos").innerHTML='<div class="muted">Verificando silos…</div>';G("selop-silo-aviso").innerHTML="";
   aM("m-selop");
@@ -1468,6 +1502,12 @@ function atualizarExtConcSilos(lk){
   return Promise.all(fks.map(function(fk){
     return DB.ref("extrusao_op_concluida/"+fk).once("value").then(function(s){S.extConc[fk]=s.exists()?s.val():false;}).catch(function(){});
   }));
+}
+// Busca por lote/OP: destaca e esconde as demais, sem mudar a posição na fila
+function selOpFiltrar(){
+  var q=(G("selop-busca").value||"").trim(), vis=[];
+  MS.lista.forEach(function(o){var el=G("selop-"+o.fbKey);if(!el) return;var ok=casaBusca(q,o,o.fbKey);el.style.display=ok?"":"none";if(ok) vis.push(o);});
+  if(q&&vis.length===1) selOpEscolher(vis[0].fbKey);
 }
 function selOpEscolher(fk){
   MS.fk=fk;
@@ -1491,7 +1531,7 @@ function renderSilosOpcoes(contId,avisoId,lk,opFk,onSel,excluir){
     var st=S.silos[s], info="Sem registro", tag="";
     if(st&&st.opFbKey){
       var ec=S.extConc[st.opFbKey];
-      info="Última: "+esc(st.opNum)+" · "+esc(st.cod);
+      info="Última: "+esc(loteTxt(st.opFbKey,st.lote))+" · "+esc(st.opNum)+" · "+esc(st.cod);
       if(op&&st.cod===op.cod) tag='<span class="bdg g">mesmo SKU</span>';
       else if(ec) tag='<span class="bdg g">extrusão concluiu</span>';
       else tag='<span class="bdg y">confirmar vazio</span>';
@@ -1511,8 +1551,8 @@ function siloEscolher(contId,s){
   G(contId).querySelectorAll(".silo-opt").forEach(function(el){el.classList.toggle("on",el.dataset.s===s);});
   var st=S.silos[s], av="";
   var precisa=siloPrecisaConfirmar(ctx.lk,s,ctx.op);
-  if(precisa==="bloq") av='<div class="calc err"><label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="'+contId+'-conf" style="margin-top:3px"> <span>⛔ A extrusora está rodando a OP <b>'+esc(st.opNum)+'</b>, registrada neste silo. Só marque se tiver <b>certeza</b> de que o <b>'+esc(nomeSilo(s))+'</b> já esvaziou (a extrusora está puxando de outro silo).</span></label></div>';
-  else if(precisa) av='<div class="calc warn"><label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="'+contId+'-conf" style="margin-top:3px"> <span>Confirmo que o <b>'+esc(nomeSilo(s))+'</b> está <b>vazio</b> (última OP '+esc(st.opNum)+' · '+esc(st.cod)+' — SKU diferente e sem conclusão na extrusão).</span></label></div>';
+  if(precisa==="bloq") av='<div class="calc err"><label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="'+contId+'-conf" style="margin-top:3px"> <span>⛔ A extrusora está rodando a OP <b>'+esc(st.opNum)+'</b> ('+esc(loteTxt(st.opFbKey,st.lote))+'), registrada neste silo. Só marque se tiver <b>certeza</b> de que o <b>'+esc(nomeSilo(s))+'</b> já esvaziou (a extrusora está puxando de outro silo).</span></label></div>';
+  else if(precisa) av='<div class="calc warn"><label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="'+contId+'-conf" style="margin-top:3px"> <span>Confirmo que o <b>'+esc(nomeSilo(s))+'</b> está <b>vazio</b> (última OP '+esc(st.opNum)+' · '+esc(loteTxt(st.opFbKey,st.lote))+' · '+esc(st.cod)+' — SKU diferente e sem conclusão na extrusão).</span></label></div>';
   G(ctx.avisoId).innerHTML=av;
   if(ctx.onSel) ctx.onSel(s);
 }
@@ -1547,18 +1587,18 @@ function confirmarSelOp(){
   if(u&&inicioTs<u.tsFim){toast("Início antes do último apontamento da linha ("+u.horaFim+")","err");return;}
   var acumIni=num(G("selop-acum").value)||0, tot=S.opTot[MS.fk];
   var retomada=!!(tot&&tot.nApts);
-  var oa={opFbKey:op.fbKey,opNum:op.id,cod:op.cod,desc:op.desc||op.cod,silo:silo,inicioTs:inicioTs,inicio:agora(),operador:SES.login,
+  var oa={opFbKey:op.fbKey,opNum:op.id,lote:loteOp(op.fbKey)||null,cod:op.cod,desc:op.desc||op.cod,silo:silo,inicioTs:inicioTs,inicio:agora(),operador:SES.login,
     foraOrdem:idx>0||null,justificativa:idx>0?just:null,posFila:idx+1};
   var upd={}, ts=agora();
   upd["moagem_op_ativa/"+lk]=oa;
   upd["moagem_silos_estado/"+silo]=estadoSilo(oa,sc.conf);
   var hk=DB.ref("moagem_op_hist").push().key;
-  upd["moagem_op_hist/"+hk]={evento:retomada?"retomada":"inicio",lk:lk,opFbKey:op.fbKey,opNum:op.id,silo:silo,posFila:idx+1,foraOrdem:idx>0||null,justificativa:idx>0?just:null,confirmouVazio:sc.conf||null,acumuladoInicial:acumIni,operador:SES.login,ts:ts,tsMs:inicioTs};
+  upd["moagem_op_hist/"+hk]={evento:retomada?"retomada":"inicio",lk:lk,opFbKey:op.fbKey,opNum:op.id,lote:oa.lote,silo:silo,posFila:idx+1,foraOrdem:idx>0||null,justificativa:idx>0?just:null,confirmouVazio:sc.conf||null,acumuladoInicial:acumIni,operador:SES.login,ts:ts,tsMs:inicioTs};
   // Marco inicial: material já moído antes do controle — entra no total da OP, não no kg/h
   var criarMarco=!retomada&&acumIni>0;
   if(criarMarco){
     var mk=DB.ref("moagem_apts").push().key, l=linhaK(lk), hh=hhmmDeTs(inicioTs);
-    upd["moagem_apts/"+mk]={lk:lk,linha:l.nome,opFbKey:op.fbKey,opNum:op.id,cod:op.cod,desc:op.desc||op.cod,silo:silo,
+    upd["moagem_apts/"+mk]={lk:lk,linha:l.nome,opFbKey:op.fbKey,opNum:op.id,lote:oa.lote,cod:op.cod,desc:op.desc||op.cod,silo:silo,
       data:dataOpDeTs(inicioTs),turno:turnoDeHora(hh),horaIni:hh,horaFim:hh,tsIni:inicioTs,tsFim:inicioTs,minutos:0,
       acumulado:acumIni,marco:true,metaH:0,rateioSnap:rateioSnap(lk),kg:0,kgH:0,kgPorMoinho:{},operador:SES.login,ts:ts};
   }
@@ -1574,7 +1614,7 @@ function abrirTrocaSilo(lk){
   var outros=silosDaLinha(lk).filter(function(s){return s!==oa.silo;});
   if(!outros.length){toast("Não há outro silo cadastrado para a linha","err");return;}
   MSI={lk:lk};
-  G("silo-sub").textContent=oa.opNum+" · atual: "+nomeSilo(oa.silo);
+  G("silo-sub").textContent=loteTxt(oa.opFbKey,oa.lote)+" · "+oa.opNum+" · atual: "+nomeSilo(oa.silo);
   G("silo-opts").innerHTML='<div class="muted">Verificando silos…</div>';G("silo-aviso").innerHTML="";
   aM("m-silo");
   atualizarExtConcSilos(lk).then(function(){renderSilosOpcoes("silo-opts","silo-aviso",lk,oa.opFbKey,null,oa.silo);});
@@ -1781,7 +1821,7 @@ function montarComparativo(apts){
       var op=r[0].val()||{}, tot=r[2].val()||{}, a=fks[fk];
       var moido=Number(tot.kgCadeia)||0, prod=Number(op.realExtrusao)||0;
       var concExt=r[1].exists(), concMo=!!S.opConc[fk];
-      return {fk:fk,opNum:op.id||a.opNum,cod:op.cod||a.cod,desc:op.desc||a.desc,lk:a.lk,familia:familiaProduto(op.cod||a.cod),
+      return {fk:fk,opNum:op.id||a.opNum,lote:loteAuto(op.lote)?"":(op.lote||a.lote||""),cod:op.cod||a.cod,desc:op.desc||a.desc,lk:a.lk,familia:familiaProduto(op.cod||a.cod),
         moido:moido,prod:prod,dif:prod-moido,difPct:(moido&&prod)?((prod/moido)-1)*100:null,concExt:concExt,concMo:concMo,fechada:concExt&&concMo};
     });
   }));
@@ -1843,11 +1883,11 @@ function renderDashboard(di,df){
   h+='<div class="panel"><h4>Moído × produzido na extrusão, por OP <span class="muted" style="font-weight:600">diferença = ganho de água/vapor/óleo no processo</span></h4>';
   var fk=Object.keys(fam);
   if(fk.length){h+='<div class="row-info">';fk.forEach(function(f){var x=fam[f];h+='<span class="chip in">'+f+': '+(x.m?(x.p/x.m-1>=0?"+":"")+fN((x.p/x.m-1)*100,1)+"%":"—")+' ('+x.n+' OPs fechadas)</span>';});h+='</div>';}
-  h+='<div class="tw"><table class="t"><thead><tr><th>OP</th><th>SKU</th><th>Linha</th><th class="n">Moído kg</th><th class="n">Produzido kg</th><th class="n">Diferença kg</th><th class="n">Dif. %</th><th>Status</th></tr></thead><tbody>';
-  if(!comp.length) h+='<tr><td colspan="8" class="muted">Sem OPs no período.</td></tr>';
+  h+='<div class="tw"><table class="t"><thead><tr><th>OP</th><th>Lote</th><th>SKU</th><th>Linha</th><th class="n">Moído kg</th><th class="n">Produzido kg</th><th class="n">Diferença kg</th><th class="n">Dif. %</th><th>Status</th></tr></thead><tbody>';
+  if(!comp.length) h+='<tr><td colspan="9" class="muted">Sem OPs no período.</td></tr>';
   comp.forEach(function(c){
     var st=c.fechada?'<span class="bdg g">fechada</span>':'<span class="bdg y">em andamento</span>'+(c.concMo?' <span class="muted">moagem ✔</span>':'')+(c.concExt?' <span class="muted">extrusão ✔</span>':'');
-    h+='<tr><td><b>'+esc(c.opNum)+'</b></td><td title="'+esc(c.desc)+'">'+esc(c.cod)+' <span class="muted">'+c.familia+'</span></td><td>'+(linhaK(c.lk)?linhaK(c.lk).cur:"")+'</td><td class="n">'+fN(c.moido)+'</td><td class="n">'+fN(c.prod)+'</td><td class="n">'+(c.dif>=0?"+":"")+fN(c.dif)+'</td><td class="n">'+(c.difPct==null?"—":(c.difPct>=0?"+":"")+fN(c.difPct,1)+"%")+'</td><td>'+st+'</td></tr>';
+    h+='<tr><td><b>'+esc(c.opNum)+'</b></td><td>'+(c.lote?esc(c.lote):'<span class="muted">—</span>')+'</td><td title="'+esc(c.desc)+'">'+esc(c.cod)+' <span class="muted">'+c.familia+'</span></td><td>'+(linhaK(c.lk)?linhaK(c.lk).cur:"")+'</td><td class="n">'+fN(c.moido)+'</td><td class="n">'+fN(c.prod)+'</td><td class="n">'+(c.dif>=0?"+":"")+fN(c.dif)+'</td><td class="n">'+(c.difPct==null?"—":(c.difPct>=0?"+":"")+fN(c.difPct,1)+"%")+'</td><td>'+st+'</td></tr>';
   });
   h+='</tbody></table></div><div class="muted" style="margin-top:6px">A média por família considera só OPs fechadas nas duas pontas. Totais de moído são da OP inteira (não só do período).</div></div>';
 
@@ -1904,17 +1944,17 @@ function nBR(v,d){return v==null||v===""?"":(Number(v)||0).toFixed(d||0).replace
 function exportarAptsCSV(){
   if(!DSH.apts.length){toast("Gere o dashboard com dados antes de exportar","err");return;}
   var ms=todosMoinhos();
-  var rows=[["Dia operacional","Turno","Linha","Início","Fim","Minutos","OP","SKU","Descrição","Silo","Acumulado Libracom (kg)","Kg intervalo","Kg/h","Meta moagem kg/h","% meta"].concat(ms.map(function(m){return "Kg "+nomeMoinho(m)+(moinhoEstimado(m)?" (estimado)":"");})).concat(["Tipo","Operador","Obs"])];
+  var rows=[["Dia operacional","Turno","Linha","Início","Fim","Minutos","OP","Lote","SKU","Descrição","Silo","Acumulado Libracom (kg)","Kg intervalo","Kg/h","Meta moagem kg/h","% meta"].concat(ms.map(function(m){return "Kg "+nomeMoinho(m)+(moinhoEstimado(m)?" (estimado)":"");})).concat(["Tipo","Operador","Obs"])];
   DSH.apts.slice().sort(function(a,b){return a.tsIni-b.tsIni;}).forEach(function(a){
-    rows.push([a.data,a.turno,linhaK(a.lk)?linhaK(a.lk).cur:a.lk,a.horaIni,a.horaFim,a.minutos,a.opNum,a.cod,a.desc,nomeSilo(a.silo),nBR(a.acumulado),nBR(a.kg),a.marco?"":nBR(a.kgH),nBR(a.metaH),a.metaH&&!a.marco?nBR(a.kgH/a.metaH*100,1):""]
+    rows.push([a.data,a.turno,linhaK(a.lk)?linhaK(a.lk).cur:a.lk,a.horaIni,a.horaFim,a.minutos,a.opNum,loteOp(a.opFbKey,a.lote),a.cod,a.desc,nomeSilo(a.silo),nBR(a.acumulado),nBR(a.kg),a.marco?"":nBR(a.kgH),nBR(a.metaH),a.metaH&&!a.marco?nBR(a.kgH/a.metaH*100,1):""]
       .concat(ms.map(function(m){return nBR((a.kgPorMoinho||{})[m],1);})).concat([a.marco?"marco inicial":a.fechamento?"fechamento ("+a.fechamento+")":"hora",a.operador,a.obs||""]));
   });
   baixarCSV("moagem_apontamentos_"+G("dsh-di").value+"_"+G("dsh-df").value+".csv",rows);
 }
 function exportarCompCSV(){
   if(!DSH.comp.length){toast("Gere o dashboard com dados antes de exportar","err");return;}
-  var rows=[["OP","SKU","Descrição","Família","Linha","Moído (kg)","Produzido extrusão (kg)","Diferença (kg)","Diferença (%)","Concluída moagem","Concluída extrusão"]];
-  DSH.comp.forEach(function(c){rows.push([c.opNum,c.cod,c.desc,c.familia,linhaK(c.lk)?linhaK(c.lk).cur:"",nBR(c.moido),nBR(c.prod),nBR(c.dif),c.difPct==null?"":nBR(c.difPct,1),c.concMo?"sim":"não",c.concExt?"sim":"não"]);});
+  var rows=[["OP","Lote","SKU","Descrição","Família","Linha","Moído (kg)","Produzido extrusão (kg)","Diferença (kg)","Diferença (%)","Concluída moagem","Concluída extrusão"]];
+  DSH.comp.forEach(function(c){rows.push([c.opNum,c.lote,c.cod,c.desc,c.familia,linhaK(c.lk)?linhaK(c.lk).cur:"",nBR(c.moido),nBR(c.prod),nBR(c.dif),c.difPct==null?"":nBR(c.difPct,1),c.concMo?"sim":"não",c.concExt?"sim":"não"]);});
   baixarCSV("moagem_comparativo_op_"+G("dsh-di").value+"_"+G("dsh-df").value+".csv",rows);
 }
 
@@ -1940,7 +1980,7 @@ function admCarregarApts(){
     if(!l.length) h+='<tr><td colspan="10" class="muted">Nenhum apontamento.</td></tr>';
     l.forEach(function(a){
       h+='<tr><td>'+linhaK(a.lk).cur+'</td><td>T'+a.turno+'</td><td>'+(a.marco?'<span class="bdg">marco</span> '+esc(a.horaIni):esc(a.horaIni)+'–'+esc(a.horaFim))+(a.fechamento?' <span class="bdg b">'+esc(a.fechamento)+'</span>':'')+(a.inconsistente?' <span class="bdg r">inconsistente</span>':'')+(a.reinicio?' <span class="bdg y">reinício</span>':'')+'</td>';
-      h+='<td>'+esc(a.opNum)+'</td><td>'+esc(nomeSilo(a.silo))+'</td><td class="n">'+fN(a.acumulado)+'</td><td class="n">'+fN(a.kg)+'</td><td class="n">'+(a.marco?"—":fN(a.kgH))+'</td><td class="muted">'+esc(a.operador)+(a.editadoPor?" (ed. "+esc(a.editadoPor)+")":"")+'</td>';
+      h+='<td>'+esc(a.opNum)+'<div class="muted">'+esc(loteTxt(a.opFbKey,a.lote))+'</div></td><td>'+esc(nomeSilo(a.silo))+'</td><td class="n">'+fN(a.acumulado)+'</td><td class="n">'+fN(a.kg)+'</td><td class="n">'+(a.marco?"—":fN(a.kgH))+'</td><td class="muted">'+esc(a.operador)+(a.editadoPor?" (ed. "+esc(a.editadoPor)+")":"")+'</td>';
       h+='<td style="white-space:nowrap">'+(a.marco?'':'<button class="btn xs ghost" onclick="admEditarApt(\''+a.fbKey+'\')">✏️</button> ')+'<button class="btn xs ghost" onclick="excluirApt(\''+a.fbKey+'\')">🗑</button> <button class="btn xs ghost" title="Recalcular OP" onclick="admRecalc(\''+a.opFbKey+'\')">↻</button></td></tr>';
     });
     G("adm-a-lista").innerHTML=h+'</tbody></table>';
