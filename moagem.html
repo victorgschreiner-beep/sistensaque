@@ -214,7 +214,8 @@ tr.hl td{background:#fff6d6}
   <div class="content">
     <!-- OPERAÇÃO -->
     <div class="sec on" id="sec-op">
-      <div class="alertas" id="alertas"></div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn" onclick="abrirPdfHora('',true)">PDF geral do turno</button></div>
+    <div class="alertas" id="alertas"></div>
       <div class="grid-l" id="grid-linhas"></div>
     </div>
 
@@ -405,13 +406,17 @@ tr.hl td{background:#fff6d6}
 
 <!-- ═════════ MODAL: PDF HORA A HORA ═════════ -->
 <div class="ov" id="m-pdf"><div class="modal" style="max-width:420px">
-  <h3>PDF hora a hora</h3>
-  <div class="msub">Relatório do turno por linha: kg por hora, kg/h × meta, lotes e paradas.</div>
+  <h3>PDF do turno</h3>
+  <div class="msub" id="pdf-sub"></div>
+  <div class="mrow one"><div class="fg"><label>Tipo</label><select class="inp" id="pdf-tipo" onchange="pdfTipoMudou()">
+    <option value="geral">Geral do turno — todas as linhas (WhatsApp)</option>
+    <option value="hora">Hora a hora detalhado — por linha</option>
+  </select></div></div>
   <div class="mrow">
     <div class="fg"><label>Dia operacional</label><input type="date" class="inp" id="pdf-data"></div>
     <div class="fg"><label>Turno</label><select class="inp" id="pdf-turno"><option value="1">T1 (21h-06h)</option><option value="2">T2 (06h-17h)</option><option value="3">T3 (17h-21h)</option></select></div>
   </div>
-  <div class="mrow one"><div class="fg"><label>Linha</label><select class="inp" id="pdf-linha"></select></div></div>
+  <div class="mrow one" id="pdf-linha-row"><div class="fg"><label>Linha</label><select class="inp" id="pdf-linha"></select></div></div>
   <div class="mfoot">
     <button class="btn ghost" onclick="fM('m-pdf')">Cancelar</button>
     <button class="btn" onclick="gerarPdfHora()">Gerar PDF</button>
@@ -2177,7 +2182,7 @@ restaurarSessao();
 // Os kg de cada hora vêm da distribuição proporcional dos apontamentos
 // (um apontamento de 2h vira duas horas com a mesma média).
 // ════════════════════════════════════════════════════════════════════
-function abrirPdfHora(lk){
+function abrirPdfHora(lk,geral){
   var sel=G("pdf-linha");
   if(!sel.options.length){
     sel.innerHTML='<option value="">Todas (1 página por linha)</option>'+LINHAS.map(function(l){return '<option value="'+l.k+'">'+l.cur+' · '+l.maq+'</option>';}).join("");
@@ -2185,7 +2190,26 @@ function abrirPdfHora(lk){
   sel.value=lk||"";
   G("pdf-data").value=hoje();
   G("pdf-turno").value=String(turnoAtual());
+  G("pdf-tipo").value=geral?"geral":"hora";
+  pdfTipoMudou();
   aM("m-pdf");
+}
+function pdfTipoMudou(){
+  var g=G("pdf-tipo").value==="geral";
+  G("pdf-linha-row").style.display=g?"none":"";
+  G("pdf-sub").textContent=g?"Um PDF com todas as linhas, no padrão do resumo da extrusão — pronto para mandar no WhatsApp."
+    :"Uma página por linha: kg por hora, kg/h × meta, lotes, apontamentos, paradas e assinaturas.";
+}
+// Entrega o PDF: no celular/tablet abre o compartilhamento (WhatsApp); no PC baixa o arquivo
+function entregarPdf(doc,nome){
+  try{
+    var blob=doc.output("blob"), file=new File([blob],nome,{type:"application/pdf"});
+    if(navigator.canShare&&navigator.canShare({files:[file]})&&/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)){
+      navigator.share({files:[file],title:nome}).catch(function(){doc.save(nome);});
+      return;
+    }
+  }catch(e){}
+  doc.save(nome);
 }
 function gerarPdfHora(){
   if(typeof jspdf==="undefined"){toast("Biblioteca de PDF não carregou — verifique a internet","err");return;}
@@ -2201,6 +2225,12 @@ function gerarPdfHora(){
     var apts=[], par=[], vistos={};
     if(sn[0].exists()) sn[0].forEach(function(c){var a=c.val();if(a&&a.tsFim>j.ini&&a.tsIni<j.fim){a.fbKey=c.key;apts.push(a);}});
     [sn[1],sn[2]].forEach(function(s){if(s.exists()) s.forEach(function(c){var p=c.val();if(!p||vistos[c.key]) return;vistos[c.key]=1;var pf=p.tsFim||Date.now();if(pf>j.ini&&p.tsIni<j.fim){p.fbKey=c.key;par.push(p);}});});
+    if(G("pdf-tipo").value==="geral"){
+      var dg=pdfGeralTurno(dOp,t,j,apts,par);
+      entregarPdf(dg,"Moagem_Resumo_T"+t+"_"+dOp+".pdf");
+      ld(false);fM("m-pdf");log("pdf_geral",dOp+" T"+t);
+      return;
+    }
     var linhas=lkSel?[lkSel]:LINHAS.map(function(l){return l.k;});
     var doc=new jspdf.jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
     linhas.forEach(function(lk,i){
@@ -2210,7 +2240,7 @@ function gerarPdfHora(){
     // rodapé com numeração
     var n=doc.getNumberOfPages();
     for(var p=1;p<=n;p++){doc.setPage(p);doc.setFontSize(7);doc.setTextColor(120);doc.text("Raguife MES · Moagem · gerado por "+SES.login+" em "+fDataHora(Date.now())+"   ·   pág. "+p+"/"+n,105,290,{align:"center"});}
-    doc.save("moagem_hora_a_hora_"+dOp+"_T"+t+(lkSel?"_"+lkSel:"")+".pdf");
+    entregarPdf(doc,"moagem_hora_a_hora_"+dOp+"_T"+t+(lkSel?"_"+lkSel:"")+".pdf");
     ld(false);fM("m-pdf");
     log("pdf_hora",dOp+" T"+t+" "+(lkSel||"todas"));
   }).catch(function(e){ld(false);toast("Erro ao gerar PDF: "+e.message,"err");});
@@ -2370,6 +2400,157 @@ function pdfTabela(doc,y,x0,cols,rows,opt){
     y+=H+0.5;
   }
   return y;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// PDF GERAL DO TURNO — todas as linhas em um arquivo (padrão do resumo da
+// extrusão, A4 paisagem), para envio no WhatsApp.
+// Meta (kg) de cada hora = meta kg/h × fração da hora apontada.
+// ════════════════════════════════════════════════════════════════════
+function minHH(m){m=Math.round(m||0);return pad(Math.floor(m/60))+"h"+pad(m%60);}
+function pdfGeralTurno(dOp,t,j,apts,par){
+  var doc=new jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  var W=277, ML=10, y=0, agoraTs=Date.now();
+  var VERDE=[2,79,43];
+  function cab(){
+    doc.setFillColor(2,79,43);doc.rect(0,0,297,20,"F");
+    doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(255,255,255);
+    doc.text("RAGUIFE - MOAGEM - RESUMO DO TURNO "+t,ML,12);
+    doc.setFontSize(9);doc.setFont("helvetica","normal");doc.setTextColor(180,220,180);
+    doc.text("Dia operacional "+fData(dOp)+"/"+dOp.slice(0,4)+"  |  "+hhmmDeTs(j.ini)+" - "+hhmmDeTs(j.fim)+"  |  Gerado: "+fDataHora(agoraTs)+" por "+(SES.nome||SES.login),ML,17.5);
+    y=26;
+  }
+  function corPct(p){return p==null?[80,80,80]:p>=100?[2,79,43]:p>=80?[184,134,11]:[192,57,43];}
+  cab();
+  var totKg=0,totMeta=0,totParMin=0,resumo=[],parContadas={};
+
+  LINHAS.forEach(function(l){
+    var lk=l.k;
+    var ap=apts.filter(function(a){return a.lk===lk;});
+    var ms=moinhosDaLinha(lk);
+    var pa=par.filter(function(p){return ms.indexOf(p.moinho)>=0;});
+    // mostra horas com apontamento, horas vencidas sem apontamento e horas com parada
+    var horas=horasDoTurno(j,ap,pa,lk).filter(function(h){return h.minCob>0||(h.cobrada&&h.fim<=agoraTs)||h.par.length;});
+    var oa=S.opAtiva[lk];
+    var kgL=0,metaL=0;horas.forEach(function(h){kgL+=h.kg;metaL+=h.meta*h.minCob/60;});
+    var parMin=0;pa.forEach(function(p){var pf=p.tsFim||agoraTs;var ov=(Math.min(pf,j.fim)-Math.max(p.tsIni,j.ini))/MIN_MS;if(ov>0){parMin+=ov;
+      // total geral: moinho compartilhado (M1000/M1200 atendem L1 e L2) conta uma vez só
+      if(!parContadas[p.fbKey]){parContadas[p.fbKey]=1;totParMin+=ov;}}});
+    totKg+=kgL;totMeta+=metaL;
+    var ader=metaL?kgL/metaL*100:null;
+    resumo.push({l:l,kg:kgL,ader:ader});
+
+    // Bloco da linha inteiro na mesma página quando couber (evita tabela partida)
+    var altBloco=8+14+(horas.length?6.5+horas.length*6.2:6)+(pa.length?6.5+pa.length*5.5:0);
+    if(y+altBloco>186&&altBloco<165) {doc.addPage();cab();}
+    else if(y>170){doc.addPage();cab();}
+    // Cabeçalho da linha: lote/OP ativa ou dos apontamentos
+    var lotes={};ap.filter(function(a){return !a.marco;}).forEach(function(a){lotes[(loteOp(a.opFbKey,a.lote)||"sem lote")+" · OP "+a.opNum+" · "+(a.desc||a.cod||"").slice(0,32)]=1;});
+    var tit=l.cur+" ("+l.maq+") · "+ms.map(nomeMoinho).join(" + ");
+    var sub=Object.keys(lotes).join("   |   ")||(oa?(loteTxt(oa.opFbKey,oa.lote)+" · OP "+oa.opNum+" · "+(oa.desc||"").slice(0,32)):"Sem OP no turno");
+    doc.setFillColor(2,79,43);doc.rect(ML,y,W,7,"F");
+    doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(255,255,255);
+    doc.text(tit,ML+3,y+5);
+    doc.setFont("helvetica","normal");doc.setFontSize(7.5);
+    doc.text(doc.splitTextToSize(sub,150)[0],ML+W-3,y+5,{align:"right"});
+    y+=8;
+
+    // Cards
+    var cw=(W-4)/5;
+    var cards=[
+      {l:"MOÍDO",v:fN(kgL)+" kg",c:corPct(ader)},
+      {l:"META ACUM.",v:fN(metaL)+" kg",c:[50,80,50]},
+      {l:"ADERÊNCIA",v:ader==null?"-":fN(ader,0)+"%",c:corPct(ader)},
+      {l:"KG/H MÉDIO",v:horas.length?fN(kgL/(Math.max(horas.reduce(function(s,h){return s+h.minCob;},0),1)/60)):"-",c:[50,80,50]},
+      {l:"PARADAS",v:minHH(parMin),c:[192,57,43]}
+    ];
+    cards.forEach(function(cd,i){
+      var cx=ML+i*(cw+1);
+      doc.setFillColor(245,250,245);doc.rect(cx,y,cw,12,"F");doc.setDrawColor(200,220,200);doc.rect(cx,y,cw,12,"S");
+      doc.setFont("helvetica","bold");doc.setFontSize(6);doc.setTextColor(100,130,100);doc.text(cd.l,cx+cw/2,y+4.5,{align:"center"});
+      doc.setFontSize(9.5);doc.setTextColor(cd.c[0],cd.c[1],cd.c[2]);doc.text(cd.v,cx+cw/2,y+10,{align:"center"});
+    });
+    y+=14;
+
+    // Tabela hora a hora (mesmas colunas do print da extrusão)
+    if(horas.length){
+      function cabTab(){
+        doc.setFillColor(220,235,220);doc.rect(ML,y,W,6,"F");
+        doc.setFont("helvetica","bold");doc.setFontSize(7);doc.setTextColor(2,79,43);
+        hc.forEach(function(c){doc.text(c.t,c.r?ML+c.x+c.w:ML+c.x+2,y+4.3,c.r?{align:"right"}:undefined);});
+        y+=6.5;
+      }
+      var hc=[{t:"H.INI",x:0},{t:"H.FIM",x:16},{t:"LOTE",x:32},{t:"META (kg)",x:70,r:1,w:22},{t:"REAL (kg)",x:94,r:1,w:22},{t:"META ACUM",x:118,r:1,w:24},{t:"REAL ACUM",x:144,r:1,w:24},{t:"%",x:170,r:1,w:12},{t:"PARADAS NO HORÁRIO",x:186}];
+      cabTab();
+      var mAc=0,rAc=0;
+      horas.forEach(function(h,i){
+        var metaH=h.meta*h.minCob/60;mAc+=metaH;rAc+=h.kg;
+        var p=metaH?h.kg/metaH*100:null, sem=h.minCob<1&&h.fim<=agoraTs;
+        var parTxt=h.par.join("; "), linhasPar=doc.splitTextToSize(parTxt,W-188).slice(0,2);
+        var rh=Math.max(6,linhasPar.length*3.2+2.6);
+        if(y+rh>192){doc.addPage();cab();
+          doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(2,79,43);doc.text(l.cur+" (continuação)",ML,y+2);y+=4;cabTab();}
+        if(sem&&!h.par.length){doc.setFillColor(253,236,234);doc.rect(ML,y-0.5,W,rh,"F");}
+        else if(i%2===0){doc.setFillColor(248,253,248);doc.rect(ML,y-0.5,W,rh,"F");}
+        if(h.par.length){doc.setFillColor(255,244,244);doc.rect(ML+185,y-0.5,W-185,rh,"F");}
+        doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(30,30,30);
+        doc.text(hhmmDeTs(h.ts),ML+2,y+3.6);doc.text(hhmmDeTs(h.fim),ML+18,y+3.6);
+        doc.text(sem?(h.par.length?"-":"SEM APONTAMENTO"):(h.lote||"-").slice(0,22),ML+34,y+3.6);
+        doc.setTextColor(90,90,90);
+        doc.text(metaH?fN(metaH):"-",ML+92,y+3.6,{align:"right"});
+        var c=corPct(p);doc.setFont("helvetica","bold");doc.setTextColor(c[0],c[1],c[2]);
+        doc.text(h.minCob?fN(h.kg):"-",ML+116,y+3.6,{align:"right"});
+        doc.setFont("helvetica","normal");doc.setTextColor(90,90,90);
+        doc.text(fN(mAc),ML+142,y+3.6,{align:"right"});
+        doc.setFont("helvetica","bold");doc.setTextColor(c[0],c[1],c[2]);
+        doc.text(fN(rAc),ML+168,y+3.6,{align:"right"});
+        doc.text(p==null?"-":fN(p,0)+"%",ML+182,y+3.6,{align:"right"});
+        doc.setFont("helvetica","normal");doc.setTextColor(192,57,43);
+        linhasPar.forEach(function(s,k){doc.text(s,ML+188,y+3.6+k*3.2);});
+        y+=rh;
+      });
+    } else {
+      doc.setFont("helvetica","italic");doc.setFontSize(7.5);doc.setTextColor(130,130,130);
+      doc.text("Sem apontamentos neste turno.",ML+2,y+3.5);y+=6;
+    }
+
+    // Paradas da linha
+    if(pa.length){
+      if(y>185){doc.addPage();cab();}
+      doc.setFillColor(255,235,235);doc.rect(ML,y,W,5.5,"F");
+      doc.setFont("helvetica","bold");doc.setFontSize(7);doc.setTextColor(192,57,43);
+      doc.text("PARADAS DOS MOINHOS",ML+3,y+4);y+=6.5;
+      pa.slice().sort(function(a,b){return a.tsIni-b.tsIni;}).forEach(function(p,pi){
+        if(y>192){doc.addPage();cab();}
+        if(pi%2===0){doc.setFillColor(255,248,248);doc.rect(ML,y-0.5,W,5.5,"F");}
+        var m=p.minutos!=null?p.minutos:Math.round((agoraTs-p.tsIni)/MIN_MS);
+        doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(192,57,43);
+        doc.text(p.horaIni+" - "+(p.horaFim||"aberta"),ML+2,y+3.5);
+        doc.setTextColor(60,30,30);doc.text(nomeMoinho(p.moinho),ML+32,y+3.5);
+        doc.text((p.descricao||"")+(p.malhaInstalada?" (malha "+p.malhaInstalada+" mm)":""),ML+55,y+3.5);
+        doc.setTextColor(110,110,110);doc.text(String(p.grupo||""),ML+130,y+3.5);
+        doc.text(String(p.obs||p.grupoInfo||"").slice(0,55),ML+185,y+3.5);
+        doc.setTextColor(192,57,43);doc.text(p.horaFim?minHH(m):"em aberto",ML+W-2,y+3.5,{align:"right"});
+        y+=5.5;
+      });
+    }
+    y+=5;
+  });
+
+  // Total geral + resumo por linha
+  if(y>180){doc.addPage();cab();}
+  var aderT=totMeta?totKg/totMeta*100:null;
+  doc.setFillColor(2,79,43);doc.rect(ML,y,W,10,"F");
+  doc.setFont("helvetica","bold");doc.setFontSize(10);doc.setTextColor(255,255,255);
+  doc.text("TOTAL GERAL MOAGEM - TURNO "+t+": "+fN(totKg)+" kg  |  Aderência: "+(aderT==null?"-":fN(aderT,0)+"%")+"  |  Paradas: "+minHH(totParMin),ML+W/2,y+6.8,{align:"center"});
+  y+=12;
+  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(60,60,60);
+  doc.text(resumo.map(function(r){return r.l.cur+": "+fN(r.kg)+" kg ("+(r.ader==null?"-":fN(r.ader,0)+"%")+")";}).join("     "),ML+W/2,y+3,{align:"center"});
+
+  var n=doc.getNumberOfPages();
+  for(var pg=1;pg<=n;pg++){doc.setPage(pg);doc.setFontSize(7);doc.setTextColor(160,160,160);
+    doc.text("Raguife Moagem · Turno "+t+" · "+dOp+" · Aderência = kg moído ÷ (meta kg/h da moagem × horas apontadas) · pág. "+pg+"/"+n,148,205,{align:"center"});}
+  return doc;
 }
 </script>
 </body>
