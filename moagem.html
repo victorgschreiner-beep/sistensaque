@@ -336,7 +336,7 @@ tr.hl td{background:#fff6d6}
     <div class="fg"><label>Hora de início</label><input type="time" class="inp" id="selop-hi"></div>
     <div class="fg"><label>Acumulado inicial no Libracom (kg)</label><input type="number" min="0" step="1" class="inp" id="selop-acum" value="0"></div>
   </div>
-  <div class="muted" style="margin-bottom:6px">Deixe 0 se a ordem está começando agora. Se já foi moída parte da ordem antes (sem apontamento), informe o acumulado atual — ele entra no total da OP, mas não distorce o kg/h.</div>
+  <div class="muted" style="margin-bottom:6px">Deixe 0 se a ordem está começando agora. Se a OP começou antes (hora de início no passado), informe o acumulado atual do Libracom: o sistema lança um apontamento da hora de início até agora, com a média de kg/h. Com hora de início = agora, o acumulado vira "marco" (material moído antes do controle — entra no total, não no kg/h).</div>
   <div class="mfoot">
     <button class="btn ghost" onclick="fM('m-selop')">Cancelar</button>
     <button class="btn" onclick="confirmarSelOp()">Iniciar OP</button>
@@ -1596,18 +1596,31 @@ function confirmarSelOp(){
   upd["moagem_silos_estado/"+silo]=estadoSilo(oa,sc.conf);
   var hk=DB.ref("moagem_op_hist").push().key;
   upd["moagem_op_hist/"+hk]={evento:retomada?"retomada":"inicio",lk:lk,opFbKey:op.fbKey,opNum:op.id,lote:oa.lote,silo:silo,posFila:idx+1,foraOrdem:idx>0||null,justificativa:idx>0?just:null,confirmouVazio:sc.conf||null,acumuladoInicial:acumIni,operador:SES.login,ts:ts,tsMs:inicioTs};
-  // Marco inicial: material já moído antes do controle — entra no total da OP, não no kg/h
-  var criarMarco=!retomada&&acumIni>0;
-  if(criarMarco){
+  // Acumulado inicial > 0:
+  //  • hora de início no PASSADO → o material foi moído desde essa hora: gera um
+  //    apontamento NORMAL (início → agora) com a média de kg/h do período;
+  //  • hora de início AGORA (≤ 10 min) → material moído antes do controle, horário
+  //    desconhecido: vira MARCO (entra no total da OP, não no kg/h).
+  var criarMarco=false, criarMedia=false;
+  if(!retomada&&acumIni>0){
+    var tsAgora=tsUltimaOcorrencia(horaAtual());
+    if(tsAgora-inicioTs>10*MIN_MS){
+      if(tsAgora-inicioTs>MAX_MIN_APT*MIN_MS){toast("Início há mais de "+(MAX_MIN_APT/60)+"h — ajuste a hora de início","err");return;}
+      criarMedia=true;
+    } else criarMarco=true;
+  }
+  if(criarMarco||criarMedia){
     var mk=DB.ref("moagem_apts").push().key, l=linhaK(lk), hh=hhmmDeTs(inicioTs);
+    var tsF=criarMedia?tsUltimaOcorrencia(horaAtual()):inicioTs, minA=Math.round((tsF-inicioTs)/MIN_MS);
     upd["moagem_apts/"+mk]={lk:lk,linha:l.nome,opFbKey:op.fbKey,opNum:op.id,lote:oa.lote,cod:op.cod,desc:op.desc||op.cod,silo:silo,
-      data:dataOpDeTs(inicioTs),turno:turnoDeHora(hh),horaIni:hh,horaFim:hh,tsIni:inicioTs,tsFim:inicioTs,minutos:0,
-      acumulado:acumIni,marco:true,metaH:0,rateioSnap:rateioSnap(lk),kg:0,kgH:0,kgPorMoinho:{},operador:SES.login,ts:ts};
+      data:dataOpDeTs(inicioTs),turno:turnoDeHora(hh),horaIni:hh,horaFim:hhmmDeTs(tsF),tsIni:inicioTs,tsFim:tsF,minutos:minA,
+      acumulado:acumIni,marco:criarMarco||null,metaH:criarMedia?Math.round(metaMoagem(op.cod,l.nome)):0,rateioSnap:rateioSnap(lk),
+      kg:0,kgH:0,kgPorMoinho:{},inicioOp:criarMedia||null,operador:SES.login,ts:ts};
   }
   DB.ref().update(upd).then(function(){
     log("op_inicio",op.id+" "+linhaK(lk).cur+" → "+silo+(idx>0?" (fora da ordem: "+just+")":"")+(sc.conf?" [silo confirmado vazio]":""));
     fM("m-selop");toast("OP "+op.id+" iniciada na moagem","ok");
-    if(criarMarco) return recalcularOpMoagem(op.fbKey);
+    if(criarMarco||criarMedia) return recalcularOpMoagem(op.fbKey).then(function(){calcPeneiras();});
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 var MSI=null;
