@@ -708,11 +708,13 @@ function iniciarApp(){
       agendarRender();
     });
   });
-  DB.ref("config/metas").once("value").then(function(s){
+  // Metas em tempo real (.on): alteração feita no admin da extrusão reflete aqui
+  // sem recarregar. Apontamentos já salvos mantêm a meta da época (campo metaH).
+  DB.ref("config/metas").on("value",function(s){
     S.metas={};
     if(s.exists()) s.forEach(function(c){var v=c.val();if(!v) return;S.metas[c.key]=v;if(v.cod) S.metas[v.cod]=v;});
     S.metasOk=true;agendarRender();
-  }).catch(function(){});
+  },function(e){console.warn("config/metas",e);});
   anexarListenersDia();
   calcPeneiras();
   setInterval(tick,30000);
