@@ -461,7 +461,11 @@ var MIN_MS=60000, DIA_MS=86400000;
 var TOL_FUTURO_MS=10*MIN_MS;   // tolerância de relógio para horário "no futuro"
 var MAX_MIN_APT=12*60;         // intervalo máximo de um apontamento
 var AVISO_MIN_APT=150;         // acima disso pede confirmação (hora esquecida?)
-var FATOR_KGH_SUSPEITO=2;      // kg/h > 2× meta → confirmação (provável erro de digitação)
+var FATOR_KGH_SUSPEITO=2;
+// A balança do Libracom pesa por BATELADA: o acumulado sobe em degraus. Em intervalos
+// curtos o kg/h vira ruído (0 num intervalo, o dobro no seguinte). Abaixo disto o kg/h
+// e o % da meta do apontamento não são exibidos nem usados em alertas/indicadores.
+var MIN_APT_TAXA=30;      // kg/h > 2× meta → confirmação (provável erro de digitação)
 var STATUS_ABERTOS=["Liberada","Em andamento","Reprogramada"];
 // Controle de silos (destino, troca, ocupação, kg por silo) — desligado por decisão
 // do Victor (28/09/2026): fica para a próxima fase. Todo o código e o modelo de dados
@@ -1031,7 +1035,7 @@ function alertasLinha(lk){
         al.push({c:"rd",t:"<b>"+l.cur+"</b> — sem apontamento desde "+hhmmDeTs(base)+" ("+Math.floor(atraso/60)+"h"+pad(atraso%60)+")"});
     }
     var u=ultimoAptLinha(lk);
-    if(u&&u.opFbKey===oa.opFbKey&&u.metaH>0&&u.kgH<u.metaH&&!paradasSobrepoe(lk,u.tsIni,u.tsFim).length&&Date.now()-u.tsFim<2*3600000)
+    if(u&&u.opFbKey===oa.opFbKey&&u.metaH>0&&(Number(u.minutos)||0)>=MIN_APT_TAXA&&u.kgH<u.metaH&&!paradasSobrepoe(lk,u.tsIni,u.tsFim).length&&Date.now()-u.tsFim<2*3600000)
       al.push({c:"or",t:"<b>"+l.cur+"</b> — último intervalo abaixo da meta: "+fN(u.kgH)+" kg/h (meta "+fN(u.metaH)+")"});
   }
   moinhosDaLinha(lk).forEach(function(m){
@@ -1143,17 +1147,26 @@ function faixaTurno(lk){
   aps.forEach(function(a){if(a.tsFim>j.ini&&a.tsIni<j.fim){if(ini===null||a.tsIni<ini) ini=a.tsIni;if(fimRef===null||a.tsFim>fimRef) fimRef=a.tsFim;}});
   if(oa&&oa.inicioTs&&(ini===null||oa.inicioTs<ini)) ini=oa.inicioTs;
   if(oa) fimRef=agoraTs;
-  var h=(visAtivo()?'<div class="muted" style="font-weight:700;color:#1d4f91;margin-top:4px">📅 '+(VIS.turno==="D"?"Dia inteiro":"Turno "+(VIS.turno==="0"?turnoAtual():VIS.turno))+' · dia operacional '+fData(VIS.data||hoje())+'</div>':'')+'<div class="legend"><span style="font-weight:700">t/h por hora:</span><span><i style="background:#d9f0dd"></i>≥ meta</span><span><i style="background:#fff0c2"></i>80–99%</span><span><i style="background:#fbd5d0"></i>&lt; 80%</span><span><i style="background:#fff;border:1px dashed #c0392b"></i>sem apontamento</span><span><i style="background:#e4e7eb"></i>parada</span></div><div class="strip">';
+  var h=(visAtivo()?'<div class="muted" style="font-weight:700;color:#1d4f91;margin-top:4px">📅 '+(VIS.turno==="D"?"Dia inteiro":"Turno "+(VIS.turno==="0"?turnoAtual():VIS.turno))+' · dia operacional '+fData(VIS.data||hoje())+'</div>':'')+'<div class="legend"><span style="font-weight:700">t moídas na hora:</span><span><i style="background:#d9f0dd"></i>≥ meta</span><span><i style="background:#fff0c2"></i>80–99%</span><span><i style="background:#fbd5d0"></i>&lt; 80%</span><span><i style="background:#fff;border:1px dashed #c0392b"></i>sem apontamento</span><span><i style="background:#e4e7eb"></i>parada</span></div><div class="strip">';
   for(var ts=j.ini;ts<j.fim;ts+=3600000){
     var fim=ts+3600000, lbl=hhmmDeTs(ts).slice(0,2)+"h";
     var cls="fu", val="";
     var sob=aps.filter(function(a){return a.tsIni<fim&&a.tsFim>ts;});
     if(ts>agoraTs){cls="fu";}
     else if(sob.length){
-      var kgPond=0,minT=0,metaP=0;
-      sob.forEach(function(a){var ov=(Math.min(a.tsFim,fim)-Math.max(a.tsIni,ts))/MIN_MS;kgPond+=(Number(a.kgH)||0)*ov;metaP+=(Number(a.metaH)||0)*ov;minT+=ov;});
-      var kgh=minT?kgPond/minT:0, meta=minT?metaP/minT:0;
-      val=fN(kgh/1000,1)+"t";
+      // Base = HORA DE RELÓGIO: kg moído dentro da hora ÷ minutos decorridos da hora
+      // (60 quando a hora fechou) — não pelos minutos apontados, que inflava o valor
+      // quando um trecho curto pegava uma batelada inteira.
+      var kgH=0,minT=0,metaP=0;
+      sob.forEach(function(a){var ov=(Math.min(a.tsFim,fim)-Math.max(a.tsIni,ts))/MIN_MS;if(a.minutos>0) kgH+=(Number(a.kg)||0)*ov/a.minutos;metaP+=(Number(a.metaH)||0)*ov;minT+=ov;});
+      // Base = minutos da hora em que a linha tinha OP ativa (início da OP → agora/último
+      // apontamento). Partida no meio da hora não penaliza; buraco de apontamento dentro
+      // da OP continua contando (e a hora fica marcada como parcial).
+      var fimAt=oa?agoraTs:(fimRef||agoraTs);
+      var dec=(Math.min(fim,agoraTs,fimAt)-Math.max(ts,ini!==null?ini:ts))/MIN_MS;
+      if(!(dec>0)) dec=minT;
+      var kgh=dec>0?kgH/(dec/60):0, meta=minT?metaP/minT:0;
+      val=fN(kgH/1000,1)+"t";
       if(!meta) cls="ok"; else {var r=kgh/meta;cls=r>=1?"ok":r>=0.8?"lo":"bd";}
       if(minT<55&&fim<=agoraTs) val+="·"; // hora parcialmente coberta
     }
@@ -1174,11 +1187,12 @@ function tabelaAptsTurno(lk){
   var u=ultimoAptLinha(lk);
   var h='<div class="tw" style="margin-top:6px"><table class="t"><thead><tr><th>Intervalo</th><th>OP</th>'+(USAR_SILOS?'<th>Silo</th>':'')+'<th class="n">Acumulado</th><th class="n">kg</th><th class="n">kg/h</th><th class="n">% meta</th><th></th></tr></thead><tbody>';
   lista.slice().reverse().forEach(function(a){
-    var pm=a.metaH?Math.round(a.kgH/a.metaH*100):null;
+    var curto=!a.marco&&(Number(a.minutos)||0)<MIN_APT_TAXA;
+    var pm=(a.metaH&&!curto)?Math.round(a.kgH/a.metaH*100):null;
     var bc=pm==null?"":pm>=100?"g":pm>=80?"y":"r";
     var podeEd=isAdmin()||(podeApontar()&&u&&u.fbKey===a.fbKey);
     h+='<tr><td>'+(a.marco?'<span class="bdg">marco inicial</span>':esc(a.horaIni)+'–'+esc(a.horaFim))+(a.inconsistente?' <span class="bdg r" title="Acumulado menor que o anterior">!</span>':'')+'</td><td>'+esc(a.opNum)+'<div class="muted">'+esc(loteTxt(a.opFbKey,a.lote))+'</div></td>'+(USAR_SILOS?'<td>'+esc(nomeSilo(a.silo))+'</td>':'');
-    h+='<td class="n">'+fN(a.acumulado)+'</td><td class="n">'+fN(a.kg)+'</td><td class="n">'+(a.marco?"—":fN(a.kgH))+'</td><td class="n">'+(pm==null||a.marco?"—":'<span class="bdg '+bc+'">'+pm+'%</span>')+'</td>';
+    h+='<td class="n">'+fN(a.acumulado)+'</td><td class="n">'+fN(a.kg)+'</td><td class="n">'+(a.marco?"—":curto?'<span class="muted" title="Intervalo curto: a balança pesa por batelada, o kg/h fica distorcido">—</span>':fN(a.kgH))+'</td><td class="n">'+(pm==null||a.marco?"—":'<span class="bdg '+bc+'">'+pm+'%</span>')+'</td>';
     h+='<td style="white-space:nowrap">'+(podeEd&&!a.marco?'<button class="btn xs ghost" title="Editar" onclick="editarApt(\''+a.fbKey+'\')">✏️</button> ':'')+(podeEd?'<button class="btn xs ghost" title="Excluir" onclick="excluirApt(\''+a.fbKey+'\')">🗑</button>':'')+'</td></tr>';
   });
   return h+'</tbody></table></div>';
@@ -1336,6 +1350,7 @@ function aptValidar(){
     if(meta&&kgH>meta*FATOR_KGH_SUSPEITO) r.avisos.push("kg/h "+fN(kgH)+" é mais que o dobro da meta ("+fN(meta)+"). Confira o acumulado digitado.");
     if(kg===0&&!paradasSobrepoe(MA.lk,tp.tsIni,tp.tsFim).length) r.avisos.push("Nenhum kg no intervalo e nenhuma parada registrada. Se o moinho parou, registre a parada.");
   }
+  if(tp.min<MIN_APT_TAXA&&MA.modo==="novo"&&!MA.admin) r.avisos.push("Intervalo curto ("+tp.min+" min). A balança pesa por batelada: o kg/h deste intervalo fica distorcido e não entra na meta. Prefira apontar na hora cheia.");
   if(tp.min>AVISO_MIN_APT) r.avisos.push("Intervalo de "+Math.floor(tp.min/60)+"h"+pad(tp.min%60)+" — confira se não houve horas esquecidas.");
   return r;
 }
@@ -1953,7 +1968,7 @@ function agrupar(lista,chave,val){var r={};lista.forEach(function(x){var k=chave
 function renderDashboard(di,df){
   var ap=DSH.apts.filter(function(a){return !a.marco;}), par=DSH.paradas;
   var kg=0,min=0,nMeta=0,nOk=0;
-  ap.forEach(function(a){kg+=Number(a.kg)||0;min+=Number(a.minutos)||0;if(a.metaH>0){nMeta++;if(a.kgH>=a.metaH) nOk++;}});
+  ap.forEach(function(a){kg+=Number(a.kg)||0;min+=Number(a.minutos)||0;if(a.metaH>0&&(Number(a.minutos)||0)>=MIN_APT_TAXA){nMeta++;if(a.kgH>=a.metaH) nOk++;}});
   var parMinG={};GRUPOS.forEach(function(g){parMinG[g]=0;});
   var agoraTs=Date.now();
   par.forEach(function(p){var m=p.minutos!=null?Number(p.minutos):Math.round(((p.tsFim||agoraTs)-p.tsIni)/MIN_MS);p._min=m;parMinG[p.grupo]=(parMinG[p.grupo]||0)+m;});
@@ -2341,9 +2356,14 @@ function horasDoTurno(j,apts,par,lk){
       var pf=p.tsFim||agoraTs, ov=Math.round((Math.min(pf,fim)-Math.max(p.tsIni,ts))/MIN_MS);
       if(ov>0) pars.push(nomeMoinho(p.moinho)+": "+p.descricao+" ("+ov+" min)");
     });
-    var meta=minCob?metaP/minCob:0, kgh=minCob?kg/(minCob/60):0;
+    // Base = hora de relógio (minutos decorridos da hora), não os minutos apontados
+    // Base = minutos da hora com OP ativa (mesma regra do card): partida no meio da hora não penaliza
+    var fimAt=fimRef!==null?fimRef:agoraTs;
+    var dec=(ini===null)?minCob:Math.max((Math.min(fim,agoraTs,fimAt)-Math.max(ts,ini))/MIN_MS,0);
+    if(!(dec>0)) dec=minCob;
+    var meta=minCob?metaP/minCob:0, kgh=(minCob&&dec)?kg/(dec/60):0;
     var cobrada=ini!==null&&fim>ini&&ts<fimRef;
-    lin.push({cobrada:cobrada,ts:ts,fim:fim,hora:hhmmDeTs(ts)+"-"+hhmmDeTs(fim),kg:kg,kgh:kgh,meta:meta,pct:meta?kgh/meta*100:null,minCob:minCob,
+    lin.push({cobrada:cobrada,ts:ts,fim:fim,hora:hhmmDeTs(ts)+"-"+hhmmDeTs(fim),kg:kg,kgh:kgh,meta:meta,pct:(meta&&minCob)?kgh/meta*100:null,minCob:minCob,dec:dec,
       lote:Object.keys(lotes).join(", "),op:Object.keys(ops).join(", "),silo:Object.keys(silos).join(", "),par:pars,futuro:ts>agoraTs});
   }
   return lin;
@@ -2402,7 +2422,7 @@ function pdfPaginaLinha(doc,lk,dOp,t,j,apts,par){
       obs:h.minCob&&h.minCob<55&&h.fim<=Date.now()?"parcial":""};
   }),{total:["TOTAL","",""].concat(USAR_SILOS?[""]:[]).concat([fN(kgT),minT?fN(kghMed):"",metaMed?fN(metaMed):"",metaMed?fN(kghMed/metaMed*100,0)+"%":"",""])});
   doc.setFontSize(6.5);doc.setTextColor(120);
-  doc.text("Kg da hora = parte proporcional de cada apontamento que cobre a hora. Kg/h = taxa no tempo apontado. Verde >= meta | amarelo 80-99% | vermelho < 80%.",M,y+3);
+  doc.text("Kg da hora = parte proporcional de cada apontamento que cobre a hora. Kg/h = kg da hora / minutos decorridos da hora (60 na hora fechada). Verde >= meta | amarelo 80-99% | vermelho < 80%.",M,y+3);
   y+=7;
 
   // Apontamentos lançados
@@ -2505,7 +2525,7 @@ function pdfGeralTurno(dOp,t,j,apts,par){
     // mostra horas com apontamento, horas vencidas sem apontamento e horas com parada
     var horas=horasDoTurno(j,ap,pa,lk).filter(function(h){return h.minCob>0||(h.cobrada&&h.fim<=agoraTs)||h.par.length;});
     var oa=S.opAtiva[lk];
-    var kgL=0,metaL=0;horas.forEach(function(h){kgL+=h.kg;metaL+=h.meta*h.minCob/60;});
+    var kgL=0,metaL=0,decL=0;horas.forEach(function(h){kgL+=h.kg;if(h.minCob){metaL+=h.meta*h.dec/60;decL+=h.dec;}});
     var parMin=0;pa.forEach(function(p){var pf=p.tsFim||agoraTs;var ov=(Math.min(pf,j.fim)-Math.max(p.tsIni,j.ini))/MIN_MS;if(ov>0){parMin+=ov;
       // total geral: moinho compartilhado (M1000/M1200 atendem L1 e L2) conta uma vez só
       if(!parContadas[p.fbKey]){parContadas[p.fbKey]=1;totParMin+=ov;}}});
@@ -2534,7 +2554,7 @@ function pdfGeralTurno(dOp,t,j,apts,par){
       {l:"MOÍDO",v:fN(kgL)+" kg",c:corPct(ader)},
       {l:"META ACUM.",v:fN(metaL)+" kg",c:[50,80,50]},
       {l:"ADERÊNCIA",v:ader==null?"-":fN(ader,0)+"%",c:corPct(ader)},
-      {l:"KG/H MÉDIO",v:horas.length?fN(kgL/(Math.max(horas.reduce(function(s,h){return s+h.minCob;},0),1)/60)):"-",c:[50,80,50]},
+      {l:"KG/H MÉDIO",v:decL?fN(kgL/(decL/60)):"-",c:[50,80,50]},
       {l:"PARADAS",v:minHH(parMin),c:[192,57,43]}
     ];
     cards.forEach(function(cd,i){
@@ -2557,7 +2577,7 @@ function pdfGeralTurno(dOp,t,j,apts,par){
       cabTab();
       var mAc=0,rAc=0;
       horas.forEach(function(h,i){
-        var metaH=h.meta*h.minCob/60;mAc+=metaH;rAc+=h.kg;
+        var metaH=h.minCob?h.meta*h.dec/60:0;mAc+=metaH;rAc+=h.kg;
         var p=metaH?h.kg/metaH*100:null, sem=h.minCob<1&&h.fim<=agoraTs;
         var parTxt=h.par.join("; "), linhasPar=doc.splitTextToSize(parTxt,W-188).slice(0,2);
         var rh=Math.max(6,linhasPar.length*3.2+2.6);
