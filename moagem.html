@@ -1920,20 +1920,32 @@ function gerarDashboard(){
 }
 // Moído (moagem) × produzido (extrusão) por OP — produzido = ops/{fk}/realExtrusao,
 // que a extrusão já mantém acumulado na cadeia de reprogramação.
+// Moído (moagem) × produzido (extrusão) por OP.
+// Total extrusão = soma de extrusao_apts.real da OP (fonte confiável — ops/realExtrusao é
+// contador incremental e já saiu de sincronia antes) MAIS o reprocesso da OP
+// (ops/{fk}/reprocessoAcumulado, recalculado do zero pela extrusão a partir das paradas):
+// a farinha moída virou produto bom OU reprocesso — os dois consomem o que a moagem enviou.
+// Tudo somado na cadeia de reprogramação (reprogramadaDeFbKey).
 function montarComparativo(apts){
   var fks={};apts.forEach(function(a){fks[a.opFbKey]=a;});
   var lista=Object.keys(fks);
   return Promise.all(lista.map(function(fk){
     return Promise.all([
-      DB.ref("ops/"+fk).once("value"),
+      buscarCadeia(fk),
       DB.ref("extrusao_op_concluida/"+fk).once("value"),
       DB.ref("moagem_op_totais/"+fk).once("value")
     ]).then(function(r){
-      var op=r[0].val()||{}, tot=r[2].val()||{}, a=fks[fk];
-      var moido=Number(tot.kgCadeia)||0, prod=Number(op.realExtrusao)||0;
-      var concExt=r[1].exists(), concMo=!!S.opConc[fk];
-      return {fk:fk,opNum:op.id||a.opNum,lote:loteAuto(op.lote)?"":(op.lote||a.lote||""),cod:op.cod||a.cod,desc:op.desc||a.desc,lk:a.lk,familia:familiaProduto(op.cod||a.cod),
-        moido:moido,prod:prod,dif:prod-moido,difPct:(moido&&prod)?((prod/moido)-1)*100:null,concExt:concExt,concMo:concMo,fechada:concExt&&concMo};
+      var cad=r[0]||[], tot=r[2].val()||{}, a=fks[fk];
+      var op=cad.length?cad[cad.length-1]:{};
+      return Promise.all(cad.map(function(e){return DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(e.fbKey).once("value");})).then(function(snaps){
+        var bruto=0, nExt=0;
+        snaps.forEach(function(sn){if(sn&&sn.exists()) sn.forEach(function(c){var v=c.val();if(v){bruto+=Number(v.real)||0;nExt++;}});});
+        var repr=cad.reduce(function(t,e){return t+(Number(e.reprocessoAcumulado)||0);},0);
+        var moido=Number(tot.kgCadeia)||0, prod=bruto+repr;
+        var concExt=r[1].exists(), concMo=!!S.opConc[fk];
+        return {fk:fk,opNum:op.id||a.opNum,lote:loteAuto(op.lote)?"":(op.lote||a.lote||""),cod:op.cod||a.cod,desc:op.desc||a.desc,lk:a.lk,familia:familiaProduto(op.cod||a.cod),
+          moido:moido,bruto:bruto,repr:repr,prod:prod,nExt:nExt,dif:prod-moido,difPct:(moido&&prod)?((prod/moido)-1)*100:null,concExt:concExt,concMo:concMo,fechada:concExt&&concMo};
+      });
     });
   }));
 }
@@ -1994,14 +2006,14 @@ function renderDashboard(di,df){
   // Comparativo OP
   var comp=DSH.comp.slice().sort(function(a,b){return (a.opNum||"")>(b.opNum||"")?1:-1;});
   var fam={};comp.filter(function(c){return c.fechada&&c.moido>0;}).forEach(function(c){fam[c.familia]=fam[c.familia]||{m:0,p:0,n:0};fam[c.familia].m+=c.moido;fam[c.familia].p+=c.prod;fam[c.familia].n++;});
-  h+='<div class="panel"><h4>Moído × produzido na extrusão, por OP <span class="muted" style="font-weight:600">diferença = ganho de água/vapor/óleo no processo</span></h4>';
+  h+='<div class="panel"><h4>Moído × produzido na extrusão, por OP <span class="muted" style="font-weight:600">total extrusão = produzido + reprocesso · diferença = total − moído (ganho de água/vapor/óleo)</span></h4>';
   var fk=Object.keys(fam);
   if(fk.length){h+='<div class="row-info">';fk.forEach(function(f){var x=fam[f];h+='<span class="chip in">'+f+': '+(x.m?(x.p/x.m-1>=0?"+":"")+fN((x.p/x.m-1)*100,1)+"%":"—")+' ('+x.n+' OPs fechadas)</span>';});h+='</div>';}
-  h+='<div class="tw"><table class="t"><thead><tr><th>OP</th><th>Lote</th><th>SKU</th><th>Linha</th><th class="n">Moído kg</th><th class="n">Produzido kg</th><th class="n">Diferença kg</th><th class="n">Dif. %</th><th>Status</th></tr></thead><tbody>';
-  if(!comp.length) h+='<tr><td colspan="9" class="muted">Sem OPs no período.</td></tr>';
+  h+='<div class="tw"><table class="t"><thead><tr><th>OP</th><th>Lote</th><th>SKU</th><th>Linha</th><th class="n">Moído kg</th><th class="n">Produzido extrusão</th><th class="n">Reprocesso</th><th class="n">Total extrusão</th><th class="n">Diferença kg</th><th class="n">Dif. %</th><th>Status</th></tr></thead><tbody>';
+  if(!comp.length) h+='<tr><td colspan="11" class="muted">Sem OPs no período.</td></tr>';
   comp.forEach(function(c){
     var st=c.fechada?'<span class="bdg g">fechada</span>':'<span class="bdg y">em andamento</span>'+(c.concMo?' <span class="muted">moagem ✔</span>':'')+(c.concExt?' <span class="muted">extrusão ✔</span>':'');
-    h+='<tr><td><b>'+esc(c.opNum)+'</b></td><td>'+(c.lote?esc(c.lote):'<span class="muted">—</span>')+'</td><td title="'+esc(c.desc)+'">'+esc(c.cod)+' <span class="muted">'+c.familia+'</span></td><td>'+(linhaK(c.lk)?linhaK(c.lk).cur:"")+'</td><td class="n">'+fN(c.moido)+'</td><td class="n">'+fN(c.prod)+'</td><td class="n">'+(c.dif>=0?"+":"")+fN(c.dif)+'</td><td class="n">'+(c.difPct==null?"—":(c.difPct>=0?"+":"")+fN(c.difPct,1)+"%")+'</td><td>'+st+'</td></tr>';
+    h+='<tr><td><b>'+esc(c.opNum)+'</b></td><td>'+(c.lote?esc(c.lote):'<span class="muted">—</span>')+'</td><td title="'+esc(c.desc)+'">'+esc(c.cod)+' <span class="muted">'+c.familia+'</span></td><td>'+(linhaK(c.lk)?linhaK(c.lk).cur:"")+'</td><td class="n">'+fN(c.moido)+'</td><td class="n">'+fN(c.bruto)+'</td><td class="n" style="color:#b8860b">'+(c.repr?"+"+fN(c.repr):"—")+'</td><td class="n"><b>'+fN(c.prod)+'</b></td><td class="n">'+(c.dif>=0?"+":"")+fN(c.dif)+'</td><td class="n">'+(c.difPct==null?"—":(c.difPct>=0?"+":"")+fN(c.difPct,1)+"%")+'</td><td>'+st+'</td></tr>';
   });
   h+='</tbody></table></div><div class="muted" style="margin-top:6px">A média por família considera só OPs fechadas nas duas pontas. Totais de moído são da OP inteira (não só do período).</div></div>';
 
@@ -2067,8 +2079,8 @@ function exportarAptsCSV(){
 }
 function exportarCompCSV(){
   if(!DSH.comp.length){toast("Gere o dashboard com dados antes de exportar","err");return;}
-  var rows=[["OP","Lote","SKU","Descrição","Família","Linha","Moído (kg)","Produzido extrusão (kg)","Diferença (kg)","Diferença (%)","Concluída moagem","Concluída extrusão"]];
-  DSH.comp.forEach(function(c){rows.push([c.opNum,c.lote,c.cod,c.desc,c.familia,linhaK(c.lk)?linhaK(c.lk).cur:"",nBR(c.moido),nBR(c.prod),nBR(c.dif),c.difPct==null?"":nBR(c.difPct,1),c.concMo?"sim":"não",c.concExt?"sim":"não"]);});
+  var rows=[["OP","Lote","SKU","Descrição","Família","Linha","Moído (kg)","Produzido extrusão (kg)","Reprocesso (kg)","Total extrusão = produzido + reprocesso (kg)","Diferença (kg)","Diferença (%)","Concluída moagem","Concluída extrusão"]];
+  DSH.comp.forEach(function(c){rows.push([c.opNum,c.lote,c.cod,c.desc,c.familia,linhaK(c.lk)?linhaK(c.lk).cur:"",nBR(c.moido),nBR(c.bruto),nBR(c.repr),nBR(c.prod),nBR(c.dif),c.difPct==null?"":nBR(c.difPct,1),c.concMo?"sim":"não",c.concExt?"sim":"não"]);});
   baixarCSV("moagem_comparativo_op_"+G("dsh-di").value+"_"+G("dsh-df").value+".csv",rows);
 }
 
