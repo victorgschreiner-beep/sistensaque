@@ -214,7 +214,15 @@ tr.hl td{background:#fff6d6}
   <div class="content">
     <!-- OPERAÇÃO -->
     <div class="sec on" id="sec-op">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn" onclick="abrirPdfHora('',true)">PDF geral do turno</button></div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <div class="filtros" id="vis-bar" style="display:none;margin:0;padding:6px 10px">
+        <div class="fg"><label>Dia operacional</label><input type="date" class="inp" id="vis-data" onchange="visAplicar()"></div>
+        <div class="fg"><label>Turno</label><select class="inp" id="vis-turno" onchange="visAplicar()"><option value="0">Atual</option><option value="1">T1 (21h-06h)</option><option value="2">T2 (06h-17h)</option><option value="3">T3 (17h-21h)</option><option value="D">Dia inteiro</option></select></div>
+        <button class="btn sm ghost" onclick="visAgora()">Voltar para agora</button>
+        <span class="muted" id="vis-info"></span>
+      </div>
+      <button class="btn" onclick="abrirPdfHora('',true)">PDF geral do turno</button>
+    </div>
     <div class="alertas" id="alertas"></div>
       <div class="grid-l" id="grid-linhas"></div>
     </div>
@@ -681,6 +689,8 @@ function iniciarApp(){
   G("app").style.display="block";
   G("tb-user").textContent=SES.nome+" · "+SES.perfil.toUpperCase();
   G("tab-btn-adm").style.display=isAdmin()?"":"none";
+  G("vis-bar").style.display=isAdmin()?"":"none";
+  G("vis-data").value=hoje();
   // Filtros de linha
   ["dsh-linha","adm-a-linha"].forEach(function(id){
     var el=G(id);LINHAS.forEach(function(l){var o=document.createElement("option");o.value=l.k;o.textContent=l.cur+" · "+l.maq;el.appendChild(o);});
@@ -947,9 +957,49 @@ function aptsLinha(lk){return S.apts.filter(function(a){return a.lk===lk;});}
 function ultimoAptLinha(lk){var u=null;aptsLinha(lk).forEach(function(a){if(!a.marco&&(!u||(a.tsFim||0)>(u.tsFim||0))) u=a;});return u;}
 function paradasAbertasMoinho(m){return S.paradasAbertas.filter(function(p){return p.moinho===m;});}
 function linhaParadaTotal(lk){var ms=moinhosDaLinha(lk);if(!ms.length) return false;return ms.every(function(m){return paradasAbertasMoinho(m).length>0;});}
-function paradasSobrepoe(lk,ini,fim){
+// ── VISUALIZAÇÃO DE OUTROS TURNOS (admin) ─────────────────────────
+// turno "0" = turno atual (ao vivo). Dias fora do intervalo já carregado
+// (ontem/hoje) são lidos uma vez do Firebase só para exibição.
+var VIS={data:null,turno:"0",apts:null,par:null};
+function visAtivo(){return VIS.turno!=="0"||(VIS.data&&VIS.data!==hoje());}
+function visJanela(){
+  var dOp=VIS.data||hoje();
+  if(VIS.turno==="0") return janelaTurno(hoje(),turnoAtual());
+  if(VIS.turno==="D") return {ini:janelaTurno(dOp,1).ini,fim:janelaTurno(dOp,3).fim};
+  return janelaTurno(dOp,parseInt(VIS.turno,10));
+}
+function visAptsLinha(lk){return (VIS.apts||S.apts).filter(function(a){return a.lk===lk;});}
+function visParadas(){
+  if(VIS.par) return VIS.par;
+  return S.paradasRange.concat(S.paradasAbertas.filter(function(p){return !S.paradasRange.some(function(x){return x.fbKey===p.fbKey;});}));
+}
+function visAplicar(){
+  var d=G("vis-data").value||hoje(), t=G("vis-turno").value;
+  VIS.data=d;VIS.turno=t;
+  if(t==="0"&&d!==hoje()){G("vis-turno").value="D";VIS.turno="D";}
+  var carregado=(d===hoje()||d===addDias(hoje(),-1));
+  if(carregado){VIS.apts=null;VIS.par=null;visInfo();agendarRender();return;}
+  G("vis-info").textContent="Carregando…";
+  Promise.all([
+    DB.ref("moagem_apts").orderByChild("data").startAt(addDias(d,-1)).endAt(d).once("value"),
+    DB.ref("moagem_paradas").orderByChild("data").startAt(addDias(d,-1)).endAt(d).once("value")
+  ]).then(function(sn){
+    var a=[],p=[];
+    if(sn[0].exists()) sn[0].forEach(function(c){var v=c.val();if(v){v.fbKey=c.key;a.push(v);}});
+    if(sn[1].exists()) sn[1].forEach(function(c){var v=c.val();if(v){v.fbKey=c.key;p.push(v);}});
+    a.sort(function(x,y){return (x.tsIni||0)-(y.tsIni||0);});
+    if(VIS.data!==d) return;
+    VIS.apts=a;VIS.par=p;visInfo();agendarRender();
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
+}
+function visAgora(){VIS={data:null,turno:"0",apts:null,par:null};G("vis-data").value=hoje();G("vis-turno").value="0";visInfo();agendarRender();}
+function visInfo(){
+  var j=visJanela();
+  G("vis-info").textContent=visAtivo()?"Exibindo "+fDataHora(j.ini)+" → "+fDataHora(j.fim)+" (histórico — alertas e OP continuam ao vivo)":"";
+}
+function paradasSobrepoe(lk,ini,fim,lista){
   var ms=moinhosDaLinha(lk), agoraTs=Date.now();
-  var todas=S.paradasRange.concat(S.paradasAbertas.filter(function(p){return !S.paradasRange.some(function(x){return x.fbKey===p.fbKey;});}));
+  var todas=lista||S.paradasRange.concat(S.paradasAbertas.filter(function(p){return !S.paradasRange.some(function(x){return x.fbKey===p.fbKey;});}));
   return todas.filter(function(p){
     if(ms.indexOf(p.moinho)<0) return false;
     var pi=p.tsIni||0, pf=p.tsFim||agoraTs;
@@ -1077,14 +1127,15 @@ function cardLinha(l){
   return h;
 }
 function faixaTurno(lk){
-  var dOp=hoje(), t=turnoAtual(), j=janelaTurno(dOp,t), agoraTs=Date.now();
-  var aps=aptsLinha(lk).filter(function(a){return !a.marco;});
+  var j=visJanela(), agoraTs=Date.now(), parL=visParadas();
+  var aoVivo=agoraTs>=j.ini&&agoraTs<j.fim;
+  var aps=visAptsLinha(lk).filter(function(a){return !a.marco;});
   // Hora só é cobrada ("sem apontamento") dentro do período em que a linha teve OP na moagem
-  var oa=S.opAtiva[lk], ini=null, fimRef=null;
-  aps.forEach(function(a){if(a.tsFim>j.ini&&(ini===null||a.tsIni<ini)) ini=a.tsIni;if(fimRef===null||a.tsFim>fimRef) fimRef=a.tsFim;});
+  var oa=aoVivo?S.opAtiva[lk]:null, ini=null, fimRef=null;
+  aps.forEach(function(a){if(a.tsFim>j.ini&&a.tsIni<j.fim){if(ini===null||a.tsIni<ini) ini=a.tsIni;if(fimRef===null||a.tsFim>fimRef) fimRef=a.tsFim;}});
   if(oa&&oa.inicioTs&&(ini===null||oa.inicioTs<ini)) ini=oa.inicioTs;
   if(oa) fimRef=agoraTs;
-  var h='<div class="legend"><span style="font-weight:700">t/h por hora:</span><span><i style="background:#d9f0dd"></i>≥ meta</span><span><i style="background:#fff0c2"></i>80–99%</span><span><i style="background:#fbd5d0"></i>&lt; 80%</span><span><i style="background:#fff;border:1px dashed #c0392b"></i>sem apontamento</span><span><i style="background:#e4e7eb"></i>parada</span></div><div class="strip">';
+  var h=(visAtivo()?'<div class="muted" style="font-weight:700;color:#1d4f91;margin-top:4px">📅 '+(VIS.turno==="D"?"Dia inteiro":"Turno "+(VIS.turno==="0"?turnoAtual():VIS.turno))+' · dia operacional '+fData(VIS.data||hoje())+'</div>':'')+'<div class="legend"><span style="font-weight:700">t/h por hora:</span><span><i style="background:#d9f0dd"></i>≥ meta</span><span><i style="background:#fff0c2"></i>80–99%</span><span><i style="background:#fbd5d0"></i>&lt; 80%</span><span><i style="background:#fff;border:1px dashed #c0392b"></i>sem apontamento</span><span><i style="background:#e4e7eb"></i>parada</span></div><div class="strip">';
   for(var ts=j.ini;ts<j.fim;ts+=3600000){
     var fim=ts+3600000, lbl=hhmmDeTs(ts).slice(0,2)+"h";
     var cls="fu", val="";
@@ -1098,7 +1149,7 @@ function faixaTurno(lk){
       if(!meta) cls="ok"; else {var r=kgh/meta;cls=r>=1?"ok":r>=0.8?"lo":"bd";}
       if(minT<55&&fim<=agoraTs) val+="·"; // hora parcialmente coberta
     }
-    else if(paradasSobrepoe(lk,ts,fim).length){cls="pa";val="⏸";}
+    else if(paradasSobrepoe(lk,ts,fim,parL).length){cls="pa";val="⏸";}
     else if(fim<=agoraTs&&ini!==null&&fim>ini&&ts<fimRef){cls="mi";val="—";}
     else {cls="fu";}
     var now=(agoraTs>=ts&&agoraTs<fim)?" nw":"";
@@ -1107,8 +1158,10 @@ function faixaTurno(lk){
   return h+'</div>';
 }
 function tabelaAptsTurno(lk){
-  var dOp=hoje(), t=turnoAtual(), j=janelaTurno(dOp,t);
-  var lista=aptsLinha(lk).filter(function(a){return a.tsFim>j.ini-3600000;}).slice(-12);
+  var j=visJanela();
+  var lista=visAtivo()
+    ?visAptsLinha(lk).filter(function(a){return a.tsFim>j.ini&&a.tsIni<j.fim||(a.marco&&a.tsIni>=j.ini&&a.tsIni<j.fim);})
+    :aptsLinha(lk).filter(function(a){return a.tsFim>j.ini-3600000;}).slice(-12);
   if(!lista.length) return '<div class="muted" style="margin-top:4px">Sem apontamentos neste turno.</div>';
   var u=ultimoAptLinha(lk);
   var h='<div class="tw" style="margin-top:6px"><table class="t"><thead><tr><th>Intervalo</th><th>OP</th>'+(USAR_SILOS?'<th>Silo</th>':'')+'<th class="n">Acumulado</th><th class="n">kg</th><th class="n">kg/h</th><th class="n">% meta</th><th></th></tr></thead><tbody>';
@@ -1178,7 +1231,7 @@ function abrirApt(lk){
   setTimeout(function(){G("apt-acum").focus();},150);
 }
 function editarApt(fbKey){
-  var a=S.apts.find(function(x){return x.fbKey===fbKey;});
+  var a=S.apts.find(function(x){return x.fbKey===fbKey;})||(VIS.apts||[]).find(function(x){return x.fbKey===fbKey;});
   if(!a){toast("Apontamento não encontrado (recarregue)","err");return;}
   abrirEdicaoApt(a);
 }
@@ -1329,7 +1382,7 @@ function salvarApt(){
   }).catch(function(e){toast("Erro: "+e.message,"err");}).then(function(){G("apt-btn").disabled=false;});
 }
 function excluirApt(fbKey){
-  var a=S.apts.find(function(x){return x.fbKey===fbKey;})||(ADM_APTS||[]).find(function(x){return x.fbKey===fbKey;});
+  var a=S.apts.find(function(x){return x.fbKey===fbKey;})||(ADM_APTS||[]).find(function(x){return x.fbKey===fbKey;})||(VIS.apts||[]).find(function(x){return x.fbKey===fbKey;});
   if(!a) return;
   if(!isAdmin()){var u=ultimoAptLinha(a.lk);if(!(u&&u.fbKey===a.fbKey)&&!a.marco){toast("Só o último apontamento da linha pode ser excluído pelo operador","err");return;}}
   if(!confirm("Excluir o apontamento "+(a.marco?"(marco inicial)":a.horaIni+"–"+a.horaFim)+" da OP "+a.opNum+"?\nO kg dos apontamentos vizinhos será recalculado.")) return;
