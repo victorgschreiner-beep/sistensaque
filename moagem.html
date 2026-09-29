@@ -547,6 +547,14 @@ function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){retur
 function fN(n,d){return (Number(n)||0).toLocaleString("pt-BR",{minimumFractionDigits:d||0,maximumFractionDigits:d||0});}
 function fT(kg){return fN((Number(kg)||0)/1000,1)+" t";}
 function agora(){return new Date().toISOString();}
+// Firebase recusa a gravação inteira se algum campo vier undefined (ex.: silo com
+// USAR_SILOS=false). Toda gravação da moagem passa por aqui: undefined vira null.
+function fbLimpo(v){
+  if(v===undefined) return null;
+  if(v===null||typeof v!=="object") return v;
+  if(Array.isArray(v)) return v.map(fbLimpo);
+  var o={};Object.keys(v).forEach(function(k){o[k]=fbLimpo(v[k]);});return o;
+}
 function uid(){return Math.random().toString(36).slice(2,10);}
 function toast(msg,tipo){var t=G("toast");t.textContent=msg;t.style.background=tipo==="err"?"#c0392b":tipo==="warn"?"#b8860b":"#024f2b";t.style.display="block";clearTimeout(t._h);t._h=setTimeout(function(){t.style.display="none";},4800);}
 function fM(id){G(id).classList.remove("on");}
@@ -911,7 +919,7 @@ function recalcularOpMoagem(fk){
       upd["moagem_op_totais/"+k]={kg:porElo[k].kg,nApts:porElo[k].n,kgCadeia:totCad,
         acumulado:prev,ultimoTsFim:ultimo?ultimo.tsFim:null,atualizadoEm:ts};
     });
-    return DB.ref().update(upd);
+    return DB.ref().update(fbLimpo(upd));
   }).catch(function(e){console.warn("recalcularOpMoagem",e);toast("Falha ao recalcular totais da OP: "+e.message,"err");});
 }
 
@@ -1368,12 +1376,12 @@ function salvarApt(){
     if(MA.modo==="editar"){
       var o=MA.orig, upd={horaIni:tp.hi,horaFim:tp.hf,tsIni:tp.tsIni,tsFim:tp.tsFim,minutos:tp.min,data:tp.data,turno:tp.turno,
         acumulado:acum,silo:silo,obs:obs,reinicio:reinicio||null,editadoPor:SES.login,editadoEm:agora()};
-      p=DB.ref("moagem_apts/"+MA.fbKey).update(upd).then(function(){
+      p=DB.ref("moagem_apts/"+MA.fbKey).update(fbLimpo(upd)).then(function(){
         log("apt_editar",o.opNum+" "+linhaK(o.lk).cur+" "+o.horaIni+"–"+o.horaFim+" acum "+o.acumulado+" → "+tp.hi+"–"+tp.hf+" acum "+acum);
       });
     } else {
       var a=montarApt(tp,acum,silo,{obs:obs,reinicio:reinicio||null,admin:MA.admin?true:null});
-      p=DB.ref("moagem_apts").push(a).then(function(){
+      p=DB.ref("moagem_apts").push(fbLimpo(a)).then(function(){
         log("apt_novo",a.opNum+" "+linhaK(a.lk).cur+" "+a.horaIni+"–"+a.horaFim+" acum "+acum+(MA.admin?" (admin)":""));
       });
     }
@@ -1458,8 +1466,8 @@ function confirmarFechamento(){
   G("fech-btn").disabled=true;
   var p=Promise.resolve();
   if(!tp.semIntervalo){
-    var a=montarApt(tp,acum,oa.silo,{fechamento:MF.acao});
-    p=DB.ref("moagem_apts").push(a);
+    var a=montarApt(tp,acum,oa.silo||null,{fechamento:MF.acao});
+    p=DB.ref("moagem_apts").push(fbLimpo(a));
   }
   var acao=MF.acao, siloNovo=MF.siloNovo, ts=agora();
   p.then(function(){
@@ -1473,9 +1481,9 @@ function confirmarFechamento(){
       upd["moagem_op_ativa/"+lk]=null;
       if(acao==="concluir") upd["moagem_op_concluida/"+oa.opFbKey]={lk:lk,linha:linhaK(lk).nome,opNum:oa.opNum,acumuladoFinal:acum,operador:SES.login,ts:ts,tsMs:tp.tsFim};
       var hk2=DB.ref("moagem_op_hist").push().key;
-      upd["moagem_op_hist/"+hk2]={evento:acao,lk:lk,opFbKey:oa.opFbKey,opNum:oa.opNum,silo:oa.silo,acumulado:acum,operador:SES.login,ts:ts,tsMs:tp.tsFim};
+      upd["moagem_op_hist/"+hk2]={evento:acao,lk:lk,opFbKey:oa.opFbKey,opNum:oa.opNum,silo:oa.silo||null,acumulado:acum,operador:SES.login,ts:ts,tsMs:tp.tsFim};
     }
-    return DB.ref().update(upd);
+    return DB.ref().update(fbLimpo(upd));
   }).then(function(){
     log(acao==="silo"?"troca_silo":"op_"+acao,oa.opNum+" "+linhaK(lk).cur+" acum "+acum+(acao==="silo"?" "+oa.silo+"→"+siloNovo:""));
     fM("m-fech");
@@ -1705,7 +1713,7 @@ function confirmarSelOp(){
       acumulado:acumIni,marco:criarMarco||null,metaH:criarMedia?Math.round(metaMoagem(op.cod,l.nome)):0,rateioSnap:rateioSnap(lk),
       kg:0,kgH:0,kgPorMoinho:{},inicioOp:criarMedia||null,operador:SES.login,ts:ts};
   }
-  DB.ref().update(upd).then(function(){
+  DB.ref().update(fbLimpo(upd)).then(function(){
     log("op_inicio",op.id+" "+linhaK(lk).cur+(silo?" → "+silo:"")+(idx>0?" (fora da ordem: "+just+")":"")+(sc.conf?" [silo confirmado vazio]":""));
     fM("m-selop");toast("OP "+op.id+" iniciada na moagem","ok");
     if(criarMarco||criarMedia) return recalcularOpMoagem(op.fbKey).then(function(){calcPeneiras();});
@@ -1820,7 +1828,7 @@ function salvarParada(){
         malhaInstalada:(hf&&mot.zeraPeneira&&num(G("par-malha").value))||null,obs:G("par-obs").value.trim()||null,
         grupoLanc:ms.length>1?grp:null,operador:SES.login,operadorFechamento:hf?SES.login:null,ts:ts};
     });
-    return DB.ref().update(upd).then(function(){
+    return DB.ref().update(fbLimpo(upd)).then(function(){
       ld(false);fM("m-par");
       toast("Parada registrada"+(mot.siloCheio?" — classificada como "+c.grupo:""),"ok");
       log("parada_nova",ms.join("+")+" · "+mot.desc+" "+hi+(hf?"–"+hf:" (aberta)")+(c.info?" · "+c.info:""));
@@ -1871,7 +1879,7 @@ function salvarParadaFim(){
       else {upd.grupo=mot.grupo;upd.grupoInfo=null;}
     }
   }
-  pr.then(function(){return DB.ref("moagem_paradas/"+p.fbKey).update(upd);}).then(function(){
+  pr.then(function(){return DB.ref("moagem_paradas/"+p.fbKey).update(fbLimpo(upd));}).then(function(){
     fM("m-parfim");toast(MPF.admin?"Parada atualizada":"Parada fechada","ok");
     log(MPF.admin?"parada_editar":"parada_fechar",nomeMoinho(p.moinho)+" · "+(upd.descricao||p.descricao)+" "+hi+"–"+(hf||"aberta"));
     calcPeneiras();
