@@ -69,12 +69,13 @@ body{font-family:"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--tx
 // Lê: moagem_config, moagem_op_ativa, moagem_op_totais, moagem_apts, moagem_paradas,
 //     extrusao_op_ativa, extrusao_apts, extrusao_paradas, ops, config/metas.
 // Contas (todas em kg):
-//  • Média kg/h = kg apontados nas últimas 2h com apontamento ÷ minutos apontados × 60
-//  • Estoque liberado = Σ (moído da OP − consumo da extrusão na OP) para a OP da
-//    extrusora e, se diferente, a OP que a moagem já está moendo
+//  • Média kg/h = kg ÷ minutos × 60 numa MESMA janela de 2h para as duas etapas,
+//    terminando no lançamento mais antigo entre moagem e extrusora
+//  • Estoque liberado = Σ (moído da OP − consumo da extrusão na OP) para TODAS as OPs
+//    da linha no "funil": a OP da extrusora + toda OP moída nos últimos DIAS_FUNIL dias
+//    que a extrusão ainda NÃO concluiu (inclui OPs intermediárias já terminadas na moagem)
 //    consumo = (produzido + reprocesso) × fatorConsumo (padrão 1,00)
-//  • À frente (h) = estoque ÷ kg/h da extrusora
-//  • Acaba em = estoque ÷ (kg/h extrusora × fator − kg/h moagem), quando a moagem é mais lenta
+//  • Horas de matéria = (falta na OP da extrusora + moído das próximas OPs) ÷ kg/h extrusora
 // ════════════════════════════════════════════════════════════════════
 var firebaseConfig={apiKey:"AIzaSyB52cXfvtmY2xXu9vMkMPhCWU-rp6NXhxc",authDomain:"sistema-ensaque.firebaseapp.com",databaseURL:"https://sistema-ensaque-default-rtdb.firebaseio.com",projectId:"sistema-ensaque"};
 var DB=null;
@@ -84,6 +85,7 @@ var FIM_TURNO2=17, INICIO_T1=21, FIM_T1=6, TZ_OFFSET="-03:00", MIN_MS=60000, DIA
 var JANELA_MIN=120;          // janela da média de kg/h
 var DEFASAGEM_ALERTA_MIN=75; // apontamento mais velho que isso = dado desatualizado
 var ACABA_VERMELHO_H=1, ACABA_AMARELO_H=2;
+var DIAS_FUNIL=3;            // OPs moídas nos últimos N dias entram no estoque se a extrusão não concluiu
 var LINHAS=[
   {k:"L1",nome:"Linha 1 (E-240)",cur:"Linha 1",maq:"E-240",meta:"metaL1"},
   {k:"L2",nome:"Linha 2 (E-200)",cur:"Linha 2",maq:"E-200",meta:"metaL2"},
@@ -92,7 +94,7 @@ var LINHAS=[
 ];
 var MOINHOS_PADRAO={M1000:{nome:"MM 1000",linhas:{L1:true,L2:true}},M1200:{nome:"MM 1200",linhas:{L1:true,L2:true}},M05:{nome:"MM 05",linhas:{L4:true}},M06:{nome:"MM 06",linhas:{L4:true}},M07:{nome:"MM 07",linhas:{L5:true}}};
 
-var D={cfg:{moinhos:MOINHOS_PADRAO,params:{fatorMeta:1.15,fatorConsumo:1}},opAt:{},opTot:{},mParAb:[],mApts:[],eApts:[],eAtiva:{},eParAb:[],ops:{},metas:{},cons:{},dia:null};
+var D={opsLinha:{},extConc:{},cfg:{moinhos:MOINHOS_PADRAO,params:{fatorMeta:1.15,fatorConsumo:1}},opAt:{},opTot:{},mParAb:[],mApts:[],eApts:[],eAtiva:{},eParAb:[],ops:{},metas:{},cons:{},dia:null};
 
 // ── utilitários ────────────────────────────────────────────────
 function G(id){return document.getElementById(id);}
@@ -132,6 +134,12 @@ function buscarOp(fk,forcar){
   D.ops[fk]=D.ops[fk]||{_lido:Date.now()};D.ops[fk]._lido=Date.now();
   DB.ref("ops/"+fk).once("value").then(function(s){var v=s.val()||{};v._lido=Date.now();v.fbKey=fk;D.ops[fk]=v;agendar();});
 }
+// OP concluída na extrusão? (relido a cada 2 min)
+function buscarExtConc(fk){
+  var c=D.extConc[fk];if(c&&Date.now()-c.ts<2*MIN_MS) return;
+  D.extConc[fk]={v:c?c.v:null,ts:Date.now()};
+  DB.ref("extrusao_op_concluida/"+fk).once("value").then(function(s){D.extConc[fk]={v:s.exists(),ts:Date.now()};agendar();});
+}
 // Consumo da extrusão na OP = Σ extrusao_apts.real + reprocesso da OP (fonte confiável, recalculada)
 function buscarConsumo(fk){
   if(!fk) return;
@@ -145,10 +153,13 @@ function buscarConsumo(fk){
 }
 function anexarDia(){
   _ls.forEach(function(f){try{f();}catch(e){}});_ls=[];
-  var h=hoje(), ini=addDias(h,-1);
+  var h=hoje(), ini=addDias(h,-1), iniFunil=addDias(h,-DIAS_FUNIL);
   function on(q,cb){var fn=q.on("value",cb,function(e){erro("Sem acesso ao Firebase: "+e.message);});_ls.push(function(){q.off("value",fn);});}
-  on(DB.ref("moagem_apts").orderByChild("data").startAt(ini).endAt(h),function(s){
-    D.mApts=[];if(s.exists()) s.forEach(function(c){var a=c.val();if(a&&!a.marco&&a.minutos>0) D.mApts.push(a);});agendar();});
+  on(DB.ref("moagem_apts").orderByChild("data").startAt(iniFunil).endAt(h),function(s){
+    D.mApts=[];D.opsLinha={};
+    if(s.exists()) s.forEach(function(c){var a=c.val();if(!a) return;
+      if(a.lk&&a.opFbKey){(D.opsLinha[a.lk]=D.opsLinha[a.lk]||{})[a.opFbKey]=Math.max((D.opsLinha[a.lk]||{})[a.opFbKey]||0,a.tsFim||0);}
+      if(!a.marco&&a.minutos>0&&a.data>=ini) D.mApts.push(a);});agendar();});
   on(DB.ref("extrusao_apts").orderByChild("data").startAt(ini).endAt(h),function(s){
     D.eApts=[];if(s.exists()) s.forEach(function(c){var a=c.val();if(!a||!a.horaIni||!a.horaFim||!a.data) return;
       var i=tsDeDataOp(a.data,a.horaIni), m=calcMin(a.horaIni,a.horaFim);if(m<=0) return;
@@ -180,107 +191,108 @@ function iniciar(){
 function relogio(){G("clock").textContent=hhmm(Date.now());G("t-dia").textContent="Dia op. "+hoje().split("-").reverse().slice(0,2).join("/");G("t-turno").textContent="Turno "+turnoAtual();}
 
 // ── contas ─────────────────────────────────────────────────────
-// Média kg/h na janela das últimas 2h que têm apontamento
-function media(lista){
-  if(!lista.length) return {kgh:null,ate:null};
-  var fim=Math.max.apply(null,lista.map(function(a){return a.fim;})), ini=fim-JANELA_MIN*MIN_MS, kg=0, min=0;
+// Média kg/h numa janela FIXA [ini,fim] — a mesma para moagem e extrusora
+function mediaJanela(lista,ini,fim){
+  var kg=0,min=0;
   lista.forEach(function(a){var ov=(Math.min(a.fim,fim)-Math.max(a.ini,ini))/MIN_MS;if(ov>0&&a.min>0){kg+=a.kg*ov/a.min;min+=ov;}});
-  return {kgh:min?kg/min*60:null,ate:fim};
+  return min?kg/min*60:null;
 }
-// Aderência à meta no turno: Σkg ÷ Σ(meta kg/h × horas apontadas)
-function aderencia(lista,j){
-  var kg=0,meta=0;
-  lista.forEach(function(a){var ov=(Math.min(a.fim,j.fim)-Math.max(a.ini,j.ini))/MIN_MS;if(ov>0&&a.min>0){kg+=a.kg*ov/a.min;meta+=a.metaH*ov/60;}});
-  return {kg:kg,meta:meta,pct:meta?kg/meta*100:null};
-}
+function ultimoFim(lista){return lista.length?Math.max.apply(null,lista.map(function(a){return a.fim;})):null;}
 function calcLinha(l){
-  var lk=l.k, agora=Date.now(), P=D.cfg.params||{}, fatC=Number(P.fatorConsumo)||1, fatM=Number(P.fatorMeta)||1.15;
-  var mo=moinhosDe(lk);
+  var lk=l.k, agora=Date.now(), P=D.cfg.params||{}, fatC=Number(P.fatorConsumo)||1;
   var mOa=D.opAt[lk]||null, mFk=mOa&&mOa.opFbKey, eFk=D.eAtiva[lk]||null;
   if(eFk) buscarOp(eFk); if(mFk) buscarOp(mFk);
   var eOp=eFk?D.ops[eFk]:null, mOp=mFk?D.ops[mFk]:null;
-  var mA=D.mApts.filter(function(a){return a.lk===lk;}).map(function(a){return {ini:a.tsIni,fim:a.tsFim,min:a.minutos,kg:Number(a.kg)||0,metaH:Number(a.metaH)||0,opFbKey:a.opFbKey};});
+  var mA=D.mApts.filter(function(a){return a.lk===lk;}).map(function(a){return {ini:a.tsIni,fim:a.tsFim,min:a.minutos,kg:Number(a.kg)||0};});
   var eA=D.eApts.filter(function(a){return a.linha===l.nome;});
-  var rm=media(mA), re=media(eA);
-  var cod=(eOp&&eOp.cod)||(mOa&&mOa.cod)||"";
-  var mE=metaExt(cod,lk), mM=mE*fatM;
-  var j=janelaTurno(hoje(),turnoAtual());
-  var adM=aderencia(mA,j), adE=aderencia(eA,j);
-  var extParada=D.eParAb.find(function(p){return p.linha===l.nome;})||null;
-  var moParados=mo.filter(function(m){return D.mParAb.some(function(p){return p.moinho===m;});});
 
-  // Estoque de matéria liberada (moído − consumido)
+  // 1. Lançamentos: último horário apontado de cada etapa
+  var ultM=ultimoFim(mA), ultE=ultimoFim(eA);
+  var atrM=ultM?Math.round((agora-ultM)/MIN_MS):null, atrE=ultE?Math.round((agora-ultE)/MIN_MS):null;
+  var desal=(ultM&&ultE)?Math.round(Math.abs(ultM-ultE)/MIN_MS):null;
+
+  // 2. Médias na MESMA janela: 2h terminando no lançamento mais antigo dos dois
+  var fimJ=(ultM&&ultE)?Math.min(ultM,ultE):(ultM||ultE), iniJ=fimJ?fimJ-JANELA_MIN*MIN_MS:null;
+  var kM=fimJ?mediaJanela(mA,iniJ,fimJ):null, kE=fimJ?mediaJanela(eA,iniJ,fimJ):null;
+
+  // 3. Matéria para a extrusora = o que falta da OP da extrusora (moído − consumido)
+  //    + o que já foi moído das próximas OPs (todas não concluídas na extrusão)
   var fks=[];if(eFk) fks.push(eFk);if(mFk&&fks.indexOf(mFk)<0) fks.push(mFk);
-  var est=0, semMoagem=false, pend=false;
+  Object.keys(D.opsLinha[lk]||{}).forEach(function(fk){if(fks.indexOf(fk)<0) fks.push(fk);});
+  var faltaAtual=0, proximas=0, nProx=0, pend=false, semMoagem=false;
   fks.forEach(function(fk){
-    buscarConsumo(fk);
-    var tot=D.opTot[fk], moido=tot?Number(tot.kgCadeia)||0:0;
-    var c=D.cons[fk], op=D.ops[fk]||{};
+    if(fk!==eFk&&fk!==mFk){
+      buscarExtConc(fk);
+      var ec=D.extConc[fk];
+      if(!ec||ec.v===null){pend=true;return;}
+      if(ec.v) return; // extrusão já concluiu essa OP
+    }
+    buscarConsumo(fk);buscarOp(fk);
+    var tot=D.opTot[fk], moido=tot?Number(tot.kgCadeia)||0:0, c=D.cons[fk], op=D.ops[fk]||{};
     if(!c||c.kg==null){pend=true;return;}
     var consumo=(c.kg+(Number(op.reprocessoAcumulado)||0))*fatC;
-    if(fk===eFk&&!tot&&consumo>0) semMoagem=true;
-    est+=moido-consumo;
+    if(fk===eFk){ if(!tot&&consumo>0) semMoagem=true; faltaAtual=moido-consumo; }
+    else if(moido>0){ proximas+=moido-consumo; nProx++; }
   });
-  var r={l:l,mOa:mOa,mOp:mOp,eFk:eFk,eOp:eOp,rm:rm,re:re,mM:mM,mE:mE,adM:adM,adE:adE,extParada:extParada,moParados:moParados,mo:mo,est:est,pend:pend,semMoagem:semMoagem};
-  // Situação
-  var kE=re.kgh, kM=rm.kgh;
-  r.frenteH=(kE>0)?est/(kE*fatC):null;
-  r.delta=(kM!=null&&kE!=null)?kM-kE*fatC:null;
-  r.acabaH=(r.delta!=null&&r.delta<0&&est>0)?est/(-r.delta):null;
-  r.velhoM=rm.ate&&(agora-rm.ate)>DEFASAGEM_ALERTA_MIN*MIN_MS;
-  r.velhoE=re.ate&&(agora-re.ate)>DEFASAGEM_ALERTA_MIN*MIN_MS;
+  var total=faltaAtual+proximas;
+  var kEref=kE||null;
+  var horas=(kEref&&kEref>0&&total>0)?total/(kEref*fatC):null;
+  var extParada=D.eParAb.find(function(p){return p.linha===l.nome;})||null;
+
+  var r={l:l,mOa:mOa,mOp:mOp,eFk:eFk,eOp:eOp,kM:kM,kE:kE,iniJ:iniJ,fimJ:fimJ,ultM:ultM,ultE:ultE,atrM:atrM,atrE:atrE,desal:desal,
+    faltaAtual:faltaAtual,proximas:proximas,nProx:nProx,total:total,horas:horas,pend:pend,semMoagem:semMoagem,extParada:extParada};
   if(!eFk&&!mFk){r.st="mu";r.stTxt="Sem OP";}
   else if(pend){r.st="mu";r.stTxt="Calculando…";}
   else if(semMoagem){r.st="mu";r.stTxt="OP da extrusora sem moagem registrada";}
-  else if(est<0){r.st="mu";r.stTxt="Estoque negativo — conferir apontamentos";}
-  else if(extParada){r.st="in";r.stTxt="Extrusora parada · estoque "+fN(est/1000,1)+" t";}
-  else if(!eFk){r.st="in";r.stTxt="Moagem adiantando · extrusora sem OP";}
-  else if(r.acabaH!=null&&r.acabaH<ACABA_VERMELHO_H){r.st="bd";r.stTxt="RISCO: matéria acaba em ~"+durTxt(r.acabaH);}
-  else if(r.acabaH!=null&&r.acabaH<ACABA_AMARELO_H){r.st="wa";r.stTxt="Atenção: matéria acaba em ~"+durTxt(r.acabaH);}
-  else if(r.frenteH!=null&&r.frenteH<0.5){r.st="wa";r.stTxt="Moagem no limite · "+durTxt(r.frenteH)+" à frente";}
-  else if(r.frenteH!=null){r.st="ok";r.stTxt="Moagem "+durTxt(r.frenteH)+" à frente";}
-  else {r.st="ok";r.stTxt="Estoque "+fN(est/1000,1)+" t";}
+  else if(total<0){r.st="mu";r.stTxt="Matéria negativa — conferir apontamentos";}
+  else if(horas==null){r.st="in";r.stTxt="Matéria: "+fN(total/1000,1)+" t";}
+  else if(extParada){r.st="in";r.stTxt="Extrusora parada · "+durTxt(horas)+" de matéria";}
+  else {r.st=horas<ACABA_VERMELHO_H?"bd":horas<ACABA_AMARELO_H?"wa":"ok";r.stTxt="⏱ "+durTxt(horas)+" de matéria";}
   return r;
 }
 
 // ── tela ───────────────────────────────────────────────────────
-function cor(p){return p==null?"mu":p>=100?"ok":p>=80?"wa":"bd";}
-function boxRitmo(tit,kgh,meta,ate,velho){
-  var p=(kgh!=null&&meta)?kgh/meta*100:null, c=cor(p), w=p==null?0:Math.min(p,130)/130*100;
-  return '<div class="box"><div class="l">'+tit+' · média 2h</div><div class="v c-'+c+'">'+(kgh==null?"—":fN(kgh))+'<small>kg/h</small></div>'+
-    '<div class="bar"><i class="bg-'+c+'" style="width:'+w+'%"></i><b style="left:'+(100/130*100)+'%"></b></div>'+
-    '<div class="s">Meta '+(meta?fN(meta):"—")+' kg/h'+(p!=null?' · <b class="c-'+c+'">'+fN(p,0)+'%</b>':'')+(ate?' · até '+hhmm(ate):'')+(velho?' <span class="c-wa">⚠ desatualizado</span>':'')+'</div></div>';
+var ATRASO_LANC_MIN=75, DESALINHO_MIN=30;
+function lanc(ult,atr){
+  if(!ult) return '<span class="c-mu">sem lançamento hoje</span>';
+  var c=atr>ATRASO_LANC_MIN?"bd":"ok";
+  return 'último lançamento <b class="c-'+c+'">'+hhmm(ult)+'</b>'+(atr>ATRASO_LANC_MIN?' <span class="chip p">⚠ '+durTxt(atr/60)+' sem lançar</span>':'');
 }
-function boxMeta(tit,ad){
-  var c=cor(ad.pct), w=ad.pct==null?0:Math.min(ad.pct,130)/130*100;
-  return '<div class="box"><div class="l">Meta do turno · '+tit+'</div><div class="v c-'+c+'" style="font-size:3.2vh">'+(ad.pct==null?"—":fN(ad.pct,0)+"%")+'<small>'+fN(ad.kg/1000,1)+' de '+fN(ad.meta/1000,1)+' t</small></div>'+
-    '<div class="bar"><i class="bg-'+c+'" style="width:'+w+'%"></i><b style="left:'+(100/130*100)+'%"></b></div></div>';
+function etapa(tit,lote,opNum,desc,ult,atr,extra){
+  return '<div class="box"><div class="l">'+tit+'</div>'+
+    '<div class="v" style="font-size:2.7vh">'+(opNum?'Lote '+esc(lote)+' <small>OP '+esc(opNum)+'</small>':'<span class="c-mu">sem OP</span>')+'</div>'+
+    '<div class="s">'+(desc?esc(desc.slice(0,34))+' · ':'')+lanc(ult,atr)+(extra||'')+'</div></div>';
 }
 function cardLinha(r){
-  var chips=r.mo.map(function(m){var p=D.mParAb.find(function(x){return x.moinho===m;});var nm=(D.cfg.moinhos[m]&&D.cfg.moinhos[m].nome)||m;return p?'<span class="chip p">⏸ '+esc(nm)+' · '+esc(p.descricao)+'</span>':'<span class="chip r">'+esc(nm)+'</span>';}).join("");
-  var l=r.l, h='<div class="ln st-'+r.st+'"><div class="ln-h"><div><div class="nm">'+l.cur+'<small>'+l.maq+'</small></div><div class="mo">'+chips+'</div></div><div class="st '+r.st+'">'+esc(r.stTxt)+'</div></div>';
+  var l=r.l;
+  var h='<div class="ln st-'+r.st+'"><div class="ln-h"><div class="nm">'+l.cur+'<small>'+l.maq+'</small></div><div class="st '+r.st+'">'+esc(r.stTxt)+'</div></div>';
   if(!r.eFk&&!r.mOa) return h+'<div class="vazio">Nenhuma OP ativa na moagem nem na extrusora</div></div>';
-  h+='<div class="ln-b">';
-  // 1. Ritmos lado a lado
-  h+='<div class="cmp">'+boxRitmo("Moagem",r.rm.kgh,r.mM,r.rm.ate,r.velhoM)+boxRitmo("Extrusora",r.re.kgh,r.mE,r.re.ate,r.velhoE)+'</div>';
-  // 2. Estoque / à frente / tendência
-  var cE=r.est<0?"mu":r.st==="bd"?"bd":r.st==="wa"?"wa":"ok";
-  var dTxt=r.delta==null?"—":(r.delta>=0?"+":"−")+fN(Math.abs(r.delta));
-  var dSub=r.delta==null?"sem dados":r.delta>=0?"moagem mais rápida — estoque subindo":"extrusora mais rápida — estoque caindo";
-  h+='<div class="est">';
-  h+='<div class="box"><div class="l">Matéria liberada (moído − consumido)</div><div class="v c-'+cE+'">'+(r.pend?"…":fN(r.est/1000,1))+'<small>t</small></div><div class="s">'+(r.frenteH!=null&&r.est>=0?'≈ <b>'+durTxt(r.frenteH)+'</b> de extrusora':'')+'</div></div>';
-  h+='<div class="box"><div class="l">Tendência</div><div class="v c-'+(r.delta==null?"mu":r.delta>=0?"ok":"wa")+'" style="font-size:3.2vh">'+dTxt+'<small>kg/h</small></div><div class="s">'+dSub+'</div></div>';
-  h+='<div class="box"><div class="l">Acaba matéria em</div><div class="v c-'+(r.acabaH==null?"ok":r.acabaH<ACABA_VERMELHO_H?"bd":r.acabaH<ACABA_AMARELO_H?"wa":"ok")+'" style="font-size:3.2vh">'+(r.acabaH==null?(r.delta!=null&&r.delta>=0?"não acaba":"—"):durTxt(r.acabaH))+'</div><div class="s">no ritmo atual</div></div>';
+  h+='<div class="ln-b" style="grid-template-rows:auto auto auto 1fr">';
+  // 1. Médias (mesma janela)
+  var maior=(r.kM!=null&&r.kE!=null)?(r.kM>=r.kE?"m":"e"):null;
+  h+='<div class="cmp">';
+  h+='<div class="box"><div class="l">Média moagem</div><div class="v '+(maior==="e"?"c-wa":"c-ok")+'">'+(r.kM==null?"—":fN(r.kM))+'<small>kg/h</small></div></div>';
+  h+='<div class="box"><div class="l">Média extrusora</div><div class="v">'+(r.kE==null?"—":fN(r.kE))+'<small>kg/h</small></div></div>';
   h+='</div>';
-  // 3. Metas do turno
-  h+='<div class="metas">'+boxMeta("moagem",r.adM)+boxMeta("extrusora",r.adE)+'</div>';
-  // 4. Rodapé: OPs e moinhos
-  var eTx=r.eOp&&r.eOp.id?('Lote <b>'+esc(loteDe(r.eOp))+'</b> · OP '+esc(r.eOp.id)+' · '+esc((r.eOp.desc||r.eOp.cod||"").slice(0,30))):(r.eFk?"carregando…":"<span class='c-mu'>sem OP</span>");
-  var mTx=r.mOa?('Lote <b>'+esc(loteDe(r.mOp||{lote:r.mOa.lote}))+'</b> · OP '+esc(r.mOa.opNum)):"<span class='c-mu'>sem OP</span>";
-  var adi=(r.mOa&&r.eFk&&r.mOa.opFbKey!==r.eFk)?' <span class="alt">→ moagem já na próxima OP</span>':'';
-  h+='<div class="rod"><div>Extrusora: '+eTx+(r.extParada?' <span class="chip p">PARADA · '+esc(r.extParada.descricao||"")+'</span>':'')+'</div>';
-  h+='<div>Moagem: '+mTx+adi+'</div>';
-  h+='</div>';
+  h+='<div class="s" style="font-size:1.5vh;color:var(--tx2);margin-top:-.4vh">'+(r.fimJ?'Mesma janela para as duas: '+hhmm(r.iniJ)+' – '+hhmm(r.fimJ):'Sem lançamentos para comparar')+
+    (maior?(maior==="m"?' · <b class="c-ok">moagem mais rápida</b>':' · <b class="c-wa">extrusora mais rápida</b>'):'')+'</div>';
+  // 2. Etapas: OP e último lançamento
+  var eLote=r.eOp?loteDe(r.eOp):"", mLote=loteDe(r.mOp||(r.mOa?{lote:r.mOa.lote}:null));
+  h+='<div class="cmp">'+
+    etapa("Moagem",mLote,r.mOa&&r.mOa.opNum,(r.mOp&&r.mOp.desc)||(r.mOa&&r.mOa.desc),r.ultM,r.atrM,(r.mOa&&r.eFk&&r.mOa.opFbKey!==r.eFk)?' · <span class="alt">próxima OP</span>':'')+
+    etapa("Extrusora",eLote,r.eOp&&r.eOp.id,r.eOp&&(r.eOp.desc||r.eOp.cod),r.ultE,r.atrE,r.extParada?' <span class="chip p">PARADA · '+esc(r.extParada.descricao||"")+'</span>':'')+
+    '</div>';
+  // 3. Matéria disponível em horas
+  var cH=r.horas==null?"mu":r.horas<ACABA_VERMELHO_H?"bd":r.horas<ACABA_AMARELO_H?"wa":"ok";
+  h+='<div class="box" style="display:flex;justify-content:space-between;align-items:center;gap:1vw">'+
+     '<div><div class="l">Matéria para a extrusora</div><div class="s" style="font-size:1.7vh;margin-top:.4vh">'+
+       'Falta na OP da extrusora <b>'+fN(r.faltaAtual/1000,1)+' t</b> + moído da'+(r.nProx>1?'s '+r.nProx+' próximas':' próxima')+' <b>'+fN(r.proximas/1000,1)+' t</b>'+
+       ' = <b>'+fN(r.total/1000,1)+' t</b>'+(r.kE?' ÷ '+fN(r.kE)+' kg/h':'')+'</div></div>'+
+     '<div class="v c-'+cH+'" style="font-size:4.4vh;white-space:nowrap">'+(r.horas==null?"—":durTxt(r.horas))+'</div></div>';
+  // 4. Alerta de lançamentos fora de sincronia
+  var al=[];
+  if(r.desal!=null&&r.desal>DESALINHO_MIN) al.push('Lançamentos fora do mesmo horário: moagem até <b>'+hhmm(r.ultM)+'</b>, extrusora até <b>'+hhmm(r.ultE)+'</b> ('+durTxt(r.desal/60)+' de diferença) — médias comparadas até '+hhmm(r.fimJ)+'; horas de matéria podem estar distorcidas até a outra etapa lançar');
+  h+='<div class="rod">'+(al.length?'<div class="alt">⚠ '+al.join('<br>⚠ ')+'</div>':'<div class="c-ok">✔ Moagem e extrusora lançadas no mesmo horário</div>')+'</div>';
   return h+'</div></div>';
 }
 function render(){
