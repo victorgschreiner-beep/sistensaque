@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Raguife — TV Moagem × Extrusão</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0d1a12;--card:#13261a;--card2:#183022;--brd:#24412e;--tx:#eef6ef;--tx2:#9fb8a5;--mut:#6f8a76;
+  --ok:#3ccf7a;--wa:#f2c14e;--bd:#ff6b5e;--in:#5aa9ff;--gr:#024f2b}
+html,body{height:100%}
+body{font-family:"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--tx);overflow:hidden}
+.top{height:7vh;min-height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 1.6vw;background:var(--gr);border-bottom:2px solid #0a3a20}
+.top h1{font-size:2.4vh;font-weight:800;letter-spacing:.3px}
+.top .r{display:flex;gap:1.4vw;align-items:center;font-size:2.1vh;font-weight:700}
+.top .pill{background:rgba(255,255,255,.14);padding:.4vh 1vw;border-radius:2vh}
+#clock{font-size:3vh;font-weight:800;font-variant-numeric:tabular-nums}
+.grid{height:93vh;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:1vh 0.8vw;padding:1vh 0.8vw}
+.ln{background:var(--card);border:2px solid var(--brd);border-radius:1.4vh;display:flex;flex-direction:column;overflow:hidden}
+.ln.st-bd{border-color:var(--bd);box-shadow:0 0 0 2px rgba(255,107,94,.25) inset}
+.ln.st-wa{border-color:var(--wa)}
+.ln-h{display:flex;justify-content:space-between;align-items:center;padding:.8vh 1vw;background:var(--card2);border-bottom:1px solid var(--brd)}
+.ln-h .nm{font-size:2.6vh;font-weight:800}
+.ln-h .nm small{font-size:1.6vh;color:var(--tx2);font-weight:600;margin-left:.5vw}
+.st{font-size:2vh;font-weight:800;padding:.5vh 1vw;border-radius:1vh;white-space:nowrap}
+.st.ok{background:rgba(60,207,122,.16);color:var(--ok)}
+.st.wa{background:rgba(242,193,78,.16);color:var(--wa)}
+.st.bd{background:rgba(255,107,94,.18);color:var(--bd);animation:pisca 1.2s infinite}
+.st.in{background:rgba(90,169,255,.16);color:var(--in)}
+.st.mu{background:rgba(255,255,255,.08);color:var(--tx2)}
+@keyframes pisca{50%{opacity:.55}}
+.ln-b{flex:1;display:grid;grid-template-rows:auto auto auto 1fr;gap:.8vh;padding:.8vh 1vw;min-height:0}
+.ln-h .mo{display:flex;gap:.3vw;margin-top:.3vh;font-size:1.35vh}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:.8vw}
+.box{background:rgba(255,255,255,.035);border:1px solid var(--brd);border-radius:1vh;padding:.7vh .8vw}
+.box .l{font-size:1.45vh;color:var(--tx2);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.box .v{font-size:3.8vh;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums}
+.box .v small{font-size:1.8vh;color:var(--tx2);font-weight:700;margin-left:.3vw}
+.box .s{font-size:1.5vh;color:var(--tx2);font-weight:600;margin-top:.2vh}
+.bar{height:.9vh;background:rgba(255,255,255,.08);border-radius:.5vh;overflow:hidden;margin-top:.5vh;position:relative}
+.bar>i{position:absolute;left:0;top:0;bottom:0;border-radius:.5vh}
+.bar>b{position:absolute;top:-.3vh;bottom:-.3vh;width:2px;background:#fff;opacity:.8}
+.c-ok{color:var(--ok)}.c-wa{color:var(--wa)}.c-bd{color:var(--bd)}.c-in{color:var(--in)}.c-mu{color:var(--tx2)}
+.bg-ok{background:var(--ok)}.bg-wa{background:var(--wa)}.bg-bd{background:var(--bd)}.bg-in{background:var(--in)}.bg-mu{background:var(--mut)}
+.est{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:.8vw}
+.metas{display:grid;grid-template-columns:1fr 1fr;gap:.8vw}
+.rod{display:flex;flex-direction:column;justify-content:flex-end;gap:.4vh;font-size:1.55vh;color:var(--tx2);font-weight:600}
+.rod b{color:var(--tx)}
+.rod .alt{color:var(--wa);font-weight:800}
+.chip{display:inline-block;padding:.1vh .6vw;border-radius:1vh;font-weight:800;margin-right:.3vw}
+.chip.p{background:rgba(255,107,94,.18);color:var(--bd)}
+.chip.r{background:rgba(60,207,122,.14);color:var(--ok)}
+.vazio{flex:1;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:2.4vh;font-weight:700;text-align:center;padding:2vh}
+#erro{position:fixed;bottom:1vh;left:50%;transform:translateX(-50%);background:var(--bd);color:#fff;padding:.8vh 1.4vw;border-radius:1vh;font-weight:700;display:none}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>RAGUIFE · MOAGEM × EXTRUSÃO</h1>
+  <div class="r"><span class="pill" id="t-dia">—</span><span class="pill" id="t-turno">—</span><span id="clock">--:--</span></div>
+</div>
+<div class="grid" id="grid"></div>
+<div id="erro"></div>
+<script>
+// ════════════════════════════════════════════════════════════════════
+// TV MOAGEM × EXTRUSÃO — somente leitura (nenhuma escrita no Firebase).
+// Lê: moagem_config, moagem_op_ativa, moagem_op_totais, moagem_apts, moagem_paradas,
+//     extrusao_op_ativa, extrusao_apts, extrusao_paradas, ops, config/metas.
+// Contas (todas em kg):
+//  • Média kg/h = kg apontados nas últimas 2h com apontamento ÷ minutos apontados × 60
+//  • Estoque liberado = Σ (moído da OP − consumo da extrusão na OP) para a OP da
+//    extrusora e, se diferente, a OP que a moagem já está moendo
+//    consumo = (produzido + reprocesso) × fatorConsumo (padrão 1,00)
+//  • À frente (h) = estoque ÷ kg/h da extrusora
+//  • Acaba em = estoque ÷ (kg/h extrusora × fator − kg/h moagem), quando a moagem é mais lenta
+// ════════════════════════════════════════════════════════════════════
+var firebaseConfig={apiKey:"AIzaSyB52cXfvtmY2xXu9vMkMPhCWU-rp6NXhxc",authDomain:"sistema-ensaque.firebaseapp.com",databaseURL:"https://sistema-ensaque-default-rtdb.firebaseio.com",projectId:"sistema-ensaque"};
+var DB=null;
+try{firebase.initializeApp(firebaseConfig);DB=firebase.database();}catch(e){console.warn(e);}
+
+var FIM_TURNO2=17, INICIO_T1=21, FIM_T1=6, TZ_OFFSET="-03:00", MIN_MS=60000, DIA_MS=86400000;
+var JANELA_MIN=120;          // janela da média de kg/h
+var DEFASAGEM_ALERTA_MIN=75; // apontamento mais velho que isso = dado desatualizado
+var ACABA_VERMELHO_H=1, ACABA_AMARELO_H=2;
+var LINHAS=[
+  {k:"L1",nome:"Linha 1 (E-240)",cur:"Linha 1",maq:"E-240",meta:"metaL1"},
+  {k:"L2",nome:"Linha 2 (E-200)",cur:"Linha 2",maq:"E-200",meta:"metaL2"},
+  {k:"L4",nome:"Linha 4 (Andritz I)",cur:"Linha 4",maq:"Andritz I",meta:"metaL4"},
+  {k:"L5",nome:"Linha 5 (Andritz II)",cur:"Linha 5",maq:"Andritz II",meta:"metaL5"}
+];
+var MOINHOS_PADRAO={M1000:{nome:"MM 1000",linhas:{L1:true,L2:true}},M1200:{nome:"MM 1200",linhas:{L1:true,L2:true}},M05:{nome:"MM 05",linhas:{L4:true}},M06:{nome:"MM 06",linhas:{L4:true}},M07:{nome:"MM 07",linhas:{L5:true}}};
+
+var D={cfg:{moinhos:MOINHOS_PADRAO,params:{fatorMeta:1.15,fatorConsumo:1}},opAt:{},opTot:{},mParAb:[],mApts:[],eApts:[],eAtiva:{},eParAb:[],ops:{},metas:{},cons:{},dia:null};
+
+// ── utilitários ────────────────────────────────────────────────
+function G(id){return document.getElementById(id);}
+function pad(n){return String(n).padStart(2,"0");}
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+function fN(n,d){return (Number(n)||0).toLocaleString("pt-BR",{minimumFractionDigits:d||0,maximumFractionDigits:d||0});}
+function encId(s){return String(s).replace(/[^a-zA-Z0-9]/g,"_");}
+function dataBrasilia(d){return new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(d);}
+function horaBrasilia(d){return parseInt(new Intl.DateTimeFormat("en-US",{timeZone:"America/Sao_Paulo",hour:"2-digit",hour12:false}).format(d),10)%24;}
+function minutoBrasilia(d){return parseInt(new Intl.DateTimeFormat("en-US",{timeZone:"America/Sao_Paulo",minute:"2-digit"}).format(d),10);}
+function hhmm(ts){var d=new Date(ts);return pad(horaBrasilia(d))+":"+pad(minutoBrasilia(d));}
+function dataOpDeTs(ts){var d=new Date(ts);if(horaBrasilia(d)>=INICIO_T1) d=new Date(ts+DIA_MS);return dataBrasilia(d);}
+function hoje(){return dataOpDeTs(Date.now());}
+function addDias(s,n){var p=s.split("-");return new Date(Date.UTC(+p[0],+p[1]-1,+p[2]+n,12)).toISOString().slice(0,10);}
+function tsDe(dc,h){return Date.parse(dc+"T"+h+":00"+TZ_OFFSET);}
+function tsDeDataOp(dOp,h){return tsDe(parseInt(h,10)>=INICIO_T1?addDias(dOp,-1):dOp,h);}
+function calcMin(a,b){if(!a||!b) return 0;var x=a.split(":"),y=b.split(":");var m=(+y[0]*60+ +y[1])-(+x[0]*60+ +x[1]);if(m<0) m+=1440;return m;}
+function turnoDeHora(h){var n=parseInt(h,10);return (n>=INICIO_T1||n<FIM_T1)?1:(n<FIM_TURNO2?2:3);}
+function turnoAtual(){return turnoDeHora(hhmm(Date.now()));}
+function janelaTurno(dOp,t){
+  if(t===1) return {ini:tsDeDataOp(dOp,pad(INICIO_T1)+":00"),fim:tsDeDataOp(dOp,pad(FIM_T1)+":00")};
+  if(t===2) return {ini:tsDeDataOp(dOp,pad(FIM_T1)+":00"),fim:tsDeDataOp(dOp,pad(FIM_TURNO2)+":00")};
+  return {ini:tsDeDataOp(dOp,pad(FIM_TURNO2)+":00"),fim:tsDe(dOp,pad(INICIO_T1)+":00")};
+}
+function durTxt(h){if(h==null||!isFinite(h)) return "—";var m=Math.round(h*60);if(m<60) return m+" min";return Math.floor(m/60)+"h"+pad(m%60);}
+function metaExt(cod,lk){var l=LINHAS.find(function(x){return x.k===lk;});var m=D.metas[cod]||D.metas[String(cod||"").replace(/[.#$\[\]]/g,"_")];return (m&&l)?(Number(m[l.meta])||0):0;}
+function loteDe(op){var l=op&&op.lote;return (!l||/^LOT-\d{10,}$/.test(l))?"sem lote":l;}
+function moinhosDe(lk){var mo=D.cfg.moinhos||{};return Object.keys(mo).filter(function(m){return mo[m].ativo!==false&&mo[m].linhas&&mo[m].linhas[lk];});}
+function erro(msg){var e=G("erro");e.textContent=msg;e.style.display=msg?"block":"none";}
+
+// ── leitura ────────────────────────────────────────────────────
+var _ls=[], _t=null;
+function agendar(){clearTimeout(_t);_t=setTimeout(render,150);}
+function buscarOp(fk,forcar){
+  if(!fk) return;
+  if(!forcar&&D.ops[fk]&&Date.now()-D.ops[fk]._lido<5*MIN_MS) return;
+  D.ops[fk]=D.ops[fk]||{_lido:Date.now()};D.ops[fk]._lido=Date.now();
+  DB.ref("ops/"+fk).once("value").then(function(s){var v=s.val()||{};v._lido=Date.now();v.fbKey=fk;D.ops[fk]=v;agendar();});
+}
+// Consumo da extrusão na OP = Σ extrusao_apts.real + reprocesso da OP (fonte confiável, recalculada)
+function buscarConsumo(fk){
+  if(!fk) return;
+  var c=D.cons[fk];
+  if(c&&Date.now()-c.ts<2*MIN_MS) return;
+  D.cons[fk]={kg:c?c.kg:null,ts:Date.now()};
+  DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(fk).once("value").then(function(s){
+    var t=0;if(s.exists()) s.forEach(function(x){var v=x.val();if(v) t+=Number(v.real)||0;});
+    D.cons[fk]={kg:t,ts:Date.now()};agendar();
+  });
+}
+function anexarDia(){
+  _ls.forEach(function(f){try{f();}catch(e){}});_ls=[];
+  var h=hoje(), ini=addDias(h,-1);
+  function on(q,cb){var fn=q.on("value",cb,function(e){erro("Sem acesso ao Firebase: "+e.message);});_ls.push(function(){q.off("value",fn);});}
+  on(DB.ref("moagem_apts").orderByChild("data").startAt(ini).endAt(h),function(s){
+    D.mApts=[];if(s.exists()) s.forEach(function(c){var a=c.val();if(a&&!a.marco&&a.minutos>0) D.mApts.push(a);});agendar();});
+  on(DB.ref("extrusao_apts").orderByChild("data").startAt(ini).endAt(h),function(s){
+    D.eApts=[];if(s.exists()) s.forEach(function(c){var a=c.val();if(!a||!a.horaIni||!a.horaFim||!a.data) return;
+      var i=tsDeDataOp(a.data,a.horaIni), m=calcMin(a.horaIni,a.horaFim);if(m<=0) return;
+      D.eApts.push({linha:a.linha,opFbKey:a.opFbKey,ini:i,fim:i+m*MIN_MS,min:m,kg:Number(a.real)||0,metaH:Number(a.metaH)||0});});agendar();});
+  on(DB.ref("extrusao_paradas").orderByChild("data").startAt(ini).endAt(h),function(s){
+    D.eParAb=[];if(s.exists()) s.forEach(function(c){var p=c.val();if(p&&!p.horaFim) D.eParAb.push(p);});agendar();});
+  LINHAS.forEach(function(l){
+    on(DB.ref("extrusao_op_ativa/"+encId(l.nome)+"/"+h),function(s){
+      var v=s.val()||{}, fk=v["t"+turnoAtual()]||null;
+      if(!fk){var bt="";[1,2,3].forEach(function(t){if(v["t"+t]&&(v["t"+t+"_ts"]||"")>=bt){fk=v["t"+t];bt=v["t"+t+"_ts"]||"";}});}
+      D.eAtiva[l.k]=fk;agendar();
+    });
+  });
+}
+function iniciar(){
+  if(!DB){erro("Sem conexão com o servidor");return;}
+  D.dia=hoje();
+  DB.ref("moagem_config").on("value",function(s){var v=s.val()||{};D.cfg={moinhos:v.moinhos||MOINHOS_PADRAO,params:Object.assign({fatorMeta:1.15,fatorConsumo:1},v.params||{})};agendar();});
+  DB.ref("moagem_op_ativa").on("value",function(s){D.opAt=s.val()||{};agendar();});
+  DB.ref("moagem_op_totais").on("value",function(s){D.opTot=s.val()||{};agendar();});
+  DB.ref("moagem_paradas").orderByChild("aberta").equalTo(true).on("value",function(s){D.mParAb=[];if(s.exists()) s.forEach(function(c){var p=c.val();if(p) D.mParAb.push(p);});agendar();});
+  DB.ref("config/metas").on("value",function(s){D.metas={};if(s.exists()) s.forEach(function(c){var v=c.val();if(!v) return;D.metas[c.key]=v;if(v.cod) D.metas[v.cod]=v;});agendar();});
+  anexarDia();
+  setInterval(function(){if(hoje()!==D.dia){D.dia=hoje();anexarDia();}relogio();render();},30000);
+  setInterval(relogio,1000);relogio();
+  // Recarrega a página 1x por dia (madrugada) para limpar memória da TV
+  setInterval(function(){var h=horaBrasilia(new Date());if(h===4&&minutoBrasilia(new Date())<1) location.reload();},55000);
+}
+function relogio(){G("clock").textContent=hhmm(Date.now());G("t-dia").textContent="Dia op. "+hoje().split("-").reverse().slice(0,2).join("/");G("t-turno").textContent="Turno "+turnoAtual();}
+
+// ── contas ─────────────────────────────────────────────────────
+// Média kg/h na janela das últimas 2h que têm apontamento
+function media(lista){
+  if(!lista.length) return {kgh:null,ate:null};
+  var fim=Math.max.apply(null,lista.map(function(a){return a.fim;})), ini=fim-JANELA_MIN*MIN_MS, kg=0, min=0;
+  lista.forEach(function(a){var ov=(Math.min(a.fim,fim)-Math.max(a.ini,ini))/MIN_MS;if(ov>0&&a.min>0){kg+=a.kg*ov/a.min;min+=ov;}});
+  return {kgh:min?kg/min*60:null,ate:fim};
+}
+// Aderência à meta no turno: Σkg ÷ Σ(meta kg/h × horas apontadas)
+function aderencia(lista,j){
+  var kg=0,meta=0;
+  lista.forEach(function(a){var ov=(Math.min(a.fim,j.fim)-Math.max(a.ini,j.ini))/MIN_MS;if(ov>0&&a.min>0){kg+=a.kg*ov/a.min;meta+=a.metaH*ov/60;}});
+  return {kg:kg,meta:meta,pct:meta?kg/meta*100:null};
+}
+function calcLinha(l){
+  var lk=l.k, agora=Date.now(), P=D.cfg.params||{}, fatC=Number(P.fatorConsumo)||1, fatM=Number(P.fatorMeta)||1.15;
+  var mo=moinhosDe(lk);
+  var mOa=D.opAt[lk]||null, mFk=mOa&&mOa.opFbKey, eFk=D.eAtiva[lk]||null;
+  if(eFk) buscarOp(eFk); if(mFk) buscarOp(mFk);
+  var eOp=eFk?D.ops[eFk]:null, mOp=mFk?D.ops[mFk]:null;
+  var mA=D.mApts.filter(function(a){return a.lk===lk;}).map(function(a){return {ini:a.tsIni,fim:a.tsFim,min:a.minutos,kg:Number(a.kg)||0,metaH:Number(a.metaH)||0,opFbKey:a.opFbKey};});
+  var eA=D.eApts.filter(function(a){return a.linha===l.nome;});
+  var rm=media(mA), re=media(eA);
+  var cod=(eOp&&eOp.cod)||(mOa&&mOa.cod)||"";
+  var mE=metaExt(cod,lk), mM=mE*fatM;
+  var j=janelaTurno(hoje(),turnoAtual());
+  var adM=aderencia(mA,j), adE=aderencia(eA,j);
+  var extParada=D.eParAb.find(function(p){return p.linha===l.nome;})||null;
+  var moParados=mo.filter(function(m){return D.mParAb.some(function(p){return p.moinho===m;});});
+
+  // Estoque de matéria liberada (moído − consumido)
+  var fks=[];if(eFk) fks.push(eFk);if(mFk&&fks.indexOf(mFk)<0) fks.push(mFk);
+  var est=0, semMoagem=false, pend=false;
+  fks.forEach(function(fk){
+    buscarConsumo(fk);
+    var tot=D.opTot[fk], moido=tot?Number(tot.kgCadeia)||0:0;
+    var c=D.cons[fk], op=D.ops[fk]||{};
+    if(!c||c.kg==null){pend=true;return;}
+    var consumo=(c.kg+(Number(op.reprocessoAcumulado)||0))*fatC;
+    if(fk===eFk&&!tot&&consumo>0) semMoagem=true;
+    est+=moido-consumo;
+  });
+  var r={l:l,mOa:mOa,mOp:mOp,eFk:eFk,eOp:eOp,rm:rm,re:re,mM:mM,mE:mE,adM:adM,adE:adE,extParada:extParada,moParados:moParados,mo:mo,est:est,pend:pend,semMoagem:semMoagem};
+  // Situação
+  var kE=re.kgh, kM=rm.kgh;
+  r.frenteH=(kE>0)?est/(kE*fatC):null;
+  r.delta=(kM!=null&&kE!=null)?kM-kE*fatC:null;
+  r.acabaH=(r.delta!=null&&r.delta<0&&est>0)?est/(-r.delta):null;
+  r.velhoM=rm.ate&&(agora-rm.ate)>DEFASAGEM_ALERTA_MIN*MIN_MS;
+  r.velhoE=re.ate&&(agora-re.ate)>DEFASAGEM_ALERTA_MIN*MIN_MS;
+  if(!eFk&&!mFk){r.st="mu";r.stTxt="Sem OP";}
+  else if(pend){r.st="mu";r.stTxt="Calculando…";}
+  else if(semMoagem){r.st="mu";r.stTxt="OP da extrusora sem moagem registrada";}
+  else if(est<0){r.st="mu";r.stTxt="Estoque negativo — conferir apontamentos";}
+  else if(extParada){r.st="in";r.stTxt="Extrusora parada · estoque "+fN(est/1000,1)+" t";}
+  else if(!eFk){r.st="in";r.stTxt="Moagem adiantando · extrusora sem OP";}
+  else if(r.acabaH!=null&&r.acabaH<ACABA_VERMELHO_H){r.st="bd";r.stTxt="RISCO: matéria acaba em ~"+durTxt(r.acabaH);}
+  else if(r.acabaH!=null&&r.acabaH<ACABA_AMARELO_H){r.st="wa";r.stTxt="Atenção: matéria acaba em ~"+durTxt(r.acabaH);}
+  else if(r.frenteH!=null&&r.frenteH<0.5){r.st="wa";r.stTxt="Moagem no limite · "+durTxt(r.frenteH)+" à frente";}
+  else if(r.frenteH!=null){r.st="ok";r.stTxt="Moagem "+durTxt(r.frenteH)+" à frente";}
+  else {r.st="ok";r.stTxt="Estoque "+fN(est/1000,1)+" t";}
+  return r;
+}
+
+// ── tela ───────────────────────────────────────────────────────
+function cor(p){return p==null?"mu":p>=100?"ok":p>=80?"wa":"bd";}
+function boxRitmo(tit,kgh,meta,ate,velho){
+  var p=(kgh!=null&&meta)?kgh/meta*100:null, c=cor(p), w=p==null?0:Math.min(p,130)/130*100;
+  return '<div class="box"><div class="l">'+tit+' · média 2h</div><div class="v c-'+c+'">'+(kgh==null?"—":fN(kgh))+'<small>kg/h</small></div>'+
+    '<div class="bar"><i class="bg-'+c+'" style="width:'+w+'%"></i><b style="left:'+(100/130*100)+'%"></b></div>'+
+    '<div class="s">Meta '+(meta?fN(meta):"—")+' kg/h'+(p!=null?' · <b class="c-'+c+'">'+fN(p,0)+'%</b>':'')+(ate?' · até '+hhmm(ate):'')+(velho?' <span class="c-wa">⚠ desatualizado</span>':'')+'</div></div>';
+}
+function boxMeta(tit,ad){
+  var c=cor(ad.pct), w=ad.pct==null?0:Math.min(ad.pct,130)/130*100;
+  return '<div class="box"><div class="l">Meta do turno · '+tit+'</div><div class="v c-'+c+'" style="font-size:3.2vh">'+(ad.pct==null?"—":fN(ad.pct,0)+"%")+'<small>'+fN(ad.kg/1000,1)+' de '+fN(ad.meta/1000,1)+' t</small></div>'+
+    '<div class="bar"><i class="bg-'+c+'" style="width:'+w+'%"></i><b style="left:'+(100/130*100)+'%"></b></div></div>';
+}
+function cardLinha(r){
+  var chips=r.mo.map(function(m){var p=D.mParAb.find(function(x){return x.moinho===m;});var nm=(D.cfg.moinhos[m]&&D.cfg.moinhos[m].nome)||m;return p?'<span class="chip p">⏸ '+esc(nm)+' · '+esc(p.descricao)+'</span>':'<span class="chip r">'+esc(nm)+'</span>';}).join("");
+  var l=r.l, h='<div class="ln st-'+r.st+'"><div class="ln-h"><div><div class="nm">'+l.cur+'<small>'+l.maq+'</small></div><div class="mo">'+chips+'</div></div><div class="st '+r.st+'">'+esc(r.stTxt)+'</div></div>';
+  if(!r.eFk&&!r.mOa) return h+'<div class="vazio">Nenhuma OP ativa na moagem nem na extrusora</div></div>';
+  h+='<div class="ln-b">';
+  // 1. Ritmos lado a lado
+  h+='<div class="cmp">'+boxRitmo("Moagem",r.rm.kgh,r.mM,r.rm.ate,r.velhoM)+boxRitmo("Extrusora",r.re.kgh,r.mE,r.re.ate,r.velhoE)+'</div>';
+  // 2. Estoque / à frente / tendência
+  var cE=r.est<0?"mu":r.st==="bd"?"bd":r.st==="wa"?"wa":"ok";
+  var dTxt=r.delta==null?"—":(r.delta>=0?"+":"−")+fN(Math.abs(r.delta));
+  var dSub=r.delta==null?"sem dados":r.delta>=0?"moagem mais rápida — estoque subindo":"extrusora mais rápida — estoque caindo";
+  h+='<div class="est">';
+  h+='<div class="box"><div class="l">Matéria liberada (moído − consumido)</div><div class="v c-'+cE+'">'+(r.pend?"…":fN(r.est/1000,1))+'<small>t</small></div><div class="s">'+(r.frenteH!=null&&r.est>=0?'≈ <b>'+durTxt(r.frenteH)+'</b> de extrusora':'')+'</div></div>';
+  h+='<div class="box"><div class="l">Tendência</div><div class="v c-'+(r.delta==null?"mu":r.delta>=0?"ok":"wa")+'" style="font-size:3.2vh">'+dTxt+'<small>kg/h</small></div><div class="s">'+dSub+'</div></div>';
+  h+='<div class="box"><div class="l">Acaba matéria em</div><div class="v c-'+(r.acabaH==null?"ok":r.acabaH<ACABA_VERMELHO_H?"bd":r.acabaH<ACABA_AMARELO_H?"wa":"ok")+'" style="font-size:3.2vh">'+(r.acabaH==null?(r.delta!=null&&r.delta>=0?"não acaba":"—"):durTxt(r.acabaH))+'</div><div class="s">no ritmo atual</div></div>';
+  h+='</div>';
+  // 3. Metas do turno
+  h+='<div class="metas">'+boxMeta("moagem",r.adM)+boxMeta("extrusora",r.adE)+'</div>';
+  // 4. Rodapé: OPs e moinhos
+  var eTx=r.eOp&&r.eOp.id?('Lote <b>'+esc(loteDe(r.eOp))+'</b> · OP '+esc(r.eOp.id)+' · '+esc((r.eOp.desc||r.eOp.cod||"").slice(0,30))):(r.eFk?"carregando…":"<span class='c-mu'>sem OP</span>");
+  var mTx=r.mOa?('Lote <b>'+esc(loteDe(r.mOp||{lote:r.mOa.lote}))+'</b> · OP '+esc(r.mOa.opNum)):"<span class='c-mu'>sem OP</span>";
+  var adi=(r.mOa&&r.eFk&&r.mOa.opFbKey!==r.eFk)?' <span class="alt">→ moagem já na próxima OP</span>':'';
+  h+='<div class="rod"><div>Extrusora: '+eTx+(r.extParada?' <span class="chip p">PARADA · '+esc(r.extParada.descricao||"")+'</span>':'')+'</div>';
+  h+='<div>Moagem: '+mTx+adi+'</div>';
+  h+='</div>';
+  return h+'</div></div>';
+}
+function render(){
+  try{G("grid").innerHTML=LINHAS.map(function(l){return cardLinha(calcLinha(l));}).join("");erro("");}
+  catch(e){console.error(e);erro("Erro ao montar a tela: "+e.message);}
+}
+iniciar();
+</script>
+</body>
+</html>

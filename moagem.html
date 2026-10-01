@@ -497,7 +497,7 @@ var CFG_PADRAO={
     S5:{nome:"Silo 5",linha:"L4"},S6:{nome:"Silo 6",linha:"L4"},
     S7:{nome:"Silo 7",linha:"L5"},S8:{nome:"Silo 8",linha:"L5"}
   },
-  params:{fatorMeta:1.15,tolSemAptMin:15,avisoPeneiraT:5,limitePeneiraT:{}},
+  params:{fatorMeta:1.15,tolSemAptMin:15,avisoPeneiraT:5,limitePeneiraT:{},fatorConsumo:1},
   motivos:{
     m01:{cod:1,desc:"Troca de peneira",grupo:"Manutenção",zeraPeneira:true,ativo:true},
     m02:{cod:2,desc:"Estouro de peneira",grupo:"Manutenção",zeraPeneira:true,ativo:true},
@@ -2178,7 +2178,8 @@ function admRenderCfg(){
   h+='<div class="panel"><h4>Parâmetros e alertas <button class="btn sm" onclick="admSalvarParams()">Salvar parâmetros</button></h4><div class="filtros" style="border:none;padding:0">';
   h+='<div class="fg"><label>Fator meta moagem × extrusão</label><input class="inp" type="number" step="0.01" id="cfg-fator" value="'+p.fatorMeta+'"></div>';
   h+='<div class="fg"><label>Tolerância sem apontamento (min)</label><input class="inp" type="number" id="cfg-tol" value="'+p.tolSemAptMin+'"></div>';
-  h+='<div class="fg"><label>Avisar peneira quando faltar (t)</label><input class="inp" type="number" step="0.5" id="cfg-avpen" value="'+p.avisoPeneiraT+'"></div></div>';
+  h+='<div class="fg"><label>Avisar peneira quando faltar (t)</label><input class="inp" type="number" step="0.5" id="cfg-avpen" value="'+p.avisoPeneiraT+'"></div>';
+  h+='<div class="fg"><label title="TV: consumo de farinha = (produzido + reprocesso da extrusão) × fator">Fator consumo farinha/produto (TV)</label><input class="inp" type="number" step="0.01" id="cfg-fatcons" value="'+(p.fatorConsumo||1)+'"></div></div>';
   h+='<div style="margin-top:10px"><b style="font-size:12px;color:var(--tx2)">Limite de vida da peneira (t) — vazio = só monitorar</b><div class="filtros" style="border:none;padding:6px 0 0">';
   todosMoinhos().forEach(function(m){var v=(p.limitePeneiraT||{})[m];h+='<div class="fg"><label>'+esc(nomeMoinho(m))+'</label><input class="inp" type="number" step="1" min="0" data-lim="'+m+'" value="'+(v||"")+'" style="width:110px"></div>';});
   h+='</div></div></div>';
@@ -2231,10 +2232,11 @@ function admSalvarSilos(){
   admGravarCfg("silos",novo,"Silos atualizados");
 }
 function admSalvarParams(){
-  var f=num(G("cfg-fator").value), t=num(G("cfg-tol").value), a=num(G("cfg-avpen").value);
+  var f=num(G("cfg-fator").value), t=num(G("cfg-tol").value), a=num(G("cfg-avpen").value), fc=num(G("cfg-fatcons").value);
+  if(!fc||fc<0.7||fc>1.3){toast("Fator de consumo deve estar entre 0,70 e 1,30","err");return;}
   if(!f||f<1||f>2){toast("Fator de meta deve estar entre 1,00 e 2,00","err");return;}
   var lim={};G("adm-cfg").querySelectorAll("[data-lim]").forEach(function(i){var v=num(i.value);if(v>0) lim[i.dataset.lim]=v;});
-  admGravarCfg("params",{fatorMeta:f,tolSemAptMin:t||15,avisoPeneiraT:a||5,limitePeneiraT:lim},"Parâmetros: fator "+f+", tol "+t+" min, aviso peneira "+a+" t, limites "+JSON.stringify(lim));
+  admGravarCfg("params",{fatorMeta:f,tolSemAptMin:t||15,avisoPeneiraT:a||5,limitePeneiraT:lim,fatorConsumo:fc},"Parâmetros: fator "+f+", consumo "+fc+", tol "+t+" min, aviso peneira "+a+" t, limites "+JSON.stringify(lim));
 }
 function admSalvarMotivos(){
   var novo={}, erro=null, cods={};
