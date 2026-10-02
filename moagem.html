@@ -221,7 +221,11 @@ tr.hl td{background:#fff6d6}
         <button class="btn sm ghost" onclick="visAgora()">Voltar para agora</button>
         <span class="muted" id="vis-info"></span>
       </div>
-      <button class="btn" onclick="abrirPdfHora('',true)">PDF geral do turno</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="chip" id="repr-chip" style="cursor:pointer" onclick="abrirReprocesso()">♻ Reprocesso do turno: 0 kg</span>
+        <button class="btn sec2" id="repr-topo-btn" onclick="abrirReprocesso()">Reprocesso</button>
+        <button class="btn" onclick="abrirPdfHora('',true)">PDF geral do turno</button>
+      </div>
     </div>
     <div class="alertas" id="alertas"></div>
       <div class="grid-l" id="grid-linhas"></div>
@@ -412,6 +416,30 @@ tr.hl td{background:#fff6d6}
   </div>
 </div></div>
 
+<!-- ═════════ MODAL: REPROCESSO DA MOAGEM ═════════ -->
+<div class="ov" id="m-repr"><div class="modal" style="max-width:560px">
+  <h3 id="repr-tit">Reprocesso da moagem — turno</h3>
+  <div class="msub" id="repr-sub">Reprocesso geral da moagem (não é por linha). Cada lançamento soma no total do turno e aparece na Central de Reprocesso.</div>
+  <div class="mrow">
+    <div class="fg"><label>Turno</label><select class="inp" id="repr-turno" onchange="reprListar()"></select></div>
+    <div class="fg"><label>Tipo</label><select class="inp" id="repr-tipo" onchange="reprTipoMudou()"><option value="">Selecione…</option><option>Geral</option><option>Varredura</option><option>Finos</option><option>Qualidade</option></select></div>
+  </div>
+  <div class="mrow">
+    <div class="fg"><label>Quantidade (kg)</label><input type="number" inputmode="decimal" min="0" step="0.1" class="inp" id="repr-kg" placeholder="Ex.: 120"></div>
+    <div class="fg"><label>OP vinculada (opcional)</label><select class="inp" id="repr-op"></select></div>
+  </div>
+  <div class="mrow one"><div class="fg"><label id="repr-motivo-lbl">Motivo (opcional, obrigatório para Qualidade)</label><input class="inp" id="repr-motivo" maxlength="120" placeholder="Ex.: mistura de MP, troca de peneira, limpeza do moinho…"></div></div>
+  <div class="mrow one"><div class="fg"><label>Observação</label><input class="inp" id="repr-obs" maxlength="200"></div></div>
+  <div class="mfoot" style="margin-top:4px">
+    <button class="btn ghost" onclick="fM('m-repr')">Fechar</button>
+    <button class="btn" id="repr-btn" onclick="salvarReprocesso()">Lançar reprocesso</button>
+  </div>
+  <div style="margin-top:12px;border-top:1px solid var(--brd);padding-top:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="color:var(--gr);font-size:13px">Lançados neste turno</b><span class="bdg b" id="repr-total">0 kg</span></div>
+    <div class="tw" id="repr-lista"></div>
+  </div>
+</div></div>
+
 <!-- ═════════ MODAL: PDF HORA A HORA ═════════ -->
 <div class="ov" id="m-pdf"><div class="modal" style="max-width:420px">
   <h3>PDF do turno</h3>
@@ -538,7 +566,7 @@ var SES=null;
 var S={
   cfg:JSON.parse(JSON.stringify(CFG_PADRAO)), cfgFbOk:false,
   opAtiva:{}, opConc:{}, opTot:{}, fila:{}, silos:{},
-  apts:[], paradasRange:[], paradasAbertas:[],
+  apts:[], paradasRange:[], paradasAbertas:[], repr:[],
   opsBy:{}, ops:{}, extAtiva:{}, extConc:{}, metas:{}, metasOk:false,
   peneira:{}, dataOpAtual:null
 };
@@ -792,6 +820,14 @@ function anexarListenersDia(){
     agendarRender();
   });
   _lsDia.push(function(){qP.off("value",cbP);});
+  // Reprocesso da moagem (lido também pela Central de Reprocesso)
+  var qR=DB.ref("moagem_reprocesso").orderByChild("data").startAt(ini).endAt(fim);
+  var cbR=qR.on("value",function(s){
+    S.repr=[];
+    if(s.exists()) s.forEach(function(c){var r=c.val();if(!r||r.substituido) return;r.fbKey=c.key;S.repr.push(r);});
+    agendarRender();
+  });
+  _lsDia.push(function(){qR.off("value",cbR);});
   // OP rodando na extrusão (somente leitura) — dia operacional atual
   LINHAS.forEach(function(l){
     var r=DB.ref("extrusao_op_ativa/"+encId(l.nome)+"/"+h);
@@ -1053,6 +1089,7 @@ function alertasLinha(lk){
   return al;
 }
 function renderOperacao(){
+  resumoReprocessoTopo();
   var al=[];LINHAS.forEach(function(l){al=al.concat(alertasLinha(l.k));});
   G("alertas").innerHTML=al.map(function(a){return '<div class="al al-'+a.c+'">'+(a.c==="rd"?"⛔":a.c==="or"?"⚠️":"ℹ️")+" <span>"+a.t+"</span></div>";}).join("");
   G("grid-linhas").innerHTML=LINHAS.map(function(l){return cardLinha(l);}).join("");
@@ -2646,6 +2683,105 @@ function pdfGeralTurno(dOp,t,j,apts,par){
   for(var pg=1;pg<=n;pg++){doc.setPage(pg);doc.setFontSize(7);doc.setTextColor(160,160,160);
     doc.text("Raguife Moagem · Turno "+t+" · "+dOp+" · Aderência = kg moído ÷ (meta kg/h da moagem × horas apontadas) · pág. "+pg+"/"+n,148,205,{align:"center"});}
   return doc;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// REPROCESSO DA MOAGEM — lançamentos GERAIS (não por linha), por turno, em moagem_reprocesso
+// (nó próprio da moagem). A Central de Reprocesso (reprocesso_central.html)
+// só LÊ este nó e soma na fonte "Moagem". Exclusão é lógica (substituido:true),
+// mesmo padrão da central, para manter rastreabilidade.
+// ════════════════════════════════════════════════════════════════════
+var MR=null;
+var REPR_TIPOS=["Geral","Varredura","Finos","Qualidade"];
+// Turno atual e o anterior (o operador costuma lançar no fim/virada do turno)
+function reprTurnosOpcoes(){
+  var d=hoje(), t=turnoAtual(), ops=[{d:d,t:t}];
+  var ant=t===1?{d:addDias(d,-1),t:3}:{d:d,t:t-1};
+  ops.push(ant);
+  return ops;
+}
+// Reprocesso é GERAL da moagem (não por linha) — filtra só por dia operacional + turno
+function reprDoTurno(d,t){return S.repr.filter(function(r){return r.data===d&&Number(r.turno)===t;});}
+function resumoReprocessoTopo(){
+  var el=G("repr-chip");if(!el) return;
+  var l=reprDoTurno(hoje(),turnoAtual()), kg=l.reduce(function(s,r){return s+(Number(r.pesoKg)||0);},0);
+  el.textContent="♻ Reprocesso do turno: "+fN(kg,kg%1?1:0)+" kg"+(l.length?" ("+l.length+" lanç.)":"");
+  el.className="chip"+(kg?" wa":"");
+  var b=G("repr-topo-btn");if(b) b.disabled=!podeApontar();
+}
+function abrirReprocesso(){
+  MR={};
+  G("repr-turno").innerHTML=reprTurnosOpcoes().map(function(o,i){var j=janelaTurno(o.d,o.t);return '<option value="'+o.d+'|'+o.t+'">T'+o.t+' · '+fData(o.d)+' ('+hhmmDeTs(j.ini)+'–'+hhmmDeTs(j.fim)+')'+(i===0?' — atual':' — anterior')+'</option>';}).join("");
+  // OP vinculada é opcional: padrão "sem vínculo"; lista as OPs ativas nas linhas
+  var opts=['<option value="">Sem vínculo com OP</option>'], vis={};
+  LINHAS.forEach(function(l){var oa=S.opAtiva[l.k];if(oa&&!vis[oa.opFbKey]){vis[oa.opFbKey]=1;opts.push('<option value="'+esc(oa.opFbKey)+'">'+esc(l.cur)+' · '+esc(oa.opNum)+' · '+esc(loteTxt(oa.opFbKey,oa.lote))+'</option>');}});
+  G("repr-op").innerHTML=opts.join("");
+  G("repr-tipo").value="";G("repr-kg").value="";G("repr-motivo").value="";G("repr-obs").value="";
+  reprTipoMudou();reprListar();
+  G("repr-btn").disabled=!podeApontar();
+  aM("m-repr");
+  setTimeout(function(){G("repr-tipo").focus();},150);
+}
+function reprTipoMudou(){
+  var q=G("repr-tipo").value==="Qualidade";
+  G("repr-motivo-lbl").textContent=q?"Motivo do desvio de qualidade *":"Motivo (opcional, obrigatório para Qualidade)";
+}
+function reprSel(){var p=G("repr-turno").value.split("|");return {d:p[0],t:parseInt(p[1],10)};}
+function reprListar(){
+  if(!MR) return;
+  var s=reprSel(), l=reprDoTurno(s.d,s.t).sort(function(a,b){return (b.ts||0)-(a.ts||0);});
+  var kg=l.reduce(function(t,r){return t+(Number(r.pesoKg)||0);},0);
+  G("repr-total").textContent="Total T"+s.t+": "+fN(kg,kg%1?1:0)+" kg";
+  if(!l.length){G("repr-lista").innerHTML='<div class="muted">Nenhum reprocesso lançado neste turno.</div>';return;}
+  G("repr-lista").innerHTML='<table class="t"><thead><tr><th>Hora</th><th>Tipo</th><th class="n">Kg</th><th>OP / Lote</th><th>Motivo</th><th>Por</th><th></th></tr></thead><tbody>'+
+    l.map(function(r){
+      var pode=isAdmin()||(podeApontar()&&r.lancadoPor===SES.login);
+      return '<tr><td>'+esc(r.hora)+'</td><td><span class="bdg">'+esc(r.tipo)+'</span></td><td class="n"><b>'+fN(r.pesoKg,(Number(r.pesoKg)%1)?1:0)+'</b></td><td>'+(r.opNum?esc(r.opNum)+'<div class="muted">'+esc(r.lote?"Lote "+r.lote:"sem lote")+'</div>':'<span class="muted">—</span>')+'</td>'+
+        '<td>'+esc(r.motivo||"—")+(r.obs?'<div class="muted">'+esc(r.obs)+'</div>':'')+'</td><td class="muted">'+esc(r.lancadoPor)+'<div>'+esc(r.codigo||"")+'</div></td>'+
+        '<td>'+(pode?'<button class="btn xs ghost" title="Excluir" onclick="excluirReprocesso(\''+r.fbKey+'\')">🗑</button>':'')+'</td></tr>';
+    }).join("")+'</tbody></table>';
+}
+// Código sequencial por dia — MOA-AAMMDD-NNN (mesmo padrão dos setores da central)
+function reprGerarCodigo(d){
+  return DB.ref("moagem_reprocesso").orderByChild("data").equalTo(d).once("value").then(function(s){
+    var n=0;if(s.exists()) s.forEach(function(){n++;});
+    var seq=String(n+1);while(seq.length<3) seq="0"+seq;
+    return "MOA-"+d.replace(/-/g,"").slice(2)+"-"+seq;
+  });
+}
+function salvarReprocesso(){
+  if(!MR||!podeApontar()) return;
+  var s=reprSel(), tipo=G("repr-tipo").value, kg=num(G("repr-kg").value), motivo=G("repr-motivo").value.trim(), obs=G("repr-obs").value.trim();
+  if(!tipo){toast("Selecione o tipo","err");return;}
+  if(!kg||kg<=0){toast("Informe a quantidade em kg","err");return;}
+  if(kg>20000){toast("Quantidade acima de 20.000 kg — confira o valor","err");return;}
+  if(tipo==="Qualidade"&&!motivo){toast("Informe o motivo do desvio de qualidade","err");return;}
+  if(kg>2000&&!confirm("Confirmar "+fN(kg)+" kg de reprocesso?")) return;
+  var fk=G("repr-op").value, op=fk?(opPorFk(fk)||{}):null;
+  var oaNum=null, lkOp=null;
+  if(fk) LINHAS.forEach(function(l){var oa=S.opAtiva[l.k];if(oa&&oa.opFbKey===fk){oaNum=oa.opNum;lkOp=l.k;}});
+  if(fk&&!oaNum) oaNum=op.id||null;
+  G("repr-btn").disabled=true;
+  reprGerarCodigo(s.d).then(function(codigo){
+    var reg={codigo:codigo,geral:true,lk:null,linha:"Geral",lkOp:lkOp,data:s.d,turno:s.t,hora:horaAtual(),tsMs:Date.now(),
+      tipo:tipo,pesoKg:kg,motivo:motivo||null,obs:obs||null,
+      opFbKey:fk||null,opNum:oaNum||null,lote:fk?(loteOp(fk)||null):null,
+      lancadoPor:SES.login,lancadoEm:agora(),ts:Date.now(),substituido:false};
+    return DB.ref("moagem_reprocesso").push(fbLimpo(reg)).then(function(){return reg;});
+  }).then(function(reg){
+    toast("Reprocesso lançado — "+fN(kg,kg%1?1:0)+" kg — "+reg.codigo,"ok");
+    log("reprocesso_novo",reg.codigo+" geral T"+reg.turno+" "+reg.tipo+" "+kg+" kg"+(reg.opNum?" OP "+reg.opNum:""));
+    G("repr-kg").value="";G("repr-motivo").value="";G("repr-obs").value="";G("repr-tipo").value="";reprTipoMudou();
+    setTimeout(function(){reprListar();resumoReprocessoTopo();},300);
+  }).catch(function(e){toast("Erro: "+e.message,"err");}).then(function(){G("repr-btn").disabled=!podeApontar();});
+}
+function excluirReprocesso(fbKey){
+  var r=S.repr.find(function(x){return x.fbKey===fbKey;});if(!r) return;
+  if(!(isAdmin()||r.lancadoPor===SES.login)){toast("Só quem lançou ou o admin pode excluir","err");return;}
+  if(!confirm("Excluir o reprocesso "+(r.codigo||"")+" de "+fN(r.pesoKg)+" kg ("+r.tipo+")?\nEle sai do total do turno e da Central de Reprocesso.")) return;
+  DB.ref("moagem_reprocesso/"+fbKey).update({substituido:true,excluidoPor:SES.login,excluidoEm:agora()}).then(function(){
+    toast("Reprocesso excluído","ok");log("reprocesso_excluir",(r.codigo||fbKey)+" "+r.pesoKg+" kg");setTimeout(function(){reprListar();resumoReprocessoTopo();},300);
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 </script>
 </body>
