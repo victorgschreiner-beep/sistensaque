@@ -754,7 +754,10 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
         <canvas id="dash-g8" height="200"></canvas>
       </div>
       <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px">
-        <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">AQUA — Produção por Granulometria (kg)</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px">
+          <div style="font-weight:700;color:#024f2b;font-size:13px">AQUA — Produção por Granulometria (kg)</div>
+          <button onclick="exportarGranulometriaPDF()" title="Granulometria × máquina: kg e horas" style="background:#024f2b;color:#fff;border:none;padding:6px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📄 PDF Granulometria × Máquina</button>
+        </div>
         <canvas id="dash-g9" height="200"></canvas>
       </div>
     </div>
@@ -4556,9 +4559,145 @@ function exportarProdutividadePDF(){
   toast("PDF gerado!","ok");
 }
 
+// ── PDF: GRANULOMETRIA (AQUA) × MÁQUINA ───────────────────
+// kg e horas apontadas de cada granulometria AQUA em cada máquina, no período/filtro
+// do dashboard (window._GRAN_CACHE). Horas = soma da duração dos apontamentos
+// (mesma regra de minApontamento: virada da meia-noite tratada, sem horário = 1 h).
+function exportarGranulometriaPDF(){
+  if(typeof jspdf==="undefined"){toast("jsPDF não disponível","err");return;}
+  var C=window._GRAN_CACHE;
+  if(!C){toast("Gere o dashboard antes de exportar","err");return;}
+  var aqua=(C.apts||[]).filter(function(a){return familiaProduto(a.cod)==="AQUA";});
+  if(!aqua.length){toast("Sem produção AQUA no período/filtro selecionado","err");return;}
+  var GR={}, maqs=[], totMaq={}, totKg=0, totMin=0;
+  aqua.forEach(function(a){
+    var g=granulometriaProduto(a.desc||a.cod||""), m=a.linha||"Sem linha";
+    var kg=Number(a.real)||0, mi=minApontamento(a);
+    if(maqs.indexOf(m)<0) maqs.push(m);
+    var R=GR[g]=GR[g]||{g:g,kg:0,min:0,n:0,ops:{},maq:{}};
+    R.kg+=kg; R.min+=mi; R.n++; if(a.opNum) R.ops[a.opNum]=1;
+    var q=R.maq[m]=R.maq[m]||{kg:0,min:0,n:0,ops:{}};
+    q.kg+=kg; q.min+=mi; q.n++; if(a.opNum) q.ops[a.opNum]=1;
+    var T=totMaq[m]=totMaq[m]||{kg:0,min:0,grans:{}}; T.kg+=kg; T.min+=mi; T.grans[g]=1;
+    totKg+=kg; totMin+=mi;
+  });
+  maqs.sort();
+  var grans=Object.values(GR).sort(function(a,b){
+    var x=parseFloat(a.g), y=parseFloat(b.g);
+    if(isNaN(x)&&isNaN(y)) return 0; if(isNaN(x)) return 1; if(isNaN(y)) return -1; return x-y;
+  });
+
+  var doc=new jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  var ML=10, W=277, PH=210, y=0;
+  function h1(m){ return (Math.round(m/6)/10).toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1}); }
+  function dBR(d){ return d?d.slice(8,10)+"/"+d.slice(5,7)+"/"+d.slice(0,4):""; }
+  function pct(a,b){ return b?(Math.round(a/b*1000)/10).toLocaleString("pt-BR")+"%":"-"; }
+  function fK(n){ return fN(Math.round(Number(n)||0)); }
+  function kgh(kg,min){ return min>0?fN(Math.round(kg/(min/60))):"-"; }
+  function precisa(h){ if(y+h>PH-12){ doc.addPage(); y=14; } }
+  function titulo(t){ precisa(16); y+=3; doc.setFont("helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(2,79,43); doc.text(t,ML,y); y+=2; doc.setDrawColor(2,79,43); doc.setLineWidth(0.4); doc.line(ML,y,ML+W,y); y+=4; }
+  // rows: array de células (string ou {v,sub,b}); row._sub=true → linha de subtotal
+  function tabela(cols,rows,total,rh){
+    rh=rh||6;
+    function cab(){
+      doc.setFillColor(2,79,43); doc.rect(ML,y,W,6.5,"F");
+      doc.setFont("helvetica","bold"); doc.setFontSize(7.5); doc.setTextColor(255,255,255);
+      var x=ML; cols.forEach(function(c){ var al=c.al==="r"?"right":(c.al==="c"?"center":"left"); doc.text(c.t, c.al==="r"?x+c.w-2:(c.al==="c"?x+c.w/2:x+2), y+4.4, {align:al}); x+=c.w; }); y+=6.5;
+    }
+    precisa(6.5+rh); cab();
+    var todas=rows.concat(total?[total]:[]);
+    todas.forEach(function(r,i){
+      if(y+rh>PH-12){ doc.addPage(); y=14; cab(); }
+      var isTot=total&&i===rows.length, isSub=!!r._sub;
+      if(isTot){ doc.setFillColor(220,235,220); doc.rect(ML,y,W,rh,"F"); }
+      else if(isSub){ doc.setFillColor(236,244,236); doc.rect(ML,y,W,rh,"F"); }
+      else if(i%2){ doc.setFillColor(248,251,248); doc.rect(ML,y,W,rh,"F"); }
+      var x=ML;
+      r.forEach(function(v,j){
+        var c=cols[j], al=c.al==="r"?"right":(c.al==="c"?"center":"left"), tx=c.al==="r"?x+c.w-2:(c.al==="c"?x+c.w/2:x+2);
+        var main=(v&&typeof v==="object")?v.v:v, sub=(v&&typeof v==="object")?v.sub:null;
+        doc.setFont("helvetica",(isTot||isSub||(v&&v.b))?"bold":"normal"); doc.setFontSize(8); doc.setTextColor(40,40,40);
+        doc.text(String(main),tx,y+(sub?3.8:rh/2+1.4),{align:al});
+        if(sub){ doc.setFont("helvetica","normal"); doc.setFontSize(6.8); doc.setTextColor(110,110,110); doc.text(String(sub),tx,y+7.4,{align:al}); }
+        x+=c.w;
+      });
+      y+=rh;
+    });
+    y+=3;
+  }
+
+  // Cabeçalho
+  doc.setFillColor(2,79,43); doc.rect(0,0,297,19,"F");
+  doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(255,255,255);
+  doc.text("RAGUIFE - AQUA: Granulometria x Máquina (kg e horas)",ML,10);
+  doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(190,225,190);
+  doc.text("Período: "+dBR(C.di)+" a "+dBR(C.df)+"   |   Filtros: Linha = "+(C.linhaF||"Todas")+", Turno = "+(C.turnoF?"T"+C.turnoF:"Todos")+", SKU = "+(C.skuF||"Todos")+"   |   Gerado em: "+new Date().toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})+(SES&&SES.login?"   |   Por: "+SES.login:""),ML,15.5);
+  y=24;
+
+  // Indicadores
+  var kp=[["TOTAL AQUA",fK(totKg)+" kg"],["HORAS DE MÁQUINA",h1(totMin)+" h"],["KG/H MÉDIO",kgh(totKg,totMin)],["GRANULOMETRIAS",String(grans.length)],["MÁQUINAS",String(maqs.length)]];
+  var bw=(W-4*3)/5;
+  kp.forEach(function(k,i){
+    var x=ML+i*(bw+3);
+    doc.setDrawColor(212,232,212); doc.setFillColor(255,255,255); doc.roundedRect(x,y,bw,16,2,2,"FD");
+    doc.setFont("helvetica","bold"); doc.setFontSize(6.8); doc.setTextColor(115,150,48); doc.text(k[0],x+bw/2,y+5,{align:"center"});
+    doc.setFontSize(12.5); doc.setTextColor(2,79,43); doc.text(k[1],x+bw/2,y+12.5,{align:"center"});
+  });
+  y+=21;
+
+  // 1) Matriz granulometria × máquina
+  titulo("1. Matriz granulometria x máquina - kg (horas de máquina abaixo)");
+  var wG=46, wT=26, wM=(W-wG-3*wT)/Math.max(maqs.length,1);
+  var cols1=[{t:"GRANULOMETRIA",w:wG}].concat(maqs.map(function(m){return {t:m,w:wM,al:"c"};}))
+    .concat([{t:"TOTAL KG",w:wT,al:"r"},{t:"TOTAL HORAS",w:wT,al:"r"},{t:"KG/H",w:wT,al:"r"}]);
+  var rows1=grans.map(function(R){
+    return [{v:R.g,b:1}].concat(maqs.map(function(m){ var q=R.maq[m]; return q?{v:fK(q.kg)+" kg",sub:h1(q.min)+" h",b:1}:"-"; }))
+      .concat([fK(R.kg),h1(R.min),kgh(R.kg,R.min)]);
+  });
+  var tot1=["TOTAL"].concat(maqs.map(function(m){ var T=totMaq[m]; return {v:fK(T.kg)+" kg",sub:h1(T.min)+" h"}; }))
+    .concat([fK(totKg),h1(totMin),kgh(totKg,totMin)]);
+  tabela(cols1,rows1,tot1,9);
+
+  // 2) Detalhamento por granulometria e máquina
+  titulo("2. Detalhamento por granulometria e máquina");
+  var cols2=[{t:"GRANULOMETRIA",w:46},{t:"MÁQUINA",w:50},{t:"KG",w:30,al:"r"},{t:"% DA GRANUL.",w:28,al:"r"},{t:"HORAS",w:26,al:"r"},{t:"KG/H",w:26,al:"r"},{t:"APONTAMENTOS",w:30,al:"r"},{t:"OPs",w:41,al:"r"}];
+  var rows2=[];
+  grans.forEach(function(R){
+    maqs.forEach(function(m){
+      var q=R.maq[m]; if(!q) return;
+      rows2.push([R.g,m,fK(q.kg),pct(q.kg,R.kg),h1(q.min),kgh(q.kg,q.min),q.n,Object.keys(q.ops).length]);
+    });
+    var sub=["Subtotal "+R.g,"",fK(R.kg),"100%",h1(R.min),kgh(R.kg,R.min),R.n,Object.keys(R.ops).length];
+    sub._sub=true; rows2.push(sub);
+  });
+  tabela(cols2,rows2,["TOTAL AQUA","",fK(totKg),"",h1(totMin),kgh(totKg,totMin),aqua.length,""]);
+
+  // 3) Totais por máquina
+  titulo("3. Totais AQUA por máquina");
+  var cols3=[{t:"MÁQUINA",w:77},{t:"KG AQUA",w:40,al:"r"},{t:"% DO KG",w:35,al:"r"},{t:"HORAS",w:40,al:"r"},{t:"KG/H",w:40,al:"r"},{t:"GRANULOMETRIAS",w:45,al:"r"}];
+  var rows3=maqs.map(function(m){ var T=totMaq[m]; return [{v:m,b:1},fK(T.kg),pct(T.kg,totKg),h1(T.min),kgh(T.kg,T.min),Object.keys(T.grans).length]; });
+  tabela(cols3,rows3,["TOTAL",fK(totKg),"100%",h1(totMin),kgh(totKg,totMin),grans.length]);
+
+  // Notas
+  precisa(18); y+=2;
+  doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(90,90,90);
+  ["Somente família AQUA (códigos que não começam com CAT/DOG/HOR). Granulometria extraída da descrição do produto e normalizada (ex.: 4.0 a 6.0MM = 4.00 a 6.00MM).",
+   "Horas de máquina = soma da duração dos apontamentos (tempo produzindo). Virada da meia-noite tratada; apontamento sem horário ou maior que 10 h conta como 1 h.",
+   "Não inclui paradas nem horas sem apontamento - para tempo disponível use o painel Horas Disponíveis."
+  ].forEach(function(t){ doc.text(t,ML,y); y+=4; });
+  var np=doc.getNumberOfPages();
+  for(var i=1;i<=np;i++){ doc.setPage(i); doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(140,140,140);
+    doc.text("Raguife - Apontamento Extrusão | Granulometria x Máquina "+dBR(C.di)+" a "+dBR(C.df),ML,PH-6);
+    doc.text("Página "+i+" de "+np,ML+W,PH-6,{align:"right"}); }
+  doc.save("Granulometria_Maquina_"+C.di+"_"+C.df+".pdf");
+  toast("PDF gerado!","ok");
+}
+
 function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
   // Cache para exportarOpPDF acessar fora do escopo
   window._DASH_CACHE={apts:apts,paradas:paradas,di:di,df:df,areaF:areaF};
+  // Cache para o PDF Granulometria × Máquina (mesmos apontamentos/filtros da tela)
+  window._GRAN_CACHE={apts:apts,di:di,df:df,linhaF:(hdOpts&&hdOpts.linhaF)||"",turnoF:(hdOpts&&hdOpts.turnoF)||"",skuF:skuF||""};
   // Paradas filtradas por ÁREA — usadas nos indicadores/gráficos de paradas (card, Pareto, Paradas por SKU).
   // O "Corrida por Máquina" (setup) continua usando o array "paradas" completo, pois setup é um conceito
   // de eficiência de máquina independente do filtro de área selecionado.
