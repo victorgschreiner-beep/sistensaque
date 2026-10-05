@@ -133,11 +133,13 @@ tr:hover td{background:rgba(2,79,43,.03)}
 .fonte-extrusao{background:rgba(139,92,246,.15);color:#5b21b6}
 .fonte-central{background:rgba(210,153,34,.15);color:#8a5700}
 .fonte-moagem{background:rgba(31,111,235,.12);color:#1d4f91}
+.fonte-finos{background:rgba(13,148,136,.13);color:#0f766e}
 .mc-ensaque{border-left:3px solid #024f2b}
 .mc-envasepet{border-left:3px solid #739630}
 .mc-extrusao{border-left:3px solid #8b5cf6}
 .mc-central{border-left:3px solid #d29922}
 .mc-moagem{border-left:3px solid #1f6feb}
+.mc-finos{border-left:3px solid #0d9488}
 .readonly-info{background:#f4f6f4;border:1px solid var(--bd);border-radius:var(--r);padding:9px 12px;font-size:12px;color:#4a664a;display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px}
 .readonly-info b{color:#024f2b}
 .setor-hero{display:flex;align-items:center;gap:10px;margin-bottom:4px}
@@ -218,9 +220,11 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="fg" style="margin-bottom:0"><label class="fl">Fonte</label>
       <select id="dash-ffonte" style="width:auto" onchange="renderDashboardConsolidado()">
         <option value="">Todas as fontes</option>
-        <option value="ensaque_geral">Ensaque — Finos/Varredura/Geral</option>
+        <option value="ensaque_op">Ensaque — Vinculado a OP</option>
+        <option value="ensaque_finos">Ensaque — Finos</option>
+        <option value="ensaque_geral">Ensaque — Reprocesso Geral/Varredura</option>
         <option value="envasepet">Envase PET</option>
-        <option value="extrusao">Extrusão (agregado)</option>
+        <option value="extrusao">Extrusão (inclui contaminação/limpeza de linha do Ensaque)</option>
         <option value="moagem">Moagem</option>
         <option value="expedicao_aqua">Central — Expedição Aqua</option>
         <option value="expedicao_pet">Central — Expedição PET</option>
@@ -967,23 +971,36 @@ function dashFiltroRapido(qtd){
 }
 
 var FONTE_LABELS = {
-  ensaque_geral:   { nome:'Ensaque — Finos/Varredura/Geral',   css:'fonte-ensaque'   },
+  ensaque_op:      { nome:'Ensaque — Vinculado a OP',            css:'fonte-ensaque'   },
+  ensaque_finos:   { nome:'Ensaque — Finos',                     css:'fonte-finos'     },
+  ensaque_geral:   { nome:'Ensaque — Reprocesso Geral/Varredura', css:'fonte-ensaque'  },
   envasepet:       { nome:'Envase PET',                         css:'fonte-envasepet'},
-  extrusao:        { nome:'Extrusão (inclui reprocesso vinc. a OP)', css:'fonte-extrusao' },
+  extrusao:        { nome:'Extrusão (inclui contaminação/limpeza de linha do Ensaque)', css:'fonte-extrusao' },
   moagem:          { nome:'Moagem',                             css:'fonte-moagem'   },
   expedicao_aqua:  { nome:'Central — Expedição Aqua',           css:'fonte-central'  },
   expedicao_pet:   { nome:'Central — Expedição PET',            css:'fonte-central'  },
   recebimento:     { nome:'Central — Recebimento',              css:'fonte-central'  },
   higienizacao:    { nome:'Central — Higienização Industrial',  css:'fonte-central'  }
 };
-var ORDEM_FONTES = ['ensaque_geral','envasepet','extrusao','moagem','expedicao_aqua','expedicao_pet','recebimento','higienizacao'];
+var ORDEM_FONTES = ['ensaque_op','ensaque_finos','ensaque_geral','envasepet','extrusao','moagem','expedicao_aqua','expedicao_pet','recebimento','higienizacao'];
 var FONTE_CARD_CLASS = {
+  ensaque_op:'mc-ensaque',
+  ensaque_finos:'mc-finos',
   ensaque_geral:'mc-ensaque',
   envasepet:'mc-envasepet',
   extrusao:'mc-extrusao',
   moagem:'mc-moagem',
   expedicao_aqua:'mc-central', expedicao_pet:'mc-central', recebimento:'mc-central', higienizacao:'mc-central'
 };
+// Destino do reprocesso vinculado a OP — MESMA regra do index.html (Ensaque).
+// Contaminacao/mistura e Limpeza de linha -> Extrusao; demais -> Ensaque.
+// Registros antigos sem 'destinoReprocesso' seguem a regra anterior (so Limpeza de linha).
+var MOTIVOS_REPROC_EXTRUSAO=['Contaminacao/mistura','Limpeza de linha'];
+function reprocessoVaiParaExtrusao(a){
+  if(!a||a.origem!=='reprocesso') return false;
+  if(a.destinoReprocesso) return a.destinoReprocesso==='extrusao';
+  return a.motivoReprocesso==='Limpeza de linha';
+}
 var TIPO_GERAL_MAP = { 'Finos':'Finos', 'Finos Magisan':'Finos', 'Reprocesso Geral':'Geral', 'Varredura':'Varredura' };
 
 // Cache do ultimo conjunto de linhas exibido no Dashboard (ja filtrado por
@@ -996,7 +1013,9 @@ var GRAFICO_MOTIVOS_CHART = null;
 // Cores fixas por fonte pro grafico de barras (mesma logica de cores dos
 // cards/badges, so' que em hex solido pra o Chart.js).
 var FONTE_COR_CHART = {
-  ensaque_geral:'#024f2b',
+  ensaque_op:'#024f2b',
+  ensaque_finos:'#0d9488',
+  ensaque_geral:'#036b3a',
   envasepet:'#739630',
   extrusao:'#8b5cf6',
   moagem:'#1f6feb',
@@ -1136,19 +1155,19 @@ function renderDashboardConsolidado(){
       OP_LOOKUP[c.key]={ numero:v.id||c.key, produto:v.desc||v.cod||'' };
     });
 
-    // 1) Ensaque — vinculo OP (apontamentos, origem:'reprocesso'). A pedido:
-    //    entra junto com a fonte "Extrusao" (e' reprocesso que volta pra
-    //    extrusao, nao um destino proprio) — mostrando o numero real da OP,
-    //    nao mais a chave interna do Firebase.
+    // 1) Ensaque — vinculo OP (apontamentos, origem:'reprocesso'). Dividido pelo
+    //    destino: Contaminacao/mistura e Limpeza de linha -> fonte "Extrusao";
+    //    demais motivos -> fonte "Ensaque — Vinculado a OP". Mostra o numero real da OP.
     if(res[0].exists()) res[0].forEach(function(c){
       var v=c.val();
       if(v.origem!=='reprocesso' || v.substituido) return;
       var op=OP_LOOKUP[v.opId]||{};
+      var vaiExtrusao=reprocessoVaiParaExtrusao(v);
       rows.push({
-        data:v.data, fonte:'extrusao', setor:'OP '+(op.numero||v.opId||'—')+' • T'+(v.turno||'—'),
+        data:v.data, fonte:vaiExtrusao?'extrusao':'ensaque_op', setor:'OP '+(op.numero||v.opId||'—')+' • T'+(v.turno||'—'),
         tipo:'', peso:Number(v.real)||0, motivo:v.motivoReprocesso||'—',
         codigo:v.codigoEtiqueta||'—', lancadoPor:v.operador||'—',
-        origemApontamento:'Ensaque'
+        origemApontamento:vaiExtrusao?'Ensaque':null
       });
     });
 
@@ -1156,7 +1175,9 @@ function renderDashboardConsolidado(){
     if(res[1].exists()) res[1].forEach(function(c){
       var v=c.val();
       rows.push({
-        data:v.data, fonte:'ensaque_geral', setor:v.linha||'—',
+        data:v.data,
+        fonte:(v.tipo==='Finos'||v.tipo==='Finos Magisan')?'ensaque_finos':'ensaque_geral',
+        setor:(v.linha||'—')+(v.tipo==='Finos Magisan'?' • Magisan':''),
         tipo:TIPO_GERAL_MAP[v.tipo]||'', peso:Number(v.quantidadeKg)||0, motivo:v.motivo||'—',
         codigo:v.codigoEtiqueta||'—', lancadoPor:v.operador||'—'
       });

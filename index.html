@@ -735,7 +735,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div class="fr"><div class="fg"><label class="fl">Reprocesso <span style="color:#d2a922;font-size:11px">(sempre em KG — peso real do saco)</span></label><input type="number" id="arp" min="0" value="0" step="0.1" placeholder="kg" oninput="G('arp-motivo-row').style.display=(parseFloat(this.value)>0?'flex':'none')"></div><div class="fg"><label class="fl">Operador</label><input type="text" id="aop" readonly style="opacity:.6"></div></div>
   <div class="fr" id="arp-motivo-row" style="display:none">
     <div class="fg" style="flex:1"><label class="fl">Motivo do reprocesso <span style="color:#c0392b;font-size:11px">*obrigatorio</span></label>
-      <select id="arp-motivo" onchange="G('arp-motivo-outro').style.display=(this.value==='Outro'?'block':'none')">
+      <select id="arp-motivo" onchange="G('arp-motivo-outro').style.display=(this.value==='Outro'?'block':'none');G('arp-destino').style.display=(MOTIVOS_REPROC_EXTRUSAO.indexOf(this.value)!==-1?'block':'none')">
         <option value="">Selecione...</option>
         <option>Saco rasgado</option>
         <option>Peso incorreto</option>
@@ -744,6 +744,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
         <option>Limpeza de linha</option>
         <option>Outro</option>
       </select>
+      <span id="arp-destino" style="display:none;font-size:11px;color:#5b21b6;font-weight:600;margin-top:3px">&#8594; Este reprocesso vai para a Extrusão (não conta na produção do Ensaque)</span>
     </div>
   </div>
   <div class="fg" id="arp-motivo-outro" style="display:none"><label class="fl">Descreva o motivo</label><input type="text" id="arp-motivo-txt" placeholder="Detalhe o motivo..."></div>
@@ -1726,7 +1727,7 @@ function renderDash(){
       if(a.substituido) return;
       // Reprocesso de "Limpeza de linha" conta na Extrusao, nao no Ensaque —
       // fica de fora de todo o dashboard/relatorios do Ensaque (ver salvarApt).
-      if(a.origem==='reprocesso'&&a.motivoReprocesso==='Limpeza de linha') return;
+      if(reprocessoVaiParaExtrusao(a)) return;
       if(ln&&fbKeyToLinhaLocal[a.opId]!==ln) return;
       var t=Number(a.turno);
       if(t<1||t>3) return;
@@ -2527,7 +2528,7 @@ function abrirApt(fbKey){
   var v3=op.t3sc!==undefined?op.t3sc:Math.round((op.t3||0)/fator);
   // Campo zerado para novo lancamento — sistema vai SOMAR
   G('at1').value=0; G('at2').value=0; G('at3').value=0;
-  G('arp').value=0; G('arp-motivo').value=''; G('arp-motivo-txt').value='';
+  G('arp').value=0; G('arp-motivo').value=''; G('arp-motivo-txt').value=''; G('arp-destino').style.display='none';
   G('arp-motivo-row').style.display='none'; G('arp-motivo-outro').style.display='none';
   // Mostra acumulado atual como informacao
   var acumEl=G('apt-acum');
@@ -2609,7 +2610,7 @@ function salvarApt(){
   // continua sendo gravado normalmente (etiqueta, rastreabilidade e auditoria de
   // mass-balance Extrusao x Ensaque, que le direto de 'apontamentos' e precisa
   // continuar enxergando esse kg). Ver recalcularReprocessoLimpezaEnsaque().
-  var isLimpezaLinha=reprocessoKG>0&&motivoReprocesso==='Limpeza de linha';
+  var isLimpezaLinha=reprocessoKG>0&&MOTIVOS_REPROC_EXTRUSAO.indexOf(motivoReprocesso)!==-1; // destino Extrusao
   var reprocessoParaEnsaque=isLimpezaLinha?0:reprocessoKG;
 
   // Valores anteriores do turno (em SC/BG/KG)
@@ -2716,6 +2717,7 @@ function salvarApt(){
     id:uid(), opId:fbKey, data:dtApt, turno:turno||0,
     t1:0, t2:0, t3:0, real:reprocessoKG,
     origem:'reprocesso', motivoReprocesso:motivoReprocesso, codigoEtiqueta:codigoEtiqueta,
+    destinoReprocesso:isLimpezaLinha?'extrusao':'ensaque',
     obs:G('aob').value, operador:SES.login, ts:agora()
   }));
   // Se nenhum turno especifico tem producao nova, salva um registro geral
@@ -2738,7 +2740,7 @@ function salvarApt(){
     toast('Apontamento salvo!'+fatorStr+dtsStr,'ok');
     if(turno===1)G('at1').value=0; else if(turno===2)G('at2').value=0; else if(turno===3)G('at3').value=0;
     else{G('at1').value=0;G('at2').value=0;G('at3').value=0;}
-    G('arp').value=0; G('arp-motivo').value=''; G('arp-motivo-txt').value='';
+    G('arp').value=0; G('arp-motivo').value=''; G('arp-motivo-txt').value=''; G('arp-destino').style.display='none';
     G('arp-motivo-row').style.display='none'; G('arp-motivo-outro').style.display='none';
     fM('mapt');
     addLog('APONTAMENTO', fbKey+' '+dtApt+' T'+turno+' '+fN(real)+'kg'+(reprocessoKG>0?' (reprocesso: '+fN(reprocessoKG)+'kg — '+codigoEtiqueta+(isLimpezaLinha?' — conta na Extrusao':'')+')':''));
@@ -2768,6 +2770,24 @@ function salvarApt(){
 // ops/{fbKey}.reprocessoLimpezaEnsaque pra somar no reprocesso total da OP dela
 // (ver dashRenderOP em extrusao.html). O comparativo Extrusao x Ensaque (mass
 // balance) tambem usa este campo — ver linha "reprocesso=" em gerarComparativo.
+// ============================================================
+// DESTINO DO REPROCESSO VINCULADO A OP (regra unica, usada em todo o sistema)
+// A partir de 05/10/2026: motivos "Contaminacao/mistura" e "Limpeza de linha"
+// vao para a EXTRUSAO (nao contam no Ensaque). Os demais ficam no Ensaque.
+// O destino e GRAVADO no apontamento (destinoReprocesso) no momento do lancamento.
+// Registros antigos (sem o campo) seguem a regra anterior — so "Limpeza de linha"
+// ia para a Extrusao — porque o kg de contaminacao antigo ja esta somado em
+// op.real/realPorData; reclassificar retroativamente quebraria o Prod. Bom e a
+// auditoria de consistencia dos dias passados.
+// ATENCAO: reprocesso-central.html replica esta mesma funcao — manter as duas iguais.
+// ============================================================
+var MOTIVOS_REPROC_EXTRUSAO=['Contaminacao/mistura','Limpeza de linha'];
+function reprocessoVaiParaExtrusao(a){
+  if(!a||a.origem!=='reprocesso') return false;
+  if(a.destinoReprocesso) return a.destinoReprocesso==='extrusao';
+  return a.motivoReprocesso==='Limpeza de linha'; // legado
+}
+
 function recalcularReprocessoLimpezaEnsaque(fbKey){
   if(!fbKey||!DB) return;
   DB.ref('apontamentos').orderByChild('opId').equalTo(fbKey).once('value').then(function(s){
@@ -2775,7 +2795,7 @@ function recalcularReprocessoLimpezaEnsaque(fbKey){
     if(s.exists()) s.forEach(function(c){
       var a=c.val();
       if(a.substituido) return;
-      if(a.origem==='reprocesso'&&a.motivoReprocesso==='Limpeza de linha') total+=Number(a.real)||0;
+      if(reprocessoVaiParaExtrusao(a)) total+=Number(a.real)||0;
     });
     DB.ref('ops/'+fbKey+'/reprocessoLimpezaEnsaque').set(total);
   }).catch(function(e){console.warn('Recalcular reprocesso limpeza (Extrusao):',e.message);});
@@ -4164,7 +4184,7 @@ function genRelPDF(tipo){
       var a=c.val();
       if(a.substituido) return;
       // Limpeza de linha conta na Extrusao, nao no relatorio do Ensaque.
-      if(a.origem==='reprocesso'&&a.motivoReprocesso==='Limpeza de linha') return;
+      if(reprocessoVaiParaExtrusao(a)) return;
       if(lnFiltro&&fbKeyToLinhaPdf[a.opId]!==lnFiltro) return;
       var t=Number(a.turno);
       if(t<1||t>3) return;
@@ -5421,7 +5441,7 @@ function gerarRelPeriodo(){
       var a=c.val();
       if(a.substituido) return;
       // Limpeza de linha conta na Extrusao, nao no relatorio de periodo do Ensaque.
-      if(a.origem==='reprocesso'&&a.motivoReprocesso==='Limpeza de linha') return;
+      if(reprocessoVaiParaExtrusao(a)) return;
       if(!turnoPorDia.hasOwnProperty(a.data)) return;
       if(ln&&fbKeyToLinha[a.opId]!==ln) return;
       var t=Number(a.turno);
@@ -6678,7 +6698,7 @@ function auditarConsistencia(){
       // Limpeza de linha nao entra em realPorData do Ensaque (conta na Extrusao) —
       // precisa ficar de fora daqui tambem, senao a auditoria acusa divergencia
       // falsa (apontamentos > realPorData) nas OPs com esse motivo.
-      if(a.origem==='reprocesso'&&a.motivoReprocesso==='Limpeza de linha') return;
+      if(reprocessoVaiParaExtrusao(a)) return;
       var t=Number(a.turno);
       if(t<1||t>3) return; // ignora registro-resumo (turno:0) e outros tipos
       var real=a.real!==undefined?(Number(a.real)||0):((Number(a.t1)||0)+(Number(a.t2)||0)+(Number(a.t3)||0));
