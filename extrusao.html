@@ -808,7 +808,10 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px;margin-bottom:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
         <div style="font-weight:700;color:#024f2b;font-size:13px">♻️ Reprocesso por Motivo de Parada (kg)</div>
-        <span id="dash-g11-badge" style="display:none;font-size:10px;font-weight:700;color:#024f2b;background:#e6f0e6;border:1px solid #c8e0c8;border-radius:12px;padding:2px 8px"></span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="dash-g11-badge" style="display:none;font-size:10px;font-weight:700;color:#024f2b;background:#e6f0e6;border:1px solid #c8e0c8;border-radius:12px;padding:2px 8px"></span>
+          <button onclick="exportarReprocessoParadasPDF()" title="Reprocesso × paradas: causa e grupo" style="background:#c0392b;color:#fff;border:none;padding:6px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📄 Relatório Reprocesso × Paradas</button>
+        </div>
       </div>
       <div id="dash-g11-destaque" style="font-size:11px;color:#c0392b;font-weight:600;margin-bottom:8px"></div>
       <canvas id="dash-g11" height="180"></canvas>
@@ -4563,6 +4566,160 @@ function exportarProdutividadePDF(){
 // kg e horas apontadas de cada granulometria AQUA em cada máquina, no período/filtro
 // do dashboard (window._GRAN_CACHE). Horas = soma da duração dos apontamentos
 // (mesma regra de minApontamento: virada da meia-noite tratada, sem horário = 1 h).
+// ── PDF: REPROCESSO × PARADAS (CAUSA E GRUPO) ─────────────
+// Fonte: reprocessoKg lançado no fechamento de cada parada (vínculo real,
+// não estimativa). Usa os mesmos dados/filtros já carregados no dashboard
+// (window._DASH_CACHE) — o PDF bate com o gráfico "Reprocesso por Motivo".
+// Grupo da causa resolvido pelo catálogo de motivos (paradaGrupo).
+// NÃO inclui o reprocesso de "Limpeza de linha" lançado no Ensaque
+// (ops/reprocessoLimpezaEnsaque), pois esse não tem parada de extrusão vinculada.
+function exportarReprocessoParadasPDF(){
+  if(typeof jspdf==="undefined"){toast("jsPDF não disponível","err");return;}
+  var C=window._DASH_CACHE;
+  if(!C){toast("Gere o dashboard antes de exportar","err");return;}
+  var F=window._GRAN_CACHE||{};
+  function minPar(p){
+    var m=Number(p.minutos)||0;
+    if(!m&&p.horaIni&&p.horaFim) m=calcMinutos(p.horaIni,p.horaFim);
+    return m;
+  }
+  var base=C.areaF?C.paradas.filter(function(p){return paradaGrupo(p)===C.areaF;}):C.paradas;
+  var regs=base.filter(function(p){return (Number(p.reprocessoKg)||0)>0;}).map(function(p){
+    return {p:p, kg:Number(p.reprocessoKg)||0, min:minPar(p), grupo:paradaGrupo(p), causa:p.descricao||"Sem motivo"};
+  });
+  if(!regs.length){toast("Nenhuma parada com reprocesso lançado no período/filtro","err");return;}
+
+  var totKg=regs.reduce(function(s,r){return s+r.kg;},0);
+  var totMin=regs.reduce(function(s,r){return s+r.min;},0);
+  var totProd=(C.apts||[]).reduce(function(s,a){return s+(Number(a.real)||0);},0);
+  var paradasTot=base.length, minParadasTot=base.reduce(function(s,p){return s+minPar(p);},0);
+
+  function agrupa(chaveFn){
+    var m={};
+    regs.forEach(function(r){
+      var k=chaveFn(r), g=m[k]=m[k]||{k:k,kg:0,min:0,n:0,grupo:r.grupo,linhas:{}};
+      g.kg+=r.kg; g.min+=r.min; g.n++; g.linhas[r.p.linha||"?"]=1;
+    });
+    return Object.values(m).sort(function(a,b){return b.kg-a.kg;});
+  }
+  var porGrupo=agrupa(function(r){return r.grupo;});
+  var porCausa=agrupa(function(r){return r.causa+"|||"+r.grupo;});
+  var porLinha=agrupa(function(r){return r.p.linha||"Sem linha";});
+  // Ocorrências totais por grupo (com e sem reprocesso) — mostra a taxa de paradas que geram reprocesso
+  var parPorGrupo={};
+  base.forEach(function(p){var g=paradaGrupo(p); parPorGrupo[g]=(parPorGrupo[g]||0)+1;});
+
+  var doc=new jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  var ML=10, W=277, PH=210, y=0;
+  function dBR(d){ return d?d.slice(8,10)+"/"+d.slice(5,7)+"/"+d.slice(0,4):""; }
+  function pct(a,b){ return b?(Math.round(a/b*1000)/10).toLocaleString("pt-BR")+"%":"-"; }
+  function fK(n){ return fN(Math.round(Number(n)||0)); }
+  function kgMin(kg,min){ return min>0?(Math.round(kg/min*10)/10).toLocaleString("pt-BR"):"-"; }
+  function precisa(h){ if(y+h>PH-12){ doc.addPage(); y=14; } }
+  function titulo(t){ precisa(16); y+=3; doc.setFont("helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(192,57,43); doc.text(t,ML,y); y+=2; doc.setDrawColor(192,57,43); doc.setLineWidth(0.4); doc.line(ML,y,ML+W,y); y+=4; }
+  function tabela(cols,rows,total){
+    var rh=6;
+    function cab(){
+      doc.setFillColor(192,57,43); doc.rect(ML,y,W,6.5,"F");
+      doc.setFont("helvetica","bold"); doc.setFontSize(7.5); doc.setTextColor(255,255,255);
+      var x=ML; cols.forEach(function(c){ doc.text(c.t, c.al==="r"?x+c.w-2:x+2, y+4.4, {align:c.al==="r"?"right":"left"}); x+=c.w; }); y+=6.5;
+    }
+    precisa(6.5+rh); cab();
+    rows.concat(total?[total]:[]).forEach(function(r,i){
+      if(y+rh>PH-12){ doc.addPage(); y=14; cab(); }
+      var isTot=total&&i===rows.length;
+      if(isTot){ doc.setFillColor(248,225,222); doc.rect(ML,y,W,rh,"F"); }
+      else if(i%2){ doc.setFillColor(253,246,245); doc.rect(ML,y,W,rh,"F"); }
+      var x=ML;
+      r.forEach(function(v,j){
+        var c=cols[j], txt=String(v==null?"":v);
+        if(c.max&&txt.length>c.max) txt=txt.slice(0,c.max-1)+"…";
+        doc.setFont("helvetica",(isTot||c.b)?"bold":"normal"); doc.setFontSize(8); doc.setTextColor(40,40,40);
+        doc.text(txt, c.al==="r"?x+c.w-2:x+2, y+4.1, {align:c.al==="r"?"right":"left"});
+        x+=c.w;
+      });
+      y+=rh;
+    });
+    y+=3;
+  }
+
+  // Cabeçalho
+  doc.setFillColor(192,57,43); doc.rect(0,0,297,19,"F");
+  doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(255,255,255);
+  doc.text("RAGUIFE - Reprocesso x Paradas: causa e grupo (Extrusão)",ML,10);
+  doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(250,215,210);
+  doc.text("Período: "+dBR(C.di)+" a "+dBR(C.df)+"   |   Filtros: Linha = "+(F.linhaF||"Todas")+", Turno = "+(F.turnoF?"T"+F.turnoF:"Todos")+", Área = "+(C.areaF||"Todas")+"   |   Gerado em: "+new Date().toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})+(SES&&SES.login?"   |   Por: "+SES.login:""),ML,15.5);
+  y=24;
+
+  // Indicadores
+  var topCausa=porCausa[0], topGrupo=porGrupo[0];
+  var kp=[
+    ["REPROCESSO TOTAL",fK(totKg)+" kg",totProd?pct(totKg,totProd)+" da produção":""],
+    ["PARADAS COM REPROCESSO",regs.length+" de "+paradasTot,pct(regs.length,paradasTot)+" das paradas"],
+    ["KG POR PARADA",fK(totKg/regs.length)+" kg","média das que geraram"],
+    ["MAIOR CAUSA",topCausa.k.split("|||")[0],fK(topCausa.kg)+" kg ("+pct(topCausa.kg,totKg)+")"],
+    ["MAIOR GRUPO",topGrupo.k,fK(topGrupo.kg)+" kg ("+pct(topGrupo.kg,totKg)+")"]
+  ];
+  var bw=(W-4*3)/5;
+  kp.forEach(function(k,i){
+    var x=ML+i*(bw+3);
+    doc.setDrawColor(243,198,193); doc.setFillColor(255,255,255); doc.roundedRect(x,y,bw,19,2,2,"FD");
+    doc.setFont("helvetica","bold"); doc.setFontSize(6.8); doc.setTextColor(115,150,48); doc.text(k[0],x+bw/2,y+5,{align:"center"});
+    var v=k[1]; doc.setFontSize(v.length>22?8.5:12); doc.setTextColor(192,57,43);
+    doc.text(v.length>34?v.slice(0,33)+"…":v,x+bw/2,y+11.5,{align:"center"});
+    doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(90,90,90); doc.text(k[2],x+bw/2,y+16.5,{align:"center"});
+  });
+  y+=24;
+
+  // 1) Por grupo
+  titulo("1. Reprocesso por grupo (área da parada)");
+  tabela(
+    [{t:"GRUPO",w:77,b:1},{t:"KG REPROC.",w:30,al:"r"},{t:"% DO REPROC.",w:28,al:"r"},{t:"PARADAS C/ REPROC.",w:36,al:"r"},{t:"% DAS PARADAS DO GRUPO",w:40,al:"r"},{t:"TEMPO PARADO",w:32,al:"r"},{t:"KG / MIN PARADO",w:34,al:"r"}],
+    porGrupo.map(function(g){return [g.k,fK(g.kg),pct(g.kg,totKg),g.n,pct(g.n,parPorGrupo[g.k]||0),minH(g.min),kgMin(g.kg,g.min)];}),
+    ["TOTAL",fK(totKg),"100%",regs.length,pct(regs.length,paradasTot),minH(totMin),kgMin(totKg,totMin)]
+  );
+
+  // 2) Por causa (Pareto)
+  titulo("2. Reprocesso por causa (Pareto) - com o grupo de cada causa");
+  var acum=0;
+  tabela(
+    [{t:"#",w:10},{t:"CAUSA (MOTIVO DA PARADA)",w:82,b:1,max:52},{t:"GRUPO",w:52,max:32},{t:"OCORR.",w:18,al:"r"},{t:"KG REPROC.",w:26,al:"r"},{t:"%",w:20,al:"r"},{t:"% ACUM.",w:22,al:"r"},{t:"TEMPO",w:22,al:"r"},{t:"KG/OCORR.",w:25,al:"r"}],
+    porCausa.map(function(c,i){ acum+=c.kg; return [i+1,c.k.split("|||")[0],c.grupo,c.n,fK(c.kg),pct(c.kg,totKg),pct(acum,totKg),minH(c.min),fK(c.kg/c.n)]; }),
+    ["","TOTAL","",regs.length,fK(totKg),"100%","",minH(totMin),fK(totKg/regs.length)]
+  );
+
+  // 3) Por linha
+  titulo("3. Reprocesso por linha");
+  tabela(
+    [{t:"LINHA",w:97,b:1},{t:"KG REPROC.",w:45,al:"r"},{t:"% DO REPROC.",w:45,al:"r"},{t:"PARADAS C/ REPROC.",w:45,al:"r"},{t:"TEMPO PARADO",w:45,al:"r"}],
+    porLinha.map(function(l){return [l.k,fK(l.kg),pct(l.kg,totKg),l.n,minH(l.min)];}),
+    ["TOTAL",fK(totKg),"100%",regs.length,minH(totMin)]
+  );
+
+  // 4) Detalhamento
+  titulo("4. Detalhamento - todas as paradas que geraram reprocesso");
+  var det=regs.slice().sort(function(a,b){return ((a.p.data||"")+(a.p.horaIni||""))>((b.p.data||"")+(b.p.horaIni||""))?1:-1;});
+  tabela(
+    [{t:"DATA",w:20},{t:"T",w:8},{t:"LINHA",w:30,max:20},{t:"HORÁRIO",w:24},{t:"CAUSA",w:62,max:40},{t:"GRUPO",w:42,max:27},{t:"DURAÇÃO",w:18,al:"r"},{t:"KG",w:18,al:"r",b:1},{t:"OP VINCULADA",w:28,max:16},{t:"OBS",w:27,max:17}],
+    det.map(function(r){var p=r.p; return [dBR(p.data),"T"+(p.turno||""),p.linha||"",(p.horaIni||"")+"-"+(p.horaFim||"aberta"),r.causa,r.grupo,minH(r.min),fK(r.kg),p.reprocessoOpNum||"-",p.obs||""];}),
+    ["","","","","TOTAL","",minH(totMin),fK(totKg),"",""]
+  );
+
+  // Notas
+  precisa(16); y+=2;
+  doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(90,90,90);
+  ["Reprocesso = kg lançado no fechamento de cada parada (vínculo direto parada -> reprocesso). Paradas sem reprocesso lançado não entram nas tabelas 2 a 4.",
+   "Grupo = área do motivo no catálogo de Motivos de Parada. Motivo excluído do catálogo depois de apontado aparece como 'Outros'.",
+   "Não inclui o reprocesso de Limpeza de linha lançado no Ensaque (não possui parada de extrusão vinculada). % da produção = reprocesso / kg extrusado no mesmo filtro."
+  ].forEach(function(t){ doc.text(t,ML,y); y+=4; });
+  var np=doc.getNumberOfPages();
+  for(var i=1;i<=np;i++){ doc.setPage(i); doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(140,140,140);
+    doc.text("Raguife - Apontamento Extrusão | Reprocesso x Paradas "+dBR(C.di)+" a "+dBR(C.df),ML,PH-6);
+    doc.text("Página "+i+" de "+np,ML+W,PH-6,{align:"right"}); }
+  doc.save("Reprocesso_Paradas_"+C.di+"_"+C.df+".pdf");
+  toast("PDF gerado!","ok");
+}
+
 function exportarGranulometriaPDF(){
   if(typeof jspdf==="undefined"){toast("jsPDF não disponível","err");return;}
   var C=window._GRAN_CACHE;
