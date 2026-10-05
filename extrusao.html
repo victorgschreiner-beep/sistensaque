@@ -5849,11 +5849,13 @@ function admEditar(fbKey){
       h+='<option value="'+l+'"'+(l===item.linha?" selected":"")+'>'+l+'</option>';
     });
     h+='</select></div>';
+    // CORREÇÃO (05/10/2026): a lista de OPs vinha só da fila do dia ABERTO (OPS[]),
+    // então ao corrigir um apontamento de outro dia a OP original não aparecia e o
+    // select caía na 1ª OP de hoje — salvar trocava a OP do apontamento sem aviso.
+    // Agora nasce com a OP atual do apontamento e é completada por admCarregarOpsEdicao().
     h+='<div class="fg"><label class="fl">OP</label><select class="fi" id="adm-op-sel">';
-    OPS.forEach(function(o){
-      h+='<option value="'+o.fbKey+'"'+(o.fbKey===item.opFbKey?" selected":"")+'>'+o.id+' — '+(o.desc||o.cod)+'</option>';
-    });
-    h+='</select></div>';
+    h+='<option value="'+(item.opFbKey||"")+'" selected>'+(item.opNum||"OP atual")+' — '+(item.desc||item.cod||"")+' (atual)</option>';
+    h+='</select><div class="hint" id="adm-op-sel-hint">Carregando OPs do dia '+(item.data||"")+'...</div></div>';
   } else {
     h+='<div style="display:flex;gap:10px">';
     h+='<div class="fg" style="flex:1"><label class="fl">Hora Início</label><input class="fi" type="time" id="adm-hi" value="'+item.horaIni+'"></div>';
@@ -5880,11 +5882,53 @@ function admEditar(fbKey){
   if(ADM_ABA==="paradas"){
     admFiltrarParadas("");
     admResolverOpReprocesso(item);
+  } else {
+    admCarregarOpsEdicao(item);
   }
 
   G('adm-corr-btns').innerHTML='<button class="btn-cancel" onclick="fM(\"m-admin-corr\")">Cancelar</button><button class="btn-ok" data-fk="'+fbKey+'" onclick="admSalvar(this.dataset.fk)">✔ Salvar Correção</button>';
 
   aM("m-admin-corr");
+}
+
+// Monta a lista de OPs do modal de correção a partir da DATA DO APONTAMENTO
+// (não da fila aberta na tela): OP atual do apontamento + OPs com data do
+// apontamento + OPs da fila carregada. OPs da mesma linha aparecem primeiro.
+var ADM_OPS_EDICAO={};
+function admCarregarOpsEdicao(item){
+  ADM_OPS_EDICAO={};
+  OPS.forEach(function(o){ADM_OPS_EDICAO[o.fbKey]=o;});
+  var buscas=[];
+  if(item.data) buscas.push(DB.ref("ops").orderByChild("data").equalTo(item.data).once("value"));
+  if(item.opFbKey) buscas.push(DB.ref("ops/"+item.opFbKey).once("value"));
+  Promise.all(buscas).then(function(snaps){
+    snaps.forEach(function(s){
+      if(!s.exists()) return;
+      var v=s.val();
+      if(v && v.id!==undefined && s.key===item.opFbKey){ v.fbKey=s.key; ADM_OPS_EDICAO[s.key]=v; return; }
+      s.forEach(function(c){var o=c.val(); o.fbKey=c.key; ADM_OPS_EDICAO[c.key]=o;});
+    });
+    var sel=G("adm-op-sel"); if(!sel) return;
+    var lista=Object.values(ADM_OPS_EDICAO).sort(function(a,b){
+      var la=a.linha===item.linha?0:1, lb=b.linha===item.linha?0:1;
+      if(la!==lb) return la-lb;
+      return (a.id||"")>(b.id||"")?1:-1;
+    });
+    var h="";
+    if(item.opFbKey && !ADM_OPS_EDICAO[item.opFbKey]){
+      h+='<option value="'+item.opFbKey+'" selected>'+(item.opNum||"OP atual")+' — '+(item.desc||item.cod||"")+' (atual — registro da OP não encontrado)</option>';
+    }
+    lista.forEach(function(o){
+      var atual=o.fbKey===item.opFbKey;
+      h+='<option value="'+o.fbKey+'"'+(atual?" selected":"")+'>'+o.id+' — '+(o.desc||o.cod)+' · '+nomeCurto(o.linha||"")+' · '+(o.data||"")+(atual?" (atual)":"")+'</option>';
+    });
+    sel.innerHTML=h;
+    var hint=G("adm-op-sel-hint");
+    if(hint) hint.textContent=lista.length+" OP(s) disponíveis — do dia "+(item.data||"")+" e da fila aberta. Mesma linha primeiro.";
+  }).catch(function(e){
+    var hint=G("adm-op-sel-hint");
+    if(hint) hint.textContent="Não foi possível carregar outras OPs ("+e.message+") — a OP atual foi mantida.";
+  });
 }
 
 function admFiltrarParadas(v){
@@ -5923,13 +5967,23 @@ function admSalvar(fbKey){
     updates.horaFim=G("adm-hf").value;
     updates.real=parseInt(G("adm-real").value)||0;
     updates.linha=G("adm-linha-sel").value;
-    var opSel=OPS.find(function(o){return o.fbKey===G("adm-op-sel").value;});
-    if(opSel){updates.opFbKey=opSel.fbKey;updates.opNum=opSel.id;updates.cod=opSel.cod;}
     var aptAnterior=ADM_DADOS.apts.find(function(a){return a.fbKey===fbKey;});
+    var opSelFk=G("adm-op-sel").value;
+    var opSel=ADM_OPS_EDICAO[opSelFk]||OPS.find(function(o){return o.fbKey===opSelFk;});
+    var opTrocou=!!(opSel && aptAnterior && opSelFk!==aptAnterior.opFbKey);
+    if(opTrocou){
+      updates.opFbKey=opSel.fbKey; updates.opNum=opSel.id; updates.cod=opSel.cod; updates.desc=opSel.desc||opSel.cod;
+    }
+    // Meta depende de produto + linha: recalcula só se um dos dois mudou
+    if(aptAnterior && (opTrocou || updates.linha!==aptAnterior.linha)){
+      updates.metaH=getMetaHora(updates.cod||aptAnterior.cod, updates.linha);
+    }
     DB.ref("extrusao_apts/"+fbKey).update(updates).then(function(){
       fM("m-admin-corr");toast("Apontamento corrigido!","ok");
     var aptEditado=ADM_DADOS.apts.find(function(a){return a.fbKey===fbKey;});
     if(aptEditado && aptEditado.opFbKey) recalcularRealExtrusao(aptEditado.opFbKey);
+    // Se o apontamento mudou de OP, a OP de destino também precisa recalcular
+    if(opTrocou) recalcularRealExtrusao(updates.opFbKey);
     // Recongela o total do turno — na linha nova e, se a linha foi trocada
     // nesta correção, também na linha antiga (que perdeu esse kg)
     if(aptAnterior){
