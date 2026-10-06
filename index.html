@@ -5355,8 +5355,8 @@ function gerarRelPeriodo(){
 
   // fbKey -> linha e fbKey -> tipo, usado pra filtrar/agrupar apontamentos e perdas
   // por linha (esses registros nao guardam linha/tipo diretamente, so o opId)
-  var fbKeyToLinha={}, fbKeyToTipo={};
-  OPS.forEach(function(o){fbKeyToLinha[o.fbKey]=o.linha; fbKeyToTipo[o.fbKey]=o.tipo;});
+  var fbKeyToLinha={}, fbKeyToTipo={}, fbKeyToOp={};
+  OPS.forEach(function(o){fbKeyToLinha[o.fbKey]=o.linha; fbKeyToTipo[o.fbKey]=o.tipo; fbKeyToOp[o.fbKey]=o;});
 
   // Busca em paralelo: metas_diarias de cada dia (Programado), perdas_diarias do
   // periodo (Perda) e apontamentos do periodo (detalhamento por turno) — mesmas
@@ -5437,6 +5437,7 @@ function gerarRelPeriodo(){
       scTurnoPorDia[d]={1:0,2:0,3:0};
       kgTurnoPorDia[d]={1:0,2:0,3:0};
     });
+    var sacSKU={}; // sacaria (SC) por SKU — preenchido no loop de apontamentos abaixo
     if(aptsSnap.exists()) aptsSnap.forEach(function(c){
       var a=c.val();
       if(a.substituido) return;
@@ -5453,9 +5454,43 @@ function gerarRelPeriodo(){
         reprOpNovoPorDia[a.data]+=real;
         reprOpNovoTurnoPorDia[a.data][t]+=real;
       }
-      if(fbKeyToTipo[a.opId]==='SC') scTurnoPorDia[a.data][t]+=real;
+      if(fbKeyToTipo[a.opId]==='SC'){
+        // Sacaria = so sacos BONS. Reprocesso e peso em kg de saco rasgado/parcial,
+        // nao e saca produzida — fica fora da contagem de sacas (ja aparece no card de Reprocesso).
+        if(a.origem!=='reprocesso'){
+          scTurnoPorDia[a.data][t]+=real;
+          var opS=fbKeyToOp[a.opId]||{};
+          var kS=opS.cod||('SEM_COD:'+a.opId);
+          if(!sacSKU[kS]) sacSKU[kS]={cod:opS.cod||'-',desc:opS.desc||'',kg:0,t:{1:0,2:0,3:0},dias:{}};
+          sacSKU[kS].kg+=real; sacSKU[kS].t[t]+=real; sacSKU[kS].dias[a.data]=true;
+        }
+      }
       else kgTurnoPorDia[a.data][t]+=real;
     });
+
+    // ── RESUMO DE SACARIA (sacas = kg/25). Medias:
+    //   media por turno  = sacas do turno / turnos em que ele produziu sacaria (dias sem producao nao puxam a media pra baixo)
+    //   media por SKU    = sacas do SKU / dias em que o SKU teve sacaria
+    var sacTurnos=[1,2,3].map(function(t){
+      var kg=0,n=0;
+      datas.forEach(function(d){var v=scTurnoPorDia[d][t];if(v>0){kg+=v;n++;}});
+      return {t:t,kg:kg,sacas:kg/25,turnosTrab:n,media:n?kg/25/n:0};
+    });
+    var sacTotKg=sacTurnos[0].kg+sacTurnos[1].kg+sacTurnos[2].kg;
+    var sacTurnosTrab=sacTurnos[0].turnosTrab+sacTurnos[1].turnosTrab+sacTurnos[2].turnosTrab;
+    var sacDiasComProd=datas.filter(function(d){var s=scTurnoPorDia[d];return (s[1]+s[2]+s[3])>0;}).length;
+    var sacResumo={
+      totKg:sacTotKg, totSacas:sacTotKg/25, turnos:sacTurnos,
+      turnosTrab:sacTurnosTrab, mediaTurno:sacTurnosTrab?sacTotKg/25/sacTurnosTrab:0,
+      diasComProd:sacDiasComProd, mediaDia:sacDiasComProd?sacTotKg/25/sacDiasComProd:0
+    };
+    var sacSKULista=Object.keys(sacSKU).map(function(k){
+      var s=sacSKU[k]; var nd=Object.keys(s.dias).length;
+      return {cod:s.cod,desc:s.desc,kg:s.kg,sacas:s.kg/25,
+        t1:s.t[1]/25,t2:s.t[2]/25,t3:s.t[3]/25,
+        nDias:nd,media:nd?s.kg/25/nd:0,
+        pct:sacTotKg?s.kg/sacTotKg*100:0};
+    }).sort(function(a,b){return b.kg-a.kg;});
 
     // ── PRODUÇÃO POR FAMÍLIA, GRANULOMETRIA E POR DIA — tudo via realPorData/
     // realPorDataTurno, nunca o.real/o.t1-t3 acumulado (que agora e vida inteira da OP)
@@ -5542,7 +5577,11 @@ function gerarRelPeriodo(){
     function fDt(d){return d?d.slice(8)+'/'+d.slice(5,7):'';}
 
     // ── CARDS CONSOLIDADOS ───────────────────────────────────
-    var html='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px">';
+    // Barra de acao no topo — PDF disponivel logo apos consultar, sem precisar rolar
+    var html='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:#eaf5ea;border:1px solid #c8e0c8;border-radius:8px;padding:10px 14px;margin-bottom:14px">'+
+      '<div style="font-size:13px;color:#024f2b"><b>Período:</b> '+di.split('-').reverse().join('/')+' a '+df.split('-').reverse().join('/')+(ln?' &nbsp;|&nbsp; <b>Linha:</b> '+ln:' &nbsp;|&nbsp; Todas as linhas')+'</div>'+
+      '<button class="btn bp" onclick="exportarRelPeriodoPDF()">📄 Baixar Relatório em PDF</button></div>';
+    html+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px">';
     var cards=[
       {l:'PROGRAMADO',v:fN(totProg)+' kg',c:'#024f2b'},
       {l:'PROD. BOM (s/ reprocesso)',v:fN(totReal)+' kg',c:corAdh},
@@ -5580,6 +5619,63 @@ function gerarRelPeriodo(){
       html+='<div style="background:#e8f0e8;border-radius:4px;height:6px"><div style="background:'+corT+';width:'+t.adh+'%;height:100%;border-radius:4px"></div></div>';
       html+='</div>';
     });
+    html+='</div>';
+
+    // ── RESUMO DE SACARIA ────────────────────────────────────
+    function fSc(n){return fN(Math.round(n));}
+    function fMed(n){return (Math.round(n*10)/10).toLocaleString('pt-BR');}
+    html+='<div style="margin-bottom:8px"><span style="font-weight:700;color:#024f2b;font-size:14px">🧾 Sacaria no Período</span><span style="font-size:11px;color:#739630;margin-left:6px">(sacos bons de 25 kg — reprocesso fora)</span></div>';
+    html+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">';
+    [
+      {l:'TOTAL DE SACAS',v:fSc(sacResumo.totSacas)+' sc',s:fN(sacResumo.totKg)+' kg'},
+      {l:'MÉDIA POR TURNO',v:fMed(sacResumo.mediaTurno)+' sc',s:sacResumo.turnosTrab+' turnos com sacaria'},
+      {l:'MÉDIA POR DIA',v:fMed(sacResumo.mediaDia)+' sc',s:sacResumo.diasComProd+' dias com sacaria'},
+      {l:'SKUs ENSACADOS',v:sacSKULista.length+' SKUs',s:'no período'}
+    ].forEach(function(c){
+      html+='<div style="background:#f5f9f2;border:1px solid #d4e8d4;border-radius:8px;padding:12px;text-align:center">'+
+        '<div style="font-size:10px;font-weight:700;color:#739630;margin-bottom:4px">'+c.l+'</div>'+
+        '<div style="font-size:16px;font-weight:700;color:#024f2b">'+c.v+'</div>'+
+        '<div style="font-size:11px;color:#4a664a;margin-top:2px">'+c.s+'</div></div>';
+    });
+    html+='</div>';
+    html+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">';
+    var corTurnoSac=['#00643c','#148c50','#64aa78'];
+    sacTurnos.forEach(function(st,i){
+      var part=sacResumo.totKg?Math.round(st.kg/sacResumo.totKg*100):0;
+      html+='<div style="background:#f5f9f2;border:2px solid '+corTurnoSac[i]+';border-radius:8px;padding:12px">'+
+        '<div style="font-weight:700;color:'+corTurnoSac[i]+';margin-bottom:6px">Turno '+st.t+'</div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="color:#4a664a">Total</span><b>'+fSc(st.sacas)+' sc</b></div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="color:#4a664a">Média por turno</span><b>'+fMed(st.media)+' sc</b></div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px"><span style="color:#4a664a">Turnos trabalhados</span><b>'+st.turnosTrab+'</b></div>'+
+        '<div style="background:#e8f0e8;border-radius:4px;height:6px"><div style="background:'+corTurnoSac[i]+';width:'+part+'%;height:100%;border-radius:4px"></div></div>'+
+        '<div style="font-size:10px;color:#4a664a;margin-top:3px;text-align:right">'+part+'% da sacaria</div></div>';
+    });
+    html+='</div>';
+    html+='<div style="background:#fff;border:1px solid #d4e8d4;border-radius:8px;padding:16px;margin-bottom:20px;overflow-x:auto">';
+    html+='<div style="font-weight:700;color:#024f2b;margin-bottom:10px;font-size:13px">Sacaria por SKU</div>';
+    if(!sacSKULista.length){
+      html+='<div style="color:#4a664a;font-size:12px;padding:8px">Nenhuma produção em sacaria no período.</div>';
+    } else {
+      var thS='padding:6px;color:#4a664a;text-align:right';
+      html+='<table style="width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap">';
+      html+='<tr style="border-bottom:2px solid #d4e8d4"><th style="padding:6px;color:#4a664a;text-align:left">Código</th><th style="padding:6px;color:#4a664a;text-align:left">Produto</th>'+
+        '<th style="'+thS+'">T1 (sc)</th><th style="'+thS+'">T2 (sc)</th><th style="'+thS+'">T3 (sc)</th><th style="'+thS+'">Total (sc)</th><th style="'+thS+'">Total (kg)</th><th style="'+thS+'">Dias</th><th style="'+thS+'">Média (sc/dia)</th><th style="'+thS+'">%</th></tr>';
+      sacSKULista.forEach(function(s){
+        html+='<tr style="border-bottom:1px solid #eef4ea"><td style="padding:6px;font-size:11px;color:#4a664a">'+s.cod+'</td>'+
+          '<td style="padding:6px;max-width:260px;overflow:hidden;text-overflow:ellipsis" title="'+s.desc+'">'+s.desc+'</td>'+
+          '<td style="text-align:right;padding:6px">'+fSc(s.t1)+'</td><td style="text-align:right;padding:6px">'+fSc(s.t2)+'</td><td style="text-align:right;padding:6px">'+fSc(s.t3)+'</td>'+
+          '<td style="text-align:right;padding:6px;font-weight:700;color:#024f2b">'+fSc(s.sacas)+'</td>'+
+          '<td style="text-align:right;padding:6px;color:#4a664a">'+fN(s.kg)+'</td>'+
+          '<td style="text-align:right;padding:6px">'+s.nDias+'</td>'+
+          '<td style="text-align:right;padding:6px;font-weight:600">'+fMed(s.media)+'</td>'+
+          '<td style="text-align:right;padding:6px;color:#739630">'+fMed(s.pct)+'%</td></tr>';
+      });
+      html+='<tr style="border-top:2px solid #024f2b;background:#f0f7ec;font-weight:700"><td style="padding:8px;color:#024f2b" colspan="2">TOTAL</td>'+
+        '<td style="text-align:right;padding:8px">'+fSc(sacTurnos[0].sacas)+'</td><td style="text-align:right;padding:8px">'+fSc(sacTurnos[1].sacas)+'</td><td style="text-align:right;padding:8px">'+fSc(sacTurnos[2].sacas)+'</td>'+
+        '<td style="text-align:right;padding:8px;color:#024f2b">'+fSc(sacResumo.totSacas)+'</td><td style="text-align:right;padding:8px">'+fN(sacResumo.totKg)+'</td>'+
+        '<td style="text-align:right;padding:8px">'+sacResumo.diasComProd+'</td><td style="text-align:right;padding:8px">'+fMed(sacResumo.mediaDia)+'</td><td style="text-align:right;padding:8px">100%</td></tr>';
+      html+='</table>';
+    }
     html+='</div>';
 
     // ── GRÁFICOS ─────────────────────────────────────────────
@@ -5788,7 +5884,8 @@ function gerarRelPeriodo(){
       totT1:totT1,totT2:totT2,totT3:totT3,adhT1:adhT1,adhT2:adhT2,adhT3:adhT3,
       totScT1:totScT1,totScT2:totScT2,totScT3:totScT3,
       totKgT1:totKgT1,totKgT2:totKgT2,totKgT3:totKgT3,ops:opsRelevantes,
-      famTotais:famTotais,granTotais:granTotais,detalheFamilias:detalheFamilias,porSKU:porSKU};
+      famTotais:famTotais,granTotais:granTotais,detalheFamilias:detalheFamilias,porSKU:porSKU,
+      sacResumo:sacResumo,sacSKU:sacSKULista};
   }).catch(function(e){
     cont.innerHTML='<div style="text-align:center;padding:40px;color:#c0392b">Erro ao calcular relatório: '+e.message+'</div>';
   });
@@ -6208,8 +6305,129 @@ function exportarRelPeriodoPDF(){
   doc.setTextColor(80,80,80); doc.text(fN(d.totKgT1+d.totKgT2+d.totKgT3),hc[10],y+5.5);
   doc.setTextColor(192,57,43); doc.text(fN(d.totReprocesso),hc[11],y+5.5);
 
-  doc.setFontSize(6.5); doc.setTextColor(160,160,160);
-  doc.text('Raguife Ensaque  |  Período: '+fDt2(d.di)+' a '+fDt2(d.df)+'  |  Gerado em: '+new Date().toLocaleString('pt-BR'),148,202,{align:'center'});
+  // ── PÁGINA DE SACARIA: total, resumo por turno e detalhamento por SKU ──
+  var sr=d.sacResumo;
+  if(sr){
+    function fScP(n){return fN(Math.round(n));}
+    function fMedP(n){return (Math.round(n*10)/10).toLocaleString('pt-BR');}
+    doc.addPage(); y=12;
+    doc.setFillColor(2,79,43); doc.rect(0,0,297,16,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(255,255,255);
+    doc.text('RESUMO DE SACARIA',ML,10);
+    doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(180,220,180);
+    doc.text('Período: '+fDt2(d.di)+' a '+fDt2(d.df)+(d.ln?'  |  Linha: '+d.ln:'  |  Todas as linhas')+'  |  Sacos bons de 25 kg (reprocesso fora)',ML,14.5);
+    y=22;
+
+    // Cards gerais
+    var cSac=[
+      {l:'TOTAL DE SACAS',v:fScP(sr.totSacas)+' sc',s:fN(sr.totKg)+' kg'},
+      {l:'MÉDIA POR TURNO',v:fMedP(sr.mediaTurno)+' sc',s:sr.turnosTrab+' turnos com sacaria'},
+      {l:'MÉDIA POR DIA',v:fMedP(sr.mediaDia)+' sc',s:sr.diasComProd+' dias com sacaria'},
+      {l:'SKUs ENSACADOS',v:(d.sacSKU||[]).length+' SKUs',s:'no período'}
+    ];
+    var cw4=(W-6)/4;
+    cSac.forEach(function(c,i){
+      var cx=ML+i*(cw4+2);
+      doc.setFillColor(245,250,245); doc.rect(cx,y,cw4,18,'F');
+      doc.setDrawColor(200,220,200); doc.rect(cx,y,cw4,18,'S');
+      doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(100,130,100);
+      doc.text(c.l,cx+cw4/2,y+5,{align:'center'});
+      doc.setFontSize(11); doc.setTextColor(2,79,43);
+      doc.text(c.v,cx+cw4/2,y+11.5,{align:'center'});
+      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(90,110,90);
+      doc.text(c.s,cx+cw4/2,y+16,{align:'center'});
+    });
+    y+=23;
+
+    // Resumo por turno
+    var corTs=[[0,100,60],[20,140,80],[100,170,100]];
+    var tw4=(W-4)/3;
+    sr.turnos.forEach(function(st,i){
+      var cx=ML+i*(tw4+2), cor=corTs[i];
+      var part=sr.totKg?Math.round(st.kg/sr.totKg*100):0;
+      doc.setFillColor(cor[0],cor[1],cor[2]); doc.rect(cx,y,tw4,5,'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(255,255,255);
+      doc.text('Turno '+st.t,cx+tw4/2,y+3.6,{align:'center'});
+      doc.setFillColor(245,253,245); doc.rect(cx,y+5,tw4,17,'F');
+      doc.setDrawColor(cor[0],cor[1],cor[2]); doc.rect(cx,y,tw4,22,'S');
+      doc.setFontSize(11); doc.setTextColor(cor[0],cor[1],cor[2]);
+      doc.text(fScP(st.sacas)+' sc',cx+tw4/2,y+12,{align:'center'});
+      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(80,110,80);
+      doc.text('Média: '+fMedP(st.media)+' sc/turno  |  '+st.turnosTrab+' turnos  |  '+part+'% da sacaria',cx+tw4/2,y+18,{align:'center'});
+    });
+    y+=27;
+
+    // Tabela por SKU
+    var xs={cod:ML+2,desc:ML+30,t1:ML+142,t2:ML+160,t3:ML+178,tot:ML+200,kg:ML+224,dias:ML+238,med:ML+258,pct:ML+275};
+    function cabSKU(){
+      doc.setFillColor(2,79,43); doc.rect(ML,y,W,6,'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+      doc.text('SACARIA POR SKU',ML+4,y+4.3);
+      y+=7;
+      doc.setFillColor(220,235,220); doc.rect(ML,y,W,6,'F');
+      doc.setFontSize(6.5); doc.setTextColor(2,79,43);
+      doc.text('CÓDIGO',xs.cod,y+4.3); doc.text('PRODUTO',xs.desc,y+4.3);
+      [['T1 (sc)','t1'],['T2 (sc)','t2'],['T3 (sc)','t3'],['TOTAL (sc)','tot'],['TOTAL (kg)','kg'],['DIAS','dias'],['MÉDIA sc/dia','med'],['%','pct']].forEach(function(h){
+        doc.text(h[0],xs[h[1]],y+4.3,{align:'right'});
+      });
+      y+=7;
+    }
+    cabSKU();
+    var lst=d.sacSKU||[];
+    if(!lst.length){
+      doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(120,120,120);
+      doc.text('Nenhuma produção em sacaria no período.',ML+4,y+4);
+      y+=8;
+    }
+    lst.forEach(function(s,j){
+      if(y>190){doc.addPage(); y=12; cabSKU();}
+      if(j%2===0){doc.setFillColor(248,253,248);doc.rect(ML,y-1,W,6.5,'F');}
+      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(60,60,60);
+      doc.text(String(s.cod||'-'),xs.cod,y+3.6);
+      var ds=(s.desc||'').length>58?(s.desc.slice(0,56)+'…'):(s.desc||'');
+      doc.text(ds,xs.desc,y+3.6);
+      doc.text(fScP(s.t1),xs.t1,y+3.6,{align:'right'});
+      doc.text(fScP(s.t2),xs.t2,y+3.6,{align:'right'});
+      doc.text(fScP(s.t3),xs.t3,y+3.6,{align:'right'});
+      doc.setFont('helvetica','bold'); doc.setTextColor(2,79,43);
+      doc.text(fScP(s.sacas),xs.tot,y+3.6,{align:'right'});
+      doc.setFont('helvetica','normal'); doc.setTextColor(90,90,90);
+      doc.text(fN(s.kg),xs.kg,y+3.6,{align:'right'});
+      doc.text(String(s.nDias),xs.dias,y+3.6,{align:'right'});
+      doc.setFont('helvetica','bold'); doc.setTextColor(30,30,30);
+      doc.text(fMedP(s.media),xs.med,y+3.6,{align:'right'});
+      doc.setFont('helvetica','normal'); doc.setTextColor(115,150,48);
+      doc.text(fMedP(s.pct)+'%',xs.pct,y+3.6,{align:'right'});
+      y+=6.5;
+    });
+    if(lst.length){
+      if(y>190){doc.addPage(); y=12;}
+      y+=1;
+      doc.setFillColor(220,240,220); doc.rect(ML,y,W,8,'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(2,79,43);
+      doc.text('TOTAL',xs.cod,y+5.3);
+      doc.text(fScP(sr.turnos[0].sacas),xs.t1,y+5.3,{align:'right'});
+      doc.text(fScP(sr.turnos[1].sacas),xs.t2,y+5.3,{align:'right'});
+      doc.text(fScP(sr.turnos[2].sacas),xs.t3,y+5.3,{align:'right'});
+      doc.text(fScP(sr.totSacas),xs.tot,y+5.3,{align:'right'});
+      doc.text(fN(sr.totKg),xs.kg,y+5.3,{align:'right'});
+      doc.text(String(sr.diasComProd),xs.dias,y+5.3,{align:'right'});
+      doc.text(fMedP(sr.mediaDia),xs.med,y+5.3,{align:'right'});
+      doc.text('100%',xs.pct,y+5.3,{align:'right'});
+      y+=12;
+    }
+    if(y>192){doc.addPage(); y=12;}
+    doc.setFont('helvetica','italic'); doc.setFontSize(6.5); doc.setTextColor(120,120,120);
+    doc.text('Média por turno = sacas do turno / turnos em que houve sacaria. Média do SKU = sacas do SKU / dias em que o SKU foi ensacado. Dias sem produção não entram na média.',ML,y);
+  }
+
+  // Rodapé em todas as páginas, com numeração
+  var nPag=doc.getNumberOfPages();
+  for(var pg=1;pg<=nPag;pg++){
+    doc.setPage(pg);
+    doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(160,160,160);
+    doc.text('Raguife Ensaque  |  Período: '+fDt2(d.di)+' a '+fDt2(d.df)+'  |  Gerado em: '+new Date().toLocaleString('pt-BR')+'  |  Página '+pg+' de '+nPag,148,204,{align:'center'});
+  }
 
   doc.save('Relatorio_Periodo_'+d.di+'_'+d.df+'.pdf');
   toast('PDF gerado!','ok');
