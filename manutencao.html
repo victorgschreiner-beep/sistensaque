@@ -114,6 +114,10 @@ tr:hover td{background:rgba(2,79,43,.03)}
 .vu-alert-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--r);margin-bottom:10px;border-left:4px solid}
 .vu-alert-card.st-atencao{background:rgba(210,153,34,.08);border-color:#d29922}
 .vu-alert-card.st-proximo{background:rgba(210,153,34,.15);border-color:#a15c00}
+.vu-alert-card.st-virada{background:rgba(31,111,235,.10);border-color:#1f6feb}
+.vu-alert-card.st-viradaprox{background:rgba(31,111,235,.05);border-color:#7aa7f0}
+.bvr{background:rgba(31,111,235,.14);color:#1d4f91}
+.vu-vir{font-size:10px;font-weight:700;color:#1d4f91;margin-top:2px}
 .vu-alert-card.st-vencida{background:rgba(192,57,43,.1);border-color:#c0392b}
 .vu-alert-title{font-weight:700;font-size:13px}
 .vu-alert-sub{font-size:12px;color:#4a664a;margin-top:2px}
@@ -438,6 +442,8 @@ tr:hover td{background:rgba(2,79,43,.03)}
             <option value="atencao">🟡 Atenção</option>
             <option value="proximo">🟠 Próximo da troca</option>
             <option value="vencida">🔴 Troca vencida</option>
+            <option value="viradaprox">🔵 Virada próxima</option>
+            <option value="virada">🔄 Virar agora</option>
           </select>
         </div>
       </div>
@@ -625,13 +631,13 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="fr" id="vuc-linha-dias">
       <div class="fg" style="margin-bottom:0">
         <label class="fl">Vida útil (dias)</label>
-        <input type="number" id="vuc-vidadias" min="1" placeholder="ex: 90">
+        <input type="number" id="vuc-vidadias" min="1" placeholder="ex: 90" oninput="vuAoTrocarVirada()">
       </div>
     </div>
     <div class="fr" id="vuc-linha-ton" style="display:none">
       <div class="fg" style="margin-bottom:0">
         <label class="fl">Vida útil (toneladas)</label>
-        <input type="number" id="vuc-vidaton" min="0.1" step="0.1" placeholder="ex: 500">
+        <input type="number" id="vuc-vidaton" min="0.1" step="0.1" placeholder="ex: 5600" oninput="vuAoTrocarVirada()">
       </div>
     </div>
     <div class="fg">
@@ -641,6 +647,25 @@ tr:hover td{background:rgba(2,79,43,.03)}
         <input type="time" id="vuc-horatroca" style="flex:1">
       </div>
       <div class="hint">Dia operacional (21h → dia seguinte). A hora importa para vínculo por moinho: toneladas moídas antes dela não contam.</div>
+    </div>
+    <div class="fg">
+      <label id="vuc-virada-wrap" style="display:none;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#024f2b;cursor:pointer">
+        <input type="checkbox" id="vuc-temvirada" style="width:auto" onchange="vuAoTrocarVirada()"> Possui virada de martelos no meio da vida
+      </label>
+      <div id="vuc-virada-box" style="display:none;margin-top:8px;padding:10px;border:1px solid #c8d8c8;border-radius:8px;background:#f7faf7">
+        <div class="fr" style="margin-bottom:6px">
+          <div class="fg" style="margin-bottom:0">
+            <label class="fl">Virar com (toneladas)</label>
+            <input type="number" id="vuc-viradaton" min="1" step="1" placeholder="ex: 2800" oninput="vuAoTrocarVirada()">
+          </div>
+          <div class="fg" style="margin-bottom:0">
+            <label class="fl">Avisar quando faltar (toneladas)</label>
+            <input type="number" id="vuc-viradaaviso" min="0" step="1" placeholder="ex: 300" oninput="vuAoTrocarVirada()">
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="vuc-viradafeita" style="width:auto"> Virada já feita neste ciclo</label>
+        <div class="hint" id="vuc-virada-hint"></div>
+      </div>
     </div>
     <div class="fg">
       <label class="fl">Observação (opcional)</label>
@@ -670,6 +695,30 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="mfoot">
       <button class="btn bsm" onclick="fM('ov-vu-equipamento')">Cancelar</button>
       <button class="btn bsm bp" onclick="vuSalvarEquipamento()">Criar Equipamento</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: REGISTRAR VIRADA (mesmo componente, não reinicia o ciclo) -->
+<div class="ov" id="ov-vu-virada">
+  <div class="modal">
+    <div class="mt">🔄 Registrar Virada</div>
+    <div class="ali" id="vu-virada-resumo"></div>
+    <div class="fg">
+      <label class="fl">Data e hora da virada</label>
+      <div style="display:flex;gap:6px">
+        <input type="date" id="vuv-data" style="flex:2">
+        <input type="time" id="vuv-hora" style="flex:1">
+      </div>
+    </div>
+    <div class="fg">
+      <label class="fl">Observação (opcional)</label>
+      <textarea id="vuv-obs" placeholder="Ex.: desgaste uniforme, 2 martelos trincados substituídos..."></textarea>
+    </div>
+    <input type="hidden" id="vuv-fbkey">
+    <div class="mfoot">
+      <button class="btn bsm" onclick="fM('ov-vu-virada')">Cancelar</button>
+      <button class="btn bsm bp" onclick="vuConfirmarVirada()">Confirmar Virada</button>
     </div>
   </div>
 </div>
@@ -1491,7 +1540,23 @@ function excluirMotivo(fbKey){
 // Constantes centralizadas (evita "constante implícita" espalhada pelo código)
 var VU_LIM_ATENCAO=70;   // % consumido a partir do qual vira 🟡 Atenção
 var VU_LIM_PROXIMO=90;   // % consumido a partir do qual vira 🟠 Próximo da troca
-var VU_LIM_VENCIDO=100;  // % consumido a partir do qual vira 🔴 Troca vencida
+var VU_LIM_VENCIDO=100;
+// Moinhos cujos martelos admitem virada (MM 1000 e MM 1200 não têm). Incluir aqui se surgir outro.
+var VU_MOINHOS_COM_VIRADA=['M05','M06','M07'];
+function vuPermiteVirada(o){ return !!(o&&o.moinhoVinculado&&VU_MOINHOS_COM_VIRADA.indexOf(o.moinhoVinculado)>=0); }
+var VU_VIRADA_ANTECEDENCIA=10; // só para registros antigos sem aviso em toneladas
+// Ponto de virada e aviso antecipado em TONELADAS, próprios de cada componente (cada moinho tem o seu).
+// Registros antigos gravados em % são convertidos pela vida útil.
+function vuViradaTon(c){
+  if(!c) return 0;
+  if(c.viradaTon) return Number(c.viradaTon);
+  if(c.viradaPct&&c.vidaUtilToneladas) return c.vidaUtilToneladas*c.viradaPct/100;
+  return 0;
+}
+function vuViradaAvisoTon(c){
+  if(c.viradaAvisoTon!=null) return Number(c.viradaAvisoTon);
+  return (c.vidaUtilToneladas||0)*VU_VIRADA_ANTECEDENCIA/100;
+} // pontos % antes do ponto de virada em que já avisa 🔵 Virada próxima  // % consumido a partir do qual vira 🔴 Troca vencida
 var VU_LINHAS_EXTRUSAO=["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
 
 var EQUIPAMENTOS_VU=[];
@@ -1597,6 +1662,10 @@ function vuAoTrocarEquipamento(){
     if(o.value==='toneladas'||o.value==='combinacao') o.disabled=!vinculado;
   });
   if(!vinculado&&(selCrit.value==='toneladas'||selCrit.value==='combinacao')){ selCrit.value='dias'; }
+  var podeVir=vuPermiteVirada(eq);
+  G('vuc-virada-wrap').style.display=podeVir?'flex':'none';
+  if(!podeVir) G('vuc-temvirada').checked=false;
+  vuAoTrocarVirada();
   vuAoTrocarCriterio();
 }
 function vuAoTrocarCriterio(){
@@ -1614,6 +1683,20 @@ function vuAoTrocarCriterio(){
   } else { hint.textContent=''; hint.className='hint'; }
 }
 
+function vuAoTrocarVirada(){
+  var on=G('vuc-temvirada').checked;
+  G('vuc-virada-box').style.display=on?'':'none';
+  if(!on) return;
+  var crit=G('vuc-criterio').value, vt=parseFloat(G('vuc-vidaton').value)||0;
+  var vir=parseFloat(G('vuc-viradaton').value)||0, av=parseFloat(G('vuc-viradaaviso').value)||0, hint=G('vuc-virada-hint');
+  // Sugestão só quando o campo está vazio — o valor digitado é sempre respeitado
+  if(!G('vuc-viradaton').value&&vt) G('vuc-viradaton').placeholder='ex: '+fN(vt/2);
+  if(crit==='dias'){hint.textContent='A virada é controlada por toneladas — use o critério "Por toneladas" ou "O que ocorrer primeiro".';hint.className='hint err2';return;}
+  if(!vir){hint.textContent='Informe com quantas toneladas virar os martelos deste moinho.';hint.className='hint';return;}
+  if(vt&&vir>=vt){hint.textContent='A virada ('+fN(vir)+' t) precisa ser menor que a vida útil ('+fN(vt)+' t).';hint.className='hint err2';return;}
+  hint.className='hint';
+  hint.textContent='🔵 Aviso a partir de '+fN(Math.max(0,vir-av))+' t · 🔄 Virar em '+fN(vir)+' t'+(vt?' ('+fN(vir/vt*100)+'% da vida)':'')+'. A virada NÃO reinicia o ciclo — a troca continua em '+(vt?fN(vt)+' t':'100%')+'.';
+}
 function vuAbrirNovoComponente(){
   if(!podeGerenciarVU()) return;
   montarSelectsEquipamentoVU();
@@ -1621,6 +1704,7 @@ function vuAbrirNovoComponente(){
   G('vuc-equip').value=''; G('vuc-componente').value=''; G('vuc-codigo').value='';
   G('vuc-criterio').value='dias'; G('vuc-vidadias').value=''; G('vuc-vidaton').value='';
   G('vuc-datatroca').value=hoje(); G('vuc-horatroca').value=horaAtual(); G('vuc-obs').value=''; G('vuc-fbkey').value='';
+  G('vuc-temvirada').checked=false; G('vuc-viradaton').value=''; G('vuc-viradaaviso').value=''; G('vuc-viradafeita').checked=false; vuAoTrocarVirada();
   vuAoTrocarEquipamento();
   G('btn-salvar-vu-componente').textContent='Cadastrar';
   aM('ov-vu-componente');
@@ -1641,9 +1725,11 @@ function vuAbrirEditarComponente(fbKey){
   G('vuc-horatroca').value=c.dataTrocaTs?horaBrasiliaHM(new Date(c.dataTrocaTs)):'';
   G('vuc-obs').value=c.obs||'';
   G('vuc-fbkey').value=fbKey;
+  G('vuc-temvirada').checked=!!vuViradaTon(c); G('vuc-viradaton').value=vuViradaTon(c)||''; G('vuc-viradaaviso').value=vuViradaTon(c)?vuViradaAvisoTon(c):''; G('vuc-viradafeita').checked=!!c.viradaTs;
   vuAoTrocarEquipamento();
   G('vuc-criterio').value=c.criterio||'dias'; // reaplica após o reset feito por vuAoTrocarEquipamento
   vuAoTrocarCriterio();
+  vuAoTrocarVirada();
   G('btn-salvar-vu-componente').textContent='Salvar Alterações';
   aM('ov-vu-componente');
 }
@@ -1664,6 +1750,25 @@ function vuSalvarComponente(){
   if((criterio==='toneladas'||criterio==='combinacao')&&!vuFonteTon(eq)){
     toast('Este equipamento não está vinculado a uma linha ou moinho','err');return;
   }
+  // Proteção contra digitar kg no campo de toneladas (ex.: 5600000 em vez de 5600)
+  if((criterio==='toneladas'||criterio==='combinacao')&&vidaTon>=100000&&
+     !confirm('Vida útil de '+fN(vidaTon)+' TONELADAS? O campo é em toneladas.\nSe você quis dizer '+fN(vidaTon)+' kg, digite '+fN(vidaTon/1000,1)+'.\n\nOK = manter '+fN(vidaTon)+' t · Cancelar = corrigir')) return;
+  var temVirada=G('vuc-temvirada').checked&&vuPermiteVirada(eq);
+  var viradaTon=null, viradaAvisoTon=null, viradaPct=null;
+  if(temVirada){
+    if(criterio==='dias'){toast('Virada exige critério por toneladas','err');return;}
+    viradaTon=parseFloat(G('vuc-viradaton').value)||0;
+    viradaAvisoTon=parseFloat(G('vuc-viradaaviso').value)||0;
+    if(viradaTon<=0){toast('Informe com quantas toneladas virar','err');return;}
+    if(viradaTon>=vidaTon){toast('A virada precisa ser menor que a vida útil ('+fN(vidaTon)+' t)','err');return;}
+    if(viradaAvisoTon<0||viradaAvisoTon>=viradaTon){toast('O aviso antecipado precisa ser menor que o ponto de virada','err');return;}
+    viradaPct=Math.round(viradaTon/vidaTon*1000)/10; // só informativo
+  }
+  var cAnt=fbKey?VU_COMPONENTES_CACHE.find(function(x){return x.fbKey===fbKey;}):null;
+  var viradaTs=null, viradaData=null;
+  if(temVirada&&G('vuc-viradafeita').checked){
+    viradaTs=(cAnt&&cAnt.viradaTs)||Date.now(); viradaData=(cAnt&&cAnt.viradaData)||hoje();
+  }
   var horaTroca=G('vuc-horatroca').value;
   var dataTrocaTs=horaTroca?tsDeDataOp(dataTroca,horaTroca):null;
   if(dataTrocaTs&&dataTrocaTs>Date.now()+10*60000){toast('Data/hora da instalação está no futuro','err');return;}
@@ -1680,6 +1785,11 @@ function vuSalvarComponente(){
     vidaUtilToneladas:(criterio==='toneladas'||criterio==='combinacao')?vidaTon:null,
     dataTroca:dataTroca,
     obs:G('vuc-obs').value.trim()||null,
+    viradaTon:viradaTon,
+    viradaAvisoTon:viradaAvisoTon,
+    viradaPct:viradaPct,
+    viradaTs:viradaTs,
+    viradaData:viradaData,
     ativo:true
   };
   ld(true,'Salvando...');
@@ -1755,6 +1865,18 @@ function vuCalcularProducao(){
     return mapa;
   });
 }
+// Previsão da data em que o componente atinge "alvo" % da vida (usado para troca e para virada)
+function vuPrevisaoPct(c,out,alvo){
+  var hojeStr=hoje(), pd=null, pt=null;
+  if((c.criterio==='dias'||c.criterio==='combinacao')&&c.vidaUtilDias) pd=addDiasData(c.dataTroca,c.vidaUtilDias*alvo/100);
+  if((c.criterio==='toneladas'||c.criterio==='combinacao')&&c.vidaUtilToneladas){
+    var rest=Math.max(0,c.vidaUtilToneladas*alvo/100-out.toneladasAcumuladas);
+    var media=out.diasDecorridos>0?out.toneladasAcumuladas/out.diasDecorridos:0;
+    pt=rest===0?hojeStr:(media>0?addDiasData(hojeStr,rest/media):null);
+  }
+  if(pd&&pt) return pt<pd?pt:pd;
+  return pd||pt;
+}
 function vuStatusDe(pct){
   if(pct>=VU_LIM_VENCIDO) return 'vencida';
   if(pct>=VU_LIM_PROXIMO) return 'proximo';
@@ -1763,12 +1885,15 @@ function vuStatusDe(pct){
 }
 function vuStatusBadge(st){
   if(st==='vencida') return '<span class="badge brd">🔴 Troca vencida</span>';
+  if(st==='virada') return '<span class="badge bvr">🔄 Virar agora</span>';
+  if(st==='viradaprox') return '<span class="badge bvr">🔵 Virada próxima</span>';
   if(st==='proximo') return '<span class="badge bpx">🟠 Próximo da troca</span>';
   if(st==='atencao') return '<span class="badge bam">🟡 Atenção</span>';
   return '<span class="badge bvd">🟢 Normal</span>';
 }
 function vuStatusCor(st){
   if(st==='vencida') return '#c0392b';
+  if(st==='virada'||st==='viradaprox') return '#1f6feb';
   if(st==='proximo') return '#a15c00';
   if(st==='atencao') return '#d29922';
   return '#024f2b';
@@ -1806,6 +1931,18 @@ function vuCalcularComponente(c,mapaProducao){
     if(prevTon&&prevTon<prevDias) out.previsaoData=prevTon; else out.previsaoData=prevDias;
   }
   out.status=vuStatusDe(out.percentual);
+  // Virada (ex.: martelos): aviso intermediário que NÃO reinicia o ciclo.
+  // Só vale enquanto a virada não foi registrada neste ciclo; troca/vencimento têm prioridade.
+  var vTon=vuViradaTon(c);
+  if(vTon&&!c.viradaTs&&vuPermiteVirada(c)&&c.criterio!=='dias'&&c.vidaUtilToneladas){
+    out.viradaPendente=true;
+    out.viradaFaltaTon=Math.max(0,vTon-out.toneladasAcumuladas);
+    out.previsaoVirada=vuPrevisaoPct({criterio:'toneladas',dataTroca:c.dataTroca,vidaUtilToneladas:c.vidaUtilToneladas},out,vTon/c.vidaUtilToneladas*100);
+    if(out.status==='normal'||out.status==='atencao'){
+      if(out.toneladasAcumuladas>=vTon) out.status='virada';
+      else if(out.toneladasAcumuladas>=vTon-vuViradaAvisoTon(c)) out.status='viradaprox';
+    }
+  }
   if(out.previsaoData){
     out.previsaoLabel=fmtDataBR(out.previsaoData)+(out.motivoDominante==='toneladas'&&c.criterio==='combinacao'?' (por tonelada)':(out.motivoDominante==='dias'&&c.criterio==='combinacao'?' (por dias)':'')); 
   } else if(c.criterio!=='dias'){
@@ -1868,8 +2005,10 @@ function vuRenderLista(){
     var consumidoLbl=c.criterio==='dias'?fN(k.diasDecorridos)+' / '+fN(c.vidaUtilDias)+' dias':
                       c.criterio==='toneladas'?fN(k.toneladasAcumuladas,1)+' / '+fN(c.vidaUtilToneladas,1)+' t':
                       fN(k.diasDecorridos)+'d / '+fN(k.toneladasAcumuladas,1)+'t';
-    var acoes='<button class="btn bxs bo" data-fk="'+c.fbKey+'" onclick="vuAbrirTroca(this.dataset.fk)">Registrar Troca</button>';
-    if(k.status==='proximo'||k.status==='vencida'){
+    var acoes='';
+    if(k.viradaPendente) acoes+='<button class="btn bxs" style="background:#1f6feb;border-color:#1f6feb;color:#fff" data-fk="'+c.fbKey+'" onclick="vuAbrirVirada(this.dataset.fk)">🔄 Virar</button> ';
+    acoes+='<button class="btn bxs bo" data-fk="'+c.fbKey+'" onclick="vuAbrirTroca(this.dataset.fk)">Registrar Troca</button>';
+    if(k.status==='proximo'||k.status==='vencida'||k.status==='virada'){
       acoes+=' <button class="btn bxs" data-fk="'+c.fbKey+'" onclick="vuGerarOM(this.dataset.fk)">Gerar O.M.</button>';
     }
     if(podeGerenciarVU()){
@@ -1883,7 +2022,7 @@ function vuRenderLista(){
     h+='<td>'+vidaLbl+'</td>';
     h+='<td><div class="vu-prog-wrap"><span class="vu-prog-pct" style="color:'+vuStatusCor(k.status)+'">'+consumidoLbl+' ('+fN(pct)+'%)</span>';
     h+='<div class="vu-prog-bar"><div class="vu-prog-fill" style="width:'+pct+'%;background:'+vuStatusCor(k.status)+'"></div></div></div></td>';
-    h+='<td style="font-size:12px">'+(k.previsaoLabel||'—')+'</td>';
+    h+='<td style="font-size:12px">'+(k.previsaoLabel||'—')+vuViradaInfo(c)+'</td>';
     h+='<td>'+vuStatusBadge(k.status)+'</td>';
     h+='<td style="white-space:nowrap">'+acoes+'</td>';
     h+='</tr>';
@@ -1895,7 +2034,7 @@ function vuRenderLista(){
 function vuRenderAlertas(){
   var pendentes=VU_COMPONENTES_CACHE.filter(function(c){ return c._calc&&c._calc.status!=='normal'; });
   pendentes.sort(function(a,b){ return b._calc.percentual-a._calc.percentual; });
-  G('vu-alertas-dot').style.display=pendentes.some(function(c){return c._calc.status==='vencida'||c._calc.status==='proximo';})?'inline-block':'none';
+  G('vu-alertas-dot').style.display=pendentes.some(function(c){return c._calc.status==='vencida'||c._calc.status==='proximo'||c._calc.status==='virada';})?'inline-block':'none';
   if(!pendentes.length){
     G('vu-alertas-corpo').innerHTML='<div style="text-align:center;padding:20px;color:#739630">Nenhum componente em atenção — tudo dentro do esperado 🟢</div>';
     return;
@@ -1909,14 +2048,68 @@ function vuRenderAlertas(){
     h+='<div class="vu-alert-card st-'+k.status+'">';
     h+='<div style="flex:1">';
     h+='<div class="vu-alert-title">'+vuStatusBadge(k.status)+' &nbsp; '+c.equipamento+' — '+c.componente+'</div>';
-    h+='<div class="vu-alert-sub">Consumido: '+consumidoLbl+' ('+fN(Math.min(100,k.percentual))+'%) · Previsão: '+(k.previsaoLabel||'—')+'</div>';
+    h+='<div class="vu-alert-sub">Consumido: '+consumidoLbl+' ('+fN(Math.min(100,k.percentual))+'%) · Previsão de troca: '+(k.previsaoLabel||'—')+'</div>'+vuViradaInfo(c);
     h+='</div>';
     h+='<div style="display:flex;gap:6px;flex-shrink:0">';
+    if(k.viradaPendente) h+='<button class="btn bxs" style="background:#1f6feb;border-color:#1f6feb;color:#fff" data-fk="'+c.fbKey+'" onclick="vuAbrirVirada(this.dataset.fk)">🔄 Registrar Virada</button>';
     h+='<button class="btn bxs bo" data-fk="'+c.fbKey+'" onclick="vuAbrirTroca(this.dataset.fk)">Registrar Troca</button>';
     h+='<button class="btn bxs" data-fk="'+c.fbKey+'" onclick="vuGerarOM(this.dataset.fk)">Gerar O.M.</button>';
     h+='</div></div>';
   });
   G('vu-alertas-corpo').innerHTML=h;
+}
+
+// ---------- VIRADA (inversão no meio da vida — não reinicia o ciclo) ----------
+function vuViradaInfo(c){
+  if(!vuViradaTon(c)||!vuPermiteVirada(c)) return '';
+  var k=c._calc||{}, alvo=vuAlvoViradaTxt(c);
+  if(c.viradaTs) return '<div class="vu-vir">🔄 Virada feita em '+fmtDataBR(c.viradaData)+'</div>';
+  return '<div class="vu-vir">🔄 Virar em '+alvo+(k.viradaFaltaTon!=null?' · faltam '+fN(k.viradaFaltaTon,1)+' t':'')+(k.previsaoVirada?' · prev. '+fmtDataBR(k.previsaoVirada):'')+'</div>';
+}
+function vuAlvoViradaTxt(c){
+  var t=vuViradaTon(c);
+  return fN(t,1)+' t'+(c.vidaUtilToneladas?' ('+fN(t/c.vidaUtilToneladas*100)+'%)':'');
+}
+function vuAbrirVirada(fbKey){
+  var c=VU_COMPONENTES_CACHE.find(function(x){return x.fbKey===fbKey;});
+  if(!c||!vuViradaTon(c)||!vuPermiteVirada(c)) return;
+  if(c.viradaTs){toast('A virada deste ciclo já foi registrada','err');return;}
+  var k=c._calc||{};
+  var cons=c.criterio==='dias'?fN(k.diasDecorridos)+' dias':c.criterio==='toneladas'?fN(k.toneladasAcumuladas,1)+' t':fN(k.diasDecorridos)+' dias / '+fN(k.toneladasAcumuladas,1)+' t';
+  G('vu-virada-resumo').innerHTML='<b>'+c.equipamento+' — '+c.componente+'</b><br>Consumido: '+cons+' ('+fN(Math.min(100,k.percentual||0))+'%) · ponto de virada: '+vuAlvoViradaTxt(c)+
+    '<br><span style="font-size:12px">A virada não reinicia o ciclo: o componente segue contando até a troca (100%).</span>';
+  if((k.toneladasAcumuladas||0)<vuViradaTon(c)-vuViradaAvisoTon(c)) G('vu-virada-resumo').innerHTML+='<div style="color:#a15c00;font-weight:600;margin-top:4px">⚠ Ainda longe do ponto de virada — confirme se é este componente.</div>';
+  G('vuv-data').value=hoje(); G('vuv-hora').value=horaAtual(); G('vuv-obs').value=''; G('vuv-fbkey').value=fbKey;
+  aM('ov-vu-virada');
+}
+function vuConfirmarVirada(){
+  var fbKey=G('vuv-fbkey').value;
+  var c=VU_COMPONENTES_CACHE.find(function(x){return x.fbKey===fbKey;});
+  if(!c) return;
+  var d=G('vuv-data').value, hh=G('vuv-hora').value;
+  if(!d){toast('Informe a data da virada','err');return;}
+  var ts=hh?tsDeDataOp(d,hh):tsDeDataOp(d,'12:00');
+  if(ts>Date.now()+10*60000){toast('Data/hora da virada está no futuro','err');return;}
+  if(d<c.dataTroca){toast('Virada anterior à instalação do componente','err');return;}
+  var k=c._calc||{};
+  var hist={
+    tipo:'virada',
+    componenteFbKey:fbKey,equipamento:c.equipamento,componente:c.componente,criterio:c.criterio,
+    dataTrocaAnterior:c.dataTroca,dataTroca:d,dataTrocaTs:ts,
+    consumidoDias:c.criterio!=='toneladas'?k.diasDecorridos:null,
+    consumidoToneladas:c.criterio!=='dias'?k.toneladasAcumuladas:null,
+    vidaUtilDias:c.vidaUtilDias||null,vidaUtilToneladas:c.vidaUtilToneladas||null,
+    percentualNaTroca:Math.min(100,k.percentual||0),viradaTon:vuViradaTon(c),
+    fonteToneladas:vuFonteLabel(c)||null,
+    motivo:'Virada',observacao:G('vuv-obs').value.trim()||null,
+    responsavelLogin:SES.login,responsavelNome:SES.nome||SES.login,ts:agora()
+  };
+  ld(true,'Registrando virada...');
+  DB.ref('manutencao_vida_util_historico').push(hist).then(function(){
+    return DB.ref('manutencao_vida_util/'+fbKey).update({viradaTs:ts,viradaData:d});
+  }).then(function(){
+    ld(false); toast('Virada registrada — ciclo segue até a troca','ok'); fM('ov-vu-virada'); vuAtualizar();
+  }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
 }
 
 // ---------- TROCA DE COMPONENTE ----------
@@ -1970,7 +2163,7 @@ function vuConfirmarTroca(){
   ld(true,'Registrando troca...');
   DB.ref('manutencao_vida_util_historico').push(hist).then(function(){
     // Inicia novo ciclo de vida — histórico anterior nunca é apagado
-    return DB.ref('manutencao_vida_util/'+fbKey).update({dataTroca:novaData,dataTrocaTs:novaTs});
+    return DB.ref('manutencao_vida_util/'+fbKey).update({dataTroca:novaData,dataTrocaTs:novaTs,viradaTs:null,viradaData:null});
   }).then(function(){
     ld(false);
     toast('Troca registrada — novo ciclo de vida iniciado!','ok');
@@ -2010,7 +2203,7 @@ function vuRenderHistorico(){
                 x.criterio==='toneladas'?fN(x.vidaUtilToneladas,1)+' t':
                 fN(x.vidaUtilDias)+'d / '+fN(x.vidaUtilToneladas,1)+'t';
     h+='<tr>';
-    h+='<td>'+fmtDataBR(x.dataTrocaAnterior)+' → '+fmtDataBR(x.dataTroca)+'</td>';
+    h+='<td>'+(x.tipo==='virada'?'<span class="badge bvr">🔄 Virada</span> '+fmtDataBR(x.dataTroca):fmtDataBR(x.dataTrocaAnterior)+' → '+fmtDataBR(x.dataTroca))+'</td>';
     h+='<td>'+(x.equipamento||'—')+'</td>';
     h+='<td>'+(x.componente||'—')+'</td>';
     h+='<td>'+consumidoLbl+' ('+fN(x.percentualNaTroca)+'%)</td>';
@@ -2039,8 +2232,8 @@ function vuGerarOM(fbKey){
       componenteFbKey:fbKey,
       setor:'manutencao',
       linha:c.equipamento,
-      motivo:'Vida útil — '+c.componente,
-      descricao:'Troca programada por vida útil. Instalado em '+fmtDataBR(c.dataTroca)+'. Consumido: '+consumidoTxt+' ('+fN(Math.min(100,k.percentual||0))+'%).',
+      motivo:(k.status==='virada'?'Virada — ':'Vida útil — ')+c.componente,
+      descricao:(k.status==='virada'?'Virada programada (ponto: '+fN(vuViradaTon(c))+' t). ':'Troca programada por vida útil. ')+'Instalado em '+fmtDataBR(c.dataTroca)+'. Consumido: '+consumidoTxt+' ('+fN(Math.min(100,k.percentual||0))+'%).',
       solicitanteLogin:SES.login,
       solicitanteNome:SES.nome||SES.login,
       dataAbertura:hoje(),
