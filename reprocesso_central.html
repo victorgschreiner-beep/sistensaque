@@ -414,6 +414,44 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
 </div>
 
+<!-- MODAL CORRECAO ADMINISTRATIVA (somente perfil admin) -->
+<div class="ov" id="meditreprocesso">
+  <div class="modal">
+    <div class="mt">Correção Administrativa de Apontamento</div>
+    <input type="hidden" id="er-key">
+    <div class="readonly-info" id="er-info"></div>
+    <div class="fr">
+      <div class="fg"><label class="fl">Setor *</label>
+        <select id="er-setor" onchange="onSetorEditChange()">
+          <option value="expedicao_aqua">Expedição Aqua</option>
+          <option value="expedicao_pet">Expedição PET</option>
+          <option value="recebimento">Recebimento</option>
+          <option value="higienizacao">Higienização Industrial</option>
+        </select>
+      </div>
+      <div class="fg"><label class="fl">Tipo *</label><select id="er-tipo"></select></div>
+    </div>
+    <div id="er-aviso-setor" class="alw" style="display:none;font-size:12px">Mudança de setor gera um <b>novo código</b> no prefixo do setor de destino. O código antigo fica registrado no histórico. Reimprima a etiqueta e substitua a antiga no material.</div>
+    <div class="fr">
+      <div class="fg"><label class="fl">Quantidade (kg) *</label><input type="number" min="0" id="er-peso" step="0.1"></div>
+      <div class="fg"><label class="fl">Produto</label><input type="text" id="er-produto"></div>
+    </div>
+    <div class="fr">
+      <div class="fg"><label class="fl">Origem/Procedência</label><input type="text" id="er-origem"></div>
+      <div class="fg"><label class="fl">Motivo</label><input type="text" id="er-motivo"></div>
+    </div>
+    <div class="fg"><label class="fl">Observação</label><input type="text" id="er-obs"></div>
+    <div class="fg"><label class="fl">Justificativa da correção *</label><input type="text" id="er-just" placeholder="Ex: lançado no setor errado pelo operador"></div>
+    <div class="mfoot" style="justify-content:space-between">
+      <button class="btn br bsm" onclick="excluirReprocessoCentral()">Excluir apontamento</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn bsm" onclick="fM('meditreprocesso')">Cancelar</button>
+        <button class="btn bp bsm" onclick="salvarEdicaoReprocessoCentral()">Salvar correção</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL GRAFICO DE MOTIVOS (drill-down a partir dos cards do Dashboard) -->
 <div class="ov" id="mgraficomotivos">
   <div class="modal" style="width:640px">
@@ -815,14 +853,24 @@ function onTipoNovoReprocessoChange(){
 // direto no Firebase pra nao depender do cache local estar com o
 // periodo certo carregado (evita colisao de numero se o operador
 // tiver filtrado outro periodo na tela).
+// Sequencia = MAIOR numero ja usado com o prefixo do dia + 1 (nao mais
+// contagem por setor). Necessario desde a correcao administrativa: um
+// registro movido de setor ou excluido nao pode liberar um numero ja
+// impresso em etiqueta — contar registros geraria codigo duplicado.
 function gerarCodigoSetor(setorKey, dt){
   var cfg=SETORES_CENTRAL[setorKey];
+  var ymd=dt.replace(/-/g,'').slice(2);
+  var base=cfg.prefixo+'-'+ymd+'-';
   return DB.ref('reprocesso_central').orderByChild('data').equalTo(dt).once('value').then(function(snap){
-    var n=0;
-    if(snap.exists()) snap.forEach(function(c){ var v=c.val(); if(v.setor===setorKey) n++; });
-    var seq=String(n+1); while(seq.length<3) seq='0'+seq;
-    var ymd=dt.replace(/-/g,'').slice(2);
-    return cfg.prefixo+'-'+ymd+'-'+seq;
+    var max=0;
+    if(snap.exists()) snap.forEach(function(c){
+      var v=c.val();
+      [v.codigo].concat(v.codigosAnteriores||[]).forEach(function(cod){
+        if(cod && cod.indexOf(base)===0){ var n=parseInt(cod.slice(base.length),10); if(n>max) max=n; }
+      });
+    });
+    var seq=String(max+1); while(seq.length<3) seq='0'+seq;
+    return base+seq;
   });
 }
 
@@ -929,7 +977,9 @@ function renderListaSetor(setorKey){
       h+='<td style="text-align:right">'+fN(v.pesoKg)+' kg</td><td>'+(v.produto||'—')+'</td><td>'+(v.origem||'—')+'</td>';
       h+='<td>'+(v.motivo||'—')+'</td><td>'+(v.obs||'—')+'</td>';
       h+='<td style="font-size:10px;color:#739630">'+(v.codigo||'—')+'</td><td>'+(v.lancadoPor||'—')+'</td>';
-      h+='<td><button class="btn bsm" data-key="'+v.fbKey+'" data-setor="'+setorKey+'" onclick="reimprimirEtiquetaCentral(this.dataset.key,this.dataset.setor)">Reimprimir</button></td></tr>';
+      h+='<td style="white-space:nowrap"><button class="btn bsm" data-key="'+v.fbKey+'" data-setor="'+setorKey+'" onclick="reimprimirEtiquetaCentral(this.dataset.key,this.dataset.setor)">Reimprimir</button>';
+      if(ehAdmin()) h+=' <button class="btn bsm bo" data-key="'+v.fbKey+'" data-setor="'+setorKey+'" onclick="abrirEdicaoReprocessoCentral(this.dataset.key,this.dataset.setor)">Editar</button>';
+      h+='</td></tr>';
     });
     G(idp+'-body').innerHTML = h || '<tr><td colspan="11" style="text-align:center;color:#739630">Nenhum reprocesso no periodo selecionado</td></tr>';
   }).catch(function(e){ toast('Erro ao carregar: '+e.message,'err'); });
@@ -952,6 +1002,159 @@ function reimprimirEtiquetaCentral(fbKey, setorKey){
     produto: v.produto || ''
   });
   addLog('REIMPRIMIR_ETIQUETA_'+setorKey.toUpperCase(), v.codigo);
+}
+
+// ============================================================
+// CORRECAO ADMINISTRATIVA — somente perfil 'admin'.
+// - Editar campos / mudar de setor / excluir apontamentos de
+//   'reprocesso_central' (unico no gravado por este modulo; fontes
+//   lidas de outros modulos continuam somente leitura aqui).
+// - Exclusao e' LOGICA (excluido:true + substituido:true) — o registro
+//   some de listas e Dashboard (que ja filtram 'substituido'), mas o
+//   codigo da etiqueta impressa continua rastreavel.
+// - Toda correcao grava historico no proprio registro
+//   (reprocesso_central/{key}/historico) + no 'log' geral, com
+//   justificativa obrigatoria e foto "antes/depois".
+// ============================================================
+var CAMPOS_EDITAVEIS = ['setor','tipo','pesoKg','produto','origem','motivo','obs'];
+var EDIT_ORIGINAL = null;
+
+function ehAdmin(){ return !!(SES && SES.perfil==='admin'); }
+
+function _optsTipo(setorKey, atual){
+  var tipos=(TIPOS_POR_SETOR[setorKey]||[]).slice();
+  var h='<option value="">Selecione...</option>';
+  tipos.forEach(function(t){ h+='<option'+(t===atual?' selected':'')+'>'+t+'</option>'; });
+  return h;
+}
+
+function abrirEdicaoReprocessoCentral(fbKey, setorKey){
+  if(!ehAdmin()){ toast('Somente administrador pode corrigir apontamentos','err'); return; }
+  ld(true,'Carregando registro...');
+  // Le direto do Firebase (nao do cache) — garante editar a versao atual
+  DB.ref('reprocesso_central/'+fbKey).once('value').then(function(snap){
+    ld(false);
+    var v=snap.val();
+    if(!v || v.substituido){ toast('Registro nao encontrado ou ja excluido — atualize a lista','err'); renderListaSetor(setorKey); return; }
+    EDIT_ORIGINAL=v; EDIT_ORIGINAL.fbKey=fbKey;
+    G('er-key').value=fbKey;
+    G('er-info').innerHTML='<span>Código: <b>'+(v.codigo||'—')+'</b></span><span>Data: <b>'+(v.data||'').split('-').reverse().join('/')+' '+(v.hora||'')+'</b></span><span>Lançado por: <b>'+(v.lancadoPor||'—')+'</b></span>';
+    G('er-setor').value=v.setor;
+    G('er-tipo').innerHTML=_optsTipo(v.setor, v.tipo);
+    G('er-peso').value=v.pesoKg||0;
+    G('er-produto').value=v.produto||'';
+    G('er-origem').value=v.origem||'';
+    G('er-motivo').value=v.motivo||'';
+    G('er-obs').value=v.obs||'';
+    G('er-just').value='';
+    G('er-aviso-setor').style.display='none';
+    G('meditreprocesso').classList.add('on');
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
+function onSetorEditChange(){
+  if(!EDIT_ORIGINAL) return;
+  var novo=G('er-setor').value;
+  var tipoAtual=G('er-tipo').value;
+  // Mantem o tipo se existir na taxonomia do novo setor; senao obriga escolher
+  G('er-tipo').innerHTML=_optsTipo(novo, (TIPOS_POR_SETOR[novo]||[]).indexOf(tipoAtual)!==-1?tipoAtual:'');
+  G('er-aviso-setor').style.display = (novo!==EDIT_ORIGINAL.setor) ? 'block' : 'none';
+}
+
+function salvarEdicaoReprocessoCentral(){
+  if(!ehAdmin()||!EDIT_ORIGINAL) return;
+  var key=G('er-key').value;
+  var orig=EDIT_ORIGINAL;
+  var novo={
+    setor:G('er-setor').value,
+    tipo:G('er-tipo').value,
+    pesoKg:parseFloat(G('er-peso').value)||0,
+    produto:(G('er-produto').value||'').trim()||null,
+    origem:(G('er-origem').value||'').trim()||null,
+    motivo:(G('er-motivo').value||'').trim()||null,
+    obs:(G('er-obs').value||'').trim()||null
+  };
+  var just=(G('er-just').value||'').trim();
+
+  if(!SETORES_CENTRAL[novo.setor]){ toast('Setor invalido','err'); return; }
+  if(!novo.tipo || (TIPOS_POR_SETOR[novo.setor]||[]).indexOf(novo.tipo)===-1){ toast('Selecione um tipo valido para o setor','err'); return; }
+  if(novo.pesoKg<=0){ toast('Informe a quantidade (kg)','err'); return; }
+  if(novo.tipo==='Qualidade' && !novo.motivo){ toast('Tipo Qualidade exige o motivo do desvio','err'); return; }
+  if(!just){ toast('Informe a justificativa da correção','err'); return; }
+
+  var antes={}, depois={};
+  CAMPOS_EDITAVEIS.forEach(function(c){
+    var a=(orig[c]===undefined?null:orig[c]), d=novo[c];
+    if(String(a)!==String(d)){ antes[c]=a; depois[c]=d; }
+  });
+  if(!Object.keys(depois).length){ toast('Nenhuma alteração feita','inf'); return; }
+
+  var mudouSetor = novo.setor!==orig.setor;
+  ld(true,'Salvando correção...');
+  var pCodigo = mudouSetor ? gerarCodigoSetor(novo.setor, orig.data) : Promise.resolve(orig.codigo);
+
+  pCodigo.then(function(codigoFinal){
+    var base='reprocesso_central/'+key+'/';
+    var up={};
+    CAMPOS_EDITAVEIS.forEach(function(c){ up[base+c]=novo[c]; });
+    if(mudouSetor){
+      antes.codigo=orig.codigo; depois.codigo=codigoFinal;
+      up[base+'codigo']=codigoFinal;
+      up[base+'codigosAnteriores']=(orig.codigosAnteriores||[]).concat([orig.codigo]);
+    }
+    up[base+'editadoPor']=SES.login;
+    up[base+'editadoEm']=agora();
+    var hk=DB.ref(base+'historico').push().key;
+    up[base+'historico/'+hk]={ acao:'EDICAO', ts:Date.now(), em:agora(), usuario:SES.login, justificativa:just, antes:antes, depois:depois };
+    return DB.ref().update(up).then(function(){ return codigoFinal; });
+  }).then(function(codigoFinal){
+    ld(false);
+    fM('meditreprocesso');
+    var resumo=Object.keys(depois).map(function(c){ return c+': '+(antes[c]==null?'—':antes[c])+' → '+(depois[c]==null?'—':depois[c]); }).join('; ');
+    addLog('EDITAR_REPROCESSO_CENTRAL', orig.codigo+' | '+resumo+' | Just.: '+just);
+    toast(mudouSetor ? ('Movido para '+SETORES_CENTRAL[novo.setor].label+' — novo código '+codigoFinal) : 'Correção salva — '+codigoFinal,'ok');
+    renderListaSetor(orig.setor);
+
+    // Etiqueta fisica ficou desatualizada se mudou algo que ela imprime
+    var afetaEtiqueta = mudouSetor || depois.hasOwnProperty('tipo') || depois.hasOwnProperty('pesoKg') || depois.hasOwnProperty('produto') || depois.hasOwnProperty('motivo') || depois.hasOwnProperty('origem');
+    if(afetaEtiqueta && confirm('Os dados impressos na etiqueta mudaram. Reimprimir agora?')){
+      imprimirEtiquetaReprocesso({
+        titulo:novo.tipo.toUpperCase(), linha:SETORES_CENTRAL[novo.setor].label, codigo:codigoFinal,
+        turno:SES.turno||0, data:orig.data, pesoKg:novo.pesoKg,
+        motivo:novo.motivo||novo.origem||'—', produto:novo.produto||''
+      });
+      addLog('REIMPRIMIR_ETIQUETA_'+novo.setor.toUpperCase(), codigoFinal+' (apos correcao)');
+    }
+    EDIT_ORIGINAL=null;
+  }).catch(function(e){ ld(false); toast('Erro ao salvar: '+e.message,'err'); });
+}
+
+function excluirReprocessoCentral(){
+  if(!ehAdmin()||!EDIT_ORIGINAL) return;
+  var key=G('er-key').value;
+  var orig=EDIT_ORIGINAL;
+  var just=(G('er-just').value||'').trim();
+  if(!just){ toast('Informe a justificativa antes de excluir','err'); G('er-just').focus(); return; }
+  if(!confirm('Excluir o apontamento '+orig.codigo+' ('+fN(orig.pesoKg)+' kg)?\n\nEle deixa de contar no Dashboard. O registro e o histórico ficam guardados para auditoria.')) return;
+
+  ld(true,'Excluindo...');
+  var base='reprocesso_central/'+key+'/';
+  var up={};
+  up[base+'excluido']=true;
+  up[base+'substituido']=true; // reaproveita o filtro ja existente em listas e Dashboard
+  up[base+'excluidoPor']=SES.login;
+  up[base+'excluidoEm']=agora();
+  up[base+'motivoExclusao']=just;
+  var hk=DB.ref(base+'historico').push().key;
+  up[base+'historico/'+hk]={ acao:'EXCLUSAO', ts:Date.now(), em:agora(), usuario:SES.login, justificativa:just };
+  DB.ref().update(up).then(function(){
+    ld(false);
+    fM('meditreprocesso');
+    addLog('EXCLUIR_REPROCESSO_CENTRAL', orig.codigo+' | '+orig.setor+' | '+fN(orig.pesoKg)+'kg | Just.: '+just);
+    toast('Apontamento '+orig.codigo+' excluído','ok');
+    renderListaSetor(orig.setor);
+    EDIT_ORIGINAL=null;
+  }).catch(function(e){ ld(false); toast('Erro ao excluir: '+e.message,'err'); });
 }
 
 // ============================================================
