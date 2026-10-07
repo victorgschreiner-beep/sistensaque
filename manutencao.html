@@ -117,6 +117,8 @@ tr:hover td{background:rgba(2,79,43,.03)}
 .vu-alert-card.st-vencida{background:rgba(192,57,43,.1);border-color:#c0392b}
 .vu-alert-title{font-weight:700;font-size:13px}
 .vu-alert-sub{font-size:12px;color:#4a664a;margin-top:2px}
+.hint{font-size:11px;color:#4a664a;margin-top:4px}.hint.err2{color:#c0392b;font-weight:600}
+.vu-src{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:#eef2ee;color:#4a664a;margin-top:2px}
 .vu-hist-item{padding:8px 10px;border-radius:6px;background:#f7faf7;margin-bottom:5px;font-size:12px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
 
 /* DASHBOARD */
@@ -603,6 +605,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
           <option value="Rolamento"><option value="Correia"><option value="Faca">
           <option value="Matriz"><option value="Tela"><option value="Resistência">
           <option value="Mancal"><option value="Rosca"><option value="Camisa"><option value="Filtro">
+          <option value="Peneira"><option value="Martelos"><option value="Kit de peneira">
         </datalist>
       </div>
       <div class="fg" style="margin-bottom:0">
@@ -614,7 +617,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <label class="fl">Critério de vida útil</label>
       <select id="vuc-criterio" onchange="vuAoTrocarCriterio()">
         <option value="dias">Por dias</option>
-        <option value="toneladas">Por toneladas (requer equipamento vinculado a uma linha)</option>
+        <option value="toneladas">Por toneladas (requer equipamento vinculado a uma linha ou moinho)</option>
         <option value="combinacao">O que ocorrer primeiro (dias + toneladas)</option>
       </select>
       <div class="hint" id="vuc-criterio-hint"></div>
@@ -632,8 +635,12 @@ tr:hover td{background:rgba(2,79,43,.03)}
       </div>
     </div>
     <div class="fg">
-      <label class="fl">Data da instalação / última troca</label>
-      <input type="date" id="vuc-datatroca">
+      <label class="fl">Data e hora da instalação / última troca</label>
+      <div style="display:flex;gap:6px">
+        <input type="date" id="vuc-datatroca" style="flex:2">
+        <input type="time" id="vuc-horatroca" style="flex:1">
+      </div>
+      <div class="hint">Dia operacional (21h → dia seguinte). A hora importa para vínculo por moinho: toneladas moídas antes dela não contam.</div>
     </div>
     <div class="fg">
       <label class="fl">Observação (opcional)</label>
@@ -656,13 +663,9 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <input type="text" id="vue-nome" placeholder="ex: Extrusora 04, Moinho 01, Secador Andritz...">
     </div>
     <div class="fg">
-      <label class="fl">Vincular a uma linha de extrusão (opcional)</label>
-      <select id="vue-linha">
-        <option value="">Nenhuma — sem integração automática de toneladas</option>
-        <option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option>
-        <option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option>
-      </select>
-      <div class="hint">Só equipamentos vinculados a uma linha calculam toneladas produzidas automaticamente a partir da Extrusão. Sem vínculo, use apenas o critério "Por dias".</div>
+      <label class="fl">Fonte das toneladas (opcional)</label>
+      <select id="vue-linha"></select>
+      <div class="hint">Linha de extrusão = toneladas produzidas (Extrusão). Moinho = toneladas moídas por aquele moinho (Moagem). Sem vínculo, use apenas o critério "Por dias".</div>
     </div>
     <div class="mfoot">
       <button class="btn bsm" onclick="fM('ov-vu-equipamento')">Cancelar</button>
@@ -677,8 +680,11 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="mt">Registrar Troca</div>
     <div class="info-box" id="vu-troca-resumo"></div>
     <div class="fg">
-      <label class="fl">Data da troca</label>
-      <input type="date" id="vut-data">
+      <label class="fl">Data e hora da troca</label>
+      <div style="display:flex;gap:6px">
+        <input type="date" id="vut-data" style="flex:2">
+        <input type="time" id="vut-hora" style="flex:1">
+      </div>
     </div>
     <div class="fg">
       <label class="fl">Motivo</label>
@@ -789,14 +795,28 @@ var DEEP_LINK_OS=new URLSearchParams(window.location.search).get('os');
 // UTILS
 // ============================================================
 function G(id){return document.getElementById(id);}
+// Datas sempre no fuso de Brasília (independe do relógio/fuso do aparelho).
+// Corrige o bug do duplo avanço: getHours()+24h+toISOString() pulava 2 dias entre 21h e 24h.
+function dataBrasilia(d){return new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(d);}
+function horaBrasiliaHM(d){
+  var p=new Intl.DateTimeFormat("en-GB",{timeZone:"America/Sao_Paulo",hour:"2-digit",minute:"2-digit",hour12:false}).format(d);
+  return p.replace(/^24/,"00");
+}
+var INICIO_DIA_OP=21; // dia operacional começa às 21h (mesma regra de extrusão/moagem)
 function hoje(){
   // Data operacional: a partir das 21h pertence ao próximo dia (regra do sistema)
   var now=new Date();
-  if(now.getHours()>=21) now=new Date(now.getTime()+24*60*60*1000);
-  return now.toISOString().slice(0,10);
+  if(parseInt(horaBrasiliaHM(now),10)>=INICIO_DIA_OP) now=new Date(now.getTime()+24*60*60*1000);
+  return dataBrasilia(now);
+}
+// Dia operacional + hh:mm → timestamp (21h–23h59 pertence ao dia de calendário anterior)
+function tsDeDataOp(dataOp,hhmm){
+  var cal=dataOp;
+  if(parseInt(hhmm,10)>=INICIO_DIA_OP){var p=dataOp.split('-').map(Number);var d=new Date(Date.UTC(p[0],p[1]-1,p[2]-1,12));cal=d.toISOString().slice(0,10);}
+  return Date.parse(cal+"T"+hhmm+":00-03:00");
 }
 function agora(){return new Date().toISOString();}
-function horaAtual(){var d=new Date();return pad(d.getHours())+":"+pad(d.getMinutes());}
+function horaAtual(){return horaBrasiliaHM(new Date());}
 function pad(n){return String(n).padStart(2,"0");}
 function aM(id){G(id).classList.add('on');}
 function fM(id){G(id).classList.remove('on');}
@@ -1475,6 +1495,22 @@ var VU_LIM_VENCIDO=100;  // % consumido a partir do qual vira 🔴 Troca vencida
 var VU_LINHAS_EXTRUSAO=["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
 
 var EQUIPAMENTOS_VU=[];
+// Moinhos da Moagem — LIDOS de moagem_config/moinhos (nunca escritos daqui).
+// Fallback usado só se a Moagem ainda não tiver gravado a configuração.
+var VU_MOINHOS={M1000:{nome:"MM 1000",rateio:0.4},M1200:{nome:"MM 1200",rateio:0.6},M05:{nome:"MM 05",rateio:1},M06:{nome:"MM 06",rateio:1},M07:{nome:"MM 07",rateio:1}};
+function carregarMoinhosVU(){
+  return DB.ref('moagem_config/moinhos').once('value').then(function(s){ if(s.exists()) VU_MOINHOS=s.val(); }).catch(function(){});
+}
+function nomeMoinhoVU(k){ return (VU_MOINHOS[k]&&VU_MOINHOS[k].nome)||k; }
+function moinhoEstimadoVU(k){ var m=VU_MOINHOS[k]; return !!(m&&Number(m.rateio)<1); }
+// Fonte de toneladas de um equipamento/componente
+function vuFonteTon(o){ if(!o) return null; if(o.moinhoVinculado) return 'moinho'; if(o.linhaVinculada) return 'linha'; return null; }
+function vuFonteLabel(o){
+  var f=vuFonteTon(o);
+  if(f==='moinho') return 'Moinho '+nomeMoinhoVU(o.moinhoVinculado)+(moinhoEstimadoVU(o.moinhoVinculado)?' (estimado por rateio)':'');
+  if(f==='linha') return o.linhaVinculada;
+  return '';
+}
 var VU_COMPONENTES_CACHE=[];
 var VU_HISTORICO_CACHE=[];
 var VU_ABA_ATUAL='comp';
@@ -1513,7 +1549,7 @@ function equipamentoPorFbKey(fk){ return EQUIPAMENTOS_VU.find(function(e){return
 function montarSelectsEquipamentoVU(){
   var opts='<option value="">Selecione...</option>';
   EQUIPAMENTOS_VU.forEach(function(e){
-    opts+='<option value="'+e.fbKey+'">'+e.nome+(e.linhaVinculada?' — vinculado a '+e.linhaVinculada:'')+'</option>';
+    opts+='<option value="'+e.fbKey+'">'+e.nome+(vuFonteTon(e)?' — vinculado a '+vuFonteLabel(e):'')+'</option>';
   });
   if(G('vuc-equip')) G('vuc-equip').innerHTML=opts;
   var optsTodos='<option value="">Todos</option>';
@@ -1523,18 +1559,27 @@ function montarSelectsEquipamentoVU(){
 }
 
 function vuAbrirNovoEquipamento(){
+  var h='<option value="">Nenhuma — sem integração automática de toneladas</option><optgroup label="Linha de extrusão (t produzidas)">';
+  VU_LINHAS_EXTRUSAO.forEach(function(l){h+='<option value="L:'+l+'">'+l+'</option>';});
+  h+='</optgroup><optgroup label="Moinho (t moídas — Moagem)">';
+  Object.keys(VU_MOINHOS).sort(function(a,b){return ((VU_MOINHOS[a].ordem||99)-(VU_MOINHOS[b].ordem||99));}).forEach(function(k){
+    h+='<option value="M:'+k+'">'+nomeMoinhoVU(k)+(moinhoEstimadoVU(k)?' (kg estimado por rateio)':'')+'</option>';
+  });
+  G('vue-linha').innerHTML=h+'</optgroup>';
   G('vue-nome').value=''; G('vue-linha').value='';
   aM('ov-vu-equipamento');
 }
 function vuSalvarEquipamento(){
   var nome=G('vue-nome').value.trim();
-  var linha=G('vue-linha').value||null;
+  var vinc=G('vue-linha').value||'';
+  var linha=vinc.indexOf('L:')===0?vinc.slice(2):null;
+  var moinho=vinc.indexOf('M:')===0?vinc.slice(2):null;
   if(!nome){toast('Informe o nome do equipamento','err');return;}
   if(EQUIPAMENTOS_VU.some(function(e){return (e.nome||'').toLowerCase()===nome.toLowerCase();})){
     toast('Já existe um equipamento com esse nome','err');return;
   }
-  DB.ref('manutencao_config/equipamentos_vida_util').push({nome:nome,linhaVinculada:linha}).then(function(ref){
-    EQUIPAMENTOS_VU.push({fbKey:ref.key,nome:nome,linhaVinculada:linha});
+  DB.ref('manutencao_config/equipamentos_vida_util').push({nome:nome,linhaVinculada:linha,moinhoVinculado:moinho}).then(function(ref){
+    EQUIPAMENTOS_VU.push({fbKey:ref.key,nome:nome,linhaVinculada:linha,moinhoVinculado:moinho});
     montarSelectsEquipamentoVU();
     G('vuc-equip').value=ref.key;
     vuAoTrocarEquipamento();
@@ -1546,7 +1591,7 @@ function vuSalvarEquipamento(){
 // ---------- CADASTRO / EDIÇÃO DE COMPONENTE ----------
 function vuAoTrocarEquipamento(){
   var eq=equipamentoPorFbKey(G('vuc-equip').value);
-  var vinculado=!!(eq&&eq.linhaVinculada);
+  var vinculado=!!vuFonteTon(eq);
   var selCrit=G('vuc-criterio');
   Array.prototype.forEach.call(selCrit.options,function(o){
     if(o.value==='toneladas'||o.value==='combinacao') o.disabled=!vinculado;
@@ -1560,9 +1605,12 @@ function vuAoTrocarCriterio(){
   G('vuc-linha-ton').style.display=(crit==='toneladas'||crit==='combinacao')?'':'none';
   var eq=equipamentoPorFbKey(G('vuc-equip').value);
   var hint=G('vuc-criterio-hint');
-  if((crit==='toneladas'||crit==='combinacao')&&!(eq&&eq.linhaVinculada)){
-    hint.textContent='Este equipamento não está vinculado a uma linha de extrusão — cadastre o vínculo antes de usar toneladas.';
+  if((crit==='toneladas'||crit==='combinacao')&&!vuFonteTon(eq)){
+    hint.textContent='Este equipamento não está vinculado a uma linha ou moinho — cadastre o vínculo antes de usar toneladas.';
     hint.className='hint err2';
+  } else if((crit==='toneladas'||crit==='combinacao')&&eq){
+    hint.textContent='Toneladas contadas a partir de: '+vuFonteLabel(eq)+'.';
+    hint.className='hint';
   } else { hint.textContent=''; hint.className='hint'; }
 }
 
@@ -1572,7 +1620,7 @@ function vuAbrirNovoComponente(){
   G('vu-comp-titulo').textContent='Cadastrar Componente';
   G('vuc-equip').value=''; G('vuc-componente').value=''; G('vuc-codigo').value='';
   G('vuc-criterio').value='dias'; G('vuc-vidadias').value=''; G('vuc-vidaton').value='';
-  G('vuc-datatroca').value=hoje(); G('vuc-obs').value=''; G('vuc-fbkey').value='';
+  G('vuc-datatroca').value=hoje(); G('vuc-horatroca').value=horaAtual(); G('vuc-obs').value=''; G('vuc-fbkey').value='';
   vuAoTrocarEquipamento();
   G('btn-salvar-vu-componente').textContent='Cadastrar';
   aM('ov-vu-componente');
@@ -1590,6 +1638,7 @@ function vuAbrirEditarComponente(fbKey){
   G('vuc-vidadias').value=c.vidaUtilDias||'';
   G('vuc-vidaton').value=c.vidaUtilToneladas||'';
   G('vuc-datatroca').value=c.dataTroca||hoje();
+  G('vuc-horatroca').value=c.dataTrocaTs?horaBrasiliaHM(new Date(c.dataTrocaTs)):'';
   G('vuc-obs').value=c.obs||'';
   G('vuc-fbkey').value=fbKey;
   vuAoTrocarEquipamento();
@@ -1612,13 +1661,18 @@ function vuSalvarComponente(){
   if((criterio==='dias'||criterio==='combinacao')&&vidaDias<=0){toast('Informe a vida útil em dias','err');return;}
   if((criterio==='toneladas'||criterio==='combinacao')&&vidaTon<=0){toast('Informe a vida útil em toneladas','err');return;}
   var eq=equipamentoPorFbKey(equipFbKey);
-  if((criterio==='toneladas'||criterio==='combinacao')&&!(eq&&eq.linhaVinculada)){
-    toast('Este equipamento não está vinculado a uma linha de extrusão','err');return;
+  if((criterio==='toneladas'||criterio==='combinacao')&&!vuFonteTon(eq)){
+    toast('Este equipamento não está vinculado a uma linha ou moinho','err');return;
   }
+  var horaTroca=G('vuc-horatroca').value;
+  var dataTrocaTs=horaTroca?tsDeDataOp(dataTroca,horaTroca):null;
+  if(dataTrocaTs&&dataTrocaTs>Date.now()+10*60000){toast('Data/hora da instalação está no futuro','err');return;}
   var dados={
     equipFbKey:equipFbKey,
     equipamento:eq?eq.nome:'',
     linhaVinculada:eq?(eq.linhaVinculada||null):null,
+    moinhoVinculado:eq?(eq.moinhoVinculado||null):null,
+    dataTrocaTs:dataTrocaTs,
     componente:componente,
     codigoPeca:G('vuc-codigo').value.trim()||null,
     criterio:criterio,
@@ -1659,10 +1713,29 @@ function vuCarregarComponentes(){
 }
 // Busca produção (extrusao_apts) só para os pares únicos (linha + dataTroca) realmente usados,
 // evitando ler o mesmo intervalo mais de uma vez quando vários componentes compartilham a linha.
+// Início do ciclo atual em timestamp: hora registrada ou, sem hora, início do dia operacional (21h da véspera)
+function vuInicioCicloTs(c){ return c.dataTrocaTs||tsDeDataOp(c.dataTroca,pad(INICIO_DIA_OP)+':00'); }
+// Toneladas moídas por moinho (moagem_apts.kgPorMoinho) — uma única leitura a partir do ciclo mais antigo.
+// Recalculado do zero a cada atualização; nada é acumulado/salvo.
+function vuCalcularMoinhos(){
+  var comps=VU_COMPONENTES_CACHE.filter(function(c){return (c.criterio==='toneladas'||c.criterio==='combinacao')&&c.moinhoVinculado&&c.dataTroca;});
+  if(!comps.length) return Promise.resolve({});
+  var minTs=Infinity; comps.forEach(function(c){minTs=Math.min(minTs,vuInicioCicloTs(c));});
+  return DB.ref('moagem_apts').orderByChild('tsFim').startAt(minTs+1).once('value').then(function(s){
+    var apts=[]; if(s.exists()) s.forEach(function(x){var a=x.val(); if(a&&a.kgPorMoinho) apts.push(a);});
+    var mapa={};
+    comps.forEach(function(c){
+      var ini=vuInicioCicloTs(c), kg=0;
+      apts.forEach(function(a){ if((a.tsFim||0)>ini) kg+=Number(a.kgPorMoinho[c.moinhoVinculado])||0; });
+      mapa['MOI|'+c.fbKey]=kg/1000;
+    });
+    return mapa;
+  });
+}
 function vuCalcularProducao(){
   var pares={};
   VU_COMPONENTES_CACHE.forEach(function(c){
-    if((c.criterio==='toneladas'||c.criterio==='combinacao')&&c.linhaVinculada&&c.dataTroca){
+    if((c.criterio==='toneladas'||c.criterio==='combinacao')&&!c.moinhoVinculado&&c.linhaVinculada&&c.dataTroca){
       pares[c.linhaVinculada+'|'+c.dataTroca]=true;
     }
   });
@@ -1709,7 +1782,7 @@ function vuCalcularComponente(c,mapaProducao){
     out.percDias=c.vidaUtilDias?Math.min(999,(diasDecorridos/c.vidaUtilDias)*100):0;
   }
   if(c.criterio==='toneladas'||c.criterio==='combinacao'){
-    var ton=mapaProducao[c.linhaVinculada+'|'+c.dataTroca]||0;
+    var ton=c.moinhoVinculado?(mapaProducao['MOI|'+c.fbKey]||0):(mapaProducao[c.linhaVinculada+'|'+c.dataTroca]||0);
     out.toneladasAcumuladas=ton;
     out.percTon=c.vidaUtilToneladas?Math.min(999,(ton/c.vidaUtilToneladas)*100):0;
   }
@@ -1748,10 +1821,11 @@ function vuRecalcularTudo(mapaProducao){
 function vuAtualizar(){
   if(!podeVerFila()) return;
   G('btn-vu-novo-componente').style.display=podeGerenciarVU()?'':'none';
-  Promise.all([carregarEquipamentosVU(),vuCarregarComponentes()]).then(function(){
+  Promise.all([carregarEquipamentosVU(),vuCarregarComponentes(),carregarMoinhosVU()]).then(function(){
     montarSelectsEquipamentoVU();
-    return vuCalcularProducao();
-  }).then(function(mapa){
+    return Promise.all([vuCalcularProducao(),vuCalcularMoinhos()]);
+  }).then(function(r){
+    var mapa=Object.assign({},r[0],r[1]);
     vuRecalcularTudo(mapa);
     vuRenderLista();
     vuRenderAlertas();
@@ -1805,7 +1879,7 @@ function vuRenderLista(){
     h+='<tr>';
     h+='<td style="font-weight:600">'+(c.equipamento||'—')+'</td>';
     h+='<td>'+c.componente+(c.codigoPeca?' <span style="color:#739630;font-size:11px">('+c.codigoPeca+')</span>':'')+'</td>';
-    h+='<td>'+critLbl+'</td>';
+    h+='<td>'+critLbl+(c.criterio!=='dias'&&vuFonteTon(c)?'<div class="vu-src">'+vuFonteLabel(c)+'</div>':'')+'</td>';
     h+='<td>'+vidaLbl+'</td>';
     h+='<td><div class="vu-prog-wrap"><span class="vu-prog-pct" style="color:'+vuStatusCor(k.status)+'">'+consumidoLbl+' ('+fN(pct)+'%)</span>';
     h+='<div class="vu-prog-bar"><div class="vu-prog-fill" style="width:'+pct+'%;background:'+vuStatusCor(k.status)+'"></div></div></div></td>';
@@ -1855,6 +1929,7 @@ function vuAbrirTroca(fbKey){
                     fN(k.diasDecorridos)+' dias / '+fN(k.toneladasAcumuladas,1)+' t';
   G('vu-troca-resumo').innerHTML='<div class="ib-num">'+c.equipamento+'</div><div class="ib-desc">'+c.componente+'</div><div class="ib-sub">Consumido até agora: '+consumidoLbl+' ('+fN(Math.min(100,k.percentual||0))+'%)</div>';
   G('vut-data').value=hoje();
+  G('vut-hora').value=horaAtual();
   G('vut-motivo').value=(k.status==='vencida'?'Vida útil atingida':'Preventiva');
   G('vut-obs').value='';
   G('vut-fbkey').value=fbKey;
@@ -1866,6 +1941,10 @@ function vuConfirmarTroca(){
   if(!c) return;
   var novaData=G('vut-data').value;
   if(!novaData){toast('Informe a data da troca','err');return;}
+  var novaHora=G('vut-hora').value;
+  var novaTs=novaHora?tsDeDataOp(novaData,novaHora):null;
+  if(novaTs&&novaTs>Date.now()+10*60000){toast('Data/hora da troca está no futuro','err');return;}
+  if(novaTs&&c.dataTrocaTs&&novaTs<=c.dataTrocaTs){toast('Troca anterior à instalação atual — confira data/hora','err');return;}
   var k=c._calc||{};
   var hist={
     componenteFbKey:fbKey,
@@ -1874,6 +1953,9 @@ function vuConfirmarTroca(){
     criterio:c.criterio,
     dataTrocaAnterior:c.dataTroca,
     dataTroca:novaData,
+    dataTrocaTs:novaTs,
+    dataTrocaAnteriorTs:c.dataTrocaTs||null,
+    fonteToneladas:vuFonteLabel(c)||null,
     consumidoDias:c.criterio!=='toneladas'?k.diasDecorridos:null,
     consumidoToneladas:c.criterio!=='dias'?k.toneladasAcumuladas:null,
     vidaUtilDias:c.vidaUtilDias||null,
@@ -1888,7 +1970,7 @@ function vuConfirmarTroca(){
   ld(true,'Registrando troca...');
   DB.ref('manutencao_vida_util_historico').push(hist).then(function(){
     // Inicia novo ciclo de vida — histórico anterior nunca é apagado
-    return DB.ref('manutencao_vida_util/'+fbKey).update({dataTroca:novaData});
+    return DB.ref('manutencao_vida_util/'+fbKey).update({dataTroca:novaData,dataTrocaTs:novaTs});
   }).then(function(){
     ld(false);
     toast('Troca registrada — novo ciclo de vida iniciado!','ok');
