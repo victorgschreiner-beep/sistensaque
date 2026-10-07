@@ -341,6 +341,7 @@ tr.hl td{background:#fff6d6}
   <div class="msub" id="selop-sub"></div>
   <div class="fg" style="margin-bottom:6px"><label>1. OP (na ordem da fila)</label><input class="inp" id="selop-busca" placeholder="Buscar lote ou nº da OP…" oninput="selOpFiltrar()"></div>
   <div id="selop-lista" style="max-height:260px;overflow-y:auto;margin-bottom:10px"></div>
+  <div id="selop-diag"></div>
   <div class="mrow one" id="selop-just-row" style="display:none">
     <div class="fg"><label style="color:var(--rd)">Justificativa — OP fora da ordem da fila (obrigatório)</label><input class="inp" id="selop-just" maxlength="200" placeholder="Ex.: falta de MP da 1ª OP, pedido do PCP..."></div>
   </div>
@@ -1630,7 +1631,7 @@ function abrirSelOp(lk){
   MS={lk:lk,fk:null,silo:null,lista:lista};
   G("selop-sub").textContent=linhaK(lk).cur+" · "+linhaK(lk).maq;
   G("selop-just").value="";G("selop-just-row").style.display="none";
-  G("selop-hi").value=horaAtual();G("selop-acum").value="0";G("selop-busca").value="";
+  G("selop-hi").value=horaAtual();G("selop-acum").value="0";G("selop-busca").value="";G("selop-diag").innerHTML="";
   if(!lista.length) G("selop-lista").innerHTML='<div class="empty">Nenhuma OP aberta para esta linha no ensaque.</div>';
   else G("selop-lista").innerHTML=lista.map(function(o,i){
     var tot=S.opTot[o.fbKey]||{};
@@ -1658,6 +1659,57 @@ function selOpFiltrar(){
   var q=(G("selop-busca").value||"").trim(), vis=[];
   MS.lista.forEach(function(o){var el=G("selop-"+o.fbKey);if(!el) return;var ok=casaBusca(q,o,o.fbKey);el.style.display=ok?"":"none";if(ok) vis.push(o);});
   if(q&&vis.length===1) selOpEscolher(vis[0].fbKey);
+  clearTimeout(MS._dt);
+  G("selop-diag").innerHTML="";
+  if(q.length>=4&&!vis.length) MS._dt=setTimeout(function(){diagnosticarOp(q);},400);
+}
+// ── Diagnóstico: por que uma OP aberta no ensaque não aparece na fila? ──
+// Procura a OP em todas as linhas (ops abertas já carregadas) e, se não achar,
+// pelo nº da OP direto no Firebase (campo idBusca, indexado pelo ensaque).
+function diagnosticarOp(q){
+  if(!MS) return;
+  var ql=q.toLowerCase(), lk=MS.lk, nomeL=linhaK(lk).nome, achadas={};
+  Object.keys(S.ops).forEach(function(k){var o=S.ops[k];if(casaBusca(q,o,o.fbKey)) achadas[k]=o;});
+  var p=Object.keys(achadas).length?Promise.resolve():DB.ref("ops").orderByChild("idBusca").startAt(ql).endAt(ql+"\uf8ff").limitToFirst(10).once("value").then(function(s){
+    if(s.exists()) s.forEach(function(c){var v=c.val();if(v){v.fbKey=c.key;achadas[c.key]=v;}});
+  }).catch(function(){});
+  G("selop-diag").innerHTML='<div class="muted">Procurando a OP…</div>';
+  p.then(function(){
+    var ks=Object.keys(achadas);
+    if(!ks.length){G("selop-diag").innerHTML='<div class="calc warn">Nenhuma OP encontrada com "'+esc(q)+'". Confira o nº da OP no ensaque (a busca pelo lote só funciona para OPs abertas).</div>';return;}
+    var superadas={};Object.keys(S.ops).forEach(function(k){var o=S.ops[k];if(o.reprogramadaDeFbKey) superadas[o.reprogramadaDeFbKey]=1;});
+    var h=ks.slice(0,5).map(function(k){
+      var o=achadas[k], motivos=[], acao="";
+      var outraAtiva=LINHAS.filter(function(l){return S.opAtiva[l.k]&&S.opAtiva[l.k].opFbKey===k;})[0];
+      if(o.linha!==nomeL) motivos.push("No ensaque ela está na <b>"+esc(o.linha||"sem linha")+"</b> — a fila mostra só OPs desta linha ("+esc(nomeL)+"). Corrija a linha no ensaque ou inicie pela linha certa.");
+      if(STATUS_ABERTOS.indexOf(o.status)<0) motivos.push("Status no ensaque: <b>"+esc(o.status||"—")+"</b> (a fila só mostra Liberada, Em andamento e Reprogramada).");
+      if(superadas[k]) motivos.push("Foi substituída por uma reprogramação (existe um elo mais novo desta OP).");
+      if(outraAtiva) motivos.push("Já está <b>ativa na moagem da "+esc(outraAtiva.cur)+"</b>.");
+      var conc=S.opConc[k];
+      if(conc){
+        motivos.push("Foi <b>concluída na moagem</b>"+(conc.ts?" em "+fDataHora(Date.parse(conc.ts)):"")+(conc.operador?" por "+esc(conc.operador):"")+" — por isso saiu da fila, mesmo continuando aberta no ensaque.");
+        if(podeApontar()) acao='<button class="btn sm or" style="margin-top:6px" onclick="reabrirOpMoagem(\''+k+'\')">Reabrir na moagem</button>';
+      }
+      if(!motivos.length) motivos.push("Ela atende às regras da fila — recarregue a página (Ctrl+F5).");
+      return '<div class="calc warn" style="margin-bottom:6px"><b>'+esc(o.id||k)+'</b> · '+esc(loteTxt(k,o.lote))+' · '+esc(o.cod||"")+'<div style="margin-top:4px">• '+motivos.join("<br>• ")+'</div>'+acao+'</div>';
+    }).join("");
+    G("selop-diag").innerHTML='<div class="muted" style="margin-bottom:4px">Por que não aparece na fila:</div>'+h;
+  });
+}
+// Reabre uma OP concluída por engano na moagem: remove o registro de conclusão
+// (moagem_op_concluida) — a OP volta para a fila; apontamentos e totais ficam intactos.
+function reabrirOpMoagem(fk){
+  if(!podeApontar()) return;
+  var o=S.ops[fk]||opPorFk(fk)||{}, conc=S.opConc[fk]||{};
+  if(!confirm("Reabrir a OP "+(o.id||fk)+" na moagem?\nEla volta para a fila; o que já foi moído continua contando.")) return;
+  var upd={}, hk=DB.ref("moagem_op_hist").push().key;
+  upd["moagem_op_concluida/"+fk]=null;
+  upd["moagem_op_hist/"+hk]={evento:"reaberta",lk:conc.lk||null,opFbKey:fk,opNum:o.id||conc.opNum||null,concluidaEm:conc.ts||null,concluidaPor:conc.operador||null,operador:SES.login,ts:agora(),tsMs:Date.now()};
+  DB.ref().update(fbLimpo(upd)).then(function(){
+    log("op_reabrir",(o.id||fk)+" reaberta na moagem (concluída antes por "+(conc.operador||"?")+")");
+    toast("OP reaberta — já está na fila","ok");
+    setTimeout(function(){var lk=MS&&MS.lk;fM("m-selop");if(lk) abrirSelOp(lk);},500);
+  }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 function selOpEscolher(fk){
   MS.fk=fk;
