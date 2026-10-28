@@ -615,6 +615,26 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="tw"><table><thead><tr><th>Data</th><th>Turno 1</th><th>Turno 2</th><th>Turno 3</th><th>Total do dia</th></tr></thead><tbody id="insp-body"></tbody></table></div>
   </div>
 
+  <!-- Card de gestao das etiquetas de reprocesso — SOMENTE ADMIN.
+       Edicao/exclusao recalcula os agregados da OP (reprocessado, real,
+       realPorData, realPorDataTurno) so pelo DELTA da etiqueta, sem tocar em
+       nenhuma outra data/turno. Nada e apagado de verdade: OP-vinculada usa
+       substituido:true; geral e movida para apontamentos_gerais_excluidos.
+       Toda acao grava antes/depois em etiquetas_auditoria + log. -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ch"><span class="ct">🏷️ Etiquetas de Reprocesso — Editar / Excluir</span><span style="font-size:11px;color:#c0392b;font-weight:600">Somente Administrador</span></div>
+    <div style="font-size:12px;color:#4a664a;margin-bottom:12px">Corrige peso, motivo ou tipo de uma etiqueta já impressa, ou exclui uma etiqueta lançada por engano. Os totais da OP são ajustados automaticamente e a alteração fica registrada na auditoria (quem, quando, antes/depois e justificativa).</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+      <div class="fg" style="margin:0"><label class="fl">De</label><input type="date" id="etq-di" style="width:auto"></div>
+      <div class="fg" style="margin:0"><label class="fl">Até</label><input type="date" id="etq-df" style="width:auto"></div>
+      <select id="etq-origem" style="width:auto" onchange="renderEtiquetasReproc()"><option value="">Todas as origens</option><option value="op">Vinculadas à OP</option><option value="geral">Gerais (Finos / Repr. Geral / Varredura)</option></select>
+      <input type="text" id="etq-busca" style="width:auto;max-width:220px" placeholder="Código, OP ou produto..." oninput="renderEtiquetasReproc()">
+      <button class="btn bp bsm" onclick="carregarEtiquetasReproc()">Buscar</button>
+    </div>
+    <div id="etq-resumo" style="font-size:12px;color:#4a664a;margin-bottom:8px"></div>
+    <div class="tw" style="max-height:420px;overflow-y:auto"><table><thead><tr><th>Data</th><th>Turno</th><th>Origem</th><th>Etiqueta</th><th>OP / Tipo</th><th>Produto / Linha</th><th style="text-align:right">Peso</th><th>Motivo</th><th>Destino</th><th>Operador</th><th>Ações</th></tr></thead><tbody id="etq-body"><tr><td colspan="11" style="text-align:center;color:#4a664a;padding:16px">Informe o período e clique em Buscar.</td></tr></tbody></table></div>
+  </div>
+
   <!-- Card de configuração das balanças -->
   <div class="card" style="margin-bottom:14px">
     <div class="ch"><span class="ct">Configuração das Balanças</span><button class="btn bsm" onclick="loadBalConfig()">&#8635;</button></div>
@@ -929,6 +949,40 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <button class="btn bsm" onclick="fM('meditapt')">Cancelar</button>
     <button class="btn bsm bp" id="editapt-salvar" onclick="salvarEdicaoApt()">Salvar Edicao</button>
   </div>
+</div></div>
+
+<!-- MODAL EDITAR ETIQUETA DE REPROCESSO (somente admin) -->
+<div class="ov" id="metq"><div class="modal" style="max-width:520px">
+  <div class="mt">Editar Etiqueta de Reprocesso</div>
+  <div class="ali" id="etq-ed-info" style="margin-bottom:12px"></div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Peso (kg)</label><input type="number" id="etq-ed-peso" min="0" step="0.1"></div>
+    <div class="fg" id="etq-ed-motivo-row"><label class="fl">Motivo</label>
+      <select id="etq-ed-motivo" onchange="atualizarDestinoEtq()">
+        <option value="">Selecione...</option><option>Saco rasgado</option><option>Peso incorreto</option><option>Contaminacao/mistura</option><option>Erro de programacao</option><option>Limpeza de linha</option><option>Outro</option>
+      </select>
+    </div>
+    <div class="fg" id="etq-ed-tipo-row"><label class="fl">Tipo</label>
+      <select id="etq-ed-tipo"><option>Finos</option><option>Finos Magisan</option><option>Reprocesso Geral</option><option>Varredura</option></select>
+    </div>
+  </div>
+  <div class="fg" id="etq-ed-outro-row" style="display:none"><label class="fl">Descreva o motivo</label><input type="text" id="etq-ed-outro"></div>
+  <div id="etq-ed-destino" style="font-size:12px;font-weight:600;margin-bottom:10px"></div>
+  <div class="fg"><label class="fl">Justificativa da correção <span style="color:#c0392b;font-size:11px">*obrigatório</span></label><input type="text" id="etq-ed-just" placeholder="ex: peso digitado errado, saco pesado de novo"></div>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#024f2b;cursor:pointer"><input type="checkbox" id="etq-ed-reimp" style="width:15px;height:15px" checked> Reimprimir etiqueta corrigida (mesmo código)</label>
+  <input type="hidden" id="etq-ed-key"><input type="hidden" id="etq-ed-origem">
+  <div class="mfoot"><button class="btn bsm" onclick="fM('metq')">Cancelar</button><button class="btn bsm bp" onclick="salvarEdicaoEtiqueta()">Salvar Correção</button></div>
+</div></div>
+
+<!-- MODAL EXCLUIR ETIQUETA DE REPROCESSO (somente admin) -->
+<div class="ov" id="metqdel"><div class="modal" style="max-width:440px">
+  <div class="mt" style="color:#c0392b">&#9888; Excluir Etiqueta de Reprocesso</div>
+  <div class="aler">O peso desta etiqueta sai dos totais da OP/dia. O registro original fica preservado na auditoria.</div>
+  <p style="font-size:13px;color:#4a664a;margin-bottom:12px" id="etq-del-msg"></p>
+  <div class="fg"><label class="fl">Justificativa <span style="color:#c0392b;font-size:11px">*obrigatório</span></label><input type="text" id="etq-del-just" placeholder="ex: lançada em duplicidade"></div>
+  <div class="fg"><label class="fl">Digite o código da etiqueta para confirmar</label><input type="text" id="etq-del-confirm"></div>
+  <input type="hidden" id="etq-del-key"><input type="hidden" id="etq-del-origem">
+  <div class="mfoot"><button class="btn bsm" onclick="fM('metqdel')">Cancelar</button><button class="btn bsm br" onclick="confirmarExclusaoEtiqueta()">Excluir Etiqueta</button></div>
 </div></div>
 
 <div class="ov" id="mtimeline"><div class="modal" style="width:900px">
@@ -1337,7 +1391,7 @@ function go(s,btn){
       renderOpCards();
     }
     else if(s==='exportar'){ popOPSel(); var m=hoje().slice(0,7); G('xdi').value=m+'-01'; G('xdf').value=hoje(); }
-    else if(s==='admin'){ loadUsers(); loadLog(); loadProds(); loadBalConfig(); popularInspOP(); }
+    else if(s==='admin'){ loadUsers(); loadLog(); loadProds(); loadBalConfig(); popularInspOP(); iniciarFiltroEtiquetas(); }
     else if(s==='envase'){ renderEnvaseFila(); renderEnvaseOPs(); }
     else if(s==='programacao'){ if(!G('progr-dt').value) G('progr-dt').value=hoje(); renderProgramacao(); }
     else if(s==='balancas'){
@@ -6980,6 +7034,301 @@ function auditarConsistencia(){
 // INSPECAO DETALHADA DE OP — mostra TODAS as datas de realPorDataTurno,
 // somente leitura, pra dar visao completa antes de qualquer correcao manual.
 // ============================================================
+// ============================================================
+// GESTAO DE ETIQUETAS DE REPROCESSO — SOMENTE ADMIN
+// ============================================================
+// Duas origens:
+//  - 'op'   : apontamentos com origem:'reprocesso' + codigoEtiqueta (vinculadas a OP).
+//             Editar = marca o registro antigo substituido:true e grava um novo com
+//             o MESMO codigoEtiqueta (padrao do sistema). Excluir = substituido:true.
+//             Em ambos, os agregados da OP sao ajustados SO pelo delta da etiqueta.
+//  - 'geral': apontamentos_gerais (Finos, Finos Magisan, Reprocesso Geral, Varredura).
+//             Editar = in-place (outros modulos leem esse no e podem nao filtrar
+//             substituido). Excluir = move para apontamentos_gerais_excluidos.
+// Todas as escritas sao multipath (atomicas) e geram registro em etiquetas_auditoria.
+// ATENCAO: a restricao e no front-end (perfil admin). Sem Firebase Auth/regras,
+// nao ha bloqueio no banco — mesmo nivel de protecao do resto do sistema.
+var ETQ_CACHE=[];
+
+function _etqIsAdmin(){ return !!(SES&&SES.perfil==='admin'); }
+function _etqEsc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function _etqClone(o){ return JSON.parse(JSON.stringify(o||{})); }
+function _etqItem(key,origem){ return ETQ_CACHE.filter(function(e){return e.key===key&&e.origem===origem;})[0]; }
+
+function iniciarFiltroEtiquetas(){
+  if(!G('etq-di')) return;
+  if(!G('etq-df').value) G('etq-df').value=hoje();
+  if(!G('etq-di').value){
+    var d=new Date(hoje()+'T12:00:00'); d.setDate(d.getDate()-6);
+    G('etq-di').value=d.toISOString().slice(0,10);
+  }
+}
+
+function carregarEtiquetasReproc(){
+  if(!_etqIsAdmin()){ toast('Somente o Administrador pode gerenciar etiquetas','err'); return; }
+  var di=G('etq-di').value, df=G('etq-df').value;
+  if(!di||!df){ toast('Informe o período','err'); return; }
+  if(di>df){ toast('Data inicial maior que a final','err'); return; }
+  ld(true,'Buscando etiquetas...');
+  Promise.all([
+    DB.ref('apontamentos').orderByChild('data').startAt(di).endAt(df).once('value'),
+    DB.ref('apontamentos_gerais').orderByChild('data').startAt(di).endAt(df).once('value')
+  ]).then(function(r){
+    ETQ_CACHE=[];
+    if(r[0].exists()) r[0].forEach(function(c){
+      var a=c.val();
+      if(a.substituido||a.origem!=='reprocesso'||!a.codigoEtiqueta) return;
+      var op=OPS.filter(function(o){return o.fbKey===a.opId;})[0];
+      ETQ_CACHE.push({key:c.key, origem:'op', data:a.data, turno:Number(a.turno)||0,
+        codigo:a.codigoEtiqueta, peso:Number(a.real)||0, motivo:a.motivoReprocesso||'',
+        destino:reprocessoVaiParaExtrusao(a)?'Extrusão':'Ensaque', operador:a.operador||'', ts:a.ts||'',
+        opId:a.opId, opNum:op?op.id:'(OP removida)', produto:op?(op.desc||op.cod||''):'', linha:op?op.linha:'', raw:a});
+    });
+    if(r[1].exists()) r[1].forEach(function(c){
+      var g=c.val();
+      if(g.substituido||g.excluido) return;
+      ETQ_CACHE.push({key:c.key, origem:'geral', data:g.data, turno:Number(g.turno)||0,
+        codigo:g.codigoEtiqueta||'', peso:Number(g.quantidadeKg)||0, motivo:g.motivo||'',
+        destino:'Geral', operador:g.operador||'', ts:g.ts||'', tipo:g.tipo||'', linha:g.linha||'', raw:g});
+    });
+    ETQ_CACHE.sort(function(a,b){ return a.data!==b.data?(a.data<b.data?1:-1):(String(a.ts)<String(b.ts)?1:-1); });
+    ld(false);
+    renderEtiquetasReproc();
+  }).catch(function(e){ ld(false); toast('Erro ao buscar etiquetas: '+e.message,'err'); });
+}
+
+function renderEtiquetasReproc(){
+  var body=G('etq-body'); if(!body) return;
+  var fo=G('etq-origem').value;
+  var busca=(G('etq-busca').value||'').trim().toLowerCase();
+  var lista=ETQ_CACHE.filter(function(e){
+    if(fo&&e.origem!==fo) return false;
+    if(busca){
+      var alvo=(e.codigo+' '+(e.opNum||'')+' '+(e.produto||'')+' '+(e.tipo||'')+' '+(e.linha||'')).toLowerCase();
+      if(alvo.indexOf(busca)===-1) return false;
+    }
+    return true;
+  });
+  var tot=lista.reduce(function(a,e){return a+e.peso;},0);
+  G('etq-resumo').textContent=lista.length+' etiqueta(s) · '+fN(tot)+' kg';
+  if(!lista.length){
+    body.innerHTML='<tr><td colspan="11" style="text-align:center;color:#4a664a;padding:16px">Nenhuma etiqueta encontrada.</td></tr>';
+    return;
+  }
+  var h='';
+  lista.forEach(function(e){
+    var corDest=e.destino==='Extrusão'?'#5b21b6':e.destino==='Ensaque'?'#024f2b':'#8a5700';
+    h+='<tr>';
+    h+='<td style="white-space:nowrap">'+(e.data||'').split('-').reverse().join('/')+'</td>';
+    h+='<td>'+(e.turno?'T'+e.turno:'—')+'</td>';
+    h+='<td><span class="badge '+(e.origem==='op'?'baz':'bam')+'">'+(e.origem==='op'?'OP':'Geral')+'</span></td>';
+    h+='<td style="font-size:10px;color:#739630;white-space:nowrap">'+_etqEsc(e.codigo||'—')+'</td>';
+    h+='<td style="font-weight:600">'+_etqEsc(e.origem==='op'?e.opNum:e.tipo)+'</td>';
+    h+='<td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+_etqEsc(e.produto||e.linha)+'">'+_etqEsc(e.origem==='op'?e.produto:(e.linha||'—'))+'</td>';
+    h+='<td style="text-align:right;font-weight:700">'+fN(e.peso)+' kg</td>';
+    h+='<td style="font-size:12px">'+_etqEsc(e.motivo||'—')+'</td>';
+    h+='<td style="font-size:11px;font-weight:600;color:'+corDest+'">'+e.destino+'</td>';
+    h+='<td style="font-size:11px;color:#4a664a">'+_etqEsc(e.operador)+'</td>';
+    h+='<td style="white-space:nowrap">'+
+       '<button class="btn bxs" style="color:#024f2b;border-color:#024f2b" data-key="'+e.key+'" data-orig="'+e.origem+'" onclick="abrirEditarEtiqueta(this.dataset.key,this.dataset.orig)">Editar</button> '+
+       '<button class="btn bxs" style="color:#c0392b;border-color:#c0392b" data-key="'+e.key+'" data-orig="'+e.origem+'" onclick="abrirExcluirEtiqueta(this.dataset.key,this.dataset.orig)">Excluir</button> '+
+       '<button class="btn bxs" data-key="'+e.key+'" data-orig="'+e.origem+'" onclick="reimprimirEtiquetaAdmin(this.dataset.key,this.dataset.orig)">Reimprimir</button>'+
+       '</td></tr>';
+  });
+  body.innerHTML=h;
+}
+
+function _etqDadosImpressao(it){
+  if(it.origem==='geral') return {titulo:(it.tipo||'').toUpperCase(), linha:it.linha, codigo:it.codigo, turno:it.turno, data:it.data, pesoKg:it.peso, motivo:it.motivo};
+  return {opNumero:it.opNum, produto:it.produto, codigo:it.codigo, turno:it.turno, data:it.data, pesoKg:it.peso, motivo:it.motivo};
+}
+function reimprimirEtiquetaAdmin(key,origem){
+  var it=_etqItem(key,origem); if(!it) return;
+  imprimirEtiquetaReprocesso(_etqDadosImpressao(it));
+}
+
+function atualizarDestinoEtq(){
+  var m=G('etq-ed-motivo').value;
+  G('etq-ed-outro-row').style.display=(m==='Outro')?'block':'none';
+  var el=G('etq-ed-destino');
+  if(G('etq-ed-origem').value!=='op'||!m){ el.textContent=''; return; }
+  if(MOTIVOS_REPROC_EXTRUSAO.indexOf(m)!==-1){ el.style.color='#5b21b6'; el.textContent='→ Com este motivo o peso conta na Extrusão (sai do Ensaque).'; }
+  else { el.style.color='#024f2b'; el.textContent='→ Com este motivo o peso conta no Ensaque.'; }
+}
+
+function abrirEditarEtiqueta(key,origem){
+  if(!_etqIsAdmin()){ toast('Somente o Administrador pode editar etiquetas','err'); return; }
+  var it=_etqItem(key,origem); if(!it){ toast('Etiqueta não encontrada — clique em Buscar novamente','err'); return; }
+  G('etq-ed-key').value=key; G('etq-ed-origem').value=origem;
+  G('etq-ed-peso').value=it.peso; G('etq-ed-just').value=''; G('etq-ed-outro').value='';
+  G('etq-ed-reimp').checked=true;
+  G('etq-ed-info').innerHTML='<b>'+_etqEsc(it.codigo)+'</b><br>'+(it.origem==='op'?('OP '+_etqEsc(it.opNum)+' — '+_etqEsc(it.produto)):_etqEsc(it.tipo+(it.linha?' — '+it.linha:'')))+'<br>'+(it.data||'').split('-').reverse().join('/')+' · '+(it.turno?'T'+it.turno:'sem turno')+' · operador '+_etqEsc(it.operador);
+  if(origem==='op'){
+    G('etq-ed-motivo-row').style.display=''; G('etq-ed-tipo-row').style.display='none';
+    var opts=['Saco rasgado','Peso incorreto','Contaminacao/mistura','Erro de programacao','Limpeza de linha'];
+    if(opts.indexOf(it.motivo)!==-1){ G('etq-ed-motivo').value=it.motivo; }
+    else { G('etq-ed-motivo').value='Outro'; G('etq-ed-outro').value=(it.motivo||'').replace(/^Outro:\s*/,''); }
+  } else {
+    G('etq-ed-motivo-row').style.display='none'; G('etq-ed-tipo-row').style.display='';
+    G('etq-ed-tipo').value=it.tipo||'Finos';
+  }
+  atualizarDestinoEtq();
+  G('metq').classList.add('on');
+}
+
+// Ajusta os agregados da OP pelo delta da etiqueta (so a parte que conta no Ensaque)
+// e grava tudo num unico update multipath. Nunca recalcula nem toca outras datas/turnos.
+function _etqCommitOP(it, novoEns, upd){
+  var fbKey=it.opId;
+  var antigoEns=reprocessoVaiParaExtrusao(it.raw)?0:it.peso;
+  var delta=novoEns-antigoEns;
+  return DB.ref('ops/'+fbKey).once('value').then(function(s){
+    var op=s.val();
+    if(op && delta!==0){
+      var d=it.data, tn=Number(it.turno);
+      var rpd=op.realPorData||{}, rpdt=op.realPorDataTurno||{};
+      var vRpd=Math.max((Number(rpd[d])||0)+delta,0);
+      upd['ops/'+fbKey+'/realPorData/'+d]=vRpd>0?vRpd:null;
+      if(tn>=1&&tn<=3){
+        var vT=Math.max(((rpdt[d]&&Number(rpdt[d][String(tn)]))||0)+delta,0);
+        upd['ops/'+fbKey+'/realPorDataTurno/'+d+'/'+tn]=vT>0?vT:null;
+      }
+      upd['ops/'+fbKey+'/reprocessado']=Math.max((Number(op.reprocessado)||0)+delta,0);
+      upd['ops/'+fbKey+'/real']=Math.max((Number(op.real)||0)+delta,0);
+    }
+    return DB.ref().update(upd).then(function(){ return delta; });
+  });
+}
+
+function salvarEdicaoEtiqueta(){
+  if(!_etqIsAdmin()){ toast('Somente o Administrador pode editar etiquetas','err'); return; }
+  var key=G('etq-ed-key').value, origem=G('etq-ed-origem').value;
+  var it=_etqItem(key,origem); if(!it) return;
+  var novoPeso=Math.round((parseFloat(G('etq-ed-peso').value)||0)*10)/10;
+  var just=(G('etq-ed-just').value||'').trim();
+  if(novoPeso<=0){ toast('Peso deve ser maior que zero. Para zerar, use Excluir.','err'); return; }
+  if(!just){ toast('Informe a justificativa da correção','err'); return; }
+  var reimp=G('etq-ed-reimp').checked;
+  var audKey=DB.ref('etiquetas_auditoria').push().key;
+  var upd={};
+
+  if(origem==='geral'){
+    var novoTipo=G('etq-ed-tipo').value;
+    if(novoPeso===it.peso&&novoTipo===it.tipo){ toast('Nada foi alterado','inf'); return; }
+    upd['apontamentos_gerais/'+key+'/quantidadeKg']=novoPeso;
+    upd['apontamentos_gerais/'+key+'/tipo']=novoTipo;
+    upd['apontamentos_gerais/'+key+'/editadoPor']=SES.login;
+    upd['apontamentos_gerais/'+key+'/editadoEm']=agora();
+    upd['etiquetas_auditoria/'+audKey]={acao:'EDITAR',origem:'geral',refKey:key,codigoEtiqueta:it.codigo,data:it.data,
+      antes:{quantidadeKg:it.peso,tipo:it.tipo},depois:{quantidadeKg:novoPeso,tipo:novoTipo},
+      justificativa:just,usuario:SES.login,ts:agora()};
+    ld(true,'Salvando correção...');
+    DB.ref().update(upd).then(function(){
+      ld(false); fM('metq');
+      toast('Etiqueta corrigida: '+fN(it.peso)+' → '+fN(novoPeso)+' kg','ok');
+      addLog('ETIQUETA_EDITAR',it.codigo+' | '+it.tipo+' '+it.peso+'kg → '+novoTipo+' '+novoPeso+'kg | '+just);
+      if(reimp){ it.peso=novoPeso; it.tipo=novoTipo; imprimirEtiquetaReprocesso(_etqDadosImpressao(it)); }
+      carregarEtiquetasReproc();
+      if(G('scr-geral')&&G('scr-geral').classList.contains('on')) renderApontamentosGerais();
+    }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+    return;
+  }
+
+  // Vinculada a OP
+  var mSel=G('etq-ed-motivo').value;
+  if(!mSel){ toast('Selecione o motivo','err'); return; }
+  var novoMotivo=mSel;
+  if(mSel==='Outro'){
+    var txt=(G('etq-ed-outro').value||'').trim();
+    if(!txt){ toast('Descreva o motivo','err'); return; }
+    novoMotivo='Outro: '+txt;
+  }
+  if(novoPeso===it.peso&&novoMotivo===it.motivo){ toast('Nada foi alterado','inf'); return; }
+  var novoDestino=MOTIVOS_REPROC_EXTRUSAO.indexOf(novoMotivo)!==-1?'extrusao':'ensaque';
+  var novoEns=novoDestino==='extrusao'?0:novoPeso;
+  var envolveExtrusao=reprocessoVaiParaExtrusao(it.raw)||novoDestino==='extrusao';
+
+  var novoKey=DB.ref('apontamentos').push().key;
+  var novoReg=_etqClone(it.raw);
+  delete novoReg.substituido;
+  novoReg.id=uid(); novoReg.real=novoPeso; novoReg.motivoReprocesso=novoMotivo; novoReg.destinoReprocesso=novoDestino;
+  novoReg.editadoDe=key; novoReg.editadoPor=SES.login; novoReg.editadoEm=agora(); novoReg.justificativaEdicao=just;
+  upd['apontamentos/'+key+'/substituido']=true;
+  upd['apontamentos/'+key+'/substituidoPor']=novoKey;
+  upd['apontamentos/'+novoKey]=novoReg;
+  upd['etiquetas_auditoria/'+audKey]={acao:'EDITAR',origem:'op',refKey:key,novoKey:novoKey,opId:it.opId,opNum:it.opNum,
+    codigoEtiqueta:it.codigo,data:it.data,turno:it.turno,
+    antes:{peso:it.peso,motivo:it.motivo,destino:it.destino},
+    depois:{peso:novoPeso,motivo:novoMotivo,destino:novoDestino==='extrusao'?'Extrusão':'Ensaque'},
+    justificativa:just,usuario:SES.login,ts:agora()};
+
+  ld(true,'Salvando correção...');
+  _etqCommitOP(it,novoEns,upd).then(function(delta){
+    ld(false); fM('metq');
+    if(envolveExtrusao) recalcularReprocessoLimpezaEnsaque(it.opId);
+    toast('Etiqueta corrigida'+(delta?(' — Ensaque '+(delta>0?'+':'')+fN(delta)+' kg'):''),'ok');
+    addLog('ETIQUETA_EDITAR',it.codigo+' | OP '+it.opNum+' | '+it.peso+'kg/'+it.motivo+' → '+novoPeso+'kg/'+novoMotivo+' | '+just);
+    if(reimp){ it.peso=novoPeso; it.motivo=novoMotivo; imprimirEtiquetaReprocesso(_etqDadosImpressao(it)); }
+    carregarEtiquetasReproc();
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
+function abrirExcluirEtiqueta(key,origem){
+  if(!_etqIsAdmin()){ toast('Somente o Administrador pode excluir etiquetas','err'); return; }
+  var it=_etqItem(key,origem); if(!it){ toast('Etiqueta não encontrada — clique em Buscar novamente','err'); return; }
+  G('etq-del-key').value=key; G('etq-del-origem').value=origem;
+  G('etq-del-just').value=''; G('etq-del-confirm').value='';
+  G('etq-del-msg').innerHTML='<b>'+_etqEsc(it.codigo)+'</b> — '+fN(it.peso)+' kg<br>'+
+    (it.origem==='op'?('OP '+_etqEsc(it.opNum)+' · destino '+it.destino):_etqEsc(it.tipo))+' · '+(it.data||'').split('-').reverse().join('/');
+  G('metqdel').classList.add('on');
+}
+
+function confirmarExclusaoEtiqueta(){
+  if(!_etqIsAdmin()){ toast('Somente o Administrador pode excluir etiquetas','err'); return; }
+  var key=G('etq-del-key').value, origem=G('etq-del-origem').value;
+  var it=_etqItem(key,origem); if(!it) return;
+  var just=(G('etq-del-just').value||'').trim();
+  if(!just){ toast('Informe a justificativa','err'); return; }
+  if((G('etq-del-confirm').value||'').trim().toUpperCase()!==String(it.codigo).toUpperCase()){
+    toast('Código da etiqueta não confere','err'); return;
+  }
+  var audKey=DB.ref('etiquetas_auditoria').push().key;
+  var aud={acao:'EXCLUIR',origem:origem,refKey:key,codigoEtiqueta:it.codigo,data:it.data,turno:it.turno,
+    antes:_etqClone(it.raw),justificativa:just,usuario:SES.login,ts:agora()};
+  var upd={};
+  upd['etiquetas_auditoria/'+audKey]=aud;
+  ld(true,'Excluindo etiqueta...');
+
+  if(origem==='geral'){
+    var arq=_etqClone(it.raw);
+    arq.excluidoPor=SES.login; arq.excluidoEm=agora(); arq.motivoExclusao=just;
+    upd['apontamentos_gerais_excluidos/'+key]=arq;
+    upd['apontamentos_gerais/'+key]=null;
+    DB.ref().update(upd).then(function(){
+      ld(false); fM('metqdel');
+      toast('Etiqueta '+it.codigo+' excluída','ok');
+      addLog('ETIQUETA_EXCLUIR',it.codigo+' | '+it.tipo+' '+it.peso+'kg | '+just);
+      carregarEtiquetasReproc();
+      if(G('scr-geral')&&G('scr-geral').classList.contains('on')) renderApontamentosGerais();
+    }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+    return;
+  }
+
+  aud.opId=it.opId; aud.opNum=it.opNum;
+  upd['apontamentos/'+key+'/substituido']=true;
+  upd['apontamentos/'+key+'/excluido']=true;
+  upd['apontamentos/'+key+'/excluidoPor']=SES.login;
+  upd['apontamentos/'+key+'/excluidoEm']=agora();
+  upd['apontamentos/'+key+'/motivoExclusao']=just;
+  _etqCommitOP(it,0,upd).then(function(delta){
+    ld(false); fM('metqdel');
+    if(reprocessoVaiParaExtrusao(it.raw)) recalcularReprocessoLimpezaEnsaque(it.opId);
+    toast('Etiqueta '+it.codigo+' excluída'+(delta?(' — Ensaque '+fN(delta)+' kg'):''),'ok');
+    addLog('ETIQUETA_EXCLUIR',it.codigo+' | OP '+it.opNum+' | '+it.peso+'kg | '+just);
+    carregarEtiquetasReproc();
+  }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
 function popularInspOP(){
   var sel=G('insp-op');
   if(!sel) return;
