@@ -833,7 +833,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px;margin-bottom:14px">
       <div style="font-weight:700;color:#024f2b;font-size:13px;margin-bottom:10px">⚙️ Corrida por Máquina (kg produzidos por Setup)</div>
       <canvas id="dash-g10" height="150"></canvas>
-      <div id="dash-corrida-legenda" style="margin-top:6px;font-size:10px;color:#739630">Corrida = kg produzidos ÷ nº de setups (Troca de Formato + Limpeza de Linha) no período. Barra clara = sem setup registrado no período (corrida mínima, sem interrupção). Clique na barra para ver os itens produzidos na linha.</div>
+      <div id="dash-corrida-legenda" style="margin-top:6px;font-size:10px;color:#739630">Corrida = kg produzidos ÷ nº de setups (Troca de Formato + Limpeza de Linha) no período. Barra clara = sem setup registrado no período (corrida mínima, sem interrupção). Entre parênteses: média de reprocesso por setup (reprocesso lançado no fechamento das paradas de setup ÷ nº de setups). Clique na barra para ver os itens produzidos na linha.</div>
       <div id="dash-corrida-detalhe" style="display:none"></div>
     </div>
 
@@ -5265,12 +5265,20 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
   // (cód 1 "Troca de Formato (SETUP)" + cód 2 "Limpeza de Linha(PET)")
   var setupDescs=PARADAS.filter(function(p){return p.grupo==="Setup";}).map(function(p){return p.desc;});
   var setupsPorLinha={};
+  var reprocSetupPorLinha={}; // soma do reprocessoKg lançado no fechamento das paradas de Setup
   paradas.forEach(function(p){
     if(setupDescs.indexOf(p.descricao)>=0){
       var l=p.linha||"";
       setupsPorLinha[l]=(setupsPorLinha[l]||0)+1;
+      reprocSetupPorLinha[l]=(reprocSetupPorLinha[l]||0)+(Number(p.reprocessoKg)||0);
     }
   });
+  // Média de reprocesso por setup = reprocesso total dos setups ÷ nº de setups
+  // (setups sem reprocesso lançado entram como 0 kg na média)
+  function mediaReprocSetup(l){
+    var n=setupsPorLinha[l]||0;
+    return n>0?Math.round((reprocSetupPorLinha[l]||0)/n):null;
+  }
   // Usa o mesmo universo de linhas de porLinha (todas as linhas com produção no período)
   var linhasCorrida=Object.keys(porLinha);
   var corridaVals=linhasCorrida.map(function(l){
@@ -5281,7 +5289,12 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
   var corridaCores=linhasCorrida.map(function(l){
     return (setupsPorLinha[l]||0)>0?"rgba(2,79,43,.8)":"rgba(115,150,48,.45)";
   });
-  mkChart("dash-g10","bar",linhasCorrida,[
+  // Rótulo em duas linhas: nome da linha + (média de reprocesso por setup)
+  var corridaLabels=linhasCorrida.map(function(l){
+    var m=mediaReprocSetup(l);
+    return [l, m===null?"(sem setup)":"(♻ "+fN(m)+" kg reproc./setup)"];
+  });
+  mkChart("dash-g10","bar",corridaLabels,[
     {label:"Corrida (kg/setup)",data:corridaVals,backgroundColor:corridaCores}
   ],{
     plugins:{
@@ -5291,6 +5304,11 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
         var n=setupsPorLinha[l]||0;
         if(n===0) return "Sem setup no período — corrida ≥ "+fN(ctx.parsed.y)+" kg";
         return "Corrida: "+fN(ctx.parsed.y)+" kg/setup ("+n+" setup"+(n===1?"":"s")+")";
+      },afterLabel:function(ctx){
+        var l=linhasCorrida[ctx.dataIndex];
+        var m=mediaReprocSetup(l);
+        if(m===null) return "";
+        return "Reprocesso dos setups: "+fN(reprocSetupPorLinha[l]||0)+" kg · média "+fN(m)+" kg/setup";
       }}}
     },
     scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:9}}}},
