@@ -509,6 +509,7 @@ var SES = null;
 // Cache local por setor (chave = setor), populado ao abrir cada aba —
 // usado tanto pra listar quanto pra gerar o codigo sequencial do dia.
 var CACHE_SETOR = { expedicao_aqua: [], expedicao_pet: [], recebimento: [], higienizacao: [] };
+  OP_LOOKUP_CACHE={};
 
 var SETORES_CENTRAL = {
   expedicao_aqua: { label: 'Expedição Aqua', prefixo: 'EAQ', idPrefix: 'aqua' },
@@ -1322,6 +1323,29 @@ var TODAS_LINHAS_EXTRUSAO=['Linha 1 (E-240)','Linha 2 (E-200)','Linha 4 (Andritz
 var LINHA_EXTRUSAO_DECODE={};
 TODAS_LINHAS_EXTRUSAO.forEach(function(nome){ LINHA_EXTRUSAO_DECODE[encIdLinha(nome)]=nome; });
 
+// Cache de numero/produto das OPs (fbKey -> {numero, produto}) — vive na sessao.
+// So' busca as chaves que ainda nao estao no cache; cada busca le 3 campos
+// pequenos (id, desc, cod), nunca o registro inteiro da OP.
+var OP_LOOKUP_CACHE={};
+function carregarLookupOPs(snapApont){
+  var faltam={};
+  if(snapApont && snapApont.exists()) snapApont.forEach(function(c){
+    var v=c.val();
+    if(v.origem!=='reprocesso'||v.substituido||!v.opId) return;
+    if(!OP_LOOKUP_CACHE[v.opId]) faltam[v.opId]=true;
+  });
+  var keys=Object.keys(faltam);
+  return Promise.all(keys.map(function(k){
+    return Promise.all([
+      DB.ref('ops/'+k+'/id').once('value'),
+      DB.ref('ops/'+k+'/desc').once('value'),
+      DB.ref('ops/'+k+'/cod').once('value')
+    ]).then(function(r){
+      OP_LOOKUP_CACHE[k]={ numero:r[0].val()||k, produto:r[1].val()||r[2].val()||'' };
+    }).catch(function(){ OP_LOOKUP_CACHE[k]={ numero:k, produto:'' }; });
+  })).then(function(){ return OP_LOOKUP_CACHE; });
+}
+
 function renderDashboardConsolidado(){
   var di=G('dash-di').value, df=G('dash-df').value;
   var ffonte=G('dash-ffonte').value;
@@ -1334,29 +1358,31 @@ function renderDashboardConsolidado(){
 
   ld(true,'Consolidando reprocesso...');
 
-  var pEnsaqueOP = DB.ref('apontamentos').orderByChild('data').startAt(di).endAt(df).once('value');
-  var pEnsaqueGeral = DB.ref('apontamentos_gerais').orderByChild('data').startAt(di).endAt(df).once('value');
-  var pEnvasePet = DB.ref('envase_pet_reprocesso').orderByChild('data').startAt(di).endAt(df).once('value');
-  var pExtrusao = DB.ref('extrusao_turno').orderByChild('data').startAt(di).endAt(df).once('value');
-  var pCentral = DB.ref('reprocesso_central').orderByChild('data').startAt(di).endAt(df).once('value');
-  // Le todas as OPs de uma vez so' (nao por linha) pra montar um lookup
-  // fbKey -> numero real da OP + produto. O campo 'opId' gravado no
-  // apontamento e' a CHAVE do Firebase, nao o numero que o operador
-  // reconhece — o numero real fica em ops/{fbKey}.id (mesmo campo que o
-  // index.html usa pra imprimir a etiqueta).
-  var pOps = DB.ref('ops').once('value');
+  // Cada fonte e' cronometrada (console do navegador, F12) — mostra qual no
+  // esta lento caso a tela volte a demorar, sem precisar adivinhar.
+  var _t0=performance.now();
+  function _cron(nome,p){ return p.then(function(r){ console.log('[Central] '+nome+': '+Math.round(performance.now()-_t0)+' ms'); return r; }); }
+
+  var pEnsaqueOP = _cron('apontamentos', DB.ref('apontamentos').orderByChild('data').startAt(di).endAt(df).once('value'));
+  var pEnsaqueGeral = _cron('apontamentos_gerais', DB.ref('apontamentos_gerais').orderByChild('data').startAt(di).endAt(df).once('value'));
+  var pEnvasePet = _cron('envase_pet_reprocesso', DB.ref('envase_pet_reprocesso').orderByChild('data').startAt(di).endAt(df).once('value'));
+  var pExtrusao = _cron('extrusao_turno', DB.ref('extrusao_turno').orderByChild('data').startAt(di).endAt(df).once('value'));
+  var pCentral = _cron('reprocesso_central', DB.ref('reprocesso_central').orderByChild('data').startAt(di).endAt(df).once('value'));
+  // Lookup fbKey -> numero real da OP + produto. ANTES lia o no 'ops' INTEIRO
+  // (todas as OPs ja criadas, com realPorData/realPorDataTurno/historico) a cada
+  // abertura e a cada troca de filtro — era o maior peso da tela e crescia todo
+  // dia. AGORA busca so' as OPs que aparecem no reprocesso do periodo, e so' os
+  // 3 campos usados (id, desc, cod), guardando em cache na sessao.
+  var pOps = _cron('ops (lookup)', pEnsaqueOP.then(function(snap){ return carregarLookupOPs(snap); }));
   // Moagem (moagem_reprocesso) — gravado pelo moagem.html; aqui somente leitura
-  var pMoagem = DB.ref('moagem_reprocesso').orderByChild('data').startAt(di).endAt(df).once('value');
+  var pMoagem = _cron('moagem_reprocesso', DB.ref('moagem_reprocesso').orderByChild('data').startAt(di).endAt(df).once('value'));
 
   Promise.all([pEnsaqueOP,pEnsaqueGeral,pEnvasePet,pExtrusao,pCentral,pOps,pMoagem]).then(function(res){
     ld(false);
+    console.log('[Central] total: '+Math.round(performance.now()-_t0)+' ms');
     var rows=[];
 
-    var OP_LOOKUP={};
-    if(res[5].exists()) res[5].forEach(function(c){
-      var v=c.val();
-      OP_LOOKUP[c.key]={ numero:v.id||c.key, produto:v.desc||v.cod||'' };
-    });
+    var OP_LOOKUP=res[5];
 
     // 1) Ensaque — vinculo OP (apontamentos, origem:'reprocesso'). Dividido pelo
     //    destino: Contaminacao/mistura e Limpeza de linha -> fonte "Extrusao";
