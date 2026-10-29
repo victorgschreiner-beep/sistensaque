@@ -471,6 +471,10 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
             <option value="Linha 5 (Andritz II)">Linha 5 (Andritz II)</option>
           </select></div>
         <button onclick="resumoAdmBuscar()" class="btn-ok" style="padding:8px 16px;font-size:12px">🔍 Buscar</button>
+        <button onclick="exportarParadasExcelResumo()" style="background:#1d6f42;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📊 Excel Paradas</button>
+        <label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#4a664a;cursor:pointer;padding-bottom:8px">
+          <input type="checkbox" id="resumo-xls-dia" style="width:14px;height:14px"> Dia inteiro (todos os turnos)
+        </label>
       </div>
     </div>
     <div id="resumo-corpo"></div>
@@ -8306,6 +8310,68 @@ function resumoAdmRenderizar(apts,paradas,ops,dt,turno,linhaFiltro,qualid,turnos
 
 // ── ADMIN: RECARREGAR REPROCESSO POR DATA+TURNO ───────────
 var TODAS_LINHAS=["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
+
+// ── ADMIN: EXPORTAR PARADAS EM EXCEL (layout padrão do relatório de paradas) ──
+// Colunas: Linha | Grupo da parada | Cod | Tipo de parada | Descrição | Data Inicio | Data Fim
+// Datas/horas gravadas como data real do Excel (formato dd/mm/aaaa hh:mm) usando a
+// data CIVIL do evento: parada do T1 iniciada às 21h+ pertence ao dia operacional
+// seguinte, mas no relatório aparece na data civil em que ocorreu (ex.: 30/04 21:24).
+function exportarParadasExcelResumo(){
+  if(!SES||SES.perfil!=="admin"){toast("Exportação disponível só para administrador","err");return;}
+  if(!DB){toast("Firebase não conectado","err");return;}
+  var dt=(G("resumo-adm-dt")&&G("resumo-adm-dt").value)||DT_FILA||hoje();
+  var turno=parseInt(G("resumo-adm-turno").value);
+  var linhaF=G("resumo-adm-linha").value;
+  var diaInteiro=G("resumo-xls-dia")&&G("resumo-xls-dia").checked;
+  toast("Gerando Excel de paradas...","ok");
+  Promise.all([
+    DB.ref("extrusao_paradas").orderByChild("data").equalTo(dt).once("value"),
+    batCarregarXLSX()
+  ]).then(function(r){
+    var lista=[];
+    if(r[0].exists()) r[0].forEach(function(c){
+      var p=c.val();
+      if(!diaInteiro && Number(p.turno)!==turno) return;
+      if(linhaF && p.linha!==linhaF) return;
+      var ini=hdAbs(p.data,p.turno,p.horaIni);
+      if(ini===null) return;
+      var fim=p.horaFim?ini+calcMinutos(p.horaIni,p.horaFim):null;
+      lista.push({p:p,ini:ini,fim:fim});
+    });
+    if(!lista.length){toast("Nenhuma parada para o filtro selecionado","err");return;}
+    lista.sort(function(a,b){return a.ini-b.ini||(a.p.linha>b.p.linha?1:-1);});
+    // minuto absoluto (dias desde 1970 × 1440 + min) → serial de data do Excel
+    function serial(abs){return (Math.floor(abs/1440)+25569)+(abs%1440)/1440;}
+    var aoa=[["Linha","Grupo da parada","Cod","Tipo de parada","Descrição","Data Inicio","Data Fim"]];
+    lista.forEach(function(x){
+      var p=x.p;
+      aoa.push([
+        String(p.linha||"").split(" (")[0],
+        paradaGrupo(p),
+        (p.codMotivo!==""&&p.codMotivo!=null&&!isNaN(Number(p.codMotivo)))?Number(p.codMotivo):(p.codMotivo||""),
+        p.descricao||"",
+        p.obs||"",
+        serial(x.ini),
+        x.fim!==null?serial(x.fim):""
+      ]);
+    });
+    var ws=XLSX.utils.aoa_to_sheet(aoa);
+    for(var i=1;i<aoa.length;i++){
+      ["F","G"].forEach(function(col){
+        var cel=ws[col+(i+1)];
+        if(cel&&cel.t==="n") cel.z="dd/mm/yyyy hh:mm";
+      });
+    }
+    ws["!cols"]=[{wch:10},{wch:30},{wch:7},{wch:48},{wch:45},{wch:17},{wch:17}];
+    ws["!autofilter"]={ref:"A1:G"+aoa.length};
+    var wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"Paradas");
+    var nome="Paradas_"+dt+(diaInteiro?"_dia":"_T"+turno)+(linhaF?"_"+linhaF.split(" (")[0].replace(/\s+/g,""):"")+".xlsx";
+    XLSX.writeFile(wb,nome);
+    registrarLog("exportacao","Exportou Excel de paradas "+dt+(diaInteiro?" (dia inteiro)":" T"+turno)+(linhaF?" "+linhaF:""),"-");
+    toast("Excel gerado ("+lista.length+" paradas)","ok");
+  }).catch(function(e){toast("Erro ao gerar Excel: "+e.message,"err");});
+}
 
 function carregarReprocessoAdm(dt,turno){
   var el=G("repr-campos");
