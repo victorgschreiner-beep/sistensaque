@@ -1317,8 +1317,29 @@ function recalcularRealExtrusao(opFbKey){
       // Se essa OP faz parte de uma cadeia de reprogramação, recalcula o acumulado de todos os elos —
       // garante que produção de dias/elos anteriores não seja perdida nem contada de novo (regra só da Extrusão)
       refreshCadeiaExt(opFbKey, op?op.linha:null);
+      // Se a OP corrigida é um elo ANTIGO (já foi reprogramada), o acumulado fica gravado no elo
+      // MAIS RECENTE — que também precisa ser recalculado (a busca da cadeia só anda para trás).
+      buscarEloMaisRecenteExt(opFbKey,function(atual){
+        if(atual&&atual!==opFbKey){
+          var opA=OPS.find(function(o){return o.fbKey===atual;});
+          refreshCadeiaExt(atual, opA?opA.linha:null);
+        }
+      });
     });
   });
+}
+
+// Anda PARA FRENTE na cadeia de reprogramação (filhos via reprogramadaDeFbKey) até o elo mais
+// recente. Tenta primeiro o cache local OPS; se não achar, consulta o Firebase.
+function buscarEloMaisRecenteExt(fbKey,callback,_prof){
+  _prof=_prof||0;
+  if(!DB||!fbKey||_prof>20){callback(fbKey);return;}
+  var filho=OPS.find(function(o){return o.reprogramadaDeFbKey===fbKey;});
+  if(filho){buscarEloMaisRecenteExt(filho.fbKey,callback,_prof+1);return;}
+  DB.ref("ops").orderByChild("reprogramadaDeFbKey").equalTo(fbKey).limitToFirst(1).once("value").then(function(s){
+    var fk=null; if(s.exists()) s.forEach(function(c){fk=c.key;});
+    if(fk) buscarEloMaisRecenteExt(fk,callback,_prof+1); else callback(fbKey);
+  }).catch(function(){callback(fbKey);});
 }
 
 // Reconstrói a cadeia de reprogramação de uma OP a partir do elo atual, seguindo o vínculo real
@@ -4077,8 +4098,23 @@ function recalcularReprocessoOp(opFbKey){
 // Se o turno daquela linha ainda não foi fechado (nenhum extrusao_turno
 // correspondente), não faz nada — o resumo continua sendo calculado ao vivo
 // até o fechamento, como já era.
+// Depois de qualquer correção (todas passam por recalcularTotalTurno), atualiza automaticamente o
+// Resumo do Turno (admin) e o Dashboard se estiverem abertos na tela — evita o admin olhar número velho.
+var _tmrAtualizarVisoes=null;
+function atualizarVisoesAposCorrecao(){
+  clearTimeout(_tmrAtualizarVisoes);
+  _tmrAtualizarVisoes=setTimeout(function(){
+    try{
+      var rc=G("resumo-corpo");
+      if(SES&&SES.perfil==="admin"&&rc&&rc.offsetParent!==null&&_resumoAdmDados&&_resumoAdmDados.dt&&G("resumo-adm-dt")&&G("resumo-adm-dt").value) resumoAdmBuscar();
+      var dd=G("dash-di");
+      if(window._DASH_CACHE&&dd&&dd.offsetParent!==null) gerarDashboard();
+    }catch(e){console.warn("Atualizar visões:",e.message);}
+  },1500);
+}
 function recalcularTotalTurno(data,turno,linha){
   if(!DB||!data||!turno||!linha) return;
+  atualizarVisoesAposCorrecao();
   Promise.all([
     DB.ref("extrusao_apts").orderByChild("data").equalTo(data).once("value"),
     DB.ref("extrusao_paradas").orderByChild("data").equalTo(data).once("value"),
@@ -6203,7 +6239,8 @@ function admSalvar(fbKey){
 function admExcluir(fbKey){
   if(!confirm("Confirma exclusão deste registro? Esta ação não pode ser desfeita.")) return;
   if(!DB){toast("Firebase não conectado","err");return;}
-  var ref=ADM_ABA==="apts"?"extrusao_apts/":"extrusao_paradas/";
+  var eraApt=ADM_ABA==="apts";
+  var ref=eraApt?"extrusao_apts/":"extrusao_paradas/";
   // Captura o registro antes de excluir — precisa de data/turno/linha pra recongelar
   // o total do turno, e (se for parada) da OP vinculada pra recalcular o reprocesso
   var opParaRecalc=null;
@@ -6214,6 +6251,8 @@ function admExcluir(fbKey){
   DB.ref(ref+fbKey).remove().then(function(){
     toast("Registro excluído!","ok");admBuscar();
     if(opParaRecalc) recalcularReprocessoOp(opParaRecalc);
+    // Apontamento excluído pelo admin: a OP precisa recalcular o realExtrusao (antes ficava desatualizado)
+    if(eraApt && itemExcluido && itemExcluido.opFbKey) recalcularRealExtrusao(itemExcluido.opFbKey);
     if(itemExcluido) recalcularTotalTurno(itemExcluido.data,itemExcluido.turno,itemExcluido.linha);
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
@@ -8075,12 +8114,9 @@ function confExcluirApt(btn){
   if(!confirm("Excluir "+info+"? Esta ação não pode ser desfeita.")) return;
   if(!DB){toast("Firebase não conectado","err");return;}
   DB.ref("extrusao_apts/"+fbKey).remove().then(function(){
-    // Desconta do realExtrusao da OP
-    if(opFk && kg>0){
-      DB.ref("ops/"+opFk+"/realExtrusao").transaction(function(atual){
-        return Math.max(0,(Number(atual)||0)-kg);
-      });
-    }
+    // Recalcula o realExtrusao da OP do zero (antes subtraía o kg — em OP reprogramada o valor
+    // gravado é o acumulado da cadeia, e a subtração/soma incremental desalinhava o total)
+    if(opFk) recalcularRealExtrusao(opFk);
     toast("Apontamento excluído","ok");
     registrarLog("conf_apt","Excluiu apontamento "+(apt?apt.horaIni+"-"+apt.horaFim+" "+kg+"kg":"fbKey:"+fbKey),apt?apt.linha:"");
     if(apt) recalcularTotalTurno(apt.data,apt.turno,apt.linha);
@@ -8196,12 +8232,14 @@ function resumoAdmRenderizar(apts,paradas,ops,dt,turno,linhaFiltro,qualid,turnos
       }
       return s+m;
     },0);
-    // Se o turno já foi fechado para esta linha, usa o valor CONGELADO (oficial,
-    // gravado no fechamento e mantido em sincronia por qualquer correção posterior)
-    // em vez de recalcular ao vivo — é o valor que deve ser "pego no outro dia".
+    // ALTERADO (30/10/2026): produção e paradas SEMPRE ao vivo (extrusao_apts/extrusao_paradas),
+    // que é onde a Correção Administrativa grava — mesma regra do Excel e do Dashboard, um número
+    // oficial só. O valor congelado no fechamento (extrusao_turno) vira apenas CONFERÊNCIA: se
+    // divergir do ao vivo, mostra aviso (congelado desatualizado), mas não é usado no total.
     var frz=congelado[encId(linha)];
-    var totalReal=frz?frz.producao:totalRealVivo;
-    var minPara=frz?frz.paradasMin:minParaVivo;
+    var totalReal=totalRealVivo;
+    var minPara=minParaVivo;
+    var divergeFrz=frz&&(Math.abs(frz.producao-totalRealVivo)>=1||Math.abs(frz.paradasMin-minParaVivo)>=1);
     totalGeralReal+=totalReal; totalGeralMin+=minPara;
 
     // OP mais produzida nessa linha nesse turno
@@ -8217,6 +8255,9 @@ function resumoAdmRenderizar(apts,paradas,ops,dt,turno,linhaFiltro,qualid,turnos
     h+='<div style="background:#024f2b;color:#fff;padding:7px 12px;font-size:12px;font-weight:700;display:flex;justify-content:space-between">';
     h+='<span>'+nomeCurto(linha)+(frz?' <span style="font-size:9px;font-weight:600;opacity:.85">🔒 turno fechado</span>':' <span style="font-size:9px;font-weight:600;opacity:.7">⏳ turno em aberto (ao vivo)</span>')+'</span>';
     h+='<span style="font-size:10px;opacity:.8">'+(opPrinc?opPrinc.num:'sem apontamentos')+'</span></div>';
+    if(divergeFrz){
+      h+='<div style="background:#fff6e0;border-bottom:1px solid #e8c874;padding:5px 12px;font-size:10px;color:#7a5a00">⚠ Valor gravado no fechamento ('+fN(frz.producao)+' kg · '+minH(frz.paradasMin)+' parado) difere do atual — exibindo o valor atual, já com as correções.</div>';
+    }
 
     // Cards resumo
     h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#d4e8d4">';
@@ -8331,8 +8372,10 @@ function exportarParadasExcelResumo(){
     DB.ref("extrusao_turno").orderByChild("data").equalTo(dt).once("value")
   ]).then(function(r){
     // ── Produção × meta por linha/turno ──
-    // Produção: valor CONGELADO no fechamento do turno, se existir; senão soma ao vivo dos apontamentos
-    //           (mesma regra do Resumo do Turno).
+    // Produção: SEMPRE soma ao vivo dos apontamentos (extrusao_apts), que é onde a Correção
+    //           Administrativa grava — assim qualquer correção do admin aparece na hora no Excel.
+    //           O valor congelado no fechamento (extrusao_turno) é usado só como CONFERÊNCIA:
+    //           se divergir do ao vivo, a coluna "Obs" sinaliza (congelado desatualizado).
     // Meta (Produção desejada): TURNO CHEIO pela escala do dia (hdJanela), do início até o fim do turno
     //           (estendido até o fim da última parada/apontamento que passe do horário oficial) —
     //           ou até agora, se o turno ainda está em andamento. Cada minuto vale a meta/hora do
@@ -8412,10 +8455,12 @@ function exportarParadasExcelResumo(){
         if(linhaF&&l!==linhaF) return;
         var k=t+"|"+l, fk=t+"|"+encId(l), apL=aptsPorTL[k]||[];
         if(!apL.length&&!(fk in cong)&&!parasPorTL[k]) return; // linha não operou nesse turno
-        var real=(fk in cong)?cong[fk]:apL.reduce(function(s,x){return s+x.real;},0);
+        var real=apL.reduce(function(s,x){return s+x.real;},0);
+        var obs="";
+        if((fk in cong)&&Math.abs(cong[fk]-real)>=1) obs="Fechamento do turno gravou "+Math.round(cong[fk])+" kg (difere do apontado)";
         var mt=metaTurnoCheio(t,l,apL,parasPorTL[k]);
         var meta=Math.round(mt.meta);
-        linhasProd.push([dt,l.split(" (")[0],t,Math.round(real*10)/10,meta,meta?Math.round(real/meta*100000)/1000:"",mt.min?Math.round(mt.min/6)/10:"",mt.ini!=null?mt.ini:"",mt.fimAbs!=null?mt.fimAbs:"",mt.origem||""]);
+        linhasProd.push([dt,l.split(" (")[0],t,Math.round(real*10)/10,meta,meta?Math.round(real/meta*100000)/1000:"",mt.min?Math.round(mt.min/6)/10:"",mt.ini!=null?mt.ini:"",mt.fimAbs!=null?mt.fimAbs:"",mt.origem||"",obs]);
       });
     });
     var lista=[];
@@ -8458,18 +8503,18 @@ function exportarParadasExcelResumo(){
     XLSX.utils.book_append_sheet(wb,ws,"Paradas");
     // Aba 2 — Produção × Meta
     var dSerial=(function(){var p=dt.split("-");return Math.round(Date.UTC(+p[0],+p[1]-1,+p[2])/86400000)+25569;})();
-    var aoaP=[["Data","linha","turno","Produção","Produção desejada","Performance","Horas consideradas","Início turno","Fim considerado","Origem do fim"]];
-    linhasProd.forEach(function(l){aoaP.push([dSerial,l[1],l[2],l[3],l[4],l[5],l[6],l[7]!==""?serial(l[7]):"",l[8]!==""?serial(l[8]):"",l[9]]);});
+    var aoaP=[["Data","linha","turno","Produção","Produção desejada","Performance","Horas consideradas","Início turno","Fim considerado","Origem do fim","Obs"]];
+    linhasProd.forEach(function(l){aoaP.push([dSerial,l[1],l[2],l[3],l[4],l[5],l[6],l[7]!==""?serial(l[7]):"",l[8]!==""?serial(l[8]):"",l[9],l[10]]);});
     var wsP=XLSX.utils.aoa_to_sheet(aoaP);
     for(var j=2;j<=aoaP.length;j++){
       if(wsP["A"+j]) wsP["A"+j].z="dd/mm/yyyy";
       if(wsP["F"+j]&&wsP["F"+j].t==="n") wsP["F"+j].z="0.00";
       ["H","I"].forEach(function(c){if(wsP[c+j]&&wsP[c+j].t==="n") wsP[c+j].z="dd/mm/yyyy hh:mm";});
     }
-    wsP["!cols"]=[{wch:12},{wch:10},{wch:7},{wch:12},{wch:18},{wch:13},{wch:18},{wch:17},{wch:17},{wch:24}];
-    wsP["!autofilter"]={ref:"A1:J"+aoaP.length};
+    wsP["!cols"]=[{wch:12},{wch:10},{wch:7},{wch:12},{wch:18},{wch:13},{wch:18},{wch:17},{wch:17},{wch:24},{wch:50}];
+    wsP["!autofilter"]={ref:"A1:K"+aoaP.length};
     XLSX.utils.book_append_sheet(wb,wsP,"Produção");
-    var nome="Paradas_"+dt+(diaInteiro?"_dia":"_T"+turno)+(linhaF?"_"+linhaF.split(" (")[0].replace(/\s+/g,""):"")+".xlsx";
+    var nome="Paradas_"+dt+(diaInteiro?"_dia":"_T"+turno)+(linhaF?"_"+linhaF.split(" (")[0].replace(/\s+/g,""):"")+"_gerado"+String(horaBrasilia(new Date())).padStart(2,"0")+"h"+String(minutoBrasilia(new Date())).padStart(2,"0")+".xlsx";
     XLSX.writeFile(wb,nome);
     registrarLog("exportacao","Exportou Excel de paradas "+dt+(diaInteiro?" (dia inteiro)":" T"+turno)+(linhaF?" "+linhaF:""),"-");
     toast("Excel gerado ("+lista.length+" paradas · "+linhasProd.length+" linhas de produção)","ok");
