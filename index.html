@@ -623,11 +623,11 @@ tr:hover td{background:rgba(2,79,43,.03)}
        Toda acao grava antes/depois em etiquetas_auditoria + log. -->
   <div class="card" style="margin-bottom:14px">
     <div class="ch"><span class="ct">🏷️ Etiquetas de Reprocesso — Editar / Excluir</span><span style="font-size:11px;color:#c0392b;font-weight:600">Somente Administrador</span></div>
-    <div style="font-size:12px;color:#4a664a;margin-bottom:12px">Corrige peso, motivo ou tipo de uma etiqueta já impressa, ou exclui uma etiqueta lançada por engano. Os totais da OP são ajustados automaticamente e a alteração fica registrada na auditoria (quem, quando, antes/depois e justificativa).</div>
+    <div style="font-size:12px;color:#4a664a;margin-bottom:12px">Corrige peso, motivo ou tipo de uma etiqueta já impressa, ou exclui uma etiqueta lançada por engano. Inclui o reprocesso do Envase PET. Os totais da OP são ajustados automaticamente e a alteração fica registrada na auditoria (quem, quando, antes/depois e justificativa).</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
       <div class="fg" style="margin:0"><label class="fl">De</label><input type="date" id="etq-di" style="width:auto"></div>
       <div class="fg" style="margin:0"><label class="fl">Até</label><input type="date" id="etq-df" style="width:auto"></div>
-      <select id="etq-origem" style="width:auto" onchange="renderEtiquetasReproc()"><option value="">Todas as origens</option><option value="op">Vinculadas à OP</option><option value="geral">Gerais (Finos / Repr. Geral / Varredura)</option></select>
+      <select id="etq-origem" style="width:auto" onchange="renderEtiquetasReproc()"><option value="">Todas as origens</option><option value="op">Vinculadas à OP</option><option value="geral">Gerais (Finos / Repr. Geral / Varredura)</option><option value="envase">Envase PET</option></select>
       <input type="text" id="etq-busca" style="width:auto;max-width:220px" placeholder="Código, OP ou produto..." oninput="renderEtiquetasReproc()">
       <button class="btn bp bsm" onclick="carregarEtiquetasReproc()">Buscar</button>
     </div>
@@ -965,7 +965,11 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="fg" id="etq-ed-tipo-row"><label class="fl">Tipo</label>
       <select id="etq-ed-tipo"><option>Finos</option><option>Finos Magisan</option><option>Reprocesso Geral</option><option>Varredura</option></select>
     </div>
+    <div class="fg" id="etq-ed-envtipo-row" style="display:none"><label class="fl">Tipo</label>
+      <select id="etq-ed-envtipo" onchange="G('etq-ed-desvio-row').style.display=(this.value==='Qualidade'?'block':'none')"><option>Geral</option><option>Varredura</option><option>Finos</option><option>Qualidade</option></select>
+    </div>
   </div>
+  <div class="fg" id="etq-ed-desvio-row" style="display:none"><label class="fl">Motivo do desvio de qualidade <span style="color:#c0392b;font-size:11px">*obrigatório p/ Qualidade</span></label><input type="text" id="etq-ed-desvio"></div>
   <div class="fg" id="etq-ed-outro-row" style="display:none"><label class="fl">Descreva o motivo</label><input type="text" id="etq-ed-outro"></div>
   <div id="etq-ed-destino" style="font-size:12px;font-weight:600;margin-bottom:10px"></div>
   <div class="fg"><label class="fl">Justificativa da correção <span style="color:#c0392b;font-size:11px">*obrigatório</span></label><input type="text" id="etq-ed-just" placeholder="ex: peso digitado errado, saco pesado de novo"></div>
@@ -7072,9 +7076,20 @@ function carregarEtiquetasReproc(){
   ld(true,'Buscando etiquetas...');
   Promise.all([
     DB.ref('apontamentos').orderByChild('data').startAt(di).endAt(df).once('value'),
-    DB.ref('apontamentos_gerais').orderByChild('data').startAt(di).endAt(df).once('value')
+    DB.ref('apontamentos_gerais').orderByChild('data').startAt(di).endAt(df).once('value'),
+    DB.ref('envase_pet_reprocesso').orderByChild('data').startAt(di).endAt(df).once('value')
   ]).then(function(r){
     ETQ_CACHE=[];
+    // Envase PET — registro independente (envase_pet_reprocesso), nao altera
+    // nenhum agregado de OP. Vinculo com OP de envase so e obrigatorio no tipo Qualidade.
+    if(r[2]&&r[2].exists()) r[2].forEach(function(c){
+      var v=c.val();
+      if(v.substituido||v.excluido) return;
+      ETQ_CACHE.push({key:c.key, origem:'envase', data:v.data, turno:0,
+        codigo:v.codigo||'', peso:Number(v.pesoKg)||0, motivo:v.motivoDesvio||'',
+        destino:'Envase PET', operador:v.lancadoPor||'', ts:v.ts||v.lancadoEm||'',
+        tipo:v.tipo||'', opNum:v.opOrigemId||'', produto:v.opOrigemProduto||'', linha:'', raw:v});
+    });
     if(r[0].exists()) r[0].forEach(function(c){
       var a=c.val();
       if(a.substituido||a.origem!=='reprocesso'||!a.codigoEtiqueta) return;
@@ -7117,14 +7132,14 @@ function renderEtiquetasReproc(){
   }
   var h='';
   lista.forEach(function(e){
-    var corDest=e.destino==='Extrusão'?'#5b21b6':e.destino==='Ensaque'?'#024f2b':'#8a5700';
+    var corDest=e.destino==='Extrusão'?'#5b21b6':e.destino==='Ensaque'?'#024f2b':e.destino==='Envase PET'?'#0077b6':'#8a5700';
     h+='<tr>';
     h+='<td style="white-space:nowrap">'+(e.data||'').split('-').reverse().join('/')+'</td>';
     h+='<td>'+(e.turno?'T'+e.turno:'—')+'</td>';
-    h+='<td><span class="badge '+(e.origem==='op'?'baz':'bam')+'">'+(e.origem==='op'?'OP':'Geral')+'</span></td>';
+    h+='<td><span class="badge '+(e.origem==='op'?'baz':e.origem==='envase'?'bpx':'bam')+'">'+(e.origem==='op'?'OP':e.origem==='envase'?'Envase PET':'Geral')+'</span></td>';
     h+='<td style="font-size:10px;color:#739630;white-space:nowrap">'+_etqEsc(e.codigo||'—')+'</td>';
-    h+='<td style="font-weight:600">'+_etqEsc(e.origem==='op'?e.opNum:e.tipo)+'</td>';
-    h+='<td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+_etqEsc(e.produto||e.linha)+'">'+_etqEsc(e.origem==='op'?e.produto:(e.linha||'—'))+'</td>';
+    h+='<td style="font-weight:600">'+_etqEsc(e.origem==='op'?e.opNum:(e.origem==='envase'?(e.tipo+(e.opNum?' · '+e.opNum:'')):e.tipo))+'</td>';
+    h+='<td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+_etqEsc(e.produto||e.linha)+'">'+_etqEsc(e.origem!=='geral'?(e.produto||'—'):(e.linha||'—'))+'</td>';
     h+='<td style="text-align:right;font-weight:700">'+fN(e.peso)+' kg</td>';
     h+='<td style="font-size:12px">'+_etqEsc(e.motivo||'—')+'</td>';
     h+='<td style="font-size:11px;font-weight:600;color:'+corDest+'">'+e.destino+'</td>';
@@ -7139,6 +7154,7 @@ function renderEtiquetasReproc(){
 }
 
 function _etqDadosImpressao(it){
+  if(it.origem==='envase') return {titulo:'REPROC. PET — '+(it.tipo||'').toUpperCase(), opNumero:it.opNum||'', produto:it.produto||'', codigo:it.codigo, turno:0, data:it.data, pesoKg:it.peso, motivo:it.motivo||it.tipo};
   if(it.origem==='geral') return {titulo:(it.tipo||'').toUpperCase(), linha:it.linha, codigo:it.codigo, turno:it.turno, data:it.data, pesoKg:it.peso, motivo:it.motivo};
   return {opNumero:it.opNum, produto:it.produto, codigo:it.codigo, turno:it.turno, data:it.data, pesoKg:it.peso, motivo:it.motivo};
 }
@@ -7163,7 +7179,15 @@ function abrirEditarEtiqueta(key,origem){
   G('etq-ed-peso').value=it.peso; G('etq-ed-just').value=''; G('etq-ed-outro').value='';
   G('etq-ed-reimp').checked=true;
   G('etq-ed-info').innerHTML='<b>'+_etqEsc(it.codigo)+'</b><br>'+(it.origem==='op'?('OP '+_etqEsc(it.opNum)+' — '+_etqEsc(it.produto)):_etqEsc(it.tipo+(it.linha?' — '+it.linha:'')))+'<br>'+(it.data||'').split('-').reverse().join('/')+' · '+(it.turno?'T'+it.turno:'sem turno')+' · operador '+_etqEsc(it.operador);
-  if(origem==='op'){
+  G('etq-ed-envtipo-row').style.display='none'; G('etq-ed-desvio-row').style.display='none';
+  if(origem==='envase'){
+    G('etq-ed-info').innerHTML='<b>'+_etqEsc(it.codigo)+'</b> — Envase PET<br>'+_etqEsc(it.tipo)+(it.opNum?(' · OP '+_etqEsc(it.opNum)+' — '+_etqEsc(it.produto)):' · sem OP vinculada')+'<br>'+(it.data||'').split('-').reverse().join('/')+' · lançado por '+_etqEsc(it.operador);
+    G('etq-ed-motivo-row').style.display='none'; G('etq-ed-tipo-row').style.display='none';
+    G('etq-ed-envtipo-row').style.display='';
+    G('etq-ed-envtipo').value=it.tipo||'Geral';
+    G('etq-ed-desvio').value=it.motivo||'';
+    G('etq-ed-desvio-row').style.display=(G('etq-ed-envtipo').value==='Qualidade')?'block':'none';
+  } else if(origem==='op'){
     G('etq-ed-motivo-row').style.display=''; G('etq-ed-tipo-row').style.display='none';
     var opts=['Saco rasgado','Peso incorreto','Contaminacao/mistura','Erro de programacao','Limpeza de linha'];
     if(opts.indexOf(it.motivo)!==-1){ G('etq-ed-motivo').value=it.motivo; }
@@ -7211,6 +7235,40 @@ function salvarEdicaoEtiqueta(){
   var reimp=G('etq-ed-reimp').checked;
   var audKey=DB.ref('etiquetas_auditoria').push().key;
   var upd={};
+
+  if(origem==='envase'){
+    // Edicao in-place: envase_pet_reprocesso nao tem agregados derivados e e lido
+    // direto pelo envase_pet.html e pela Reprocesso Central — manter 1 registro
+    // por etiqueta evita contagem em dobro nesses modulos (que nao filtram substituido).
+    var envTipo=G('etq-ed-envtipo').value;
+    var envDesvio=(G('etq-ed-desvio').value||'').trim();
+    if(envTipo==='Qualidade'){
+      if(!it.raw.opOrigemFbKey){ toast('Tipo Qualidade exige OP de origem — esta etiqueta não tem OP vinculada','err'); return; }
+      if(!envDesvio){ toast('Informe o motivo do desvio de qualidade','err'); return; }
+    } else envDesvio='';
+    var desvioAnt=it.raw.motivoDesvio||'';
+    if(novoPeso===it.peso&&envTipo===it.tipo&&envDesvio===desvioAnt){ toast('Nada foi alterado','inf'); return; }
+    upd['envase_pet_reprocesso/'+key+'/pesoKg']=novoPeso;
+    upd['envase_pet_reprocesso/'+key+'/tipo']=envTipo;
+    upd['envase_pet_reprocesso/'+key+'/motivoDesvio']=envDesvio||null;
+    upd['envase_pet_reprocesso/'+key+'/editadoPor']=SES.login;
+    upd['envase_pet_reprocesso/'+key+'/editadoEm']=agora();
+    upd['envase_pet_reprocesso/'+key+'/justificativaEdicao']=just;
+    upd['etiquetas_auditoria/'+audKey]={acao:'EDITAR',origem:'envase',refKey:key,codigoEtiqueta:it.codigo,data:it.data,
+      opOrigemId:it.opNum||null,
+      antes:{pesoKg:it.peso,tipo:it.tipo,motivoDesvio:desvioAnt||null},
+      depois:{pesoKg:novoPeso,tipo:envTipo,motivoDesvio:envDesvio||null},
+      justificativa:just,usuario:SES.login,ts:agora()};
+    ld(true,'Salvando correção...');
+    DB.ref().update(upd).then(function(){
+      ld(false); fM('metq');
+      toast('Etiqueta Envase PET corrigida: '+fN(it.peso)+' → '+fN(novoPeso)+' kg','ok');
+      addLog('ETIQUETA_EDITAR_ENVASE',it.codigo+' | '+it.tipo+' '+it.peso+'kg → '+envTipo+' '+novoPeso+'kg | '+just);
+      if(reimp){ it.peso=novoPeso; it.tipo=envTipo; it.motivo=envDesvio; imprimirEtiquetaReprocesso(_etqDadosImpressao(it)); }
+      carregarEtiquetasReproc();
+    }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+    return;
+  }
 
   if(origem==='geral'){
     var novoTipo=G('etq-ed-tipo').value;
@@ -7279,7 +7337,7 @@ function abrirExcluirEtiqueta(key,origem){
   G('etq-del-key').value=key; G('etq-del-origem').value=origem;
   G('etq-del-just').value=''; G('etq-del-confirm').value='';
   G('etq-del-msg').innerHTML='<b>'+_etqEsc(it.codigo)+'</b> — '+fN(it.peso)+' kg<br>'+
-    (it.origem==='op'?('OP '+_etqEsc(it.opNum)+' · destino '+it.destino):_etqEsc(it.tipo))+' · '+(it.data||'').split('-').reverse().join('/');
+    (it.origem==='op'?('OP '+_etqEsc(it.opNum)+' · destino '+it.destino):(it.origem==='envase'?('Envase PET · '+_etqEsc(it.tipo)+(it.opNum?' · OP '+_etqEsc(it.opNum):'')):_etqEsc(it.tipo)))+' · '+(it.data||'').split('-').reverse().join('/');
   G('metqdel').classList.add('on');
 }
 
@@ -7298,6 +7356,22 @@ function confirmarExclusaoEtiqueta(){
   var upd={};
   upd['etiquetas_auditoria/'+audKey]=aud;
   ld(true,'Excluindo etiqueta...');
+
+  if(origem==='envase'){
+    // Move para envase_pet_reprocesso_excluidos (some do envase_pet.html e da
+    // Central sem precisar alterar esses modulos); original preservado na auditoria.
+    var arqE=_etqClone(it.raw);
+    arqE.excluidoPor=SES.login; arqE.excluidoEm=agora(); arqE.motivoExclusao=just;
+    upd['envase_pet_reprocesso_excluidos/'+key]=arqE;
+    upd['envase_pet_reprocesso/'+key]=null;
+    DB.ref().update(upd).then(function(){
+      ld(false); fM('metqdel');
+      toast('Etiqueta Envase PET '+it.codigo+' excluída','ok');
+      addLog('ETIQUETA_EXCLUIR_ENVASE',it.codigo+' | '+it.tipo+' '+it.peso+'kg | '+just);
+      carregarEtiquetasReproc();
+    }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+    return;
+  }
 
   if(origem==='geral'){
     var arq=_etqClone(it.raw);
