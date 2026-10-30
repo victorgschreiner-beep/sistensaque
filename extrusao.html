@@ -8380,19 +8380,22 @@ function exportarParadasExcelResumo(){
       // ou o último apontamento passar do fim oficial, o turno vai até essa hora — limitado ao
       // início do próximo turno e a no máximo 3 h além do fim oficial, para um horário digitado
       // errado não inflar a meta.
-      var fimReal=jan.fim;
-      (fimsParadas||[]).forEach(function(f){if(f>fimReal) fimReal=f;});
-      apL.forEach(function(x){if(x.fim!==null&&x.fim>fimReal) fimReal=x.fim;});
+      var fimReal=jan.fim, origem="Escala";
+      (fimsParadas||[]).forEach(function(f){if(f>fimReal){fimReal=f;origem="Parada";}});
+      apL.forEach(function(x){if(x.fim!==null&&x.fim>fimReal){fimReal=x.fim;origem="Apontamento";}});
       var EXT_MAX_MIN=180; // extensão máxima além do fim oficial (3 h)
-      fimReal=Math.min(fimReal,jan.fim+EXT_MAX_MIN,inicioProximoTurno(t,jan));
+      var lim=Math.min(jan.fim+EXT_MAX_MIN,inicioProximoTurno(t,jan));
+      if(fimReal>lim){fimReal=lim;origem+=" (limitado a +3h)";}
       var fimJ=Math.min(fimReal,nowAbs);
-      if(fimJ<=jan.ini) return {meta:0,min:0};
+      if(fimJ<fimReal) origem="Em andamento";
+      var R=function(o){o.ini=jan.ini;o.fimAbs=fimJ;o.origem=origem;return o;};
+      if(fimJ<=jan.ini) return R({meta:0,min:0});
       var seg=apL.filter(function(x){return x.ini!==null&&x.metaH>0;}).sort(function(a,b){return a.ini-b.ini;});
       if(!seg.length){
         // sem apontamento no turno: meta/hora mais próxima da mesma linha no dia
         var outros=(aptsPorL[linha]||[]).slice().sort(function(a,b){return Math.abs(a.ini-jan.ini)-Math.abs(b.ini-jan.ini);});
-        if(!outros.length) return {meta:0,min:fimJ-jan.ini};
-        return {meta:outros[0].metaH*(fimJ-jan.ini)/60,min:fimJ-jan.ini};
+        if(!outros.length) return R({meta:0,min:fimJ-jan.ini});
+        return R({meta:outros[0].metaH*(fimJ-jan.ini)/60,min:fimJ-jan.ini});
       }
       var tot=0, i=0, atual=seg[0].metaH;
       for(var m=jan.ini;m<fimJ;m++){
@@ -8400,7 +8403,7 @@ function exportarParadasExcelResumo(){
         // se um apontamento já iniciado ainda cobre este minuto, prevalece o de início mais recente (atual)
         tot+=atual/60;
       }
-      return {meta:tot,min:fimJ-jan.ini};
+      return R({meta:tot,min:fimJ-jan.ini});
     }
     var linhasProd=[];
     [1,2,3].forEach(function(t){
@@ -8412,7 +8415,7 @@ function exportarParadasExcelResumo(){
         var real=(fk in cong)?cong[fk]:apL.reduce(function(s,x){return s+x.real;},0);
         var mt=metaTurnoCheio(t,l,apL,parasPorTL[k]);
         var meta=Math.round(mt.meta);
-        linhasProd.push([dt,l.split(" (")[0],t,Math.round(real*10)/10,meta,meta?Math.round(real/meta*100000)/1000:"",mt.min?Math.round(mt.min/6)/10:""]);
+        linhasProd.push([dt,l.split(" (")[0],t,Math.round(real*10)/10,meta,meta?Math.round(real/meta*100000)/1000:"",mt.min?Math.round(mt.min/6)/10:"",mt.ini!=null?mt.ini:"",mt.fimAbs!=null?mt.fimAbs:"",mt.origem||""]);
       });
     });
     var lista=[];
@@ -8455,15 +8458,16 @@ function exportarParadasExcelResumo(){
     XLSX.utils.book_append_sheet(wb,ws,"Paradas");
     // Aba 2 — Produção × Meta
     var dSerial=(function(){var p=dt.split("-");return Math.round(Date.UTC(+p[0],+p[1]-1,+p[2])/86400000)+25569;})();
-    var aoaP=[["Data","linha","turno","Produção","Produção desejada","Performance","Horas consideradas"]];
-    linhasProd.forEach(function(l){aoaP.push([dSerial,l[1],l[2],l[3],l[4],l[5],l[6]]);});
+    var aoaP=[["Data","linha","turno","Produção","Produção desejada","Performance","Horas consideradas","Início turno","Fim considerado","Origem do fim"]];
+    linhasProd.forEach(function(l){aoaP.push([dSerial,l[1],l[2],l[3],l[4],l[5],l[6],l[7]!==""?serial(l[7]):"",l[8]!==""?serial(l[8]):"",l[9]]);});
     var wsP=XLSX.utils.aoa_to_sheet(aoaP);
     for(var j=2;j<=aoaP.length;j++){
       if(wsP["A"+j]) wsP["A"+j].z="dd/mm/yyyy";
       if(wsP["F"+j]&&wsP["F"+j].t==="n") wsP["F"+j].z="0.00";
+      ["H","I"].forEach(function(c){if(wsP[c+j]&&wsP[c+j].t==="n") wsP[c+j].z="dd/mm/yyyy hh:mm";});
     }
-    wsP["!cols"]=[{wch:12},{wch:10},{wch:7},{wch:12},{wch:18},{wch:13},{wch:18}];
-    wsP["!autofilter"]={ref:"A1:G"+aoaP.length};
+    wsP["!cols"]=[{wch:12},{wch:10},{wch:7},{wch:12},{wch:18},{wch:13},{wch:18},{wch:17},{wch:17},{wch:24}];
+    wsP["!autofilter"]={ref:"A1:J"+aoaP.length};
     XLSX.utils.book_append_sheet(wb,wsP,"Produção");
     var nome="Paradas_"+dt+(diaInteiro?"_dia":"_T"+turno)+(linhaF?"_"+linhaF.split(" (")[0].replace(/\s+/g,""):"")+".xlsx";
     XLSX.writeFile(wb,nome);
