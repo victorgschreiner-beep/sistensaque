@@ -32,23 +32,17 @@ body{font-family:"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--tx
 .st.mu{background:rgba(255,255,255,.08);color:var(--tx2)}
 @keyframes pisca{50%{opacity:.55}}
 .ln-b{flex:1;display:grid;grid-template-rows:auto auto auto 1fr;gap:.8vh;padding:.8vh 1vw;min-height:0}
-.ln-h .mo{display:flex;gap:.3vw;margin-top:.3vh;font-size:1.35vh}
 .cmp{display:grid;grid-template-columns:1fr 1fr;gap:.8vw}
 .box{background:rgba(255,255,255,.035);border:1px solid var(--brd);border-radius:1vh;padding:.7vh .8vw}
 .box .l{font-size:1.45vh;color:var(--tx2);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
 .box .v{font-size:3.8vh;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums}
 .box .v small{font-size:1.8vh;color:var(--tx2);font-weight:700;margin-left:.3vw}
 .box .s{font-size:1.5vh;color:var(--tx2);font-weight:600;margin-top:.2vh}
-.bar{height:.9vh;background:rgba(255,255,255,.08);border-radius:.5vh;overflow:hidden;margin-top:.5vh;position:relative}
-.bar>i{position:absolute;left:0;top:0;bottom:0;border-radius:.5vh}
-.bar>b{position:absolute;top:-.3vh;bottom:-.3vh;width:2px;background:#fff;opacity:.8}
 .c-ok{color:var(--ok)}.c-wa{color:var(--wa)}.c-bd{color:var(--bd)}.c-in{color:var(--in)}.c-mu{color:var(--tx2)}
-.bg-ok{background:var(--ok)}.bg-wa{background:var(--wa)}.bg-bd{background:var(--bd)}.bg-in{background:var(--in)}.bg-mu{background:var(--mut)}
-.est{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:.8vw}
-.metas{display:grid;grid-template-columns:1fr 1fr;gap:.8vw}
 .rod{display:flex;flex-direction:column;justify-content:flex-end;gap:.4vh;font-size:1.55vh;color:var(--tx2);font-weight:600}
 .rod b{color:var(--tx)}
 .rod .alt{color:var(--wa);font-weight:800}
+.rod .crit{color:var(--bd);font-weight:800}
 .chip{display:inline-block;padding:.1vh .6vw;border-radius:1vh;font-weight:800;margin-right:.3vw}
 .chip.p{background:rgba(255,107,94,.18);color:var(--bd)}
 .chip.r{background:rgba(60,207,122,.14);color:var(--ok)}
@@ -66,16 +60,26 @@ body{font-family:"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--tx
 <script>
 // ════════════════════════════════════════════════════════════════════
 // TV MOAGEM × EXTRUSÃO — somente leitura (nenhuma escrita no Firebase).
-// Lê: moagem_config, moagem_op_ativa, moagem_op_totais, moagem_apts, moagem_paradas,
-//     extrusao_op_ativa, extrusao_apts, extrusao_paradas, ops, config/metas.
-// Contas (todas em kg):
-//  • Média kg/h = kg ÷ minutos × 60 numa MESMA janela de 2h para as duas etapas,
-//    terminando no lançamento mais antigo entre moagem e extrusora
-//  • Estoque liberado = Σ (moído da OP − consumo da extrusão na OP) para TODAS as OPs
-//    da linha no "funil": a OP da extrusora + toda OP moída nos últimos DIAS_FUNIL dias
-//    que a extrusão ainda NÃO concluiu (inclui OPs intermediárias já terminadas na moagem)
-//    consumo = (produzido + reprocesso) × fatorConsumo (padrão 1,00)
-//  • Horas de matéria = (falta na OP da extrusora + moído das próximas OPs) ÷ kg/h extrusora
+// Lê: moagem_config, moagem_op_ativa, moagem_apts, moagem_paradas,
+//     extrusao_op_ativa, extrusao_apts, extrusao_paradas, extrusao_op_concluida,
+//     ops, config/metas.
+//
+// MATÉRIA NO SILO = HISTÓRICO COMPLETO DA ORDEM (correção 30/10/2026)
+//  • Cada OP é resolvida para a sua ORDEM: a cadeia de reprogramação inteira
+//    (reprogramadaDeFbKey, percorrida para trás). OPs da mesma cadeia — ex.: moagem
+//    no elo #2 e extrusora no elo #3 — viram uma única ordem.
+//  • Moído da ordem   = Σ moagem_apts.kg   de TODOS os elos
+//  • Consumo da ordem = (Σ extrusao_apts.real + Σ reprocessoAcumulado) de TODOS os elos
+//                       × fatorConsumo (padrão 1,00)
+//    Antes: moído vinha da cadeia inteira e o consumo só do elo atual → a cada
+//    reprogramação a produção dos dias anteriores "sumia" e virava estoque fantasma.
+//  • Saldo no silo = saldo da ordem da extrusora + saldo das próximas ordens moídas
+//    (últimos DIAS_FUNIL dias) que a extrusão ainda não concluiu.
+//  • Trava física: o silo de cada linha comporta CAP_SILO_T (15 t). Saldo acima disso
+//    é dado inconsistente → alerta e horas calculadas no máximo sobre a capacidade.
+//  • Horas de matéria = saldo (limitado à capacidade) ÷ kg/h da extrusora.
+//  • Média kg/h = mesma janela de 2h para as duas etapas, terminando no lançamento
+//    mais antigo entre moagem e extrusora.
 // ════════════════════════════════════════════════════════════════════
 var firebaseConfig={apiKey:"AIzaSyB52cXfvtmY2xXu9vMkMPhCWU-rp6NXhxc",authDomain:"sistema-ensaque.firebaseapp.com",databaseURL:"https://sistema-ensaque-default-rtdb.firebaseio.com",projectId:"sistema-ensaque"};
 var DB=null;
@@ -83,9 +87,15 @@ try{firebase.initializeApp(firebaseConfig);DB=firebase.database();}catch(e){cons
 
 var FIM_TURNO2=17, INICIO_T1=21, FIM_T1=6, TZ_OFFSET="-03:00", MIN_MS=60000, DIA_MS=86400000;
 var JANELA_MIN=120;          // janela da média de kg/h
-var DEFASAGEM_ALERTA_MIN=75; // apontamento mais velho que isso = dado desatualizado
 var ACABA_VERMELHO_H=1, ACABA_AMARELO_H=2;
-var DIAS_FUNIL=3;            // OPs moídas nos últimos N dias entram no estoque se a extrusão não concluiu
+var DIAS_FUNIL=3;            // ordens moídas nos últimos N dias entram no saldo se a extrusão não concluiu
+// Capacidade física do silo POR LINHA (t). Pode ser sobrescrita em moagem_config/params/capSiloT/{L1..L5}
+var CAP_SILO_T={L1:15,L2:15,L4:15,L5:15};
+var FOLGA_CAP=0.10;          // +10% antes de acusar inconsistência (defasagem entre lançamentos)
+var TOL_NEG_KG=1000;         // saldo negativo até 1 t = defasagem normal de lançamento; abaixo disso = conferir
+var MAX_ELOS=40;             // proteção contra cadeia circular/corrompida
+var CACHE_CADEIA_MS=10*MIN_MS, CACHE_SALDO_MS=2*MIN_MS, RETRY_ERRO_MS=30000;
+var ATRASO_LANC_MIN=75, DESALINHO_MIN=30;
 var LINHAS=[
   {k:"L1",nome:"Linha 1 (E-240)",cur:"Linha 1",maq:"E-240",meta:"metaL1"},
   {k:"L2",nome:"Linha 2 (E-200)",cur:"Linha 2",maq:"E-200",meta:"metaL2"},
@@ -94,13 +104,14 @@ var LINHAS=[
 ];
 var MOINHOS_PADRAO={M1000:{nome:"MM 1000",linhas:{L1:true,L2:true}},M1200:{nome:"MM 1200",linhas:{L1:true,L2:true}},M05:{nome:"MM 05",linhas:{L4:true}},M06:{nome:"MM 06",linhas:{L4:true}},M07:{nome:"MM 07",linhas:{L5:true}}};
 
-var D={opsLinha:{},extConc:{},cfg:{moinhos:MOINHOS_PADRAO,params:{fatorMeta:1.15,fatorConsumo:1}},opAt:{},opTot:{},mParAb:[],mApts:[],eApts:[],eAtiva:{},eParAb:[],ops:{},metas:{},cons:{},dia:null};
+var D={opsLinha:{},cfg:{moinhos:MOINHOS_PADRAO,params:{fatorMeta:1.15,fatorConsumo:1}},opAt:{},mParAb:[],mApts:[],eApts:[],eAtiva:{},eParAb:[],ops:{},metas:{},cad:{},ord:{},dia:null};
 
 // ── utilitários ────────────────────────────────────────────────
 function G(id){return document.getElementById(id);}
 function pad(n){return String(n).padStart(2,"0");}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
 function fN(n,d){return (Number(n)||0).toLocaleString("pt-BR",{minimumFractionDigits:d||0,maximumFractionDigits:d||0});}
+function fT(kg){return fN((Number(kg)||0)/1000,1)+" t";}
 function encId(s){return String(s).replace(/[^a-zA-Z0-9]/g,"_");}
 function dataBrasilia(d){return new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(d);}
 function horaBrasilia(d){return parseInt(new Intl.DateTimeFormat("en-US",{timeZone:"America/Sao_Paulo",hour:"2-digit",hour12:false}).format(d),10)%24;}
@@ -114,15 +125,9 @@ function tsDeDataOp(dOp,h){return tsDe(parseInt(h,10)>=INICIO_T1?addDias(dOp,-1)
 function calcMin(a,b){if(!a||!b) return 0;var x=a.split(":"),y=b.split(":");var m=(+y[0]*60+ +y[1])-(+x[0]*60+ +x[1]);if(m<0) m+=1440;return m;}
 function turnoDeHora(h){var n=parseInt(h,10);return (n>=INICIO_T1||n<FIM_T1)?1:(n<FIM_TURNO2?2:3);}
 function turnoAtual(){return turnoDeHora(hhmm(Date.now()));}
-function janelaTurno(dOp,t){
-  if(t===1) return {ini:tsDeDataOp(dOp,pad(INICIO_T1)+":00"),fim:tsDeDataOp(dOp,pad(FIM_T1)+":00")};
-  if(t===2) return {ini:tsDeDataOp(dOp,pad(FIM_T1)+":00"),fim:tsDeDataOp(dOp,pad(FIM_TURNO2)+":00")};
-  return {ini:tsDeDataOp(dOp,pad(FIM_TURNO2)+":00"),fim:tsDe(dOp,pad(INICIO_T1)+":00")};
-}
 function durTxt(h){if(h==null||!isFinite(h)) return "—";var m=Math.round(h*60);if(m<60) return m+" min";return Math.floor(m/60)+"h"+pad(m%60);}
-function metaExt(cod,lk){var l=LINHAS.find(function(x){return x.k===lk;});var m=D.metas[cod]||D.metas[String(cod||"").replace(/[.#$\[\]]/g,"_")];return (m&&l)?(Number(m[l.meta])||0):0;}
 function loteDe(op){var l=op&&op.lote;return (!l||/^LOT-\d{10,}$/.test(l))?"sem lote":l;}
-function moinhosDe(lk){var mo=D.cfg.moinhos||{};return Object.keys(mo).filter(function(m){return mo[m].ativo!==false&&mo[m].linhas&&mo[m].linhas[lk];});}
+function capSiloKg(lk){var c=((D.cfg.params||{}).capSiloT||{})[lk];c=Number(c)>0?Number(c):CAP_SILO_T[lk]||15;return c*1000;}
 function erro(msg){var e=G("erro");e.textContent=msg;e.style.display=msg?"block":"none";}
 
 // ── leitura ────────────────────────────────────────────────────
@@ -134,23 +139,60 @@ function buscarOp(fk,forcar){
   D.ops[fk]=D.ops[fk]||{_lido:Date.now()};D.ops[fk]._lido=Date.now();
   DB.ref("ops/"+fk).once("value").then(function(s){var v=s.val()||{};v._lido=Date.now();v.fbKey=fk;D.ops[fk]=v;agendar();});
 }
-// OP concluída na extrusão? (relido a cada 2 min)
-function buscarExtConc(fk){
-  var c=D.extConc[fk];if(c&&Date.now()-c.ts<2*MIN_MS) return;
-  D.extConc[fk]={v:c?c.v:null,ts:Date.now()};
-  DB.ref("extrusao_op_concluida/"+fk).once("value").then(function(s){D.extConc[fk]={v:s.exists(),ts:Date.now()};agendar();});
+
+// ── HISTÓRICO DA ORDEM ─────────────────────────────────────────
+// Cadeia de reprogramação de uma OP: [elo informado, anterior, …, raiz].
+// Retorna as chaves já conhecidas (cache) ou null enquanto a 1ª leitura não termina.
+function cadeia(fk){
+  var c=D.cad[fk], agora=Date.now();
+  if(c&&(c.carregando||agora-c.ts<(c.erro?RETRY_ERRO_MS:CACHE_CADEIA_MS))) return c.keys;
+  var ant=c?c.keys:null;
+  D.cad[fk]={keys:ant,carregando:true,ts:agora};
+  var keys=[], vistos={};
+  (function passo(k){
+    if(!k||vistos[k]||keys.length>=MAX_ELOS){
+      D.cad[fk]={keys:keys,ts:Date.now(),trunc:keys.length>=MAX_ELOS};agendar();return;
+    }
+    vistos[k]=1;keys.push(k);
+    DB.ref("ops/"+k).once("value").then(function(s){
+      var v=s.val();
+      if(v){v.fbKey=k;v._lido=Date.now();D.ops[k]=v;}
+      passo(v&&v.reprogramadaDeFbKey);
+    }).catch(function(){D.cad[fk]={keys:ant,erro:true,ts:Date.now()};agendar();});
+  })(fk);
+  return ant;
 }
-// Consumo da extrusão na OP = Σ extrusao_apts.real + reprocesso da OP (fonte confiável, recalculada)
-function buscarConsumo(fk){
-  if(!fk) return;
-  var c=D.cons[fk];
-  if(c&&Date.now()-c.ts<2*MIN_MS) return;
-  D.cons[fk]={kg:c?c.kg:null,ts:Date.now()};
-  DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(fk).once("value").then(function(s){
-    var t=0;if(s.exists()) s.forEach(function(x){var v=x.val();if(v) t+=Number(v.real)||0;});
-    D.cons[fk]={kg:t,ts:Date.now()};agendar();
+// Saldo de uma ordem (todas as chaves da cadeia): moído, consumo e conclusão na extrusão.
+// Devolve o último resultado bom (cache) enquanto recarrega — a tela não pisca.
+function saldoOrdem(raiz,keys){
+  var sig=keys.slice().sort().join(","), o=D.ord[raiz], agora=Date.now();
+  var bom=(o&&o.ok)?o:((o&&o.prev)||null);
+  if(o&&o.sig===sig&&(o.carregando||agora-o.ts<(o.erro?RETRY_ERRO_MS:CACHE_SALDO_MS))) return bom;
+  D.ord[raiz]={sig:sig,carregando:true,ts:agora,prev:bom};
+  var qs=[];
+  keys.forEach(function(k){
+    qs.push(DB.ref("moagem_apts").orderByChild("opFbKey").equalTo(k).once("value"));
+    qs.push(DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(k).once("value"));
+    qs.push(DB.ref("extrusao_op_concluida/"+k).once("value"));
   });
+  Promise.all(qs).then(function(sn){
+    var moido=0, ext=0, nM=0, nE=0, conc=false;
+    keys.forEach(function(k,i){
+      var sm=sn[3*i], se=sn[3*i+1], sc=sn[3*i+2];
+      if(sm&&sm.exists()) sm.forEach(function(c){var a=c.val();if(a){moido+=Number(a.kg)||0;nM++;}});
+      if(se&&se.exists()) se.forEach(function(c){var a=c.val();if(a){ext+=Number(a.real)||0;nE++;}});
+      if(sc&&sc.exists()) conc=true;
+    });
+    var repr=keys.reduce(function(t,k){return t+(Number((D.ops[k]||{}).reprocessoAcumulado)||0);},0);
+    D.ord[raiz]={sig:sig,ok:true,ts:Date.now(),keys:keys.slice(),moido:moido,ext:ext,repr:repr,nM:nM,nE:nE,conc:conc};
+    agendar();
+  }).catch(function(e){
+    console.warn("saldoOrdem",raiz,e);
+    D.ord[raiz]={sig:sig,erro:true,ts:Date.now(),prev:bom};agendar();
+  });
+  return bom;
 }
+
 function anexarDia(){
   _ls.forEach(function(f){try{f();}catch(e){}});_ls=[];
   var h=hoje(), ini=addDias(h,-1), iniFunil=addDias(h,-DIAS_FUNIL);
@@ -159,11 +201,16 @@ function anexarDia(){
     D.mApts=[];D.opsLinha={};
     if(s.exists()) s.forEach(function(c){var a=c.val();if(!a) return;
       if(a.lk&&a.opFbKey){(D.opsLinha[a.lk]=D.opsLinha[a.lk]||{})[a.opFbKey]=Math.max((D.opsLinha[a.lk]||{})[a.opFbKey]||0,a.tsFim||0);}
-      if(!a.marco&&a.minutos>0&&a.data>=ini) D.mApts.push(a);});agendar();});
+      if(!a.marco&&a.minutos>0&&a.data>=ini) D.mApts.push(a);});
+    // apontamento novo → saldo das ordens desatualizado: força releitura
+    Object.keys(D.ord).forEach(function(k){if(D.ord[k].ok) D.ord[k].ts=0;});
+    agendar();});
   on(DB.ref("extrusao_apts").orderByChild("data").startAt(ini).endAt(h),function(s){
     D.eApts=[];if(s.exists()) s.forEach(function(c){var a=c.val();if(!a||!a.horaIni||!a.horaFim||!a.data) return;
       var i=tsDeDataOp(a.data,a.horaIni), m=calcMin(a.horaIni,a.horaFim);if(m<=0) return;
-      D.eApts.push({linha:a.linha,opFbKey:a.opFbKey,ini:i,fim:i+m*MIN_MS,min:m,kg:Number(a.real)||0,metaH:Number(a.metaH)||0});});agendar();});
+      D.eApts.push({linha:a.linha,opFbKey:a.opFbKey,ini:i,fim:i+m*MIN_MS,min:m,kg:Number(a.real)||0,metaH:Number(a.metaH)||0});});
+    Object.keys(D.ord).forEach(function(k){if(D.ord[k].ok) D.ord[k].ts=0;});
+    agendar();});
   on(DB.ref("extrusao_paradas").orderByChild("data").startAt(ini).endAt(h),function(s){
     D.eParAb=[];if(s.exists()) s.forEach(function(c){var p=c.val();if(p&&!p.horaFim) D.eParAb.push(p);});agendar();});
   LINHAS.forEach(function(l){
@@ -179,7 +226,6 @@ function iniciar(){
   D.dia=hoje();
   DB.ref("moagem_config").on("value",function(s){var v=s.val()||{};D.cfg={moinhos:v.moinhos||MOINHOS_PADRAO,params:Object.assign({fatorMeta:1.15,fatorConsumo:1},v.params||{})};agendar();});
   DB.ref("moagem_op_ativa").on("value",function(s){D.opAt=s.val()||{};agendar();});
-  DB.ref("moagem_op_totais").on("value",function(s){D.opTot=s.val()||{};agendar();});
   DB.ref("moagem_paradas").orderByChild("aberta").equalTo(true).on("value",function(s){D.mParAb=[];if(s.exists()) s.forEach(function(c){var p=c.val();if(p) D.mParAb.push(p);});agendar();});
   DB.ref("config/metas").on("value",function(s){D.metas={};if(s.exists()) s.forEach(function(c){var v=c.val();if(!v) return;D.metas[c.key]=v;if(v.cod) D.metas[v.cod]=v;});agendar();});
   anexarDia();
@@ -215,44 +261,57 @@ function calcLinha(l){
   var fimJ=(ultM&&ultE)?Math.min(ultM,ultE):(ultM||ultE), iniJ=fimJ?fimJ-JANELA_MIN*MIN_MS:null;
   var kM=fimJ?mediaJanela(mA,iniJ,fimJ):null, kE=fimJ?mediaJanela(eA,iniJ,fimJ):null;
 
-  // 3. Matéria para a extrusora = o que falta da OP da extrusora (moído − consumido)
-  //    + o que já foi moído das próximas OPs (todas não concluídas na extrusão)
-  var fks=[];if(eFk) fks.push(eFk);if(mFk&&fks.indexOf(mFk)<0) fks.push(mFk);
-  Object.keys(D.opsLinha[lk]||{}).forEach(function(fk){if(fks.indexOf(fk)<0) fks.push(fk);});
-  var faltaAtual=0, proximas=0, nProx=0, pend=false, semMoagem=false;
-  fks.forEach(function(fk){
-    if(fk!==eFk&&fk!==mFk){
-      buscarExtConc(fk);
-      var ec=D.extConc[fk];
-      if(!ec||ec.v===null){pend=true;return;}
-      if(ec.v) return; // extrusão já concluiu essa OP
-    }
-    buscarConsumo(fk);buscarOp(fk);
-    var tot=D.opTot[fk], moido=tot?Number(tot.kgCadeia)||0:0, c=D.cons[fk], op=D.ops[fk]||{};
-    if(!c||c.kg==null){pend=true;return;}
-    var consumo=(c.kg+(Number(op.reprocessoAcumulado)||0))*fatC;
-    if(fk===eFk){ if(!tot&&consumo>0) semMoagem=true; faltaAtual=moido-consumo; }
-    else if(moido>0){ proximas+=moido-consumo; nProx++; }
+  // 3. Agrupa todas as OPs da linha por ORDEM (raiz da cadeia de reprogramação)
+  var refs=[];if(eFk) refs.push(eFk);if(mFk&&refs.indexOf(mFk)<0) refs.push(mFk);
+  Object.keys(D.opsLinha[lk]||{}).forEach(function(fk){if(refs.indexOf(fk)<0) refs.push(fk);});
+  var ordens=[], porRaiz={}, pend=false;
+  refs.forEach(function(fk){
+    var ks=cadeia(fk);
+    if(!ks||!ks.length){pend=true;return;}
+    var raiz=ks[ks.length-1], o=porRaiz[raiz];
+    if(!o){o=porRaiz[raiz]={raiz:raiz,keys:[],ext:false};ordens.push(o);}
+    ks.forEach(function(k){if(o.keys.indexOf(k)<0) o.keys.push(k);});
+    if(fk===eFk) o.ext=true;
   });
-  var total=faltaAtual+proximas;
-  var kEref=kE||null;
-  var horas=(kEref&&kEref>0&&total>0)?total/(kEref*fatC):null;
+
+  // 4. Saldo de cada ordem = moído (todos os elos) − consumo da extrusão (todos os elos)
+  var eOrd=null, faltaAtual=0, proximas=0, nProx=0, semMoagem=false;
+  ordens.forEach(function(o){
+    var s=saldoOrdem(o.raiz,o.keys);
+    if(!s){pend=true;return;}
+    var consumo=(s.ext+s.repr)*fatC, sal=s.moido-consumo;
+    if(o.ext){
+      eOrd={moido:s.moido,consumo:consumo,elos:o.keys.length};
+      if(s.moido<=0&&consumo>0) semMoagem=true;
+      faltaAtual=sal;
+    } else {
+      if(s.conc||s.moido<=0) return;   // extrusão já concluiu a ordem / nada moído
+      proximas+=Math.max(sal,0);nProx++;
+    }
+  });
+  var negativo=faltaAtual<-TOL_NEG_KG;
+  var total=Math.max(faltaAtual,0)+proximas;
+  var capKg=capSiloKg(lk);
+  var acimaCap=total>capKg*(1+FOLGA_CAP);
+  var totalUso=Math.min(total,capKg);
+  var horas=(kE&&kE>0&&totalUso>0)?totalUso/(kE*fatC):null;
   var extParada=D.eParAb.find(function(p){return p.linha===l.nome;})||null;
 
   var r={l:l,mOa:mOa,mOp:mOp,eFk:eFk,eOp:eOp,kM:kM,kE:kE,iniJ:iniJ,fimJ:fimJ,ultM:ultM,ultE:ultE,atrM:atrM,atrE:atrE,desal:desal,
-    faltaAtual:faltaAtual,proximas:proximas,nProx:nProx,total:total,horas:horas,pend:pend,semMoagem:semMoagem,extParada:extParada};
+    eOrd:eOrd,faltaAtual:faltaAtual,proximas:proximas,nProx:nProx,total:total,totalUso:totalUso,capKg:capKg,acimaCap:acimaCap,negativo:negativo,
+    horas:horas,pend:pend,semMoagem:semMoagem,extParada:extParada};
   if(!eFk&&!mFk){r.st="mu";r.stTxt="Sem OP";}
-  else if(pend){r.st="mu";r.stTxt="Calculando…";}
+  else if(pend){r.st="mu";r.stTxt="Calculando histórico da OP…";}
   else if(semMoagem){r.st="mu";r.stTxt="OP da extrusora sem moagem registrada";}
-  else if(total<0){r.st="mu";r.stTxt="Matéria negativa — conferir apontamentos";}
-  else if(horas==null){r.st="in";r.stTxt="Matéria: "+fN(total/1000,1)+" t";}
+  else if(acimaCap){r.st="wa";r.stTxt="Saldo "+fT(total)+" > silo "+fN(capKg/1000,0)+" t — conferir";}
+  else if(negativo&&proximas<=0){r.st="mu";r.stTxt="Saldo negativo — conferir apontamentos";}
+  else if(horas==null){r.st="in";r.stTxt="Matéria: "+fT(total);}
   else if(extParada){r.st="in";r.stTxt="Extrusora parada · "+durTxt(horas)+" de matéria";}
   else {r.st=horas<ACABA_VERMELHO_H?"bd":horas<ACABA_AMARELO_H?"wa":"ok";r.stTxt="⏱ "+durTxt(horas)+" de matéria";}
   return r;
 }
 
 // ── tela ───────────────────────────────────────────────────────
-var ATRASO_LANC_MIN=75, DESALINHO_MIN=30;
 function lanc(ult,atr){
   if(!ult) return '<span class="c-mu">sem lançamento hoje</span>';
   var c=atr>ATRASO_LANC_MIN?"bd":"ok";
@@ -267,7 +326,7 @@ function cardLinha(r){
   var l=r.l;
   var h='<div class="ln st-'+r.st+'"><div class="ln-h"><div class="nm">'+l.cur+'<small>'+l.maq+'</small></div><div class="st '+r.st+'">'+esc(r.stTxt)+'</div></div>';
   if(!r.eFk&&!r.mOa) return h+'<div class="vazio">Nenhuma OP ativa na moagem nem na extrusora</div></div>';
-  h+='<div class="ln-b" style="grid-template-rows:auto auto auto 1fr">';
+  h+='<div class="ln-b">';
   // 1. Médias (mesma janela)
   var maior=(r.kM!=null&&r.kE!=null)?(r.kM>=r.kE?"m":"e"):null;
   h+='<div class="cmp">';
@@ -282,17 +341,29 @@ function cardLinha(r){
     etapa("Moagem",mLote,r.mOa&&r.mOa.opNum,(r.mOp&&r.mOp.desc)||(r.mOa&&r.mOa.desc),r.ultM,r.atrM,(r.mOa&&r.eFk&&r.mOa.opFbKey!==r.eFk)?' · <span class="alt">próxima OP</span>':'')+
     etapa("Extrusora",eLote,r.eOp&&r.eOp.id,r.eOp&&(r.eOp.desc||r.eOp.cod),r.ultE,r.atrE,r.extParada?' <span class="chip p">PARADA · '+esc(r.extParada.descricao||"")+'</span>':'')+
     '</div>';
-  // 3. Matéria disponível em horas
-  var cH=r.horas==null?"mu":r.horas<ACABA_VERMELHO_H?"bd":r.horas<ACABA_AMARELO_H?"wa":"ok";
+  // 3. Matéria no silo — conta completa com o histórico da ordem
+  var cH=r.horas==null?"mu":r.acimaCap?"wa":r.horas<ACABA_VERMELHO_H?"bd":r.horas<ACABA_AMARELO_H?"wa":"ok";
+  var conta;
+  if(r.pend) conta='Somando o histórico completo da OP (todos os elos de reprogramação)…';
+  else {
+    conta='Saldo da OP da extrusora <b>'+fT(Math.max(r.faltaAtual,0))+'</b>'+
+      (r.eOrd?' <span class="c-mu">(moído '+fT(r.eOrd.moido)+' − consumido '+fT(r.eOrd.consumo)+(r.eOrd.elos>1?' · '+r.eOrd.elos+' elos':'')+')</span>':'')+
+      ' + moído da'+(r.nProx>1?'s '+r.nProx+' próximas':' próxima')+' <b>'+fT(r.proximas)+'</b>'+
+      ' = <b>'+fT(r.total)+'</b>'+(r.acimaCap?' → <b class="c-wa">limitado a '+fN(r.capKg/1000,0)+' t</b>':'')+
+      (r.kE?' ÷ '+fN(r.kE)+' kg/h':'');
+  }
   h+='<div class="box" style="display:flex;justify-content:space-between;align-items:center;gap:1vw">'+
-     '<div><div class="l">Matéria para a extrusora</div><div class="s" style="font-size:1.7vh;margin-top:.4vh">'+
-       'Falta na OP da extrusora <b>'+fN(r.faltaAtual/1000,1)+' t</b> + moído da'+(r.nProx>1?'s '+r.nProx+' próximas':' próxima')+' <b>'+fN(r.proximas/1000,1)+' t</b>'+
-       ' = <b>'+fN(r.total/1000,1)+' t</b>'+(r.kE?' ÷ '+fN(r.kE)+' kg/h':'')+'</div></div>'+
-     '<div class="v c-'+cH+'" style="font-size:4.4vh;white-space:nowrap">'+(r.horas==null?"—":durTxt(r.horas))+'</div></div>';
-  // 4. Alerta de lançamentos fora de sincronia
-  var al=[];
-  if(r.desal!=null&&r.desal>DESALINHO_MIN) al.push('Lançamentos fora do mesmo horário: moagem até <b>'+hhmm(r.ultM)+'</b>, extrusora até <b>'+hhmm(r.ultE)+'</b> ('+durTxt(r.desal/60)+' de diferença) — médias comparadas até '+hhmm(r.fimJ)+'; horas de matéria podem estar distorcidas até a outra etapa lançar');
-  h+='<div class="rod">'+(al.length?'<div class="alt">⚠ '+al.join('<br>⚠ ')+'</div>':'<div class="c-ok">✔ Moagem e extrusora lançadas no mesmo horário</div>')+'</div>';
+     '<div><div class="l">Matéria no silo · capacidade '+fN(r.capKg/1000,0)+' t</div><div class="s" style="font-size:1.6vh;margin-top:.4vh">'+conta+'</div></div>'+
+     '<div class="v c-'+cH+'" style="font-size:4.4vh;white-space:nowrap">'+(r.horas==null?"—":(r.acimaCap?"≤ ":"")+durTxt(r.horas))+'</div></div>';
+  // 4. Alertas
+  var al=[], crit=[];
+  if(!r.pend&&r.acimaCap) crit.push('Saldo calculado de <b>'+fT(r.total)+'</b> não cabe no silo ('+fN(r.capKg/1000,0)+' t). Conferir: apontamento da moagem na OP errada, acumulado do Libracom digitado errado ou extrusão sem apontar');
+  if(!r.pend&&r.negativo) crit.push('Extrusão consumiu <b>'+fT(-r.faltaAtual)+'</b> a mais do que a moagem apontou nesta OP — conferir apontamentos da moagem');
+  if(r.desal!=null&&r.desal>DESALINHO_MIN) al.push('Lançamentos fora do mesmo horário: moagem até <b>'+hhmm(r.ultM)+'</b>, extrusora até <b>'+hhmm(r.ultE)+'</b> ('+durTxt(r.desal/60)+' de diferença) — horas de matéria podem estar distorcidas até a outra etapa lançar');
+  h+='<div class="rod">'+
+    crit.map(function(x){return '<div class="crit">⛔ '+x+'</div>';}).join("")+
+    al.map(function(x){return '<div class="alt">⚠ '+x+'</div>';}).join("")+
+    (!crit.length&&!al.length?'<div class="c-ok">✔ Moagem e extrusora lançadas no mesmo horário</div>':'')+'</div>';
   return h+'</div></div>';
 }
 function render(){
