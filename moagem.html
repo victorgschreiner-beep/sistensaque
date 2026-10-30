@@ -1928,7 +1928,20 @@ function confirmarSelOp(){
   var inicioTs=tsUltimaOcorrencia(hi);
   if(inicioTs>Date.now()+TOL_FUTURO_MS){toast("Hora de início no futuro","err");return;}
   var u=ultimoAptLinha(lk);
-  if(u&&inicioTs<u.tsFim){toast("Início antes do último apontamento da linha ("+u.horaFim+")","err");return;}
+  if(u&&inicioTs<u.tsFim){
+    // Apontamentos lançados na OP errada depois da hora de início: o admin troca a OP deles
+    // para esta (acumulado do lote certo) e a OP já fica ativa desde a hora informada.
+    var dep=S.apts.filter(function(a){return a.lk===lk&&a.tsFim>inicioTs&&a.opFbKey!==op.fbKey;});
+    if(isAdmin()&&dep.length){
+      var nums={};dep.forEach(function(a){nums[a.opNum]=1;});
+      if(confirm("Há "+dep.length+" apontamento(s) desta linha depois de "+hi+", lançados na OP "+Object.keys(nums).join(", ")+".\n\nForam lançados na OP errada? OK = trocar esses apontamentos para a OP "+op.id+" (você digita o acumulado do lote certo) e ela fica ativa no card desde "+hi+".")){
+        fM("m-selop");
+        trAbrirInicio(lk,inicioTs,hi,op,{foraOrdem:idx>0||null,justificativa:idx>0?just:null,posFila:idx+1});
+      }
+      return;
+    }
+    toast("Início antes do último apontamento da linha ("+u.horaFim+")"+(isAdmin()?"":" — se foram lançados na OP errada, peça ao admin (⇄ Trocar OP)"),"err");return;
+  }
   var acumIni=num(G("selop-acum").value)||0, tot=S.opTot[MS.fk];
   var retomada=!!(tot&&tot.nApts);
   var oa={opFbKey:op.fbKey,opNum:op.id,lote:loteOp(op.fbKey)||null,cod:op.cod,desc:op.desc||op.cod,silo:silo,inicioTs:inicioTs,inicio:agora(),operador:SES.login,
@@ -2510,13 +2523,14 @@ function trAbrir(fbKey){
   var vis={}, cands=[];
   S.apts.concat(ADM_APTS||[]).concat(VIS.apts||[]).forEach(function(x){if(vis[x.fbKey]||x.lk!==a.lk||x.opFbKey!==a.opFbKey) return;vis[x.fbKey]=1;cands.push(x);});
   cands.sort(function(x,y){return (x.tsIni||0)-(y.tsIni||0);});
-  MT={lk:a.lk,fkErrada:a.opFbKey,numErrado:a.opNum,cands:cands,sel:{},novo:{},nova:null,chain:null,opcoes:[]};
+  MT={lk:a.lk,fkErrada:a.opFbKey,numErrado:a.opNum,erradas:{},cands:cands,sel:{},novo:{},nova:null,chain:null,opcoes:[]};
+  MT.erradas[a.opFbKey]=a.opNum;
   cands.forEach(function(x){if((x.tsIni||0)>=(a.tsIni||0)) MT.sel[x.fbKey]=1;});
   G("tr-sub").innerHTML=esc(linhaK(a.lk).cur)+' · apontado na OP <b>'+esc(a.opNum)+'</b> ('+esc(loteTxt(a.opFbKey,a.lote))+'). Marque os intervalos que são da OP certa.';
   G("tr-busca").value="";
   var oa=S.opAtiva[a.lk], vs={};
   [oa?opPorFk(oa.opFbKey)||{fbKey:oa.opFbKey,id:oa.opNum,cod:oa.cod,desc:oa.desc}:null].concat(filaLinha(a.lk)).forEach(function(o){
-    if(o&&o.fbKey&&o.fbKey!==MT.fkErrada&&!vs[o.fbKey]){vs[o.fbKey]=1;MT.opcoes.push(o);}
+    if(o&&o.fbKey&&!MT.erradas[o.fbKey]&&!vs[o.fbKey]){vs[o.fbKey]=1;MT.opcoes.push(o);}
   });
   trRenderOps();
   var ativaErrada=oa&&oa.opFbKey===MT.fkErrada;
@@ -2526,6 +2540,22 @@ function trAbrir(fbKey){
   G("tr-calc").className="calc";G("tr-calc").textContent="Selecione a OP correta.";
   aM("m-troca");
   setTimeout(function(){G("tr-busca").focus();},150);
+}
+function trAbrirInicio(lk,inicioTs,hi,op,ini){
+  if(!isAdmin()) return;
+  var vis={}, cands=[], erradas={};
+  S.apts.forEach(function(x){if(vis[x.fbKey]||x.lk!==lk||x.tsFim<=inicioTs||x.opFbKey===op.fbKey) return;vis[x.fbKey]=1;cands.push(x);erradas[x.opFbKey]=x.opNum;});
+  cands.sort(function(x,y){return (x.tsIni||0)-(y.tsIni||0);});
+  var nums=Object.keys(erradas).map(function(k){return erradas[k];});
+  MT={lk:lk,fkErrada:Object.keys(erradas)[0],numErrado:nums.join(", "),erradas:erradas,cands:cands,sel:{},novo:{},nova:null,chain:null,opcoes:[op],
+    iniciar:{ts:inicioTs,foraOrdem:ini.foraOrdem,justificativa:ini.justificativa,posFila:ini.posFila}};
+  cands.forEach(function(x){MT.sel[x.fbKey]=1;});
+  G("tr-sub").innerHTML=esc(linhaK(lk).cur)+' · apontamentos depois de <b>'+esc(hi)+'</b> lançados na OP <b>'+esc(MT.numErrado)+'</b>. Digite o acumulado do lote certo em cada intervalo.';
+  G("tr-busca").value="";
+  G("tr-ativa").innerHTML='<div class="calc">Depois da troca, a OP <b>'+esc(op.id)+'</b> fica <b>ativa no card desde '+esc(hi)+'</b> ('+fDataHora(inicioTs)+').</div>';
+  trRenderApts();
+  aM("m-troca");
+  trEscolher(op.fbKey);
 }
 function trRenderOps(){
   G("tr-lista").innerHTML=MT.opcoes.length?MT.opcoes.map(function(o){
@@ -2540,7 +2570,7 @@ function trBuscar(){
   MT._bt=setTimeout(function(){
     buscarOps(q).then(function(l){
       if(MT!==ctx) return;
-      l=l.filter(function(o){return o.fbKey!==MT.fkErrada;});
+      l=l.filter(function(o){return !MT.erradas[o.fbKey];});
       if(!l.length){G("tr-lista").innerHTML='<div class="empty">Nenhuma OP encontrada com "'+esc(q)+'".</div>';return;}
       var vs={};MT.opcoes=l.concat(MT.opcoes).filter(function(o){if(vs[o.fbKey]) return false;vs[o.fbKey]=1;return true;});
       trRenderOps();
@@ -2621,21 +2651,31 @@ function trSalvar(){
     upd[b+"opAnterior"]={opFbKey:a.opFbKey,opNum:a.opNum,lote:a.lote||null,acumulado:a.acumulado};
     upd[b+"trocadoPor"]=SES.login;upd[b+"trocadoEm"]=ts;
   });
-  var cb=G("tr-ativa-cb"), trocaAtiva=!!(cb&&cb.checked&&S.opAtiva[MT.lk]&&S.opAtiva[MT.lk].opFbKey===MT.fkErrada);
+  var cb=G("tr-ativa-cb"), trocaAtiva=!!(cb&&cb.checked&&S.opAtiva[MT.lk]&&MT.erradas[S.opAtiva[MT.lk].opFbKey]);
   if(trocaAtiva){
     var ba="moagem_op_ativa/"+MT.lk+"/";
     upd[ba+"opFbKey"]=o.fbKey;upd[ba+"opNum"]=o.id||o.fbKey;upd[ba+"lote"]=lote;upd[ba+"cod"]=cod;upd[ba+"desc"]=desc;
-    upd[ba+"trocaDe"]={opFbKey:MT.fkErrada,opNum:MT.numErrado,por:SES.login,ts:ts};
+    upd[ba+"trocaDe"]={opFbKey:S.opAtiva[MT.lk].opFbKey,opNum:S.opAtiva[MT.lk].opNum,por:SES.login,ts:ts};
+  }
+  // Veio do "Iniciar OP": a OP correta fica ativa desde a hora de início informada
+  var iniciou=!!(MT.iniciar&&!S.opAtiva[MT.lk]);
+  if(iniciou){
+    upd["moagem_op_ativa/"+MT.lk]={opFbKey:o.fbKey,opNum:o.id||o.fbKey,lote:lote,cod:cod,desc:desc,silo:null,inicioTs:MT.iniciar.ts,inicio:ts,operador:SES.login,
+      admin:true,retroativo:true,foraOrdem:MT.iniciar.foraOrdem,justificativa:MT.iniciar.justificativa||"Troca de OP de apontamentos (admin)",posFila:MT.iniciar.posFila};
+    var hki=DB.ref("moagem_op_hist").push().key;
+    upd["moagem_op_hist/"+hki]={evento:"inicio",retroativo:true,lk:MT.lk,opFbKey:o.fbKey,opNum:o.id||o.fbKey,lote:lote,silo:null,posFila:MT.iniciar.posFila,foraOrdem:MT.iniciar.foraOrdem,
+      justificativa:MT.iniciar.justificativa,acumuladoInicial:0,operador:SES.login,ts:ts,tsMs:MT.iniciar.ts};
   }
   var hk=DB.ref("moagem_op_hist").push().key;
-  upd["moagem_op_hist/"+hk]={evento:"troca_op",lk:MT.lk,de:MT.fkErrada,deNum:MT.numErrado,para:o.fbKey,paraNum:o.id||o.fbKey,nApts:sel.length,trocouAtiva:trocaAtiva||null,operador:SES.login,ts:ts,tsMs:Date.now()};
-  var fkE=MT.fkErrada, numE=MT.numErrado;
+  upd["moagem_op_hist/"+hk]={evento:"troca_op",lk:MT.lk,de:Object.keys(MT.erradas).join(","),deNum:MT.numErrado,para:o.fbKey,paraNum:o.id||o.fbKey,nApts:sel.length,trocouAtiva:trocaAtiva||null,operador:SES.login,ts:ts,tsMs:Date.now()};
+  var fkEs=Object.keys(MT.erradas), numE=MT.numErrado;
   G("tr-btn").disabled=true;
   DB.ref().update(fbLimpo(upd)).then(function(){
     sel.forEach(function(a){log("apt_troca_op",l.cur+" "+(a.marco?"marco "+a.horaIni:a.horaIni+"–"+a.horaFim)+" ("+fData(a.data)+"): OP "+a.opNum+" acum "+a.acumulado+" → OP "+(o.id||o.fbKey)+" acum "+MT.novo[a.fbKey]);});
     if(trocaAtiva) log("op_troca_ativa",l.cur+": OP ativa "+numE+" → "+(o.id||o.fbKey));
+    if(iniciou) log("op_inicio",(o.id||o.fbKey)+" "+l.cur+" — início retroativo às "+fDataHora(MT.iniciar.ts)+" (admin, troca de OP)");
     fM("m-troca");toast("OP trocada em "+sel.length+" apontamento(s)","ok");
-    return Promise.all([recalcularOpMoagem(fkE),recalcularOpMoagem(o.fbKey)]);
+    return Promise.all(fkEs.map(recalcularOpMoagem).concat([recalcularOpMoagem(o.fbKey)]));
   }).then(function(){calcPeneiras();if(G("sec-adm").classList.contains("on")&&G("adm-a-lista").querySelector("table")) admCarregarApts();})
     .catch(function(e){toast("Erro: "+e.message,"err");}).then(function(){G("tr-btn").disabled=false;});
 }
