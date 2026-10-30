@@ -297,12 +297,18 @@ tr.hl td{background:#fff6d6}
   <h3 id="apt-tit">Apontamento</h3>
   <div class="msub" id="apt-sub"></div>
   <div class="mrow" id="apt-row-adm" style="display:none">
-    <div class="fg"><label>Dia operacional</label><input type="date" class="inp" id="apt-data" onchange="aptPreview()"></div>
+    <div class="fg"><label>Dia operacional</label><input type="date" class="inp" id="apt-data" onchange="aptHoraMudou()"></div>
     <div class="fg"><label>OP</label><select class="inp" id="apt-op" onchange="aptTrocarOpAdm()"></select></div>
   </div>
+  <div class="mrow one" id="apt-row-busca" style="display:none">
+    <div class="fg"><label>Buscar outra OP (nº da OP ou lote)</label><input class="inp" id="apt-op-busca" placeholder="Ex.: 12345 ou lote…" oninput="aptBuscarOp()"><span class="muted" id="apt-op-busca-info"></span></div>
+  </div>
   <div class="mrow">
-    <div class="fg"><label>Hora início</label><input type="time" class="inp" id="apt-hi" onchange="aptPreview()"></div>
-    <div class="fg"><label>Hora fim</label><input type="time" class="inp" id="apt-hf" onchange="aptPreview()"></div>
+    <div class="fg"><label>Hora início</label><input type="time" class="inp" id="apt-hi" onchange="aptHoraMudou()"></div>
+    <div class="fg"><label>Hora fim</label><input type="time" class="inp" id="apt-hf" onchange="aptHoraMudou()"></div>
+  </div>
+  <div class="mrow one" id="apt-row-iniciar" style="display:none">
+    <label style="font-size:12px;display:flex;gap:6px;align-items:center;font-weight:700;color:var(--gr)"><input type="checkbox" id="apt-iniciar" onchange="aptPreview()"> Iniciar esta OP na linha (fica ativa no card a partir da hora início)</label>
   </div>
   <div class="mrow">
     <div class="fg"><label id="apt-acum-lbl">Acumulado da ordem no Libracom (kg)</label><input type="number" inputmode="numeric" min="0" step="1" class="inp" id="apt-acum" oninput="aptPreview()" placeholder="Ex.: 12450"></div>
@@ -316,6 +322,22 @@ tr.hl td{background:#fff6d6}
   <div class="mfoot">
     <button class="btn ghost" onclick="fM('m-apt')">Cancelar</button>
     <button class="btn" id="apt-btn" onclick="salvarApt()">Salvar</button>
+  </div>
+</div></div>
+
+<!-- ═════════ MODAL: TROCAR OP DE APONTAMENTOS (admin) ═════════ -->
+<div class="ov" id="m-troca"><div class="modal" style="max-width:640px">
+  <h3>Trocar OP dos apontamentos</h3>
+  <div class="msub" id="tr-sub"></div>
+  <div class="fg" style="margin-bottom:6px"><label>1. OP correta (nº da OP ou lote)</label><input class="inp" id="tr-busca" placeholder="Buscar…" oninput="trBuscar()"></div>
+  <div id="tr-lista" style="max-height:200px;overflow-y:auto;margin-bottom:10px"></div>
+  <div class="fg" style="margin-bottom:6px"><label>2. Acumulado do lote CORRETO no Libracom, no fim de cada intervalo (kg)</label></div>
+  <div class="tw" id="tr-apts" style="margin-bottom:8px"></div>
+  <div id="tr-ativa"></div>
+  <div class="calc" id="tr-calc">Selecione a OP correta.</div>
+  <div class="mfoot">
+    <button class="btn ghost" onclick="fM('m-troca')">Cancelar</button>
+    <button class="btn" id="tr-btn" onclick="trSalvar()">Trocar OP</button>
   </div>
 </div></div>
 
@@ -1123,7 +1145,7 @@ function cardLinha(l){
     var meta=metaMoagem(oa.cod,l.nome), u=ultimoAptLinha(lk);
     var kghU=(u&&u.opFbKey===oa.opFbKey)?u.kgH:null;
     h+='<div class="op-box"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div class="op-id">'+loteHtml(oa.opFbKey,oa.lote,"lg")+' '+esc(oa.opNum)+'</div><div class="op-desc">'+esc(oa.cod)+' · '+esc(oa.desc)+'</div></div>';
-    h+='<div style="text-align:right">'+(USAR_SILOS?'<span class="bdg b">'+esc(nomeSilo(oa.silo))+'</span>':'')+(oa.foraOrdem?'<div class="muted" title="'+esc(oa.justificativa||"")+'">fora da ordem</div>':'')+'</div></div>';
+    h+='<div style="text-align:right">'+(USAR_SILOS?'<span class="bdg b">'+esc(nomeSilo(oa.silo))+'</span>':'')+(oa.foraOrdem?'<div class="muted" title="'+esc(oa.justificativa||"")+'">fora da ordem</div>':'')+(oa.inicioTs?'<div class="muted" title="Início na moagem">desde '+fDataHora(oa.inicioTs)+'</div>':'')+(oa.retroativo?'<div class="muted">início retroativo (admin)</div>':'')+'</div></div>';
     h+='<div class="kpis"><div class="kpi"><div class="v">'+fN(moido)+'</div><div class="l">kg moídos</div></div>';
     h+='<div class="kpi"><div class="v">'+(prog?fN(prog):"—")+'</div><div class="l">prog. kg</div></div>';
     h+='<div class="kpi"><div class="v">'+(prog?fN(Math.max(prog-moido,0)):"—")+'</div><div class="l">saldo kg</div></div>';
@@ -1212,7 +1234,10 @@ function faixaTurno(lk){
     else if(fim<=agoraTs&&ini!==null&&fim>ini&&ts<fimRef){cls="mi";val="—";}
     else {cls="fu";}
     var now=(agoraTs>=ts&&agoraTs<fim)?" nw":"";
-    h+='<div class="hr '+cls+now+'"><div class="h">'+lbl+'</div>'+(val||"&nbsp;")+'</div>';
+    // Admin: hora passada vaga ou parcial (ontem/hoje) é clicável para lançar a OP certa
+    var cob=sob.reduce(function(t,a){return t+(Math.min(a.tsFim,fim)-Math.max(a.tsIni,ts))/MIN_MS;},0);
+    var vaga=isAdmin()&&ts<agoraTs&&cob<55&&dentroJanelaAdmin(dataOpDeTs(ts));
+    h+='<div class="hr '+cls+now+'"'+(vaga?' style="cursor:pointer" title="Admin: lançar OP nesta hora vaga" onclick="admHoraVaga(\''+lk+'\','+ts+')"':'')+'><div class="h">'+lbl+(vaga?' ＋':'')+'</div>'+(val||"&nbsp;")+'</div>';
   }
   return h+'</div>';
 }
@@ -1231,7 +1256,7 @@ function tabelaAptsTurno(lk){
     var podeEd=isAdmin()||(podeApontar()&&u&&u.fbKey===a.fbKey);
     h+='<tr><td>'+(a.marco?'<span class="bdg">marco inicial</span>':esc(a.horaIni)+'–'+esc(a.horaFim))+(a.inconsistente?' <span class="bdg r" title="Acumulado menor que o anterior">!</span>':'')+'</td><td>'+esc(a.opNum)+'<div class="muted">'+esc(loteTxt(a.opFbKey,a.lote))+'</div></td>'+(USAR_SILOS?'<td>'+esc(nomeSilo(a.silo))+'</td>':'');
     h+='<td class="n">'+fN(a.acumulado)+'</td><td class="n">'+fN(a.kg)+'</td><td class="n">'+(a.marco?"—":curto?'<span class="muted" title="Intervalo curto: a balança pesa por batelada, o kg/h fica distorcido">—</span>':fN(a.kgH))+'</td><td class="n">'+(pm==null||a.marco?"—":'<span class="bdg '+bc+'">'+pm+'%</span>')+'</td>';
-    h+='<td style="white-space:nowrap">'+(podeEd&&!a.marco?'<button class="btn xs ghost" title="Editar" onclick="editarApt(\''+a.fbKey+'\')">✏️</button> ':'')+(podeEd?'<button class="btn xs ghost" title="Excluir" onclick="excluirApt(\''+a.fbKey+'\')">🗑</button>':'')+'</td></tr>';
+    h+='<td style="white-space:nowrap">'+(podeEd&&!a.marco?'<button class="btn xs ghost" title="Editar" onclick="editarApt(\''+a.fbKey+'\')">✏️</button> ':'')+(podeEd?'<button class="btn xs ghost" title="Excluir" onclick="excluirApt(\''+a.fbKey+'\')">🗑</button>':'')+(isAdmin()?' <button class="btn xs ghost" title="Trocar OP (apontado na OP errada)" onclick="trAbrir(\''+a.fbKey+'\')">⇄</button>':'')+'</td></tr>';
   });
   return h+'</tbody></table></div>';
 }
@@ -1281,6 +1306,7 @@ function abrirApt(lk){
   G("apt-sub").innerHTML=loteHtml(oa.opFbKey,oa.lote,"lg")+" "+esc(oa.opNum+" · "+oa.cod+" · "+oa.desc);
   rotuloAcum("apt-acum-lbl",oa.opFbKey,oa.lote);
   G("apt-row-adm").style.display="none";
+  aptOcultarExtrasAdm();
   G("apt-row-reinicio").style.display=isAdmin()?"":"none";
   G("apt-reinicio").checked=false;
   G("apt-hi").value=hi;G("apt-hf").value=hf;G("apt-acum").value="";G("apt-obs").value="";
@@ -1301,6 +1327,7 @@ function abrirEdicaoApt(a){
   G("apt-sub").innerHTML=loteHtml(a.opFbKey,a.lote,"lg")+" "+esc(a.opNum+" · "+a.cod+" · lançado por "+a.operador);
   rotuloAcum("apt-acum-lbl",a.opFbKey,a.lote);
   G("apt-row-adm").style.display=isAdmin()?"":"none";
+  aptOcultarExtrasAdm();
   if(isAdmin()){G("apt-data").value=a.data;G("apt-op").innerHTML='<option value="'+esc(a.opFbKey)+'">'+esc(a.opNum+" · "+loteTxt(a.opFbKey,a.lote))+'</option>';G("apt-op").disabled=true;}
   G("apt-row-reinicio").style.display=isAdmin()?"":"none";
   G("apt-reinicio").checked=!!a.reinicio;
@@ -1311,36 +1338,106 @@ function abrirEdicaoApt(a){
 }
 // Admin: novo apontamento em qualquer dia/OP (correção)
 function admNovoApt(){
-  var lk=G("adm-a-linha").value||"L1";
-  var dOp=G("adm-a-data").value||hoje();
+  admAbrirNovoApt(G("adm-a-linha").value||"L1",G("adm-a-data").value||hoje(),"","",null);
+}
+function aptOcultarExtrasAdm(){
+  G("apt-row-busca").style.display="none";G("apt-op-busca").value="";G("apt-op-busca-info").textContent="";
+  G("apt-row-iniciar").style.display="none";G("apt-iniciar").checked=false;
+  G("apt-op").disabled=false;
+}
+// Janela em que o admin pode lançar em hora vaga: dia operacional anterior e o atual
+var DIAS_RETRO_ADMIN=1;
+function dentroJanelaAdmin(dOp){return dOp<=hoje()&&dOp>=addDias(hoje(),-DIAS_RETRO_ADMIN);}
+// Admin clicou numa hora vaga/parcial da faixa: abre o lançamento já no buraco real da hora
+function admHoraVaga(lk,ts){
+  if(!isAdmin()) return;
+  var fim=Math.min(ts+3600000,Date.now()), ini=ts;
+  var aps=visAptsLinha(lk).filter(function(a){return !a.marco;}).sort(function(a,b){return a.tsIni-b.tsIni;});
+  aps.forEach(function(a){if(a.tsIni<=ini&&a.tsFim>ini) ini=a.tsFim;});
+  aps.forEach(function(a){if(a.tsIni>=ini&&a.tsIni<fim) fim=a.tsIni;});
+  fim=Math.floor(fim/MIN_MS)*MIN_MS;
+  if(fim-ini<MIN_MS){toast("Esta hora já está coberta por apontamentos","warn");return;}
+  // OP sugerida: a do apontamento imediatamente anterior na linha, senão a ativa
+  var antes=null;aps.forEach(function(a){if(a.tsFim<=ini&&(!antes||a.tsFim>antes.tsFim)) antes=a;});
+  var pref=antes?antes.opFbKey:(S.opAtiva[lk]&&S.opAtiva[lk].opFbKey)||null;
+  admAbrirNovoApt(lk,dataOpDeTs(ini),hhmmDeTs(ini),hhmmDeTs(fim),pref,true);
+}
+function admAbrirNovoApt(lk,dOp,hi,hf,fkPref,horaVaga){
+  if(!isAdmin()) return;
   var opts=[], vistos={};
   function add(fk,num,cod,desc){if(!fk||vistos[fk]) return;vistos[fk]=1;opts.push({fk:fk,num:num,cod:cod,desc:desc});}
   var oa=S.opAtiva[lk];if(oa) add(oa.opFbKey,oa.opNum,oa.cod,oa.desc);
   (ADM_APTS||[]).forEach(function(a){if(a.lk===lk) add(a.opFbKey,a.opNum,a.cod,a.desc);});
   S.apts.forEach(function(a){if(a.lk===lk) add(a.opFbKey,a.opNum,a.cod,a.desc);});
   filaLinha(lk).forEach(function(o){add(o.fbKey,o.id,o.cod,o.desc||o.cod);});
-  if(!opts.length){toast("Nenhuma OP disponível para "+linhaK(lk).cur,"err");return;}
-  MA={modo:"novo",lk:lk,admin:true,opts:opts,viz:null,fbKey:null};
-  var o=opts[0];MA.opFbKey=o.fk;MA.opNum=o.num;MA.cod=o.cod;MA.desc=o.desc;MA.lote=null;
-  rotuloAcum("apt-acum-lbl",o.fk,null);
-  G("apt-tit").textContent="Novo apontamento (admin) — "+linhaK(lk).cur;
-  G("apt-sub").textContent="Correção administrativa — o kg é recalculado a partir dos acumulados.";
+  if(fkPref){var ix=opts.findIndex(function(x){return x.fk===fkPref;});if(ix>0) opts.unshift(opts.splice(ix,1)[0]);}
+  MA={modo:"novo",lk:lk,admin:true,horaVaga:!!horaVaga,opts:opts,viz:null,fbKey:null};
+  G("apt-tit").textContent=(horaVaga?"Lançar em hora vaga (admin) — ":"Novo apontamento (admin) — ")+linhaK(lk).cur;
+  G("apt-sub").textContent="Correção administrativa — escolha a OP certa (ou busque pelo nº/lote) e informe o acumulado do lote correto no Libracom.";
   G("apt-row-adm").style.display="";
+  aptOcultarExtrasAdm();
+  G("apt-row-busca").style.display="";
+  G("apt-row-iniciar").style.display=oa?"none":"";
   G("apt-data").value=dOp;
-  G("apt-op").disabled=false;
-  G("apt-op").innerHTML=opts.map(function(x){return '<option value="'+esc(x.fk)+'">'+esc(x.num)+' · '+esc(loteTxt(x.fk))+' · '+esc(x.cod)+'</option>';}).join("");
+  aptRenderOpsAdm(opts.length?opts[0].fk:null);
   G("apt-row-reinicio").style.display="";G("apt-reinicio").checked=false;
-  G("apt-hi").value="";G("apt-hf").value="";G("apt-acum").value="";G("apt-obs").value="";
-  preencherSilosSelect(G("apt-silo"),lk,oa&&oa.opFbKey===o.fk?oa.silo:silosDaLinha(lk)[0],false);
+  G("apt-hi").value=hi||"";G("apt-hf").value=hf||"";G("apt-acum").value="";G("apt-obs").value="";
+  preencherSilosSelect(G("apt-silo"),lk,oa?oa.silo:silosDaLinha(lk)[0],false);
   aM("m-apt");
+  if(!opts.length){G("apt-calc").className="calc warn";G("apt-calc").textContent="Nenhuma OP sugerida para a linha — busque a OP certa pelo nº ou lote.";setTimeout(function(){G("apt-op-busca").focus();},150);return;}
   carregarVizinhosModal();
+  setTimeout(function(){G(hi?"apt-acum":"apt-hi").focus();},150);
+}
+function aptRenderOpsAdm(sel){
+  var opts=MA.opts||[];
+  G("apt-op").innerHTML=opts.length?opts.map(function(x){return '<option value="'+esc(x.fk)+'"'+(x.fk===sel?" selected":"")+'>'+esc(x.num)+' · '+esc(loteTxt(x.fk))+' · '+esc(x.cod)+(x.busca?" (busca)":"")+'</option>';}).join(""):'<option value="">— nenhuma —</option>';
+  var o=opts.find(function(x){return x.fk===sel;});
+  if(o){MA.opFbKey=o.fk;MA.opNum=o.num;MA.cod=o.cod;MA.desc=o.desc;MA.lote=null;rotuloAcum("apt-acum-lbl",o.fk,null);}
+}
+// Busca de OP por nº ou lote: OPs abertas carregadas + nº da OP direto no Firebase (idBusca)
+function buscarOps(q){
+  q=String(q||"").trim();var ql=q.toLowerCase(), achadas={};
+  Object.keys(S.ops).forEach(function(k){var o=S.ops[k];if(casaBusca(q,o,o.fbKey)) achadas[k]=o;});
+  return DB.ref("ops").orderByChild("idBusca").startAt(ql).endAt(ql+"").limitToFirst(15).once("value").then(function(s){
+    if(s.exists()) s.forEach(function(c){var v=c.val();if(v){v.fbKey=c.key;achadas[c.key]=v;if(!S.ops[c.key]) _opAvulsa[c.key]=v;}});
+    return Object.keys(achadas).map(function(k){return achadas[k];});
+  }).catch(function(){return Object.keys(achadas).map(function(k){return achadas[k];});});
+}
+function aptBuscarOp(){
+  if(!MA||!MA.admin) return;
+  var q=G("apt-op-busca").value.trim();
+  clearTimeout(MA._bt);
+  if(q.length<3){G("apt-op-busca-info").textContent="";return;}
+  G("apt-op-busca-info").textContent="Buscando…";
+  var ctx=MA;
+  MA._bt=setTimeout(function(){
+    buscarOps(q).then(function(l){
+      if(MA!==ctx) return;
+      if(!l.length){G("apt-op-busca-info").textContent="Nenhuma OP encontrada com \""+q+"\"";return;}
+      l.forEach(function(o){
+        var i=MA.opts.findIndex(function(x){return x.fk===o.fbKey;});
+        var it={fk:o.fbKey,num:o.id||o.fbKey,cod:o.cod,desc:o.desc||o.cod,busca:true};
+        if(i>=0) MA.opts.splice(i,1);
+        MA.opts.unshift(it);
+      });
+      G("apt-op-busca-info").textContent=l.length+" OP(s) encontrada(s) — "+(l.length>1?"confira a selecionada na lista acima":"já selecionada");
+      aptRenderOpsAdm(l[0].fbKey);
+      carregarVizinhosModal();
+    });
+  },400);
 }
 function aptTrocarOpAdm(){
-  var fk=G("apt-op").value, o=(MA.opts||[]).find(function(x){return x.fk===fk;});
-  if(!o) return;
-  MA.opFbKey=o.fk;MA.opNum=o.num;MA.cod=o.cod;MA.desc=o.desc;MA.lote=null;
-  rotuloAcum("apt-acum-lbl",o.fk,null);
+  var fk=G("apt-op").value;
+  if(!MA||!fk) return;
+  aptRenderOpsAdm(fk);
   carregarVizinhosModal();
+}
+// Hora/dia mudou: recarrega os vizinhos do acumulado (dependem do instante do intervalo)
+function aptHoraMudou(){
+  if(!MA) return;
+  aptPreview();
+  clearTimeout(MA._ht);
+  MA._ht=setTimeout(carregarVizinhosModal,350);
 }
 function aptTempos(){
   var hi=G("apt-hi").value, hf=G("apt-hf").value;
@@ -1353,8 +1450,20 @@ function aptTempos(){
   return {hi:hi,hf:hf,tsIni:tsIni,tsFim:tsIni+min*MIN_MS,min:min,data:dataOpDeTs(tsIni),turno:turnoDeHora(hi)};
 }
 function carregarVizinhosModal(){
+  if(!MA||!MA.opFbKey) return;
   var tp=aptTempos(), ref=tp?tp.tsFim:Date.now()+DIA_MS;
   var ctx=MA;
+  if(MA.admin||MA.modo==="editar"){
+    var d=tp?tp.data:(G("apt-data").value||hoje());
+    if(MA._linhaD!==d){
+      MA._linhaD=d;
+      DB.ref("moagem_apts").orderByChild("data").startAt(addDias(d,-1)).endAt(addDias(d,1)).once("value").then(function(s){
+        if(MA!==ctx) return;
+        var l=[];if(s.exists()) s.forEach(function(c){var a=c.val();if(a&&a.lk===ctx.lk){a.fbKey=c.key;l.push(a);}});
+        MA.linhaApts=l;aptPreview();
+      }).catch(function(){});
+    }
+  }
   vizinhosAcum(MA.opFbKey,ref,MA.fbKey).then(function(v){if(MA!==ctx) return;MA.viz=v;aptPreview();})
     .catch(function(e){if(MA!==ctx) return;G("apt-calc").className="calc err";G("apt-calc").textContent="Erro ao ler apontamentos anteriores: "+e.message;});
 }
@@ -1368,13 +1477,26 @@ function aptValidar(){
   if(tp.tsFim>Date.now()+TOL_FUTURO_MS) r.erros.push("Hora fim está no futuro");
   if(acum==null||acum<0){r.erros.push("Informe o acumulado da ordem (kg)");}
   // Sobreposição com outros apontamentos da linha
-  var lista=MA.admin||MA.modo==="editar"?(ADM_APTS||[]).concat(S.apts):S.apts;
+  var lista=MA.admin||MA.modo==="editar"?(MA.linhaApts||[]).concat(ADM_APTS||[]).concat(S.apts):S.apts;
   var conf=null, vis={};
   lista.forEach(function(a){
     if(vis[a.fbKey]||a.fbKey===MA.fbKey||a.lk!==MA.lk||a.marco) return;vis[a.fbKey]=1;
     if(a.tsIni<tp.tsFim&&a.tsFim>tp.tsIni) conf=a;
   });
   if(conf) r.erros.push("Conflito com o apontamento "+conf.horaIni+"–"+conf.horaFim+" ("+conf.opNum+") desta linha");
+  if(MA.admin&&MA.modo==="novo"){
+    if(!MA.opFbKey) r.erros.push("Selecione a OP (ou busque pelo nº/lote)");
+    if(MA.horaVaga&&!dentroJanelaAdmin(tp.data)) r.erros.push("Hora vaga só pode ser lançada no dia operacional anterior ou no atual");
+    var oaL=S.opAtiva[MA.lk];
+    if(oaL&&oaL.opFbKey!==MA.opFbKey&&oaL.inicioTs&&tp.tsFim>oaL.inicioTs)
+      r.avisos.push("O intervalo cai dentro do período da OP ativa "+oaL.opNum+" nesta linha (desde "+fDataHora(oaL.inicioTs)+"). Confira se a OP lançada é a certa.");
+    if(G("apt-iniciar").checked){
+      if(oaL) r.erros.push("A linha já tem OP ativa ("+oaL.opNum+") — conclua ou pause antes de iniciar outra");
+      if(S.opConc[MA.opFbKey]) r.erros.push("Esta OP está concluída na moagem — reabra antes de iniciá-la");
+      var depois=lista.filter(function(a){return a.lk===MA.lk&&!a.marco&&a.fbKey!==MA.fbKey&&a.tsFim>tp.tsFim;});
+      if(depois.length) r.erros.push("Há apontamentos depois deste horário na linha — a OP iniciada tem que ser a mais recente");
+    } else if(S.opConc[MA.opFbKey]) r.avisos.push("Esta OP está concluída na moagem — o apontamento entra no total dela, mas ela continua concluída.");
+  }
   if(!MA.viz){r.erros.push("Aguarde a leitura do último acumulado…");return r;}
   if(acum!=null){
     var prev=MA.viz.prev||0;
@@ -1434,9 +1556,22 @@ function salvarApt(){
       });
     } else {
       var a=montarApt(tp,acum,silo,{obs:obs,reinicio:reinicio||null,admin:MA.admin?true:null});
-      p=DB.ref("moagem_apts").push(fbLimpo(a)).then(function(){
-        log("apt_novo",a.opNum+" "+linhaK(a.lk).cur+" "+a.horaIni+"–"+a.horaFim+" acum "+acum+(MA.admin?" (admin)":""));
-      });
+      var iniciar=MA.admin&&G("apt-iniciar").checked&&!S.opAtiva[MA.lk];
+      if(iniciar){
+        var upd={}, ak=DB.ref("moagem_apts").push().key, hk=DB.ref("moagem_op_hist").push().key, lk0=MA.lk;
+        upd["moagem_apts/"+ak]=a;
+        upd["moagem_op_ativa/"+lk0]={opFbKey:a.opFbKey,opNum:a.opNum,lote:a.lote,cod:a.cod,desc:a.desc,silo:silo,inicioTs:tp.tsIni,inicio:agora(),
+          operador:SES.login,admin:true,retroativo:true,foraOrdem:null,justificativa:"Início retroativo pelo admin (hora vaga)",posFila:null};
+        upd["moagem_op_hist/"+hk]={evento:"inicio",retroativo:true,lk:lk0,opFbKey:a.opFbKey,opNum:a.opNum,lote:a.lote,silo:silo,acumuladoInicial:0,operador:SES.login,ts:agora(),tsMs:tp.tsIni};
+        p=DB.ref().update(fbLimpo(upd)).then(function(){
+          log("apt_novo",a.opNum+" "+linhaK(a.lk).cur+" "+a.horaIni+"–"+a.horaFim+" acum "+acum+" (admin, hora vaga)");
+          log("op_inicio",a.opNum+" "+linhaK(a.lk).cur+" — início retroativo às "+fDataHora(tp.tsIni)+" (admin)");
+        });
+      } else {
+        p=DB.ref("moagem_apts").push(fbLimpo(a)).then(function(){
+          log("apt_novo",a.opNum+" "+linhaK(a.lk).cur+" "+a.horaIni+"–"+a.horaFim+" acum "+acum+(MA.admin?" (admin"+(MA.horaVaga?", hora vaga":"")+")":""));
+        });
+      }
     }
     var fk=MA.opFbKey;
     return p.then(function(){fM("m-apt");toast("Apontamento salvo","ok");return recalcularOpMoagem(fk);}).then(function(){calcPeneiras();if(G("adm-apts").classList.contains("on")&&G("sec-adm").classList.contains("on")) admCarregarApts();});
@@ -1469,7 +1604,9 @@ function abrirFechamento(lk,acao,siloNovo){
   G("fech-sub").innerHTML=loteHtml(oa.opFbKey,oa.lote,"lg")+" "+esc(oa.opNum+" · "+oa.cod+" · "+oa.desc+(acao==="silo"?" · "+nomeSilo(oa.silo)+" → "+nomeSilo(siloNovo):""));
   rotuloAcum("fech-acum-lbl",oa.opFbKey,oa.lote);
   G("fech-hf").value=horaAtual();G("fech-acum").value="";
-  G("fech-extra").innerHTML=acao==="concluir"?'<div class="muted">A OP sai da fila da moagem. A extrusão e o ensaque não são alterados.'+(USAR_SILOS?' O silo continua registrado com esta OP até receber a próxima.':'')+'</div>':
+  var _pr=progKg(opPorFk(oa.opFbKey)), _mo=Number((S.opTot[oa.opFbKey]||{}).kgCadeia)||0;
+  var _saldo=(acao==="concluir"&&_pr&&_mo<_pr*0.98)?'<div class="calc warn" style="margin-bottom:6px">⚠️ Saldo de <b>'+fN(_pr-_mo)+' kg</b> ('+Math.round(_mo/_pr*100)+'% moído). Se a ordem continua amanhã, <b>não conclua</b>: ela segue ativa de um dia para o outro.</div>':'';
+  G("fech-extra").innerHTML=acao==="concluir"?_saldo+'<div class="muted">A OP sai da fila da moagem. A extrusão e o ensaque não são alterados.'+(USAR_SILOS?' O silo continua registrado com esta OP até receber a próxima.':'')+'</div>':
     acao==="pausar"?'<div class="muted">A OP volta para a fila (mantém o acumulado). Use quando a ordem foi interrompida e vai continuar depois.</div>':"";
   G("fech-calc").className="calc";G("fech-calc").textContent="Carregando…";
   aM("m-fech");
@@ -1511,6 +1648,11 @@ function confirmarFechamento(){
   var err=fechPreview();if(err){toast(err,"err");return;}
   var lk=MF.lk, oa=S.opAtiva[lk], tp=fechTempos(), acum=num(G("fech-acum").value);
   if(!oa) return;
+  if(MF.acao==="concluir"){
+    var prog=progKg(opPorFk(oa.opFbKey)), tot=S.opTot[oa.opFbKey]||{};
+    var moidoFim=Math.max(Number(tot.kgCadeia)||0,acum||0);
+    if(prog&&moidoFim<prog*0.98&&!confirm("A OP "+oa.opNum+" ainda tem saldo de "+fN(prog-moidoFim)+" kg ("+Math.round(moidoFim/prog*100)+"% moído).\n\nA OP NÃO fecha sozinha na virada do dia: se ela continua no próximo turno/dia, cancele e deixe ativa (ou use Pausar).\n\nConcluir mesmo assim?")) return;
+  }
   if(!tp.semIntervalo){
     // sobreposição
     var conf=S.apts.find(function(a){return a.lk===lk&&!a.marco&&a.tsIni<tp.tsFim&&a.tsFim>tp.tsIni;});
@@ -2211,7 +2353,7 @@ function admCarregarApts(){
     l.forEach(function(a){
       h+='<tr><td>'+linhaK(a.lk).cur+'</td><td>T'+a.turno+'</td><td>'+(a.marco?'<span class="bdg">marco</span> '+esc(a.horaIni):esc(a.horaIni)+'–'+esc(a.horaFim))+(a.fechamento?' <span class="bdg b">'+esc(a.fechamento)+'</span>':'')+(a.inconsistente?' <span class="bdg r">inconsistente</span>':'')+(a.reinicio?' <span class="bdg y">reinício</span>':'')+'</td>';
       h+='<td>'+esc(a.opNum)+'<div class="muted">'+esc(loteTxt(a.opFbKey,a.lote))+'</div></td>'+(USAR_SILOS?'<td>'+esc(nomeSilo(a.silo))+'</td>':'')+'<td class="n">'+fN(a.acumulado)+'</td><td class="n">'+fN(a.kg)+'</td><td class="n">'+(a.marco?"—":fN(a.kgH))+'</td><td class="muted">'+esc(a.operador)+(a.editadoPor?" (ed. "+esc(a.editadoPor)+")":"")+'</td>';
-      h+='<td style="white-space:nowrap">'+(a.marco?'':'<button class="btn xs ghost" onclick="admEditarApt(\''+a.fbKey+'\')">✏️</button> ')+'<button class="btn xs ghost" onclick="excluirApt(\''+a.fbKey+'\')">🗑</button> <button class="btn xs ghost" title="Recalcular OP" onclick="admRecalc(\''+a.opFbKey+'\')">↻</button></td></tr>';
+      h+='<td style="white-space:nowrap">'+(a.marco?'':'<button class="btn xs ghost" onclick="admEditarApt(\''+a.fbKey+'\')">✏️</button> ')+'<button class="btn xs ghost" onclick="excluirApt(\''+a.fbKey+'\')">🗑</button> <button class="btn xs ghost" title="Trocar OP (apontado na OP errada)" onclick="trAbrir(\''+a.fbKey+'\')">⇄</button> <button class="btn xs ghost" title="Recalcular OP" onclick="admRecalc(\''+a.opFbKey+'\')">↻</button></td></tr>';
     });
     G("adm-a-lista").innerHTML=h+'</tbody></table>';
   }).catch(function(e){toast("Erro: "+e.message,"err");});
@@ -2351,6 +2493,151 @@ function admSalvarParamTec(){
     if(r.prod) l.push(r);
   });
   admGravarCfg("parametrosTec",l,"Parâmetros técnicos ("+l.length+" linhas)");
+}
+
+
+// ════════════════════════════════════════════════════════════════════
+// TROCAR OP DE APONTAMENTOS (admin) — corrige apontamento lançado na OP errada.
+// O acumulado digitado era do lote errado, então é redigitado (lote correto).
+// Horários não mudam. As duas OPs são recalculadas do zero; cada apontamento
+// guarda opAnterior (rastreabilidade) e o log registra o "de → para".
+// ════════════════════════════════════════════════════════════════════
+var MT=null;
+function trAptPorKey(k){return S.apts.concat(ADM_APTS||[]).concat(VIS.apts||[]).find(function(x){return x.fbKey===k;});}
+function trAbrir(fbKey){
+  if(!isAdmin()) return;
+  var a=trAptPorKey(fbKey);if(!a){toast("Apontamento não encontrado (recarregue)","err");return;}
+  var vis={}, cands=[];
+  S.apts.concat(ADM_APTS||[]).concat(VIS.apts||[]).forEach(function(x){if(vis[x.fbKey]||x.lk!==a.lk||x.opFbKey!==a.opFbKey) return;vis[x.fbKey]=1;cands.push(x);});
+  cands.sort(function(x,y){return (x.tsIni||0)-(y.tsIni||0);});
+  MT={lk:a.lk,fkErrada:a.opFbKey,numErrado:a.opNum,cands:cands,sel:{},novo:{},nova:null,chain:null,opcoes:[]};
+  cands.forEach(function(x){if((x.tsIni||0)>=(a.tsIni||0)) MT.sel[x.fbKey]=1;});
+  G("tr-sub").innerHTML=esc(linhaK(a.lk).cur)+' · apontado na OP <b>'+esc(a.opNum)+'</b> ('+esc(loteTxt(a.opFbKey,a.lote))+'). Marque os intervalos que são da OP certa.';
+  G("tr-busca").value="";
+  var oa=S.opAtiva[a.lk], vs={};
+  [oa?opPorFk(oa.opFbKey)||{fbKey:oa.opFbKey,id:oa.opNum,cod:oa.cod,desc:oa.desc}:null].concat(filaLinha(a.lk)).forEach(function(o){
+    if(o&&o.fbKey&&o.fbKey!==MT.fkErrada&&!vs[o.fbKey]){vs[o.fbKey]=1;MT.opcoes.push(o);}
+  });
+  trRenderOps();
+  var ativaErrada=oa&&oa.opFbKey===MT.fkErrada;
+  G("tr-ativa").innerHTML=(ativaErrada?'<div class="calc warn"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="tr-ativa-cb" checked> A OP errada <b>'+esc(oa.opNum)+'</b> está ativa no card — trocar a OP ativa da linha para a correta (mantém o início).</label></div>':'')+
+    (S.opConc[MT.fkErrada]?'<div class="calc warn">A OP errada está <b>concluída na moagem</b>. Se a conclusão também foi engano, reabra pela busca do "Iniciar OP" (diagnóstico → Reabrir).</div>':'');
+  trRenderApts();
+  G("tr-calc").className="calc";G("tr-calc").textContent="Selecione a OP correta.";
+  aM("m-troca");
+  setTimeout(function(){G("tr-busca").focus();},150);
+}
+function trRenderOps(){
+  G("tr-lista").innerHTML=MT.opcoes.length?MT.opcoes.map(function(o){
+    return '<div class="opsel'+(MT.nova&&MT.nova.fbKey===o.fbKey?" on":"")+'" onclick="trEscolher(\''+o.fbKey+'\')"><div style="min-width:0;flex:1">'+loteHtml(o.fbKey,o.lote,"lg")+' <b>'+esc(o.id||o.fbKey)+'</b> <span class="muted">'+esc(o.cod||"")+'</span>'+(S.opConc[o.fbKey]?' <span class="bdg y">concluída na moagem</span>':'')+'<div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.desc||"")+'</div></div></div>';
+  }).join(""):'<div class="empty">Busque a OP certa pelo nº ou lote.</div>';
+}
+function trBuscar(){
+  if(!MT) return;
+  var q=G("tr-busca").value.trim();clearTimeout(MT._bt);
+  if(q.length<3) return;
+  var ctx=MT;
+  MT._bt=setTimeout(function(){
+    buscarOps(q).then(function(l){
+      if(MT!==ctx) return;
+      l=l.filter(function(o){return o.fbKey!==MT.fkErrada;});
+      if(!l.length){G("tr-lista").innerHTML='<div class="empty">Nenhuma OP encontrada com "'+esc(q)+'".</div>';return;}
+      var vs={};MT.opcoes=l.concat(MT.opcoes).filter(function(o){if(vs[o.fbKey]) return false;vs[o.fbKey]=1;return true;});
+      trRenderOps();
+      if(l.length===1) trEscolher(l[0].fbKey);
+    });
+  },400);
+}
+function trEscolher(fk){
+  var o=MT.opcoes.find(function(x){return x.fbKey===fk;});if(!o) return;
+  MT.nova=o;MT.chain=null;trRenderOps();
+  G("tr-calc").className="calc";G("tr-calc").textContent="Lendo apontamentos da OP correta…";
+  var ctx=MT;
+  aptsDaCadeia(fk).then(function(r){if(MT!==ctx||MT.nova!==o) return;MT.chain=r.apts;trRenderApts();trPreview();})
+    .catch(function(e){G("tr-calc").className="calc err";G("tr-calc").textContent="Erro: "+e.message;});
+}
+function trRenderApts(){
+  var l=MT.nova?loteOp(MT.nova.fbKey,MT.nova.lote):"";
+  var h='<table class="t"><thead><tr><th></th><th>Dia</th><th>Intervalo</th><th class="n">Acum. lote errado</th><th class="n">Acum. lote certo'+(l?" ("+esc(l)+")":"")+'</th><th class="n">Kg</th></tr></thead><tbody>';
+  MT.cands.forEach(function(a){
+    var on=!!MT.sel[a.fbKey];
+    h+='<tr><td><input type="checkbox" '+(on?"checked":"")+' onchange="trMarcar(\''+a.fbKey+'\',this.checked)"></td><td>'+fData(a.data)+' T'+a.turno+'</td><td>'+(a.marco?'marco '+esc(a.horaIni):esc(a.horaIni)+'–'+esc(a.horaFim))+'</td><td class="n muted" style="text-decoration:line-through">'+fN(a.acumulado)+'</td>'+
+      '<td class="n"><input class="inp sm" type="number" min="0" step="1" style="width:110px" '+(on?"":"disabled")+' value="'+(MT.novo[a.fbKey]!=null?MT.novo[a.fbKey]:"")+'" oninput="MT.novo[\''+a.fbKey+'\']=num(this.value);trPreview()"></td><td class="n" id="tr-kg-'+a.fbKey+'">—</td></tr>';
+  });
+  G("tr-apts").innerHTML=h+'</tbody></table>';
+}
+function trMarcar(k,on){if(on) MT.sel[k]=1; else delete MT.sel[k];trRenderApts();trPreview();}
+// Junta os apontamentos que já existem na OP correta com os trocados e confere a sequência
+function trValidar(){
+  var r={erros:[],avisos:[],kg:{},tot:0};
+  var sel=MT.cands.filter(function(a){return MT.sel[a.fbKey];});
+  if(!sel.length) r.erros.push("Marque ao menos um intervalo");
+  if(!MT.nova){r.erros.push("Selecione a OP correta");return r;}
+  if(!MT.chain){r.erros.push("Aguarde a leitura da OP correta…");return r;}
+  sel.forEach(function(a){var v=MT.novo[a.fbKey];if(v==null||v<0) r.erros.push("Informe o acumulado do lote certo em "+(a.marco?"marco "+a.horaIni:a.horaIni+"–"+a.horaFim));});
+  if(r.erros.length) return r;
+  var lista=MT.chain.map(function(a){return {a:a,ac:Number(a.acumulado)||0,novo:false};})
+    .concat(sel.map(function(a){return {a:a,ac:MT.novo[a.fbKey],novo:true};}))
+    .sort(function(x,y){return (x.a.tsFim||0)-(y.a.tsFim||0)||(x.a.tsIni||0)-(y.a.tsIni||0);});
+  var prev=0, prevIt=null;
+  lista.forEach(function(it){
+    if(!it.a.reinicio&&it.ac<prev&&(it.novo||(prevIt&&prevIt.novo)))
+      r.erros.push("Acumulado "+fN(it.ac)+" kg às "+hhmmDeTs(it.a.tsFim)+" é menor que "+fN(prev)+" kg às "+hhmmDeTs(prevIt.a.tsFim)+(prevIt.novo&&!it.novo?" (apontamento que já existe na OP correta)":""));
+    var kg=it.a.reinicio?it.ac:Math.max(it.ac-prev,0);
+    if(it.novo){r.kg[it.a.fbKey]=kg;r.tot+=kg;}
+    prev=it.a.reinicio?it.ac:Math.max(prev,it.ac);prevIt=it;
+  });
+  // Sobreposição com apontamentos da OP correta (mesmo horário em outra linha = OP em dois lugares)
+  sel.forEach(function(a){MT.chain.forEach(function(b){if(!a.marco&&!b.marco&&b.tsIni<a.tsFim&&b.tsFim>a.tsIni) r.erros.push("A OP correta já tem apontamento "+b.horaIni+"–"+b.horaFim+" ("+(linhaK(b.lk)?linhaK(b.lk).cur:b.lk)+") no mesmo horário de "+a.horaIni+"–"+a.horaFim);});});
+  if(S.opConc[MT.nova.fbKey]) r.avisos.push("A OP correta está concluída na moagem — os kg entram no total dela, mas ela continua concluída.");
+  var resto=MT.cands.filter(function(a){return !MT.sel[a.fbKey];}).length;
+  if(resto) r.avisos.push(resto+" intervalo(s) desmarcado(s) continuam na OP "+MT.numErrado+".");
+  return r;
+}
+function trPreview(){
+  if(!MT) return;
+  var v=trValidar(), h="";
+  MT.cands.forEach(function(a){var el=G("tr-kg-"+a.fbKey);if(el) el.textContent=v.kg[a.fbKey]!=null?fN(v.kg[a.fbKey]):"—";});
+  if(MT.nova&&MT.chain) h+='OP correta: <b>'+esc(MT.nova.id||MT.nova.fbKey)+'</b> · '+esc(loteTxt(MT.nova.fbKey,MT.nova.lote))+' · já tem '+MT.chain.length+' apontamento(s)<br>';
+  if(!v.erros.length) h+='Passam para a OP correta: <b>'+fN(v.tot)+' kg</b> em '+Object.keys(v.kg).length+' intervalo(s). A OP '+esc(MT.numErrado)+' será recalculada.';
+  if(v.erros.length) h+='<div style="margin-top:6px;color:#922b21;font-weight:700">⛔ '+v.erros.map(esc).join("<br>⛔ ")+'</div>';
+  if(v.avisos.length) h+='<div style="margin-top:6px;color:#7a5a00;font-weight:700">⚠️ '+v.avisos.map(esc).join("<br>⚠️ ")+'</div>';
+  G("tr-calc").className="calc"+(v.erros.length?" err":v.avisos.length?" warn":"");
+  G("tr-calc").innerHTML=h||"—";
+  return v;
+}
+function trSalvar(){
+  if(!MT||!isAdmin()) return;
+  var v=trPreview();
+  if(v.erros.length){toast(v.erros[0],"err");return;}
+  var o=MT.nova, sel=MT.cands.filter(function(a){return MT.sel[a.fbKey];});
+  if(!confirm("Trocar "+sel.length+" apontamento(s) da OP "+MT.numErrado+" para a OP "+(o.id||o.fbKey)+"?"+(v.avisos.length?"\n\n• "+v.avisos.join("\n• "):""))) return;
+  var l=linhaK(MT.lk), lote=loteOp(o.fbKey,o.lote)||null, cod=o.cod||"", desc=o.desc||o.cod||"", ts=agora(), upd={};
+  sel.forEach(function(a){
+    var b="moagem_apts/"+a.fbKey+"/";
+    upd[b+"opFbKey"]=o.fbKey;upd[b+"opNum"]=o.id||o.fbKey;upd[b+"lote"]=lote;upd[b+"cod"]=cod;upd[b+"desc"]=desc;
+    upd[b+"metaH"]=a.marco?0:Math.round(metaMoagem(cod,l.nome));upd[b+"acumulado"]=MT.novo[a.fbKey];
+    upd[b+"reinicio"]=null;upd[b+"inconsistente"]=null;
+    upd[b+"opAnterior"]={opFbKey:a.opFbKey,opNum:a.opNum,lote:a.lote||null,acumulado:a.acumulado};
+    upd[b+"trocadoPor"]=SES.login;upd[b+"trocadoEm"]=ts;
+  });
+  var cb=G("tr-ativa-cb"), trocaAtiva=!!(cb&&cb.checked&&S.opAtiva[MT.lk]&&S.opAtiva[MT.lk].opFbKey===MT.fkErrada);
+  if(trocaAtiva){
+    var ba="moagem_op_ativa/"+MT.lk+"/";
+    upd[ba+"opFbKey"]=o.fbKey;upd[ba+"opNum"]=o.id||o.fbKey;upd[ba+"lote"]=lote;upd[ba+"cod"]=cod;upd[ba+"desc"]=desc;
+    upd[ba+"trocaDe"]={opFbKey:MT.fkErrada,opNum:MT.numErrado,por:SES.login,ts:ts};
+  }
+  var hk=DB.ref("moagem_op_hist").push().key;
+  upd["moagem_op_hist/"+hk]={evento:"troca_op",lk:MT.lk,de:MT.fkErrada,deNum:MT.numErrado,para:o.fbKey,paraNum:o.id||o.fbKey,nApts:sel.length,trocouAtiva:trocaAtiva||null,operador:SES.login,ts:ts,tsMs:Date.now()};
+  var fkE=MT.fkErrada, numE=MT.numErrado;
+  G("tr-btn").disabled=true;
+  DB.ref().update(fbLimpo(upd)).then(function(){
+    sel.forEach(function(a){log("apt_troca_op",l.cur+" "+(a.marco?"marco "+a.horaIni:a.horaIni+"–"+a.horaFim)+" ("+fData(a.data)+"): OP "+a.opNum+" acum "+a.acumulado+" → OP "+(o.id||o.fbKey)+" acum "+MT.novo[a.fbKey]);});
+    if(trocaAtiva) log("op_troca_ativa",l.cur+": OP ativa "+numE+" → "+(o.id||o.fbKey));
+    fM("m-troca");toast("OP trocada em "+sel.length+" apontamento(s)","ok");
+    return Promise.all([recalcularOpMoagem(fkE),recalcularOpMoagem(o.fbKey)]);
+  }).then(function(){calcPeneiras();if(G("sec-adm").classList.contains("on")&&G("adm-a-lista").querySelector("table")) admCarregarApts();})
+    .catch(function(e){toast("Erro: "+e.message,"err");}).then(function(){G("tr-btn").disabled=false;});
 }
 
 // ── BOOT ───────────────────────────────────────────────────────────
