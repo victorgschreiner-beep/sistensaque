@@ -471,7 +471,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
             <option value="Linha 5 (Andritz II)">Linha 5 (Andritz II)</option>
           </select></div>
         <button onclick="resumoAdmBuscar()" class="btn-ok" style="padding:8px 16px;font-size:12px">🔍 Buscar</button>
-        <button onclick="exportarParadasExcelResumo()" style="background:#1d6f42;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📊 Excel Paradas</button>
+        <button onclick="exportarParadasExcelResumo()" style="background:#1d6f42;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📊 Excel Paradas + Produção</button>
         <label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#4a664a;cursor:pointer;padding-bottom:8px">
           <input type="checkbox" id="resumo-xls-dia" style="width:14px;height:14px"> Dia inteiro (todos os turnos)
         </label>
@@ -8326,8 +8326,95 @@ function exportarParadasExcelResumo(){
   toast("Gerando Excel de paradas...","ok");
   Promise.all([
     DB.ref("extrusao_paradas").orderByChild("data").equalTo(dt).once("value"),
-    batCarregarXLSX()
+    batCarregarXLSX(),
+    DB.ref("extrusao_apts").orderByChild("data").equalTo(dt).once("value"),
+    DB.ref("extrusao_turno").orderByChild("data").equalTo(dt).once("value")
   ]).then(function(r){
+    // ── Produção × meta por linha/turno ──
+    // Produção: valor CONGELADO no fechamento do turno, se existir; senão soma ao vivo dos apontamentos
+    //           (mesma regra do Resumo do Turno).
+    // Meta (Produção desejada): TURNO CHEIO pela escala do dia (hdJanela), do início até o fim do turno
+    //           (estendido até o fim da última parada/apontamento que passe do horário oficial) —
+    //           ou até agora, se o turno ainda está em andamento. Cada minuto vale a meta/hora do
+    //           apontamento que o cobre; minutos SEM apontamento (parada, esquecimento) herdam a meta/hora
+    //           do último apontamento anterior (ou do primeiro posterior, se o buraco for no início).
+    //           Turno sem nenhum apontamento usa a meta/hora mais próxima da mesma linha no dia.
+    var LINHAS_XLS=["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"];
+    var nowAbs=Math.floor(Date.now()/60000)-180; // minuto absoluto em Brasília (UTC-3)
+    var aptsPorTL={}, aptsPorL={};
+    if(r[2].exists()) r[2].forEach(function(c){
+      var a=c.val(), t=Number(a.turno);
+      if(!t||!a.linha) return;
+      var ini=hdAbs(a.data,t,a.horaIni);
+      var fim=(ini!==null&&a.horaFim)?ini+calcMinutos(a.horaIni,a.horaFim):(ini!==null?ini+60:null);
+      if(fim!==null&&fim-ini>600) fim=ini+60; // horário inconsistente (>10 h) conta 1 h, igual ao dashboard
+      var x={t:t,ini:ini,fim:fim,real:Number(a.real)||0,metaH:Number(a.metaH)||0};
+      var k=t+"|"+a.linha;
+      (aptsPorTL[k]=aptsPorTL[k]||[]).push(x);
+      if(x.metaH>0&&ini!==null) (aptsPorL[a.linha]=aptsPorL[a.linha]||[]).push(x);
+    });
+    var parasPorTL={}; // "turno|linha" → lista de fins absolutos das paradas
+    if(r[0].exists()) r[0].forEach(function(c){
+      var p=c.val(), k=Number(p.turno)+"|"+p.linha;
+      if(!parasPorTL[k]) parasPorTL[k]=[];
+      var ini=hdAbs(p.data,p.turno,p.horaIni);
+      if(ini!==null&&p.horaFim) parasPorTL[k].push(ini+calcMinutos(p.horaIni,p.horaFim));
+    });
+    // Limite máximo de extensão de um turno = início do próximo turno da escala
+    // (ex.: escala 2 turnos → T2 pode estender de 15:00 até no máximo 21:00).
+    function inicioProximoTurno(t,jan){
+      var cand=[], esc=escalaDoDia(dt).turnos;
+      Object.keys(esc).forEach(function(k){var j=hdJanela(dt,Number(k)); if(j&&j.ini>jan.ini) cand.push(j.ini);});
+      var d=new Date((hdDiaNum(dt)+1)*86400000), dtSeg=d.toISOString().slice(0,10);
+      var j1=hdJanela(dtSeg,1); if(j1) cand.push(j1.ini);
+      return cand.length?Math.min.apply(null,cand):jan.fim;
+    }
+    var cong={};
+    if(r[3].exists()) r[3].forEach(function(c){
+      var tf=c.val(); if(!tf.producao) return;
+      Object.keys(tf.producao).forEach(function(lk){cong[Number(tf.turno)+"|"+lk]=Number(tf.producao[lk])||0;});
+    });
+    function metaTurnoCheio(t,linha,apL,fimsParadas){
+      var jan=hdJanela(dt,t); if(!jan) return {meta:0,min:0};
+      // Fim real do turno da linha: se a última parada (ex.: parada de final de turno até 16:30/17:00)
+      // ou o último apontamento passar do fim oficial, o turno vai até essa hora — limitado ao
+      // início do próximo turno e a no máximo 3 h além do fim oficial, para um horário digitado
+      // errado não inflar a meta.
+      var fimReal=jan.fim;
+      (fimsParadas||[]).forEach(function(f){if(f>fimReal) fimReal=f;});
+      apL.forEach(function(x){if(x.fim!==null&&x.fim>fimReal) fimReal=x.fim;});
+      var EXT_MAX_MIN=180; // extensão máxima além do fim oficial (3 h)
+      fimReal=Math.min(fimReal,jan.fim+EXT_MAX_MIN,inicioProximoTurno(t,jan));
+      var fimJ=Math.min(fimReal,nowAbs);
+      if(fimJ<=jan.ini) return {meta:0,min:0};
+      var seg=apL.filter(function(x){return x.ini!==null&&x.metaH>0;}).sort(function(a,b){return a.ini-b.ini;});
+      if(!seg.length){
+        // sem apontamento no turno: meta/hora mais próxima da mesma linha no dia
+        var outros=(aptsPorL[linha]||[]).slice().sort(function(a,b){return Math.abs(a.ini-jan.ini)-Math.abs(b.ini-jan.ini);});
+        if(!outros.length) return {meta:0,min:fimJ-jan.ini};
+        return {meta:outros[0].metaH*(fimJ-jan.ini)/60,min:fimJ-jan.ini};
+      }
+      var tot=0, i=0, atual=seg[0].metaH;
+      for(var m=jan.ini;m<fimJ;m++){
+        while(i<seg.length&&seg[i].ini<=m){atual=seg[i].metaH;i++;}
+        // se um apontamento já iniciado ainda cobre este minuto, prevalece o de início mais recente (atual)
+        tot+=atual/60;
+      }
+      return {meta:tot,min:fimJ-jan.ini};
+    }
+    var linhasProd=[];
+    [1,2,3].forEach(function(t){
+      if(!diaInteiro&&t!==turno) return;
+      LINHAS_XLS.forEach(function(l){
+        if(linhaF&&l!==linhaF) return;
+        var k=t+"|"+l, fk=t+"|"+encId(l), apL=aptsPorTL[k]||[];
+        if(!apL.length&&!(fk in cong)&&!parasPorTL[k]) return; // linha não operou nesse turno
+        var real=(fk in cong)?cong[fk]:apL.reduce(function(s,x){return s+x.real;},0);
+        var mt=metaTurnoCheio(t,l,apL,parasPorTL[k]);
+        var meta=Math.round(mt.meta);
+        linhasProd.push([dt,l.split(" (")[0],t,Math.round(real*10)/10,meta,meta?Math.round(real/meta*100000)/1000:"",mt.min?Math.round(mt.min/6)/10:""]);
+      });
+    });
     var lista=[];
     if(r[0].exists()) r[0].forEach(function(c){
       var p=c.val();
@@ -8338,7 +8425,7 @@ function exportarParadasExcelResumo(){
       var fim=p.horaFim?ini+calcMinutos(p.horaIni,p.horaFim):null;
       lista.push({p:p,ini:ini,fim:fim});
     });
-    if(!lista.length){toast("Nenhuma parada para o filtro selecionado","err");return;}
+    if(!lista.length&&!linhasProd.length){toast("Nenhuma parada ou produção para o filtro selecionado","err");return;}
     lista.sort(function(a,b){return a.ini-b.ini||(a.p.linha>b.p.linha?1:-1);});
     // minuto absoluto (dias desde 1970 × 1440 + min) → serial de data do Excel
     function serial(abs){return (Math.floor(abs/1440)+25569)+(abs%1440)/1440;}
@@ -8366,10 +8453,22 @@ function exportarParadasExcelResumo(){
     ws["!autofilter"]={ref:"A1:G"+aoa.length};
     var wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,ws,"Paradas");
+    // Aba 2 — Produção × Meta
+    var dSerial=(function(){var p=dt.split("-");return Math.round(Date.UTC(+p[0],+p[1]-1,+p[2])/86400000)+25569;})();
+    var aoaP=[["Data","linha","turno","Produção","Produção desejada","Performance","Horas consideradas"]];
+    linhasProd.forEach(function(l){aoaP.push([dSerial,l[1],l[2],l[3],l[4],l[5],l[6]]);});
+    var wsP=XLSX.utils.aoa_to_sheet(aoaP);
+    for(var j=2;j<=aoaP.length;j++){
+      if(wsP["A"+j]) wsP["A"+j].z="dd/mm/yyyy";
+      if(wsP["F"+j]&&wsP["F"+j].t==="n") wsP["F"+j].z="0.00";
+    }
+    wsP["!cols"]=[{wch:12},{wch:10},{wch:7},{wch:12},{wch:18},{wch:13},{wch:18}];
+    wsP["!autofilter"]={ref:"A1:G"+aoaP.length};
+    XLSX.utils.book_append_sheet(wb,wsP,"Produção");
     var nome="Paradas_"+dt+(diaInteiro?"_dia":"_T"+turno)+(linhaF?"_"+linhaF.split(" (")[0].replace(/\s+/g,""):"")+".xlsx";
     XLSX.writeFile(wb,nome);
     registrarLog("exportacao","Exportou Excel de paradas "+dt+(diaInteiro?" (dia inteiro)":" T"+turno)+(linhaF?" "+linhaF:""),"-");
-    toast("Excel gerado ("+lista.length+" paradas)","ok");
+    toast("Excel gerado ("+lista.length+" paradas · "+linhasProd.length+" linhas de produção)","ok");
   }).catch(function(e){toast("Erro ao gerar Excel: "+e.message,"err");});
 }
 
