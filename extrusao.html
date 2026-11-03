@@ -569,7 +569,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <input type="text" id="adm-busca-op" placeholder="Buscar nº da OP..." class="fi" style="flex:1;padding:8px 12px;font-size:13px" oninput="admFiltrarOps(this.value)">
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:10px">
+    <div style="flex-wrap:wrap;display:flex;gap:8px;margin-bottom:10px">
       <button onclick="admAba('apts')" id="adm-tab-apts" style="flex:1;padding:8px;border:2px solid #024f2b;background:#024f2b;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">⚡ Apontamentos</button>
       <button onclick="admAba('paradas')" id="adm-tab-paradas" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🔴 Paradas</button>
       <button onclick="admAba('ops')" id="adm-tab-ops" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📋 Ordens</button>
@@ -578,6 +578,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
       <button onclick="admAba('logs')" id="adm-tab-logs" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📋 Logs</button>
       <button onclick="admAba('metas')" id="adm-tab-metas" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🎯 Metas</button>
       <button onclick="admAba('motivos')" id="adm-tab-motivos" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">⚙️ Motivos</button>
+      <button onclick="admAba('finos')" id="adm-tab-finos" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">♻️ Finos</button>
       <button onclick="admAba('qualid')" id="adm-tab-qualid" style="flex:1;padding:8px;border:2px solid #d4e8d4;background:#fff;color:#024f2b;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🧪 Qualidade</button>
     </div>
     <div style="display:none;margin-bottom:10px" id="adm-qualid-pdf-wrap">
@@ -664,6 +665,17 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     </div>
 
     <!-- Wrap Motivos de Parada -->
+    <div id="adm-finos-wrap" style="display:none">
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:10px">
+        <div><label class="fl">Data operacional</label><input class="fi" type="date" id="adm-finos-dt" style="width:150px" onchange="admFinosTurnos();admFinosCarregar()"></div>
+        <div><label class="fl">Turno</label><select class="fi" id="adm-finos-turno" style="width:190px" onchange="admFinosCarregar()"></select></div>
+      </div>
+      <div id="adm-finos-corpo"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px">
+        <span id="adm-finos-status" style="font-size:11px;color:#4a664a"></span>
+        <button onclick="admFinosSalvar()" style="background:#024f2b;color:#fff;border:none;padding:9px 20px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">💾 Salvar finos</button>
+      </div>
+    </div>
     <div id="adm-motivos-wrap" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px">
         <span style="font-size:12px;font-weight:700;color:#024f2b" id="adm-motivo-status">Carregando...</span>
@@ -811,7 +823,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <!-- Reprocesso por motivo de parada -->
     <div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:16px;margin-bottom:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <div style="font-weight:700;color:#024f2b;font-size:13px">♻️ Reprocesso por Motivo de Parada (kg)</div>
+        <div style="font-weight:700;color:#024f2b;font-size:13px">♻️ Reprocesso por Motivo de Parada e Finos (kg)</div>
         <div style="display:flex;align-items:center;gap:8px">
           <span id="dash-g11-badge" style="display:none;font-size:10px;font-weight:700;color:#024f2b;background:#e6f0e6;border:1px solid #c8e0c8;border-radius:12px;padding:2px 8px"></span>
           <button onclick="exportarReprocessoParadasPDF()" title="Reprocesso × paradas: causa e grupo" style="background:#c0392b;color:#fff;border:none;padding:6px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📄 Relatório Reprocesso × Paradas</button>
@@ -4029,9 +4041,21 @@ function gerarDashboard(){
 
   Promise.all([
     DB.ref("extrusao_apts").orderByChild("data").startAt(di).endAt(df).once("value"),
-    DB.ref("extrusao_paradas").orderByChild("data").startAt(di).endAt(df).once("value")
+    DB.ref("extrusao_paradas").orderByChild("data").startAt(di).endAt(df).once("value"),
+    // Falha ao ler finos (ex.: regra do Firebase) não pode derrubar o Dashboard
+    DB.ref("extrusao_finos").orderByChild("data").startAt(di).endAt(df).once("value").catch(function(e){
+      console.warn("Finos:",e.message); toast("Não foi possível ler os finos: "+e.message,"err"); return null;
+    })
   ]).then(function(results){
-    var apts=[], paradas=[];
+    var apts=[], paradas=[], finos=[];
+    if(results[2]&&results[2].exists()) results[2].forEach(function(c){
+      var f=c.val();
+      if(turnoF&&String(f.turno)!==turnoF) return;
+      if(linhaF&&f.linha!==linhaF) return;
+      finos.push(f);
+    });
+    // Finos não têm área de parada nem SKU: com esses filtros, não há como atribuí-los
+    if(areaF||skuF) finos=[];
     if(results[0].exists()) results[0].forEach(function(c){apts.push(c.val());});
     if(results[1].exists()) results[1].forEach(function(c){paradas.push(c.val());});
 
@@ -4054,7 +4078,7 @@ function gerarDashboard(){
     var aptsLinhaTempo=aptsHD;
     if(skuF){apts=apts.filter(function(a){return (a.cod||"").toLowerCase().includes(skuF)||(a.desc||"").toLowerCase().includes(skuF);});}
 
-    dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, {diasProducao:Object.keys(diasProducao).sort(), turnoF:turnoF, linhaF:linhaF, paradasHD:paradasHD});
+    dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, {diasProducao:Object.keys(diasProducao).sort(), turnoF:turnoF, linhaF:linhaF, paradasHD:paradasHD, finos:finos});
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
@@ -4713,7 +4737,9 @@ function exportarReprocessoParadasPDF(){
   var regs=base.filter(function(p){return (Number(p.reprocessoKg)||0)>0;}).map(function(p){
     return {p:p, kg:Number(p.reprocessoKg)||0, min:minPar(p), grupo:paradaGrupo(p), causa:p.descricao||"Sem motivo"};
   });
-  if(!regs.length){toast("Nenhuma parada com reprocesso lançado no período/filtro","err");return;}
+  var finos=C.finos||[];
+  var totFinos=finos.reduce(function(s,f){return s+(Number(f.kg)||0);},0);
+  if(!regs.length&&!finos.length){toast("Nenhum reprocesso de parada ou finos lançado no período/filtro","err");return;}
 
   var totKg=regs.reduce(function(s,r){return s+r.kg;},0);
   var totMin=regs.reduce(function(s,r){return s+r.min;},0);
@@ -4780,11 +4806,11 @@ function exportarReprocessoParadasPDF(){
   // Indicadores
   var topCausa=porCausa[0], topGrupo=porGrupo[0];
   var kp=[
-    ["REPROCESSO TOTAL",fK(totKg)+" kg",totProd?pct(totKg,totProd)+" da produção":""],
+    ["REPROCESSO TOTAL",fK(totKg+totFinos)+" kg",(totProd?pct(totKg+totFinos,totProd)+" da prod. | ":"")+"paradas "+fK(totKg)+" + finos "+fK(totFinos)],
     ["PARADAS COM REPROCESSO",regs.length+" de "+paradasTot,pct(regs.length,paradasTot)+" das paradas"],
-    ["KG POR PARADA",fK(totKg/regs.length)+" kg","média das que geraram"],
-    ["MAIOR CAUSA",topCausa.k.split("|||")[0],fK(topCausa.kg)+" kg ("+pct(topCausa.kg,totKg)+")"],
-    ["MAIOR GRUPO",topGrupo.k,fK(topGrupo.kg)+" kg ("+pct(topGrupo.kg,totKg)+")"]
+    ["KG POR PARADA",regs.length?fK(totKg/regs.length)+" kg":"-","média das que geraram"],
+    ["MAIOR CAUSA (PARADA)",topCausa?topCausa.k.split("|||")[0]:"-",topCausa?fK(topCausa.kg)+" kg ("+pct(topCausa.kg,totKg)+" das paradas)":""],
+    ["MAIOR GRUPO (PARADA)",topGrupo?topGrupo.k:"-",topGrupo?fK(topGrupo.kg)+" kg ("+pct(topGrupo.kg,totKg)+" das paradas)":""]
   ];
   var bw=(W-4*3)/5;
   kp.forEach(function(k,i){
@@ -4797,6 +4823,7 @@ function exportarReprocessoParadasPDF(){
   });
   y+=24;
 
+  if(regs.length){
   // 1) Por grupo
   titulo("1. Reprocesso por grupo (área da parada)");
   tabela(
@@ -4830,11 +4857,26 @@ function exportarReprocessoParadasPDF(){
     det.map(function(r){var p=r.p; return [dBR(p.data),"T"+(p.turno||""),p.linha||"",(p.horaIni||"")+"-"+(p.horaFim||"aberta"),r.causa,r.grupo,minH(r.min),fK(r.kg),p.reprocessoOpNum||"-",p.obs||""];}),
     ["","","","","TOTAL","",minH(totMin),fK(totKg),"",""]
   );
+  }
+
+  // Finos lançados pelo admin (sem vínculo com parada)
+  if(finos.length){
+    titulo("Finos para reprocesso - por tipo e linha (kg)");
+    var linhasFin=Object.keys(LINHA_META);
+    finos.forEach(function(f){ if(f.linha&&linhasFin.indexOf(f.linha)<0) linhasFin.push(f.linha); });
+    var wTipo=57, wTot=30, wPct=30, wLin=(W-wTipo-wTot-wPct)/linhasFin.length;
+    var somaFin=function(tipo,linha){ return finos.reduce(function(s,f){ return s+((!tipo||f.tipo===tipo)&&(!linha||f.linha===linha)?(Number(f.kg)||0):0); },0); };
+    tabela(
+      [{t:"TIPO",w:wTipo,b:1}].concat(linhasFin.map(function(l){return {t:l,w:wLin,al:"r"};})).concat([{t:"TOTAL",w:wTot,al:"r",b:1},{t:"% DOS FINOS",w:wPct,al:"r"}]),
+      FINOS_TIPOS.map(function(x){ return [x.l].concat(linhasFin.map(function(l){return fK(somaFin(x.k,l));})).concat([fK(somaFin(x.k)),pct(somaFin(x.k),totFinos)]); }),
+      ["TOTAL"].concat(linhasFin.map(function(l){return fK(somaFin("",l));})).concat([fK(totFinos),"100%"])
+    );
+  }
 
   // Notas
   precisa(16); y+=2;
   doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(90,90,90);
-  ["Reprocesso = kg lançado no fechamento de cada parada (vínculo direto parada -> reprocesso). Paradas sem reprocesso lançado não entram nas tabelas 2 a 4.",
+  ["Reprocesso de parada = kg lançado no fechamento de cada parada; sem lançamento, não entra nas tabelas 2 a 4. Finos = lançados pelo admin, sem vínculo com parada; somam só no Reprocesso Total.",
    "Grupo = área do motivo no catálogo de Motivos de Parada. Motivo excluído do catálogo depois de apontado aparece como 'Outros'.",
    "Não inclui o reprocesso de Limpeza de linha lançado no Ensaque (não possui parada de extrusão vinculada). % da produção = reprocesso / kg extrusado no mesmo filtro."
   ].forEach(function(t){ doc.text(t,ML,y); y+=4; });
@@ -4978,7 +5020,8 @@ function exportarGranulometriaPDF(){
 
 function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
   // Cache para exportarOpPDF acessar fora do escopo
-  window._DASH_CACHE={apts:apts,paradas:paradas,di:di,df:df,areaF:areaF};
+  var finosPeriodo=(hdOpts&&hdOpts.finos)||[];
+  window._DASH_CACHE={apts:apts,paradas:paradas,di:di,df:df,areaF:areaF,finos:finosPeriodo};
   // Cache para o PDF Granulometria × Máquina (mesmos apontamentos/filtros da tela)
   // Cópia própria para o PDF do Dashboard: a busca por OP acrescenta itens em _DASH_CACHE.apts (mesmo array) e duplicaria valores
   window._DASH_PDF_CACHE={apts:apts.slice(),di:di,df:df,linhaF:(hdOpts&&hdOpts.linhaF)||"",turnoF:(hdOpts&&hdOpts.turnoF)||"",skuF:skuF||""};
@@ -5056,6 +5099,11 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
     var m=p.descricao||"Sem motivo";
     if(!porMotivoReproc[m]) porMotivoReproc[m]=0;
     porMotivoReproc[m]+=kg;
+  });
+  // Finos lançados pelo admin entram como barras próprias, ao lado dos motivos de parada
+  finosPeriodo.forEach(function(f){
+    var m="Finos - "+finosTipoLabel(f.tipo);
+    porMotivoReproc[m]=(porMotivoReproc[m]||0)+(Number(f.kg)||0);
   });
 
   // Paradas por SKU (via opNum cruzando com apts) — respeita o filtro de ÁREA
@@ -5354,9 +5402,9 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
     if(motivosReproc.length){
       var totalReprocPeriodo=Object.values(porMotivoReproc).reduce(function(a,b){return a+b;},0);
       var pctTop=totalReprocPeriodo?Math.round(motivosReproc[0][1]/totalReprocPeriodo*100):0;
-      destaqueEl.textContent="Motivo que mais gera reprocesso: "+motivosReproc[0][0]+" — "+fN(motivosReproc[0][1])+" kg ("+pctTop+"% do reprocesso do período)";
+      destaqueEl.textContent="Maior origem de reprocesso: "+motivosReproc[0][0]+" — "+fN(motivosReproc[0][1])+" kg ("+pctTop+"% do reprocesso do período)";
     } else {
-      destaqueEl.textContent="Nenhuma parada com reprocesso lançado no período/filtro selecionado.";
+      destaqueEl.textContent="Nenhum reprocesso de parada ou finos lançado no período/filtro selecionado.";
     }
   }
   mkChart("dash-g11","bar",
@@ -5871,7 +5919,7 @@ function abrirAdmin(){
 
 function admAba(aba){
   ADM_ABA=aba;
-  ["apts","paradas","ops","ativas","usuarios","logs","metas","motivos","qualid"].forEach(function(a){
+  ["apts","paradas","ops","ativas","usuarios","logs","metas","motivos","finos","qualid"].forEach(function(a){
     var btn=G("adm-tab-"+a); if(!btn) return;
     btn.style.background=aba===a?"#024f2b":"#fff";
     btn.style.color=aba===a?"#fff":"#024f2b";
@@ -5879,7 +5927,7 @@ function admAba(aba){
   });
   G("adm-qualid-pdf-wrap").style.display=aba==="qualid"?"block":"none";
   // Mostra/oculta os wraps corretos
-  var wraps=["adm-lista-corpo","adm-usuarios-wrap","adm-logs-wrap","adm-metas-wrap","adm-motivos-wrap"];
+  var wraps=["adm-lista-corpo","adm-usuarios-wrap","adm-logs-wrap","adm-metas-wrap","adm-motivos-wrap","adm-finos-wrap"];
   wraps.forEach(function(w){var el=G(w);if(el)el.style.display="none";});
   if(aba==="ops") { G("adm-lista-corpo").style.display="block"; admBuscarOps(); }
   else if(aba==="ativas") { G("adm-lista-corpo").style.display="block"; admRenderAtivas(); }
@@ -5887,7 +5935,102 @@ function admAba(aba){
   else if(aba==="logs") { G("adm-logs-wrap").style.display="block"; admRenderLogs(); }
   else if(aba==="metas") { G("adm-metas-wrap").style.display="block"; admMetasCarregar(); }
   else if(aba==="motivos") { G("adm-motivos-wrap").style.display="block"; admMotivosCarregar(); }
+  else if(aba==="finos") { G("adm-finos-wrap").style.display="block"; admFinosAbrir(); }
   else { G("adm-lista-corpo").style.display="block"; admRenderLista(); }
+}
+
+// ── FINOS PARA REPROCESSO (lançamento só do admin) ────────
+// Nó próprio: extrusao_finos/{data}_{turno}_{linha}_{tipo} = {data,turno,linha,tipo,kg,por,ts}.
+// A chave fixa garante um único valor por dia+turno+linha+tipo: salvar de novo substitui, nunca duplica.
+// Saídas independentes das paradas: somam no reprocesso total, sem vínculo com parada nem OP.
+var FINOS_TIPOS=[{k:"secador",l:"Secador"},{k:"silo_reprocesso",l:"Silo Reprocesso"},{k:"calha_finos",l:"Calha de Finos"}];
+var _FINOS_DIA={};
+function finosTipoLabel(k){
+  var t=FINOS_TIPOS.find(function(x){return x.k===k;});
+  return t?t.l:k;
+}
+function finosChave(dt,t,linha,tipo){ return dt+"_"+t+"_"+encId(linha)+"_"+tipo; }
+function admFinosAbrir(){
+  var el=G("adm-finos-dt");
+  if(!el.value) el.value=(G("adm-dt")&&G("adm-dt").value)||hoje();
+  admFinosTurnos();
+  admFinosCarregar();
+}
+function admFinosTurnos(){
+  var dt=G("adm-finos-dt").value, sel=G("adm-finos-turno"), atual=sel.value;
+  if(!dt) return;
+  var ts=escalaDoDia(dt).turnos;
+  sel.innerHTML=Object.keys(ts).map(function(t){
+    return '<option value="'+t+'">Turno '+t+' ('+ts[t].ini+'–'+ts[t].fim+')</option>';
+  }).join("");
+  if(ts[atual]) sel.value=atual;
+}
+function admFinosCarregar(){
+  if(!DB){toast("Firebase não conectado","err");return;}
+  var dt=G("adm-finos-dt").value, t=Number(G("adm-finos-turno").value);
+  if(!dt||!t) return;
+  G("adm-finos-corpo").innerHTML='<div style="text-align:center;padding:16px;color:#4a664a">Carregando...</div>';
+  DB.ref("extrusao_finos").orderByChild("data").equalTo(dt).once("value").then(function(s){
+    _FINOS_DIA={};
+    if(s.exists()) s.forEach(function(c){_FINOS_DIA[c.key]=c.val();});
+    var th='padding:7px 8px;font-size:11px;color:#fff;background:#024f2b;text-align:right;white-space:nowrap';
+    var td='padding:5px 8px;border-bottom:1px solid #eef5ee';
+    var h='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
+    h+='<tr><th style="'+th+';text-align:left">LINHA</th>'+FINOS_TIPOS.map(function(x){return '<th style="'+th+'">'+x.l+' (kg)</th>';}).join("")+'<th style="'+th+'">TOTAL</th></tr>';
+    var ult=null;
+    Object.keys(LINHA_META).forEach(function(l){
+      h+='<tr><td style="'+td+';font-weight:700;color:#024f2b;white-space:nowrap">'+l+'</td>';
+      FINOS_TIPOS.forEach(function(x){
+        var r=_FINOS_DIA[finosChave(dt,t,l,x.k)];
+        if(r&&(!ult||(r.ts||"")>(ult.ts||""))) ult=r;
+        h+='<td style="'+td+';text-align:right"><input class="fi" type="number" min="0" step="0.01" inputmode="decimal" data-finos-l="'+l+'" data-finos-t="'+x.k+'" value="'+(r?r.kg:"")+'" oninput="admFinosTotais()" style="width:110px;text-align:right;margin-left:auto"></td>';
+      });
+      h+='<td style="'+td+';text-align:right;font-weight:800" data-finos-tot="'+l+'">0</td></tr>';
+    });
+    h+='<tr style="background:#f4f9f4;font-weight:800"><td style="padding:7px 8px;color:#024f2b">TOTAL</td>'+FINOS_TIPOS.map(function(x){return '<td style="padding:7px 8px;text-align:right" data-finos-totp="'+x.k+'">0</td>';}).join("")+'<td style="padding:7px 8px;text-align:right" id="adm-finos-geral">0</td></tr></table></div>';
+    G("adm-finos-corpo").innerHTML=h;
+    G("adm-finos-status").textContent=ult?("Último lançamento: "+(ult.por||"-")+" · "+(ult.ts?new Date(ult.ts).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"}):"")):"Sem lançamento neste turno. Campo vazio = sem finos.";
+    admFinosTotais();
+  }).catch(function(e){
+    G("adm-finos-corpo").innerHTML='<div style="padding:14px;color:#c0392b;font-size:12px">Erro ao carregar: '+e.message+'</div>';
+  });
+}
+function admFinosTotais(){
+  var porL={}, porT={}, geral=0;
+  document.querySelectorAll("[data-finos-l]").forEach(function(i){
+    var v=Number(i.value)||0, l=i.getAttribute("data-finos-l"), k=i.getAttribute("data-finos-t");
+    porL[l]=(porL[l]||0)+v; porT[k]=(porT[k]||0)+v; geral+=v;
+  });
+  document.querySelectorAll("[data-finos-tot]").forEach(function(c){c.textContent=fN(porL[c.getAttribute("data-finos-tot")]||0);});
+  document.querySelectorAll("[data-finos-totp]").forEach(function(c){c.textContent=fN(porT[c.getAttribute("data-finos-totp")]||0);});
+  G("adm-finos-geral").textContent=fN(geral);
+}
+function admFinosSalvar(){
+  if(!DB){toast("Firebase não conectado","err");return;}
+  if(!SES||SES.perfil!=="admin"){toast("Somente admin lança finos","err");return;}
+  var dt=G("adm-finos-dt").value, t=Number(G("adm-finos-turno").value);
+  if(!dt||!t){toast("Informe data e turno","err");return;}
+  var entradas=document.querySelectorAll("[data-finos-l]");
+  if(!entradas.length){toast("Aguarde carregar os dados","err");return;}
+  var updates={}, mudancas=[], invalido=false;
+  entradas.forEach(function(i){
+    var l=i.getAttribute("data-finos-l"), k=i.getAttribute("data-finos-t");
+    if(i.validity&&i.validity.badInput){invalido=true;return;}
+    var kg=i.value===""?0:Math.round(Number(i.value)*100)/100;
+    if(isNaN(kg)||kg<0){invalido=true;return;}
+    var chave=finosChave(dt,t,l,k), ant=_FINOS_DIA[chave], kgAnt=ant?Number(ant.kg)||0:0;
+    if(kg===kgAnt) return;
+    updates[chave]=kg>0?{data:dt,turno:t,linha:l,tipo:k,kg:kg,por:SES.login,ts:agora()}:null; // zero/vazio remove o registro
+    mudancas.push(l+" / "+finosTipoLabel(k)+": "+fN(kgAnt)+" → "+fN(kg)+" kg");
+  });
+  if(invalido){toast("Há valor inválido ou negativo","err");return;}
+  if(!mudancas.length){toast("Nenhuma alteração para salvar","err");return;}
+  DB.ref("extrusao_finos").update(updates).then(function(){
+    toast("Finos salvos!","ok");
+    registrarLog("finos","Finos "+dt+" T"+t+": "+mudancas.join("; "),"");
+    admFinosCarregar();
+    atualizarVisoesAposCorrecao();
+  }).catch(function(e){toast("Erro ao salvar finos: "+e.message,"err");});
 }
 
 function admBuscar(){
