@@ -4238,6 +4238,8 @@ function verificarReprocessoNaCriacao(){
 // linha); início do turno sem apontamento → herda o 1º apontamento do turno;
 // turno inteiro sem apontamento → bucket "SEM" (conta no total, sem família).
 var GRUPO_PARADA_NAO_RODANDO="Fator Externo/Parada Planejada";
+var COD_PARADA_FINAL_TURNO=23; // catálogo PARADAS: "Parada Final de Turno"
+var EXT_MAX_FIM_TURNO_MIN=180; // Parada Final de Turno pode estender o turno em no máximo 3 h além da escala
 var MAX_MIN_APT_HORAS=600; // 10h — apontamento maior que isso é lançamento inconsistente
 
 // TABELA DE ESCALAS — quando a escala mudar, adicionar uma nova linha com a data
@@ -4272,11 +4274,34 @@ function hdJanela(dataOp, t){
   return {ini:ini, fim:ini+dur};
 }
 
+// ── FIM DO TURNO (regra única: Dashboard e Excel) ─────────
+// Fim do turno da linha = fim da última Parada Final de Turno fechada; sem ela, vale a escala.
+// Limite: 3 h além da escala, sem invadir o próximo turno. Apontamento depois desse horário
+// soma kg (atraso da pesagem), mas não estende o turno.
+function hdEhParadaFinal(p){
+  return Number(p.codMotivo)===COD_PARADA_FINAL_TURNO||(!p.codMotivo&&p.descricao==="Parada Final de Turno");
+}
+function hdInicioProximoTurno(dataOp,J){
+  var c=[], ts=escalaDoDia(dataOp).turnos;
+  Object.keys(ts).forEach(function(k){ var x=hdJanela(dataOp,Number(k)); if(x&&x.ini>J.ini) c.push(x.ini); });
+  var d=new Date((hdDiaNum(dataOp)+1)*86400000).toISOString().slice(0,10);
+  var j1=hdJanela(d,1); if(j1) c.push(j1.ini);
+  return c.length?Math.min.apply(null,c):J.fim;
+}
+// finais = [{s,e}] (minutos absolutos) das Paradas Finais fechadas da linha
+function hdFimTurnoLinha(dataOp,J,finais){
+  var limite=Math.min(J.fim+EXT_MAX_FIM_TURNO_MIN,hdInicioProximoTurno(dataOp,J));
+  var doTurno=(finais||[]).filter(function(x){return x.s>=J.ini&&x.s<limite;});
+  if(!doTurno.length) return {fim:J.fim,temFinal:false,limitado:false};
+  var maior=Math.max.apply(null,doTurno.map(function(x){return x.e;}));
+  return {fim:Math.min(limite,maior),temFinal:true,limitado:maior>limite};
+}
+
 function calcHorasDisponiveis(aptsTL, paradas, skuF, opts){
   opts=opts||{};
   var FAMS=["AQUA","PET","HORSE","SEM"];
   function zf(){ return {AQUA:0,PET:0,HORSE:0,SEM:0}; }
-  var res={min:zf(), semApt:zf(), minRod:zf(), semAptRod:zf(), bruto:0, fe:0, disp:0, porLinha:{}, turnosEscala:{}, escalas:{}, aptsInvalidos:0, turnosSemApt:0, fePorMotivo:{}};
+  var res={min:zf(), semApt:zf(), minRod:zf(), semAptRod:zf(), bruto:0, fe:0, disp:0, porLinha:{}, turnosEscala:{}, escalas:{}, aptsInvalidos:0, turnosSemApt:0, turnosFimParada:0, fePorMotivo:{}};
   function casaSku(a){
     if(!skuF) return true;
     return (a.cod||"").toLowerCase().includes(skuF)||(a.desc||"").toLowerCase().includes(skuF);
@@ -4284,7 +4309,7 @@ function calcHorasDisponiveis(aptsTL, paradas, skuF, opts){
   var linhasBase=opts.linhaF?[opts.linhaF]:((typeof TODAS_LINHAS!=="undefined"&&TODAS_LINHAS)||["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"]);
   var agoraAbs=hdDiaNum(dataBrasilia(new Date()))*1440+hdHm(horaAtual());
   // Índices por linha
-  var aptsPorLinha={}, fePorLinha={}, outrasParPorLinha={};
+  var aptsPorLinha={}, fePorLinha={}, outrasParPorLinha={}, finalPorLinha={}, janelasExtras={};
   aptsTL.forEach(function(a){
     var s=hdAbs(a.data,a.turno,a.horaIni), dur=calcMinutos(a.horaIni,a.horaFim);
     if(s===null || dur<=0 || dur>MAX_MIN_APT_HORAS){ res.aptsInvalidos++; return; }
@@ -4301,6 +4326,7 @@ function calcHorasDisponiveis(aptsTL, paradas, skuF, opts){
       e=Math.min(jp?jp.fim:s, agoraAbs);
     }
     if(e<=s) return;
+    if(hdEhParadaFinal(p)&&p.horaFim) (finalPorLinha[p.linha]=finalPorLinha[p.linha]||[]).push({s:s,e:e});
     // Demais paradas (operacional, manutenção, setup...) só entram no "KG/H sem paradas"
     if(!ehFE){ (outrasParPorLinha[p.linha]=outrasParPorLinha[p.linha]||[]).push({s:s,e:e}); return; }
     (fePorLinha[p.linha]=fePorLinha[p.linha]||[]).push({s:s,e:e,mot:p.descricao||"Sem motivo",p:p});
@@ -4317,22 +4343,27 @@ function calcHorasDisponiveis(aptsTL, paradas, skuF, opts){
       var J=hdJanela(dataOp,t); if(!J) return;
       var fimConta=Math.min(J.fim, agoraAbs);
       if(fimConta<=J.ini) return; // turno futuro
-      var L=J.fim-J.ini, lim=fimConta-J.ini;
       linhasBase.forEach(function(linha){
+        var FT=hdFimTurnoLinha(dataOp,J,finalPorLinha[linha]), fimT=FT.fim;
+        if(FT.temFinal){
+          res.turnosFimParada++;
+          if(fimT>J.fim) (janelasExtras[linha]=janelasExtras[linha]||[]).push({ini:J.fim,fim:fimT});
+        }
+        var L=fimT-J.ini, lim=Math.min(fimT,agoraAbs)-J.ini;
         var dono=new Array(L), desc=new Array(L);
         (aptsPorLinha[linha]||[]).forEach(function(x){
-          if(x.e<=J.ini||x.s>=J.fim) return;
-          for(var i=Math.max(x.s,J.ini);i<Math.min(x.e,J.fim);i++) dono[i-J.ini]=x.a;
+          if(x.e<=J.ini||x.s>=fimT) return;
+          for(var i=Math.max(x.s,J.ini);i<Math.min(x.e,fimT);i++) dono[i-J.ini]=x.a;
         });
         (fePorLinha[linha]||[]).forEach(function(x){
-          if(x.e<=J.ini||x.s>=J.fim) return;
-          for(var i=Math.max(x.s,J.ini);i<Math.min(x.e,J.fim);i++){ if(!desc[i-J.ini]) desc[i-J.ini]=x.mot; }
+          if(x.e<=J.ini||x.s>=fimT) return;
+          for(var i=Math.max(x.s,J.ini);i<Math.min(x.e,fimT);i++){ if(!desc[i-J.ini]) desc[i-J.ini]=x.mot; }
         });
         // Marca por minuto: paradas sobrepostas não descontam em dobro
         var outraPar=new Array(L);
         (outrasParPorLinha[linha]||[]).forEach(function(x){
-          if(x.e<=J.ini||x.s>=J.fim) return;
-          for(var i=Math.max(x.s,J.ini);i<Math.min(x.e,J.fim);i++) outraPar[i-J.ini]=true;
+          if(x.e<=J.ini||x.s>=fimT) return;
+          for(var i=Math.max(x.s,J.ini);i<Math.min(x.e,fimT);i++) outraPar[i-J.ini]=true;
         });
         var primeiro=null; for(var j=0;j<L;j++){ if(dono[j]){ primeiro=dono[j]; break; } }
         if(!primeiro) res.turnosSemApt++;
@@ -4363,13 +4394,13 @@ function calcHorasDisponiveis(aptsTL, paradas, skuF, opts){
     var W=[];
     dias.forEach(function(d){ Object.keys(escalaDoDia(d).turnos).forEach(function(tk){ var J=hdJanela(d,Number(tk)); if(J) W.push(J); }); });
     linhasBase.forEach(function(linha){
-      var vistos={};
+      var vistos={}, Wl=W.concat(janelasExtras[linha]||[]); // tempo já contado pela Parada Final não é "fora da escala"
       (fePorLinha[linha]||[]).forEach(function(x){
         var fora=0, fimX=Math.min(x.e,agoraAbs);
         for(var m=x.s;m<fimX;m++){
           if(vistos[m]) continue;
           var dentro=false;
-          for(var k=0;k<W.length;k++){ if(m>=W[k].ini&&m<W[k].fim){dentro=true;break;} }
+          for(var k=0;k<Wl.length;k++){ if(m>=Wl[k].ini&&m<Wl[k].fim){dentro=true;break;} }
           if(dentro) continue;
           vistos[m]=1; fora++;
         }
@@ -4505,7 +4536,7 @@ function exportarHorasDispPDF(){
   }
   titulo((HR.foraEscala?"5":"4")+". Regra de cálculo");
   doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(60,60,60);
-  ["Base = para cada dia operacional com produção na fábrica, cada linha x todos os turnos da escala vigente.",
+  ["Base = para cada dia operacional com produção na fábrica, cada linha x todos os turnos da escala. O turno termina no fim da Parada Final de Turno (máx. 3 h além da escala); sem ela, no horário da escala.",
    "Horas disponíveis = Base - paradas do grupo "+GRUPO_PARADA_NAO_RODANDO+", descontadas só na parte que cai dentro",
    "de cada turno da base (sem contar sobreposições em dobro). As demais paradas contam como disponível.",
    "Parada ainda aberta conta até o fim do turno (ou até o momento da geração, se o turno estiver em andamento)."
@@ -5179,7 +5210,7 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
         '</div>'+
         feCardHtml+
         '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">'+
-          kpi("BASE (TURNOS DA ESCALA)",fHd(HR.bruto),"#4a664a","dias com produção × linhas × turnos")+
+          kpi("BASE (TURNOS DA ESCALA)",fHd(HR.bruto),"#4a664a","até a Parada Final de Turno; sem ela, escala")+
           kpi("(−) FATOR EXTERNO / PLANEJADA",fHd(HR.fe),"#c0392b","só a parte dentro dos turnos")+
           kpi("= HORAS DISPONÍVEIS",fHd(HR.disp),"#024f2b",HR.bruto?Math.round(HR.disp/HR.bruto*100)+"% da base":"")+
           kpi("SEM APONTAMENTO (INCLUÍDAS)",fHd(semAptTot),semAptTot?"#d29922":"#4a664a","contam como disponível")+
@@ -8509,8 +8540,8 @@ function exportarParadasExcelResumo(){
     //           Administrativa grava — assim qualquer correção do admin aparece na hora no Excel.
     //           O valor congelado no fechamento (extrusao_turno) é usado só como CONFERÊNCIA:
     //           se divergir do ao vivo, a coluna "Obs" sinaliza (congelado desatualizado).
-    // Meta (Produção desejada): TURNO CHEIO pela escala do dia (hdJanela), do início até o fim do turno
-    //           (estendido até o fim da última parada/apontamento que passe do horário oficial) —
+    // Meta (Produção desejada): do início do turno até o fim da Parada Final de Turno; sem ela, até o fim da escala
+    //           (mesma regra do Dashboard: hdFimTurnoLinha) —
     //           ou até agora, se o turno ainda está em andamento. Cada minuto vale a meta/hora do
     //           apontamento que o cobre; minutos SEM apontamento (parada, esquecimento) herdam a meta/hora
     //           do último apontamento anterior (ou do primeiro posterior, se o buraco for no início).
@@ -8536,32 +8567,22 @@ function exportarParadasExcelResumo(){
       var ini=hdAbs(p.data,p.turno,p.horaIni);
       if(ini!==null&&p.horaFim) parasPorTL[k].push(ini+calcMinutos(p.horaIni,p.horaFim));
     });
-    // Limite máximo de extensão de um turno = início do próximo turno da escala
-    // (ex.: escala 2 turnos → T2 pode estender de 15:00 até no máximo 21:00).
-    function inicioProximoTurno(t,jan){
-      var cand=[], esc=escalaDoDia(dt).turnos;
-      Object.keys(esc).forEach(function(k){var j=hdJanela(dt,Number(k)); if(j&&j.ini>jan.ini) cand.push(j.ini);});
-      var d=new Date((hdDiaNum(dt)+1)*86400000), dtSeg=d.toISOString().slice(0,10);
-      var j1=hdJanela(dtSeg,1); if(j1) cand.push(j1.ini);
-      return cand.length?Math.min.apply(null,cand):jan.fim;
-    }
+    var finaisPorL={}; // linha → Paradas Finais de Turno fechadas (mesma regra do Dashboard)
+    if(r[0].exists()) r[0].forEach(function(c){
+      var p=c.val(); if(!hdEhParadaFinal(p)||!p.horaFim) return;
+      var ini=hdAbs(p.data,p.turno,p.horaIni); if(ini===null) return;
+      (finaisPorL[p.linha]=finaisPorL[p.linha]||[]).push({s:ini,e:ini+calcMinutos(p.horaIni,p.horaFim)});
+    });
     var cong={};
     if(r[3].exists()) r[3].forEach(function(c){
       var tf=c.val(); if(!tf.producao) return;
       Object.keys(tf.producao).forEach(function(lk){cong[Number(tf.turno)+"|"+lk]=Number(tf.producao[lk])||0;});
     });
-    function metaTurnoCheio(t,linha,apL,fimsParadas){
+    function metaTurnoCheio(t,linha,apL){
       var jan=hdJanela(dt,t); if(!jan) return {meta:0,min:0};
-      // Fim real do turno da linha: se a última parada (ex.: parada de final de turno até 16:30/17:00)
-      // ou o último apontamento passar do fim oficial, o turno vai até essa hora — limitado ao
-      // início do próximo turno e a no máximo 3 h além do fim oficial, para um horário digitado
-      // errado não inflar a meta.
-      var fimReal=jan.fim, origem="Escala";
-      (fimsParadas||[]).forEach(function(f){if(f>fimReal){fimReal=f;origem="Parada";}});
-      apL.forEach(function(x){if(x.fim!==null&&x.fim>fimReal){fimReal=x.fim;origem="Apontamento";}});
-      var EXT_MAX_MIN=180; // extensão máxima além do fim oficial (3 h)
-      var lim=Math.min(jan.fim+EXT_MAX_MIN,inicioProximoTurno(t,jan));
-      if(fimReal>lim){fimReal=lim;origem+=" (limitado a +3h)";}
+      // Fim do turno: mesma regra do Dashboard (hdFimTurnoLinha)
+      var FT=hdFimTurnoLinha(dt,jan,finaisPorL[linha]), fimReal=FT.fim;
+      var origem=FT.temFinal?("Parada Final de Turno"+(FT.limitado?" (limitado a +3h)":"")):"Escala";
       var fimJ=Math.min(fimReal,nowAbs);
       if(fimJ<fimReal) origem="Em andamento";
       var R=function(o){o.ini=jan.ini;o.fimAbs=fimJ;o.origem=origem;return o;};
@@ -8591,7 +8612,7 @@ function exportarParadasExcelResumo(){
         var real=apL.reduce(function(s,x){return s+x.real;},0);
         var obs="";
         if((fk in cong)&&Math.abs(cong[fk]-real)>=1) obs="Fechamento do turno gravou "+Math.round(cong[fk])+" kg (difere do apontado)";
-        var mt=metaTurnoCheio(t,l,apL,parasPorTL[k]);
+        var mt=metaTurnoCheio(t,l,apL);
         var meta=Math.round(mt.meta);
         linhasProd.push([dt,l.split(" (")[0],t,Math.round(real*10)/10,meta,meta?Math.round(real/meta*100000)/1000:"",mt.min?Math.round(mt.min/6)/10:"",mt.ini!=null?mt.ini:"",mt.fimAbs!=null?mt.fimAbs:"",mt.origem||"",obs]);
       });
