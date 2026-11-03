@@ -4276,7 +4276,7 @@ function calcHorasDisponiveis(aptsTL, paradas, skuF, opts){
   opts=opts||{};
   var FAMS=["AQUA","PET","HORSE","SEM"];
   function zf(){ return {AQUA:0,PET:0,HORSE:0,SEM:0}; }
-  var res={min:zf(), semApt:zf(), bruto:0, fe:0, disp:0, porLinha:{}, turnosEscala:{}, escalas:{}, aptsInvalidos:0, turnosSemApt:0, fePorMotivo:{}};
+  var res={min:zf(), semApt:zf(), minRod:zf(), semAptRod:zf(), bruto:0, fe:0, disp:0, porLinha:{}, turnosEscala:{}, escalas:{}, aptsInvalidos:0, turnosSemApt:0, fePorMotivo:{}};
   function casaSku(a){
     if(!skuF) return true;
     return (a.cod||"").toLowerCase().includes(skuF)||(a.desc||"").toLowerCase().includes(skuF);
@@ -4284,14 +4284,14 @@ function calcHorasDisponiveis(aptsTL, paradas, skuF, opts){
   var linhasBase=opts.linhaF?[opts.linhaF]:((typeof TODAS_LINHAS!=="undefined"&&TODAS_LINHAS)||["Linha 1 (E-240)","Linha 2 (E-200)","Linha 4 (Andritz I)","Linha 5 (Andritz II)"]);
   var agoraAbs=hdDiaNum(dataBrasilia(new Date()))*1440+hdHm(horaAtual());
   // Índices por linha
-  var aptsPorLinha={}, fePorLinha={};
+  var aptsPorLinha={}, fePorLinha={}, outrasParPorLinha={};
   aptsTL.forEach(function(a){
     var s=hdAbs(a.data,a.turno,a.horaIni), dur=calcMinutos(a.horaIni,a.horaFim);
     if(s===null || dur<=0 || dur>MAX_MIN_APT_HORAS){ res.aptsInvalidos++; return; }
     (aptsPorLinha[a.linha]=aptsPorLinha[a.linha]||[]).push({s:s,e:s+dur,a:a});
   });
   paradas.forEach(function(p){
-    if(paradaGrupo(p)!==GRUPO_PARADA_NAO_RODANDO) return;
+    var ehFE=paradaGrupo(p)===GRUPO_PARADA_NAO_RODANDO;
     var s=hdAbs(p.data,p.turno,p.horaIni); if(s===null) return;
     var e;
     if(p.horaFim){
@@ -4300,7 +4300,10 @@ function calcHorasDisponiveis(aptsTL, paradas, skuF, opts){
       var jp=hdJanela(p.data,Number(p.turno)); // aberta: até o fim do turno ou agora
       e=Math.min(jp?jp.fim:s, agoraAbs);
     }
-    if(e>s) (fePorLinha[p.linha]=fePorLinha[p.linha]||[]).push({s:s,e:e,mot:p.descricao||"Sem motivo",p:p});
+    if(e<=s) return;
+    // Demais paradas (operacional, manutenção, setup...) só entram no "KG/H sem paradas"
+    if(!ehFE){ (outrasParPorLinha[p.linha]=outrasParPorLinha[p.linha]||[]).push({s:s,e:e}); return; }
+    (fePorLinha[p.linha]=fePorLinha[p.linha]||[]).push({s:s,e:e,mot:p.descricao||"Sem motivo",p:p});
   });
   var dias=opts.diasProducao||[];
   dias.forEach(function(dataOp){
@@ -4325,6 +4328,12 @@ function calcHorasDisponiveis(aptsTL, paradas, skuF, opts){
           if(x.e<=J.ini||x.s>=J.fim) return;
           for(var i=Math.max(x.s,J.ini);i<Math.min(x.e,J.fim);i++){ if(!desc[i-J.ini]) desc[i-J.ini]=x.mot; }
         });
+        // Marca por minuto: paradas sobrepostas não descontam em dobro
+        var outraPar=new Array(L);
+        (outrasParPorLinha[linha]||[]).forEach(function(x){
+          if(x.e<=J.ini||x.s>=J.fim) return;
+          for(var i=Math.max(x.s,J.ini);i<Math.min(x.e,J.fim);i++) outraPar[i-J.ini]=true;
+        });
         var primeiro=null; for(var j=0;j<L;j++){ if(dono[j]){ primeiro=dono[j]; break; } }
         if(!primeiro) res.turnosSemApt++;
         var PL=res.porLinha[linha]=res.porLinha[linha]||{bruto:0,fe:0,disp:0,porTurno:{}};
@@ -4341,6 +4350,7 @@ function calcHorasDisponiveis(aptsTL, paradas, skuF, opts){
           var fam=a?familiaProduto(a.cod):"SEM";
           res.min[fam]++;
           if(lacuna) res.semApt[fam]++;
+          if(!outraPar[m]){ res.minRod[fam]++; if(lacuna) res.semAptRod[fam]++; }
         }
       });
     });
@@ -5057,9 +5067,9 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
   var totMinFamGeral=HR.disp; // denominador: todas as horas disponíveis (inclui turnos sem apontamento)
   function fHd(min){ return (Math.round(min/6)/10).toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1})+" h"; }
   var cardsFam=[
-    {l:"AQUA",n:porFamilia.AQUA,min:minPorFamilia.AQUA,semApt:HR.semApt.AQUA,c:"#024f2b"},
-    {l:"PET",n:porFamilia.PET,min:minPorFamilia.PET,semApt:HR.semApt.PET,c:"#739630"},
-    {l:"HORSE",n:porFamilia.HORSE,min:minPorFamilia.HORSE,semApt:HR.semApt.HORSE,c:"#d29922"}
+    {l:"AQUA",n:porFamilia.AQUA,min:minPorFamilia.AQUA,semApt:HR.semApt.AQUA,minRod:HR.minRod.AQUA,semAptRod:HR.semAptRod.AQUA,c:"#024f2b"},
+    {l:"PET",n:porFamilia.PET,min:minPorFamilia.PET,semApt:HR.semApt.PET,minRod:HR.minRod.PET,semAptRod:HR.semAptRod.PET,c:"#739630"},
+    {l:"HORSE",n:porFamilia.HORSE,min:minPorFamilia.HORSE,semApt:HR.semApt.HORSE,minRod:HR.minRod.HORSE,semAptRod:HR.semAptRod.HORSE,c:"#d29922"}
   ];
   var elFam=G("dash-cards-familia");
   if(elFam){
@@ -5067,6 +5077,7 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
       var pct=totFamGeral?Math.round(card.n/totFamGeral*100):0;
       var pctH=totMinFamGeral?Math.round(card.min/totMinFamGeral*100):0;
       var kgH=card.min?Math.round(card.n/(card.min/60)):0;
+      var kgHRod=card.minRod?Math.round(card.n/(card.minRod/60)):0;
       return '<div style="background:#fff;border-radius:10px;border:1px solid #d4e8d4;padding:12px;text-align:center">'+
         '<div style="font-size:10px;font-weight:700;color:#739630;margin-bottom:4px">'+card.l+'</div>'+
         '<div style="font-size:18px;font-weight:800;color:'+card.c+'">'+fN(card.n)+' kg</div>'+
@@ -5079,7 +5090,12 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
           '</div>'+
           '<div><div style="font-size:9px;font-weight:700;color:#739630">KG/H</div>'+
             '<div style="font-size:15px;font-weight:800;color:'+card.c+'">'+(card.min?fN(kgH):"—")+'</div>'+
-            '<div style="font-size:10px;color:#4a664a">kg ÷ horas disp.</div></div>'+
+            '<div style="font-size:10px;color:#4a664a">sem fator externo</div></div>'+
+          '<div><div style="font-size:9px;font-weight:700;color:#739630">KG/H SEM PARADAS</div>'+
+            '<div style="font-size:15px;font-weight:800;color:'+card.c+'">'+(card.minRod?fN(kgHRod):"—")+'</div>'+
+            '<div style="font-size:10px;color:#4a664a">'+fHd(card.minRod)+' sem nenhuma parada</div>'+
+            (card.semAptRod?'<div style="font-size:10px;color:#d29922" title="Horas sem apontamento e sem parada lançada: seguem contadas como produção">incl. '+fHd(card.semAptRod)+' sem apont.</div>':'')+
+          '</div>'+
         '</div></div>';
     }).join("");
   }
