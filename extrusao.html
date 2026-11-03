@@ -4939,6 +4939,8 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
   // Cache para exportarOpPDF acessar fora do escopo
   window._DASH_CACHE={apts:apts,paradas:paradas,di:di,df:df,areaF:areaF};
   // Cache para o PDF Granulometria × Máquina (mesmos apontamentos/filtros da tela)
+  // Cópia própria para o PDF do Dashboard: a busca por OP acrescenta itens em _DASH_CACHE.apts (mesmo array) e duplicaria valores
+  window._DASH_PDF_CACHE={apts:apts.slice(),di:di,df:df,linhaF:(hdOpts&&hdOpts.linhaF)||"",turnoF:(hdOpts&&hdOpts.turnoF)||"",skuF:skuF||""};
   window._GRAN_CACHE={apts:apts,di:di,df:df,linhaF:(hdOpts&&hdOpts.linhaF)||"",turnoF:(hdOpts&&hdOpts.turnoF)||"",skuF:skuF||""};
   // Paradas filtradas por ÁREA — usadas nos indicadores/gráficos de paradas (card, Pareto, Paradas por SKU).
   // O "Corrida por Máquina" (setup) continua usando o array "paradas" completo, pois setup é um conceito
@@ -5714,33 +5716,90 @@ function dashRenderOP(apts, cadeia, opFiltro, extraHtml){
   if(G("btn-op-pdf")) G("btn-op-pdf").style.display="block";
 }
 
+// PDF do Dashboard: produção (kg) por dia × máquina.
+// Usa o instantâneo gravado no dashRender (_DASH_PDF_CACHE), então respeita os filtros do
+// último "Gerar" e fecha com o card TOTAL PRODUZIDO. Dia = campo "data" (dia operacional).
 function dashExportarPDF(){
   if(typeof jspdf==="undefined"){toast("jsPDF não disponível","err");return;}
-  var jsPDF=jspdf.jsPDF;
-  var doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
-  var W=277, ML=10, y=20;
+  var C=window._DASH_PDF_CACHE;
+  if(!C){toast("Gere o dashboard antes de exportar","err");return;}
+  if(!C.apts.length){toast("Sem produção no período/filtro selecionado","err");return;}
 
-  doc.setFillColor(2,79,43); doc.rect(0,0,297,18,"F");
-  doc.setFont("helvetica","bold"); doc.setFontSize(12); doc.setTextColor(255,255,255);
-  doc.text("RAGUIFE — Dashboard Extrusão",ML,12);
-  doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(180,220,180);
-  doc.text("Período: "+G("dash-di").value+" a "+G("dash-df").value+"  |  Gerado: "+new Date().toLocaleString("pt-BR"),ML,17);
-  y=24;
+  // Todos os dias do período, inclusive os sem produção (meio-dia evita virada por fuso)
+  var dias=[], dd=new Date(C.di+"T12:00:00"), dFim=new Date(C.df+"T12:00:00");
+  while(dd<=dFim){
+    dias.push(dd.getFullYear()+"-"+String(dd.getMonth()+1).padStart(2,"0")+"-"+String(dd.getDate()).padStart(2,"0"));
+    dd.setDate(dd.getDate()+1);
+  }
 
-  // Cards
-  var cards=G("dash-cards").querySelectorAll("div>div");
-  // Tabela
-  doc.setFillColor(220,235,220); doc.rect(ML,y,W,7,"F");
-  doc.setFont("helvetica","bold"); doc.setFontSize(7); doc.setTextColor(2,79,43);
-  var cols=[ML+2,ML+22,ML+42,ML+58,ML+90,ML+135,ML+175,ML+205,ML+225,ML+248];
-  ["DATA","LINHA","T","HORA","OP","PRODUTO","REAL(kg)","META(kg/h)","%","OPERADOR"].forEach(function(h,i){
-    if(cols[i]) doc.text(h,cols[i],y+5);
+  // Máquinas: as 4 linhas (ou só a filtrada) + qualquer outra encontrada nos dados, para o total sempre fechar
+  var maqs=C.linhaF?[C.linhaF]:Object.keys(LINHA_META);
+  var mat={}, totMaq={}, totDia={}, totGeral=0;
+  C.apts.forEach(function(a){
+    var d=a.data||"", m=a.linha||"Sem linha", kg=Number(a.real)||0;
+    if(maqs.indexOf(m)<0) maqs.push(m);
+    if(dias.indexOf(d)<0) dias.push(d);
+    var chave=d+"||"+m;
+    mat[chave]=(mat[chave]||0)+kg;
+    totMaq[m]=(totMaq[m]||0)+kg;
+    totDia[d]=(totDia[d]||0)+kg;
+    totGeral+=kg;
   });
-  y+=8;
+  dias.sort();
 
-  // Rastreabilidade removida do PDF
+  var doc=new jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  var ML=10, W=277, PH=210, y=24;
+  // Altura da linha ajustada para o período máximo (31 dias) caber em uma página
+  var RH=Math.min(6.5,(PH-12-y-7-1)/(dias.length+1));
+  function dBR(d){ return d?d.slice(8,10)+"/"+d.slice(5,7)+"/"+d.slice(0,4):"-"; }
+  var wD=34, wT=38, wM=(W-wD-wT)/maqs.length;
+  var cols=[{t:"DATA",w:wD,al:"l"}].concat(maqs.map(function(m){return {t:m,w:wM,al:"r"};})).concat([{t:"TOTAL DO DIA",w:wT,al:"r"}]);
 
-  doc.save("Dashboard_Extrusao_"+G("dash-di").value+"_"+G("dash-df").value+".pdf");
+  function linha(valores,negrito){
+    var x=ML;
+    doc.setFont("helvetica",negrito?"bold":"normal"); doc.setFontSize(8.5); doc.setTextColor(40,40,40);
+    valores.forEach(function(v,i){
+      var c=cols[i];
+      if(c.al==="r") doc.text(String(v),x+c.w-2,y+RH/2+1.4,{align:"right"});
+      else doc.text(String(v),x+2,y+RH/2+1.4);
+      x+=c.w;
+    });
+  }
+  function cabTabela(){
+    doc.setFillColor(2,79,43); doc.rect(ML,y,W,7,"F");
+    doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(255,255,255);
+    var x=ML;
+    cols.forEach(function(c){
+      if(c.al==="r") doc.text(c.t,x+c.w-2,y+4.6,{align:"right"}); else doc.text(c.t,x+2,y+4.6);
+      x+=c.w;
+    });
+    y+=7;
+  }
+
+  // Cabeçalho
+  doc.setFillColor(2,79,43); doc.rect(0,0,297,19,"F");
+  doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(255,255,255);
+  doc.text("RAGUIFE - Dashboard Extrusão: Produção por dia e máquina (kg)",ML,10);
+  doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(190,225,190);
+  doc.text("Período: "+dBR(C.di)+" a "+dBR(C.df)+"   |   Filtros: Linha = "+(C.linhaF||"Todas")+", Turno = "+(C.turnoF?"T"+C.turnoF:"Todos")+", SKU = "+(C.skuF||"Todos")+"   |   Gerado em: "+new Date().toLocaleString("pt-BR"),ML,15.5);
+
+  cabTabela();
+  dias.forEach(function(d,i){
+    if(y+RH>PH-12){ doc.addPage(); y=14; cabTabela(); }
+    if(i%2){ doc.setFillColor(245,249,245); doc.rect(ML,y,W,RH,"F"); }
+    linha([dBR(d)].concat(maqs.map(function(m){ var v=mat[d+"||"+m]; return v?fN(v):"-"; })).concat([totDia[d]?fN(totDia[d]):"-"]));
+    y+=RH;
+  });
+  doc.setFillColor(220,235,220); doc.rect(ML,y,W,RH,"F");
+  linha(["TOTAL"].concat(maqs.map(function(m){ return fN(totMaq[m]||0); })).concat([fN(totGeral)]),true);
+
+  var np=doc.getNumberOfPages();
+  for(var i=1;i<=np;i++){
+    doc.setPage(i); doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(140,140,140);
+    doc.text("Raguife - Apontamento Extrusão | Dia = dia operacional do apontamento | '-' = sem produção",ML,PH-6);
+    doc.text("Página "+i+" de "+np,ML+W,PH-6,{align:"right"});
+  }
+  doc.save("Dashboard_Extrusao_"+C.di+"_"+C.df+".pdf");
   toast("PDF gerado!","ok");
 }
 
