@@ -460,6 +460,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div id="gm-periodo" style="font-size:11px;color:#739630;margin:-10px 0 10px"></div>
     <div id="gm-legenda" style="display:none;font-size:11px;color:#4a664a;margin-bottom:10px;gap:14px"></div>
     <div id="gm-vazio" style="display:none;text-align:center;color:#739630;font-size:13px;padding:30px 0">Nenhum motivo registrado nesse setor, no período selecionado.</div>
+    <div id="gm-cards" style="display:none"></div>
     <div id="gm-chart-wrap" style="position:relative;height:320px"><canvas id="gm-chart"></canvas></div>
     <div class="mfoot">
       <button class="btn bsm" onclick="fM('mgraficomotivos')">Fechar</button>
@@ -1234,6 +1235,43 @@ var FONTE_COR_CHART = {
   expedicao_aqua:'#d29922', expedicao_pet:'#d29922', recebimento:'#d29922', higienizacao:'#d29922'
 };
 
+// Cards do drill-down de Finos Extrusao: kg por motivo (saida) e por linha x motivo.
+// Usa as linhas ja filtradas do painel, sem nova consulta ao Firebase.
+function renderCardsFinosExtrusao(fonteKey,linhas){
+  var box=G('gm-cards');
+  if(fonteKey!=='finos_extrusao'||!linhas.length){ box.style.display='none'; box.innerHTML=''; return; }
+  var motivos=Object.keys(FINOS_EXTRUSAO_LABEL).map(function(k){ return FINOS_EXTRUSAO_LABEL[k]; });
+  var nomesLinha=Object.keys(LINHA_EXTRUSAO_DECODE).map(function(k){ return LINHA_EXTRUSAO_DECODE[k]; });
+  var total=0, porMotivo={}, porLinha={}, cruz={};
+  linhas.forEach(function(r){
+    var l=r.linhaProd||'Sem linha', m=r.motivo||'—';
+    if(nomesLinha.indexOf(l)<0) nomesLinha.push(l);
+    if(motivos.indexOf(m)<0) motivos.push(m);
+    total+=r.peso;
+    porMotivo[m]=(porMotivo[m]||0)+r.peso;
+    porLinha[l]=(porLinha[l]||0)+r.peso;
+    cruz[l+'||'+m]=(cruz[l+'||'+m]||0)+r.peso;
+  });
+  function pct(v){ return total>0?(v/total*100).toFixed(1).replace('.',','):'0,0'; }
+  var tit='font-size:11px;font-weight:700;color:#024f2b;margin:0 0 6px';
+  var h='<div style="'+tit+'">Por motivo</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin-bottom:12px">';
+  motivos.forEach(function(m){
+    var v=porMotivo[m]||0;
+    h+='<div class="mc mc-finos" style="padding:10px 12px"><div class="ml">'+m+'</div><div class="mv co" style="font-size:20px">'+fN(v)+'</div><div class="ms">kg — '+pct(v)+'%</div></div>';
+  });
+  h+='</div><div style="'+tit+'">Por linha</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:14px">';
+  nomesLinha.forEach(function(l){
+    var v=porLinha[l]||0;
+    h+='<div class="mc mc-finos" style="padding:10px 12px"><div class="ml">'+l+'</div><div class="mv co" style="font-size:20px">'+fN(v)+'</div><div class="ms" style="margin-bottom:6px">kg — '+pct(v)+'%</div>';
+    motivos.forEach(function(m){
+      h+='<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:3px 0;border-top:1px solid #eef5ee"><span>'+m+'</span><b>'+fN(cruz[l+'||'+m]||0)+' kg</b></div>';
+    });
+    h+='</div>';
+  });
+  box.innerHTML=h+'</div>';
+  box.style.display='block';
+}
+
 function abrirGraficoMotivosSetor(fonteKey){
   var info=FONTE_LABELS[fonteKey]||{nome:fonteKey};
   G('gm-titulo').textContent='Motivos lançados — '+info.nome;
@@ -1243,6 +1281,7 @@ function abrirGraficoMotivosSetor(fonteKey){
     : 'Período: '+(di||'').split('-').reverse().join('/')+' a '+(df||'').split('-').reverse().join('/');
 
   var linhas=DASH_ROWS_ATUAIS.filter(function(r){ return r.fonte===fonteKey; });
+  renderCardsFinosExtrusao(fonteKey,linhas);
 
   if(GRAFICO_MOTIVOS_CHART){ GRAFICO_MOTIVOS_CHART.destroy(); GRAFICO_MOTIVOS_CHART=null; }
 
@@ -1486,7 +1525,7 @@ function renderDashboardConsolidado(){
       var v=c.val();
       if(!v) return;
       rows.push({
-        data:v.data, fonte:'finos_extrusao', setor:(v.linha||'—')+' • T'+(v.turno||'—'),
+        data:v.data, fonte:'finos_extrusao', setor:(v.linha||'—')+' • T'+(v.turno||'—'), linhaProd:v.linha||'Sem linha',
         tipo:'Finos', peso:Number(v.kg)||0, motivo:FINOS_EXTRUSAO_LABEL[v.tipo]||v.tipo||'—',
         codigo:'—', lancadoPor:v.por||'—'
       });
