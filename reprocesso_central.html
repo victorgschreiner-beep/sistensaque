@@ -1240,7 +1240,7 @@ function renderCardsFinosExtrusao(fonteKey,linhas){
   var nomesLinha=Object.keys(LINHA_EXTRUSAO_DECODE).map(function(k){ return LINHA_EXTRUSAO_DECODE[k]; });
   var total=0, totalFinos=0, porMotivo={}, porLinha={}, cruz={};
   // Extrusao inteira (com finos) por turno e por linha
-  var geralTurno={}, geralLinha={}, geralLT={}, finosTurno={}, finosLinha={};
+  var geralTurno={}, geralLinha={}, geralLT={}, finosTurno={}, finosLinha={}, finosLT={};
   var linhasGeral=nomesLinha.slice();
   linhas.forEach(function(r){
     var lg=r.linhaProd||'Sem linha', tg=String(r.turnoProd||'?');
@@ -1248,7 +1248,7 @@ function renderCardsFinosExtrusao(fonteKey,linhas){
     geralTurno[tg]=(geralTurno[tg]||0)+r.peso;
     geralLinha[lg]=(geralLinha[lg]||0)+r.peso;
     geralLT[lg+'||'+tg]=(geralLT[lg+'||'+tg]||0)+r.peso;
-    if(r.ehFinos){ finosTurno[tg]=(finosTurno[tg]||0)+r.peso; finosLinha[lg]=(finosLinha[lg]||0)+r.peso; }
+    if(r.ehFinos){ finosTurno[tg]=(finosTurno[tg]||0)+r.peso; finosLinha[lg]=(finosLinha[lg]||0)+r.peso; finosLT[lg+'||'+tg]=(finosLT[lg+'||'+tg]||0)+r.peso; }
     total+=r.peso;
     if(!r.ehFinos) return;
     var l=r.linhaProd||'Sem linha', m=r.saidaFinos||'—';
@@ -1273,15 +1273,22 @@ function renderCardsFinosExtrusao(fonteKey,linhas){
   turnos.forEach(function(t){
     h+=card('mc-extrusao',t==='?'?'Sem turno':'Turno '+t,geralTurno[t],'kg — '+pct(geralTurno[t],total)+'% do total • finos '+fN(finosTurno[t]||0)+' kg');
   });
-  h+='</div><div style="'+tit+'">Extrusão por linha</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:12px">';
+  // Geral: Extrusao (sem finos) + Finos = Soma, por linha e turno, com subtotal e total
+  var thG='padding:6px 8px;font-size:10px;color:#fff;background:#024f2b;text-align:right;white-space:nowrap';
+  var tdG='padding:5px 8px;border-bottom:1px solid #eef5ee;text-align:right';
+  function linhaG(rot,sub,soma,fin,estilo){
+    return '<tr style="'+(estilo||'')+'"><td style="'+tdG+';text-align:left">'+rot+'</td><td style="'+tdG+';text-align:left">'+sub+'</td><td style="'+tdG+'">'+fN(soma-fin)+'</td><td style="'+tdG+'">'+fN(fin)+'</td><td style="'+tdG+';font-weight:800">'+fN(soma)+'</td><td style="'+tdG+'">'+pct(soma,total)+'%</td></tr>';
+  }
+  h+='</div><div style="'+tit+'">Geral por linha e turno (Extrusão + Finos)</div><div style="overflow-x:auto;margin-bottom:12px"><table style="width:100%;border-collapse:collapse;font-size:12px"><tr><th style="'+thG+';text-align:left">LINHA</th><th style="'+thG+';text-align:left">TURNO</th><th style="'+thG+'">EXTRUSÃO</th><th style="'+thG+'">FINOS</th><th style="'+thG+'">SOMA</th><th style="'+thG+'">% TOTAL</th></tr>';
   linhasGeral.forEach(function(l){
-    var det='<div style="margin-top:6px">';
-    turnos.forEach(function(t){
-      det+='<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:3px 0;border-top:1px solid #eef5ee"><span>'+(t==='?'?'Sem turno':'Turno '+t)+'</span><b>'+fN(geralLT[l+'||'+t]||0)+' kg</b></div>';
+    turnos.forEach(function(t,ix){
+      h+=linhaG(ix===0?'<b style="color:#024f2b">'+l+'</b>':'',t==='?'?'Sem turno':'T'+t,geralLT[l+'||'+t]||0,finosLT[l+'||'+t]||0);
     });
-    det+='<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:3px 0;border-top:1px solid #eef5ee;color:#0f766e"><span>dos quais finos</span><b>'+fN(finosLinha[l]||0)+' kg</b></div></div>';
-    h+=card('mc-extrusao',l,geralLinha[l]||0,'kg — '+pct(geralLinha[l]||0,total)+'% do total',det);
+    h+=linhaG('','Geral',geralLinha[l]||0,finosLinha[l]||0,'background:#f4f9f4;font-weight:700');
   });
+  turnos.forEach(function(t){ h+=linhaG(t===turnos[0]?'<b>TODAS</b>':'',t==='?'?'Sem turno':'T'+t,geralTurno[t],finosTurno[t]||0,'background:#eef5ee;font-weight:700'); });
+  h+=linhaG('<b>TOTAL</b>','',total,totalFinos,'background:#d4e8d4;font-weight:800');
+  h+='</table></div><div>';
   h+='</div><div style="'+tit+'">Finos por motivo</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin-bottom:12px">';
   motivos.forEach(function(m){
     var v=porMotivo[m]||0;
