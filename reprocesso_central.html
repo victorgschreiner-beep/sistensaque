@@ -1239,7 +1239,16 @@ function renderCardsFinosExtrusao(fonteKey,linhas){
   var motivos=Object.keys(FINOS_EXTRUSAO_LABEL).map(function(k){ return FINOS_EXTRUSAO_LABEL[k]; });
   var nomesLinha=Object.keys(LINHA_EXTRUSAO_DECODE).map(function(k){ return LINHA_EXTRUSAO_DECODE[k]; });
   var total=0, totalFinos=0, porMotivo={}, porLinha={}, cruz={};
+  // Extrusao inteira (com finos) por turno e por linha
+  var geralTurno={}, geralLinha={}, geralLT={}, finosTurno={}, finosLinha={};
+  var linhasGeral=nomesLinha.slice();
   linhas.forEach(function(r){
+    var lg=r.linhaProd||'Sem linha', tg=String(r.turnoProd||'?');
+    if(linhasGeral.indexOf(lg)<0) linhasGeral.push(lg);
+    geralTurno[tg]=(geralTurno[tg]||0)+r.peso;
+    geralLinha[lg]=(geralLinha[lg]||0)+r.peso;
+    geralLT[lg+'||'+tg]=(geralLT[lg+'||'+tg]||0)+r.peso;
+    if(r.ehFinos){ finosTurno[tg]=(finosTurno[tg]||0)+r.peso; finosLinha[lg]=(finosLinha[lg]||0)+r.peso; }
     total+=r.peso;
     if(!r.ehFinos) return;
     var l=r.linhaProd||'Sem linha', m=r.saidaFinos||'—';
@@ -1259,6 +1268,20 @@ function renderCardsFinosExtrusao(fonteKey,linhas){
   h+=card('mc-extrusao','Extrusão — total',total,'kg — 100%');
   h+=card('mc-extrusao','Sem os finos',total-totalFinos,'kg — '+pct(total-totalFinos,total)+'% do total');
   h+=card('mc-finos','Finos',totalFinos,'kg — '+pct(totalFinos,total)+'% do total');
+  var turnos=Object.keys(geralTurno).sort();
+  h+='</div><div style="'+tit+'">Extrusão por turno</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin-bottom:12px">';
+  turnos.forEach(function(t){
+    h+=card('mc-extrusao',t==='?'?'Sem turno':'Turno '+t,geralTurno[t],'kg — '+pct(geralTurno[t],total)+'% do total • finos '+fN(finosTurno[t]||0)+' kg');
+  });
+  h+='</div><div style="'+tit+'">Extrusão por linha</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:12px">';
+  linhasGeral.forEach(function(l){
+    var det='<div style="margin-top:6px">';
+    turnos.forEach(function(t){
+      det+='<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:3px 0;border-top:1px solid #eef5ee"><span>'+(t==='?'?'Sem turno':'Turno '+t)+'</span><b>'+fN(geralLT[l+'||'+t]||0)+' kg</b></div>';
+    });
+    det+='<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:3px 0;border-top:1px solid #eef5ee;color:#0f766e"><span>dos quais finos</span><b>'+fN(finosLinha[l]||0)+' kg</b></div></div>';
+    h+=card('mc-extrusao',l,geralLinha[l]||0,'kg — '+pct(geralLinha[l]||0,total)+'% do total',det);
+  });
   h+='</div><div style="'+tit+'">Finos por motivo</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin-bottom:12px">';
   motivos.forEach(function(m){
     var v=porMotivo[m]||0;
@@ -1458,7 +1481,8 @@ function renderDashboardConsolidado(){
         data:v.data, fonte:vaiExtrusao?'extrusao':'ensaque_op', setor:'OP '+(op.numero||v.opId||'—')+' • T'+(v.turno||'—'),
         tipo:'', peso:Number(v.real)||0, motivo:v.motivoReprocesso||'—',
         codigo:v.codigoEtiqueta||'—', lancadoPor:v.operador||'—',
-        origemApontamento:vaiExtrusao?'Ensaque':null
+        origemApontamento:vaiExtrusao?'Ensaque':null,
+        linhaProd:v.linha||'Ensaque (sem linha)', turnoProd:v.turno
       });
     });
 
@@ -1499,7 +1523,8 @@ function renderDashboardConsolidado(){
           data:v.data, fonte:'extrusao', setor:nomeLinha+' • T'+(v.turno||'—'),
           tipo:'', peso:kg, motivo:'sem detalhamento por etiqueta (registro por linha/turno)',
           codigo:'—', lancadoPor:v.operador||'—',
-          origemApontamento:'Extrusão'
+          origemApontamento:'Extrusão',
+          linhaProd:nomeLinha, turnoProd:v.turno
         });
       });
     });
@@ -1536,7 +1561,7 @@ function renderDashboardConsolidado(){
       rows.push({
         data:v.data, fonte:'extrusao', setor:(v.linha||'—')+' • T'+(v.turno||'—'), linhaProd:v.linha||'Sem linha',
         tipo:'Finos', peso:Number(v.kg)||0, motivo:'Finos — '+(FINOS_EXTRUSAO_LABEL[v.tipo]||v.tipo||'—'),
-        codigo:'—', lancadoPor:v.por||'—', ehFinos:true, saidaFinos:FINOS_EXTRUSAO_LABEL[v.tipo]||v.tipo||'—',
+        codigo:'—', lancadoPor:v.por||'—', ehFinos:true, turnoProd:v.turno, saidaFinos:FINOS_EXTRUSAO_LABEL[v.tipo]||v.tipo||'—',
         origemApontamento:'Extrusão'
       });
     });
