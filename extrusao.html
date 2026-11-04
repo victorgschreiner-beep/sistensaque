@@ -388,7 +388,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <div class="mh">⚡ Apontamento — <span id="apt-linha-nome"></span></div>
     <div class="info-box" id="apt-op-info"></div>
     <div style="display:flex;gap:10px">
-      <div class="fg" style="flex:1"><label class="fl">Hora Inicial</label><input class="fi" type="time" id="apt-hi" oninput="calcEfic();atualizarTurnoPreview()"></div>
+      <div class="fg" style="flex:1"><label class="fl">Hora Inicial</label><input class="fi" type="time" id="apt-hi" oninput="aptSugerirOp();calcEfic();atualizarTurnoPreview()"></div>
       <div class="fg" style="flex:1"><label class="fl">Hora Final</label><input class="fi" type="time" id="apt-hf"></div>
     </div>
     <div class="fg">
@@ -399,8 +399,10 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
     <div class="fg"><label class="fl">Observação (opcional)</label><input class="fi" type="text" id="apt-obs" placeholder=""></div>
     <div id="apt-admin-fields" style="display:none">
       <div style="background:#fff3cd;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#856404">⚙️ <strong>Modo Admin</strong> — Turno e data serão calculados pela hora inicial</div>
+      <div class="fg"><label class="fl">Ordem do Apontamento</label><select class="fi" id="apt-op-sel" onchange="aptOpManual()"></select><div class="hint" id="apt-op-sel-hint"></div>
+        <div style="display:flex;gap:8px;margin-top:6px"><input class="fi" type="text" inputmode="numeric" id="apt-op-busca" placeholder="Não está na lista? Digite o nº da ordem" style="flex:1;min-width:0;font-size:12px" onkeydown="if(event.key==='Enter'){event.preventDefault();aptBuscarOp();}"><button type="button" onclick="aptBuscarOp()" style="background:#024f2b;color:#fff;border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Buscar</button></div></div>
       <div style="display:flex;gap:10px">
-        <div class="fg" style="flex:1"><label class="fl">Data do Apontamento</label><input class="fi" type="date" id="apt-data-override"></div>
+        <div class="fg" style="flex:1"><label class="fl">Data do Apontamento</label><input class="fi" type="date" id="apt-data-override" onchange="aptAdmDataMudou()"></div>
         <div class="fg" style="flex:1"><label class="fl">Turno (auto)</label><input class="fi" type="text" id="apt-turno-preview" readonly style="background:#f5f9f2;color:#024f2b;font-weight:700"></div>
       </div>
     </div>
@@ -2622,15 +2624,19 @@ function abrirApt(linha){
     }
   }
 
+  // Admin pode lançar horário retroativo sem OP ativa, se o dia já tem ordem apontada na linha
+  var isAdminApt=!!(SES&&SES.perfil==="admin");
+  var refSemAtiva=(isAdminApt&&!opFk)?apts.filter(function(a){return a.opFbKey;}).slice(-1)[0]:null;
+
   // BLOQUEIO: nao permite apontar sem OP ativa
-  if(!opFk){
+  if(!opFk&&!refSemAtiva){
     toast("Selecione uma OP antes de apontar!","err");
     setTimeout(function(){abrirSelOp(linha);},300);
     return;
   }
 
   // OP pode ser do dia anterior — usa cache se não estiver em OPS[]
-  var opReal=op||e.opAtivaCache||null;
+  var opReal=refSemAtiva?{fbKey:refSemAtiva.opFbKey,id:refSemAtiva.opNum,cod:refSemAtiva.cod,desc:refSemAtiva.desc}:(op||e.opAtivaCache||null);
   if(!opReal){
     // Busca no Firebase e reabre o modal
     DB.ref("ops/"+opFk).once("value",function(s){
@@ -2660,10 +2666,124 @@ function abrirApt(linha){
     if(SES&&SES.perfil==="admin"){
       G("apt-data-override").value=DT_FILA||hoje();
       atualizarTurnoPreview();
+      _APT_ADM={apts:apts.slice(), manual:false, extras:{}};
+      G("apt-op-busca").value="";
+      aptMontarOps();
+      aptCarregarOpsDoDia(G("apt-data-override").value);
     }
   }
   aM("m-apt");
   setTimeout(function(){G("apt-real").focus();},300);
+}
+
+// ── ADMIN: ORDEM DO APONTAMENTO ───────────────────────────
+// Só escolhe em qual OP este lançamento entra; NÃO troca a OP ativa da linha.
+// Sugestão: a OP do último apontamento iniciado até a hora inicial digitada.
+var _APT_ADM={apts:[],manual:false,extras:{}};
+function aptEhAdmin(){ return !!(SES&&SES.perfil==="admin"); }
+function aptOrdemHora(h){
+  var m=hdHm(h); if(m===null) return null;
+  return m>=hdHm(ESCALAS_TURNO[0].turnos[1].ini)?m-1440:m; // dia operacional começa às 21:00
+}
+function aptAdmListaOrdenada(){
+  return _APT_ADM.apts.filter(function(a){return a.opFbKey&&a.linha===linhaAtiva&&aptOrdemHora(a.horaIni)!==null;})
+    .sort(function(a,b){return aptOrdemHora(a.horaIni)-aptOrdemHora(b.horaIni);});
+}
+function aptMontarOps(){
+  var sel=G("apt-op-sel"), e=EST[linhaAtiva]||{}, mapa={}, ordem=[], anterior=sel.value;
+  function add(fk,id,cod,desc){
+    if(!fk||mapa[fk]) return;
+    mapa[fk]={fbKey:fk,id:id||"",cod:cod||"",desc:desc||cod||""};
+    ordem.push(fk);
+  }
+  aptAdmListaOrdenada().forEach(function(a){add(a.opFbKey,a.opNum,a.cod,a.desc);});
+  var ativa=e.opAtiva?(OPS.find(function(o){return o.fbKey===e.opAtiva;})||e.opAtivaCache):null;
+  if(ativa) add(ativa.fbKey||e.opAtiva,ativa.id,ativa.cod,ativa.desc);
+  OPS.forEach(function(o){ if(o.linha===linhaAtiva) add(o.fbKey,o.id,o.cod,o.desc); });
+  Object.keys(_APT_ADM.extras||{}).forEach(function(fk){ var o=_APT_ADM.extras[fk]; add(fk,o.id,o.cod,o.desc); });
+  _APT_ADM.mapa=mapa;
+  sel.innerHTML=ordem.map(function(fk){
+    var o=mapa[fk];
+    return '<option value="'+fk+'">'+o.id+' — '+String(o.desc).slice(0,30)+(fk===e.opAtiva?' (ativa)':'')+'</option>';
+  }).join("");
+  if(_APT_ADM.manual&&mapa[anterior]) sel.value=anterior; // a escolha do admin nunca é trocada pela sugestão
+  aptSugerirOp();
+}
+// Traz as OPs da linha programadas na data do lançamento (podem não estar na fila aberta)
+function aptCarregarOpsDoDia(dt){
+  if(!dt||!DB) return;
+  var linha=linhaAtiva;
+  DB.ref("ops").orderByChild("data").equalTo(dt).once("value").then(function(s){
+    if(linha!==linhaAtiva||!G("m-apt").classList.contains("on")) return;
+    if(s.exists()) s.forEach(function(c){
+      var o=c.val();
+      if(o&&o.linha===linha){ o.fbKey=c.key; _APT_ADM.extras[c.key]=o; }
+    });
+    aptMontarOps();
+  }).catch(function(e){console.warn("OPs do dia:",e.message);});
+}
+function aptBuscarOp(){
+  var num=(G("apt-op-busca").value||"").trim();
+  if(!num){toast("Digite o número da ordem","err");return;}
+  if(!DB){toast("Firebase não conectado","err");return;}
+  DB.ref("ops").orderByChild("id").equalTo(num).once("value").then(function(s){
+    var achadas=[];
+    if(s.exists()) s.forEach(function(c){var o=c.val();o.fbKey=c.key;achadas.push(o);});
+    if(!achadas.length){toast("Ordem "+num+" não encontrada","err");return;}
+    // Se o número existir em mais de um registro, prioriza o da linha aberta
+    var op=achadas.filter(function(o){return o.linha===linhaAtiva;}).slice(-1)[0]||achadas[achadas.length-1];
+    if(op.linha&&op.linha!==linhaAtiva) toast("Atenção: a ordem "+num+" está programada para "+op.linha,"err");
+    _APT_ADM.extras[op.fbKey]=op;
+    aptMontarOps();
+    G("apt-op-sel").value=op.fbKey;
+    aptOpManual();
+    G("apt-op-busca").value="";
+  }).catch(function(e){toast("Erro ao buscar ordem: "+e.message,"err");});
+}
+function aptOpEscolhida(){
+  if(!aptEhAdmin()||!_APT_ADM.mapa||!G("apt-op-sel")) return null;
+  return _APT_ADM.mapa[G("apt-op-sel").value]||null;
+}
+function aptAtualizarInfoOp(){
+  var op=aptOpEscolhida(); if(!op) return;
+  G("apt-op-info").innerHTML="<div class=\"ib-num\">OP: "+op.id+"</div><div class=\"ib-desc\">"+(op.desc||op.cod)+"</div><div class=\"ib-sub\">Meta: "+fN(getMetaHora(op.cod,linhaAtiva))+" kg/h</div>";
+  calcEfic();
+}
+function aptSugerirOp(){
+  if(!aptEhAdmin()||!_APT_ADM.mapa) return;
+  var hint=G("apt-op-sel-hint"), e=EST[linhaAtiva]||{}, hi=aptOrdemHora(G("apt-hi").value);
+  var lista=aptAdmListaOrdenada(), ant=null, prox=null;
+  if(hi!==null) lista.forEach(function(a){
+    if(aptOrdemHora(a.horaIni)<=hi) ant=a;
+    else if(!prox) prox=a;
+  });
+  var base=ant||prox, sel=G("apt-op-sel");
+  if(!_APT_ADM.manual){
+    if(base) sel.value=base.opFbKey;
+    else if(e.opAtiva&&_APT_ADM.mapa[e.opAtiva]) sel.value=e.opAtiva;
+  }
+  var txt="";
+  if(_APT_ADM.manual) txt="Escolhida manualmente. A OP ativa da linha não muda.";
+  else if(base) txt="Sugerida pelo apontamento "+base.horaIni+" → "+base.horaFim+". A OP ativa da linha não muda.";
+  else txt="Sem apontamento neste dia: confira a ordem.";
+  hint.textContent=txt;
+  hint.className="hint";
+  if(ant&&prox&&ant.opFbKey!==prox.opFbKey){
+    hint.textContent="⚠ Houve troca de ordem neste horário ("+ant.opNum+" → "+prox.opNum+"). Confira. "+txt;
+    hint.className="hint warn";
+  }
+  aptAtualizarInfoOp();
+}
+function aptOpManual(){ _APT_ADM.manual=true; aptSugerirOp(); }
+function aptAdmDataMudou(){
+  var dt=G("apt-data-override").value; if(!dt||!DB) return;
+  DB.ref("extrusao_apts").orderByChild("data").equalTo(dt).once("value").then(function(s){
+    var l=[];
+    if(s.exists()) s.forEach(function(c){var a=c.val();a.fbKey=c.key;if(a.linha===linhaAtiva) l.push(a);});
+    _APT_ADM.apts=l;
+    aptMontarOps();
+    aptCarregarOpsDoDia(dt);
+  }).catch(function(e){toast("Erro ao buscar apontamentos: "+e.message,"err");});
 }
 
 function atualizarTurnoPreview(){
@@ -2676,7 +2796,7 @@ function atualizarTurnoPreview(){
 
 function calcEfic(){
   var e=EST[linhaAtiva]||{};
-  var op=e.opAtiva?OPS.find(function(o){return o.fbKey===e.opAtiva;}):null;
+  var op=aptOpEscolhida()||(e.opAtiva?OPS.find(function(o){return o.fbKey===e.opAtiva;}):null);
   var metaH=op?getMetaHora(op.cod,linhaAtiva):0;
   var real=parseInt(G("apt-real").value)||0;
   var hint=G("apt-efic");
@@ -2694,7 +2814,7 @@ function salvarApt(){
   var real=parseInt(G("apt-real").value)||0;
   if(!hi||!hf){toast("Informe hora inicial e final","err");return;}
   var e=EST[linhaAtiva]||{};
-  var op=e.opAtiva?(OPS.find(function(o){return o.fbKey===e.opAtiva;})||e.opAtivaCache||null):null;
+  var op=aptOpEscolhida()||(e.opAtiva?(OPS.find(function(o){return o.fbKey===e.opAtiva;})||e.opAtivaCache||null):null);
   if(!op){toast("Nenhuma OP ativa — selecione a OP antes de salvar","err");return;}
   var metaH=op?getMetaHora(op.cod,linhaAtiva):0;
   var turnoApt=turnoDeHora(hi);
@@ -2702,7 +2822,7 @@ function salvarApt(){
   var dataApt=(SES&&SES.perfil==="admin"&&dataOverride&&dataOverride.value)?dataOverride.value:(DT_FILA||hoje());
   var apt={id:uid(),linha:linhaAtiva,opFbKey:op?op.fbKey:"",opNum:op?op.id:"",cod:op?op.cod:"",desc:op?(op.desc||op.cod):"",turno:turnoApt,data:dataApt,horaIni:hi,horaFim:hf,real:real,metaH:metaH,obs:G("apt-obs").value||"",operador:SES.login,ts:agora()};
   // Validação de sobreposição de horários na mesma linha e turno
-  var aptsExist=(EST[linhaAtiva]&&EST[linhaAtiva].apts)||[];
+  var aptsExist=aptEhAdmin()?_APT_ADM.apts:((EST[linhaAtiva]&&EST[linhaAtiva].apts)||[]);
   var hiMin=hi.replace(":",""); var hfMin=hf.replace(":","");
   // Para T1 (noturno) normalizar horas <= "06:00" somando 24h para comparação
   function normH(h,t){
@@ -2728,8 +2848,13 @@ function salvarApt(){
   DB.ref("extrusao_apts").push(apt).then(function(){
     fM("m-apt");
     toast("Apontamento salvo!","ok");
-    // Igual ensaque: acumula realExtrusao diretamente na OP
-    if(op && op.fbKey){
+    if(aptEhAdmin()){
+      // Lançamento retroativo: recalcula do zero a OP escolhida e o total do turno, se já fechado
+      recalcularRealExtrusao(op.fbKey);
+      recalcularTotalTurno(apt.data,apt.turno,apt.linha);
+      if(op.fbKey!==e.opAtiva) registrarLog("apontamento","Apontamento "+hi+"-"+hf+" ("+real+" kg) lançado na OP "+op.id+", diferente da OP ativa — "+linhaAtiva,"");
+    } else if(op && op.fbKey){
+      // Igual ensaque: acumula realExtrusao diretamente na OP
       DB.ref("ops/"+op.fbKey+"/realExtrusao").transaction(function(atual){
         return (Number(atual)||0) + real;
       });
@@ -8386,7 +8511,7 @@ function confAcrescentarApt(btn){
   _confAptCtx={opFk:opFk,linha:linha,turno:turno,data:data,op:op};
   G("conf-apt-info").innerHTML=
     '<strong>'+(op?op.id:opFk)+'</strong> — '+(op?op.desc||op.cod:'')+'<br>'+
-    '<span style="color:#739630">Linha: '+nomeCurto(linha)+'  |  Turno: '+turno+'  |  Data: '+data+'</span>';
+    '<span style="color:#739630">Linha: '+nomeCurto(linha)+'  |  Data: '+data+'  |  Turno: calculado pela hora de início</span>';
   G("conf-apt-hi").value="";
   G("conf-apt-hf").value="";
   G("conf-apt-kg").value="";
@@ -8406,9 +8531,12 @@ function confSalvarNovoApt(){
   if(kg<=0){toast("Informe os kg produzidos","err");return;}
   if(!ctx.opFk||!ctx.linha){toast("Contexto inválido","err");return;}
 
+  // Turno vem da hora lançada, não do turno planejado da OP (OP do T3 gerava apontamento das 03:00 em T3)
+  var turnoApt=turnoDeHora(hi);
+
   // Validar sobreposição com apts existentes da linha/turno/data
   var aptsExist=(CONF_DADOS.apts||[]).filter(function(a){
-    return a.linha===ctx.linha && a.turno===ctx.turno && a.data===ctx.data;
+    return a.linha===ctx.linha && a.turno===turnoApt && a.data===ctx.data;
   });
   var sobrepoe=aptsExist.find(function(a){
     return hi<a.horaFim && hf>a.horaIni;
@@ -8429,7 +8557,7 @@ function confSalvarNovoApt(){
   var apt={
     id:uid(), linha:ctx.linha, opFbKey:ctx.opFk,
     opNum:op.id||"", cod:op.cod||"", desc:op.desc||"",
-    turno:ctx.turno, data:ctx.data,
+    turno:turnoApt, data:ctx.data,
     horaIni:hi, horaFim:hf,
     real:kg, metaH:metaApt,
     obs:obs, acrescentado:true,
