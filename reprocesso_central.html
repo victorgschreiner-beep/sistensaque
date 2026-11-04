@@ -263,7 +263,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div class="card">
     <div class="ch"><span class="ct">Resumo por Fonte</span></div>
     <div class="tw"><table>
-      <thead><tr><th>Fonte</th><th style="text-align:right">Total (kg)</th><th style="text-align:right">% do período</th><th style="text-align:right">Registros</th><th style="text-align:right">% s/ produzido</th><th style="text-align:right">Descarte (kg)</th><th style="text-align:right">% perda s/ produzido</th></tr></thead>
+      <thead><tr><th>Fonte</th><th style="text-align:right">Total (kg)</th><th style="text-align:right">% do período</th><th style="text-align:right">Registros</th><th style="text-align:right">Reprocesso (kg)</th><th style="text-align:right">% Reproc.</th><th style="text-align:right">Descarte (kg)</th><th style="text-align:right">% Perda</th></tr></thead>
       <tbody id="dash-fonte-body"></tbody>
     </table></div>
   </div>
@@ -1565,7 +1565,8 @@ function renderDashboardConsolidado(){
     hh+='<div class="mc mc-hero mc-sem-varredura"><div class="ml">Total Reprocesso (sem Varredura)</div><div class="mv cg">'+fN(totalSemVarredura)+'</div><div class="ms">kg — material reaproveitavel no periodo • '+pctProd(totalSemVarredura)+' do produzido</div></div>';
     hh+='<div class="mc mc-hero mc-com-varredura"><div class="ml">Total com Varredura</div><div class="mv co">'+fN(totalGeral)+'</div><div class="ms">kg — inclui '+fN(totalVarredura)+' kg de varredura (descarte) • '+pctProd(totalGeral)+' do produzido</div></div>';
     hh+='<div class="mc mc-hero"><div class="ml">Produzido na Extrusão</div><div class="mv cg">'+(produzidoKg===null?'—':fN(produzidoKg))+'</div><div class="ms">kg apontados no período (toda a fábrica)</div></div>';
-    hh+='<div class="mc mc-hero" style="border:1.5px solid #c0392b;background:rgba(192,57,43,.05)"><div class="ml">Perda sobre o Produzido</div><div class="mv cr">'+pctProd(totalVarredura)+'</div><div class="ms">'+fN(totalVarredura)+' kg descartados (Varredura)</div></div>';
+    hh+='<div class="mc mc-hero" style="border:1.5px solid #024f2b;background:rgba(2,79,43,.04)"><div class="ml">Reprocesso sobre o Produzido</div><div class="mv cg">'+pctProd(totalSemVarredura)+'</div><div class="ms">'+fN(totalSemVarredura)+' kg de reprocesso (sem Varredura)</div></div>';
+    hh+='<div class="mc mc-hero" style="border:1.5px solid #c0392b;background:rgba(192,57,43,.05)"><div class="ml">Perda sobre o Produzido (Varredura)</div><div class="mv cr">'+pctProd(totalVarredura)+'</div><div class="ms">'+fN(totalVarredura)+' kg descartados (Varredura)</div></div>';
     G('dash-metrics-hero').innerHTML=hh;
 
     // Cards por tipo (so' contam linhas que carregam a taxonomia — reprocesso
@@ -1599,7 +1600,7 @@ function renderDashboardConsolidado(){
     fontesCards.forEach(function(f){
       var info=FONTE_LABELS[f]||{nome:f,css:'fonte-central'};
       var d=porFonte[f]||{peso:0,n:0,descarte:0};
-      hc+='<div class="mc mc-click '+FONTE_CARD_CLASS[f]+'" onclick="abrirGraficoMotivosSetor(\''+f+'\')"><div class="ml">'+info.nome+'</div><div class="mv co">'+fN(d.peso)+'</div><div class="ms">kg — '+d.n+' registro(s)</div><div class="ms">'+pctProd(d.peso)+' do produzido • perda '+pctProd(d.descarte)+'</div></div>';
+      hc+='<div class="mc mc-click '+FONTE_CARD_CLASS[f]+'" onclick="abrirGraficoMotivosSetor(\''+f+'\')"><div class="ml">'+info.nome+'</div><div class="mv co">'+fN(d.peso)+'</div><div class="ms">kg — '+d.n+' registro(s)</div><div class="ms">reprocesso '+pctProd(d.peso-d.descarte)+' • perda '+pctProd(d.descarte)+'</div></div>';
     });
     G('dash-metrics-setor').innerHTML=hc;
 
@@ -1612,11 +1613,12 @@ function renderDashboardConsolidado(){
       hf+='<td style="text-align:right">'+fN(porFonte[f].peso)+' kg</td>';
       hf+='<td style="text-align:right">'+pct+'%</td>';
       hf+='<td style="text-align:right">'+porFonte[f].n+'</td>';
-      hf+='<td style="text-align:right">'+pctProd(porFonte[f].peso)+'</td>';
+      hf+='<td style="text-align:right">'+fN(porFonte[f].peso-porFonte[f].descarte)+' kg</td>';
+      hf+='<td style="text-align:right">'+pctProd(porFonte[f].peso-porFonte[f].descarte)+'</td>';
       hf+='<td style="text-align:right">'+fN(porFonte[f].descarte)+' kg</td>';
       hf+='<td style="text-align:right">'+pctProd(porFonte[f].descarte)+'</td></tr>';
     });
-    G('dash-fonte-body').innerHTML = hf || '<tr><td colspan="7" style="text-align:center;color:#739630">Nenhum reprocesso no periodo/filtro selecionado</td></tr>';
+    G('dash-fonte-body').innerHTML = hf || '<tr><td colspan="8" style="text-align:center;color:#739630">Nenhum reprocesso no periodo/filtro selecionado</td></tr>';
 
     // Detalhamento
     rows.sort(function(a,b){ return (b.data||'').localeCompare(a.data||'') || b.peso-a.peso; });
