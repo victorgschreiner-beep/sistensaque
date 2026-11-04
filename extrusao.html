@@ -211,6 +211,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0f4f0;color:#1a1a1a;min-heig
 /* ── TOAST ── */
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#024f2b;color:#fff;padding:10px 22px;border-radius:24px;font-size:13px;font-weight:600;z-index:999;display:none;box-shadow:0 4px 20px rgba(0,0,0,.2)}
 
+.op-link{background:none;border:none;padding:2px 4px;font:inherit;font-weight:700;cursor:pointer;text-decoration:underline;color:inherit}
 /* ── CELULAR: DASHBOARD E LINHAS (só telas pequenas; computador não muda) ── */
 @media(max-width:760px){
   /* Topo e barra de turno */
@@ -1928,6 +1929,16 @@ function getOpsLinha(linha){
   }).sort(function(a,b){return (a.criadoEm||'')>(b.criadoEm||'')?1:-1;});
 }
 
+// Eficiência de UM apontamento, com a meta da ordem dele e proporcional ao tempo lançado.
+// metaH gravado é kg/h; em lançamento pela Conferência (acrescentado) já é a meta do período.
+// Sem meta gravada, usa o cadastro atual do produto na linha.
+function efApontamento(a){
+  var real=Number(a.real)||0, gravada=Number(a.metaH)||0, metaPeriodo;
+  if(gravada&&a.acrescentado) metaPeriodo=gravada;
+  else metaPeriodo=(gravada||getMetaHora(a.cod||"",a.linha))*minApontamento(a)/60;
+  return metaPeriodo?Math.round(real/metaPeriodo*100):0;
+}
+
 function renderLinhaCard(linha){
   var grid=G("linhas-grid");
   var card=G("card-"+encId(linha));
@@ -2055,7 +2066,7 @@ function renderLinhaCard(linha){
     histVis.forEach(function(item){
       if(item.tipo==="apt"){
         var a=item.d;
-        var ef=metaH?Math.round((Number(a.real)||0)/metaH*100):0;
+        var ef=efApontamento(a);
         var corEf=ef>=90?"#024f2b":ef>=70?"#d29922":"#c0392b";
         var isOutraOp=opAtivaFk && a.opFbKey && a.opFbKey!==opAtivaFk;
         h+='<div class="hist-item hist-apt" style="justify-content:space-between'+(isOutraOp?';opacity:.7':'')+'">';
@@ -2064,7 +2075,7 @@ function renderLinhaCard(linha){
         h+='<span class="hist-hora">'+a.horaIni+' → '+a.horaFim+'</span>';
         h+='<span class="hist-val">'+fN(a.real)+' kg</span>';
         h+='<span class="hist-info" style="color:'+corEf+'">'+ef+'% meta</span>';
-        if(a.opNum) h+='<span style="font-size:10px;color:'+(isOutraOp?"#c0392b":"#739630")+';font-weight:600;margin-left:4px">'+a.opNum+'</span>';
+        if(a.opNum) h+='<button type="button" class="op-link" data-op="'+a.opNum+'" title="Ver produto e histórico da ordem" onclick="abrirOpInfo(this.dataset.op)" style="font-size:10px;color:'+(isOutraOp?"#c0392b":"#739630")+';margin-left:4px">'+a.opNum+'</button>';
         h+='<button data-fk="'+a.fbKey+'" onclick="editarAptOperador(this.dataset.fk)" style="background:#739630;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;margin-left:4px">✏️</button>';
         h+='<button data-fk="'+a.fbKey+'" onclick="excluirAptOperador(this.dataset.fk)" style="background:#c0392b;color:#fff;border:none;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;margin-left:2px">🗑</button>';
         h+='</div>';
@@ -4170,7 +4181,7 @@ function abrirDashboard(){
   dashPopularAreas();
   G("dash-area-f").value="";
   aM("m-dash");
-  gerarDashboard();
+  return gerarDashboard();
 }
 
 // Popula o select ÁREA DA PARADA com os grupos cadastrados no catálogo de motivos (PARADAS).
@@ -4202,7 +4213,7 @@ function gerarDashboard(){
 
   G("dash-cards").innerHTML='<div style="grid-column:1/-1;text-align:center;padding:20px;color:#4a664a">Carregando...</div>';
 
-  Promise.all([
+  return Promise.all([
     DB.ref("extrusao_apts").orderByChild("data").startAt(di).endAt(df).once("value"),
     DB.ref("extrusao_paradas").orderByChild("data").startAt(di).endAt(df).once("value"),
     // Falha ao ler finos (ex.: regra do Firebase) não pode derrubar o Dashboard
@@ -5186,7 +5197,7 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
   var finosPeriodo=(hdOpts&&hdOpts.finos)||[];
   window._DASH_CACHE={apts:apts,paradas:paradas,di:di,df:df,areaF:areaF,finos:finosPeriodo};
   // Cache para o PDF Granulometria × Máquina (mesmos apontamentos/filtros da tela)
-  // Cópia própria para o PDF do Dashboard: a busca por OP acrescenta itens em _DASH_CACHE.apts (mesmo array) e duplicaria valores
+  // Cópia própria para o PDF do Dashboard
   window._DASH_PDF_CACHE={apts:apts.slice(),di:di,df:df,linhaF:(hdOpts&&hdOpts.linhaF)||"",turnoF:(hdOpts&&hdOpts.turnoF)||"",skuF:skuF||""};
   window._GRAN_CACHE={apts:apts,di:di,df:df,linhaF:(hdOpts&&hdOpts.linhaF)||"",turnoF:(hdOpts&&hdOpts.turnoF)||"",skuF:skuF||""};
   // Paradas filtradas por ÁREA — usadas nos indicadores/gráficos de paradas (card, Pareto, Paradas por SKU).
@@ -6764,10 +6775,7 @@ function buscarOpDireta(){
         return;
       }
 
-      // Popula _DASH_CACHE com os apts encontrados
-      window._DASH_CACHE=window._DASH_CACHE||{apts:[],paradas:[]};
-      var existKeys=(window._DASH_CACHE.apts||[]).map(function(a){return a.fbKey;});
-      apts.forEach(function(a){if(!existKeys.includes(a.fbKey)) window._DASH_CACHE.apts.push(a);});
+      // A consulta de OP não altera _DASH_CACHE: somar aqui duplicava kg nos relatórios do período
 
       // Renderiza com a cadeia completa — Programado = original (elo 1), Realizado = soma de tudo,
       // com detalhamento por elo se houve reprogramação
@@ -6777,6 +6785,76 @@ function buscarOpDireta(){
     }).catch(function(e){
       G("dash-op-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#c0392b">Erro: '+e.message+'</div>';
     });
+  });
+}
+
+// ── CONSULTA RÁPIDA DA ORDEM (somente leitura) ────────────
+// Número da ordem clicável: mostra produto e kg apontado na cadeia inteira (reprogramações inclusas).
+var _OP_INFO_ATUAL="";
+function abrirOpInfo(opNum){
+  if(!opNum) return;
+  if(!DB){toast("Firebase não conectado","err");return;}
+  _OP_INFO_ATUAL=opNum;
+  function esc(t){ return String(t==null?"":t).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+  G("op-info-titulo").textContent="Ordem "+opNum;
+  G("op-info-corpo").innerHTML='<div style="text-align:center;padding:20px;color:#4a664a">Buscando...</div>';
+  aM("m-op-info");
+  buscarCadeiaOP(opNum,function(cadeia){
+    var buscas=[DB.ref("extrusao_apts").orderByChild("opNum").equalTo(opNum).once("value")];
+    cadeia.forEach(function(elo){ if(elo.fbKey) buscas.push(DB.ref("extrusao_apts").orderByChild("opFbKey").equalTo(elo.fbKey).once("value")); });
+    Promise.all(buscas).then(function(snaps){
+      if(_OP_INFO_ATUAL!==opNum) return;
+      var mapa={};
+      snaps.forEach(function(sn){ if(sn.exists()) sn.forEach(function(c){ mapa[c.key]=c.val(); }); });
+      var apts=Object.values(mapa).sort(function(a,b){
+        var x=(a.data||"")+String(a.turno||"")+(a.linha||"")+String(aptOrdemHora(a.horaIni)+2000).padStart(5,"0");
+        var y=(b.data||"")+String(b.turno||"")+(b.linha||"")+String(aptOrdemHora(b.horaIni)+2000).padStart(5,"0");
+        return x>y?1:-1;
+      });
+      var ref=cadeia[0]||apts[0]||{};
+      var total=0, grupos={}, ordem=[];
+      apts.forEach(function(a){
+        var kg=Number(a.real)||0; total+=kg;
+        var k=(a.data||"")+"|"+(a.turno||"")+"|"+(a.linha||"");
+        if(!grupos[k]){ grupos[k]={data:a.data,turno:a.turno,linha:a.linha,kg:0,n:0}; ordem.push(k); }
+        grupos[k].kg+=kg; grupos[k].n++;
+      });
+      function dBR(d){ return d?d.split("-").reverse().join("/"):"-"; }
+      var h='<div style="background:#f5f9f2;border-radius:8px;padding:10px 12px;margin-bottom:10px">';
+      h+='<div style="font-size:15px;font-weight:800;color:#024f2b">'+esc(ref.desc||ref.cod||"Produto não identificado")+'</div>';
+      if(ref.cod) h+='<div style="font-size:11px;color:#4a664a">Código: '+esc(ref.cod)+'</div>';
+      h+='<div style="font-size:18px;font-weight:800;color:#739630;margin-top:6px">'+fN(total)+' kg <span style="font-size:11px;color:#4a664a;font-weight:600">em '+apts.length+' apontamento(s)</span></div></div>';
+      if(!apts.length) h+='<div style="text-align:center;padding:14px;color:#4a664a;font-size:12px">Nenhum apontamento nesta ordem.</div>';
+      else{
+        var th='padding:6px 8px;font-size:10px;color:#fff;background:#024f2b;text-align:left';
+        var td='padding:6px 8px;border-bottom:1px solid #eef5ee';
+        h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><tr><th style="'+th+'">DATA</th><th style="'+th+'">TURNO</th><th style="'+th+'">LINHA</th><th style="'+th+';text-align:right">KG</th><th style="'+th+';text-align:right">APONT.</th></tr>';
+        ordem.forEach(function(k){ var g=grupos[k];
+          h+='<tr><td style="'+td+'">'+dBR(g.data)+'</td><td style="'+td+'">T'+esc(g.turno)+'</td><td style="'+td+'">'+esc(g.linha)+'</td><td style="'+td+';text-align:right;font-weight:700">'+fN(g.kg)+'</td><td style="'+td+';text-align:right">'+g.n+'</td></tr>';
+        });
+        h+='<tr style="background:#f4f9f4;font-weight:800"><td style="padding:6px 8px;color:#024f2b" colspan="3">TOTAL</td><td style="padding:6px 8px;text-align:right">'+fN(total)+'</td><td style="padding:6px 8px;text-align:right">'+apts.length+'</td></tr></table></div>';
+        h+='<details style="margin-top:10px;font-size:12px"><summary style="cursor:pointer;font-weight:700;color:#024f2b;padding:4px 0">Ver hora a hora</summary>';
+        apts.forEach(function(a){
+          h+='<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 2px;border-bottom:1px solid #eef5ee"><span>'+dBR(a.data)+' · T'+esc(a.turno)+' · '+esc(a.horaIni)+' → '+esc(a.horaFim)+'</span><b>'+fN(a.real)+' kg</b></div>';
+        });
+        h+='</details>';
+      }
+      G("op-info-corpo").innerHTML=h;
+    }).catch(function(e){
+      G("op-info-corpo").innerHTML='<div style="padding:14px;color:#c0392b;font-size:12px">Erro ao buscar: '+esc(e.message)+'</div>';
+    });
+  });
+}
+// Abre a consulta completa da ordem no Dashboard (Programado x Realizado, reprogramações e PDF)
+function opInfoAbrirDashboard(){
+  var op=_OP_INFO_ATUAL; if(!op) return;
+  fM("m-op-info");
+  if(G("dash-op-f")) G("dash-op-f").value="";
+  G("dash-op-busca-direta").value=op;
+  // Só consulta depois do Dashboard terminar: ele renderiza a OP só com o período e sobrescreveria o total
+  Promise.resolve(abrirDashboard()).then(function(){
+    buscarOpDireta();
+    G("dash-op-busca-direta").scrollIntoView({behavior:"smooth",block:"start"});
   });
 }
 
@@ -7589,7 +7667,7 @@ function confRenderizar(dt, ops, apts, paradas, soP){
 
       aptsT.forEach(function(a){
         var metaH=a.metaH||0;
-        var ef=metaH?Math.round((Number(a.real)||0)/metaH*100):0;
+        var ef=efApontamento(a);
         var corEf=ef>=90?"#024f2b":ef>=70?"#d29922":"#c0392b";
         h+='<div class="conf-linha-item conf-apt-item">';
         h+='<span class="conf-item-hora">'+a.horaIni+' → '+a.horaFim+'</span>';
@@ -8755,7 +8833,7 @@ function resumoAdmRenderizar(apts,paradas,ops,dt,turno,linhaFiltro,qualid,turnos
       h+='<th style="padding:5px 8px;text-align:right;color:#024f2b">Ef%</th>';
       h+='<th style="padding:5px 8px;text-align:left;color:#024f2b">OP</th></tr>';
       aptsL.sort(function(a,b){return (a.horaIni||"")>(b.horaIni||"")?1:-1;}).forEach(function(a,i){
-        var ef=a.metaH?Math.round((Number(a.real)||0)/a.metaH*100):0;
+        var ef=efApontamento(a);
         var cor=ef>=85?"#024f2b":ef>=70?"#d29922":"#c0392b";
         h+='<tr style="background:'+(i%2?"#f9fbf9":"#fff")+'">';
         h+='<td style="padding:4px 8px">'+a.horaIni+' → '+a.horaFim+'</td>';
@@ -8763,7 +8841,7 @@ function resumoAdmRenderizar(apts,paradas,ops,dt,turno,linhaFiltro,qualid,turnos
         h+='<td style="padding:4px 8px;text-align:right;font-weight:700">'+fN(a.real)+'</td>';
         h+='<td style="padding:4px 8px;text-align:right">'+fN(a.metaH||0)+'</td>';
         h+='<td style="padding:4px 8px;text-align:right;font-weight:700;color:'+cor+'">'+ef+'%</td>';
-        h+='<td style="padding:4px 8px;color:#739630">'+a.opNum+'</td></tr>';
+        h+='<td style="padding:4px 8px;color:#739630"><button type="button" class="op-link" data-op="'+(a.opNum||"")+'" title="Ver produto e histórico da ordem" onclick="abrirOpInfo(this.dataset.op)">'+(a.opNum||"")+'</button></td></tr>';
       });
       h+='</table></div>';
     }
@@ -9087,6 +9165,17 @@ function admIniciarOp(btn){
   }).catch(function(e){toast("Erro ao iniciar OP: "+e.message,"err");});
 }
 </script>
+<!-- MODAL CONSULTA DA ORDEM -->
+<div class="ov" id="m-op-info" onclick="if(event.target===this)fM('m-op-info')">
+  <div class="modal" style="max-width:560px;max-height:90vh;overflow-y:auto">
+    <div class="mh" id="op-info-titulo"></div>
+    <div id="op-info-corpo"></div>
+    <div class="mr" style="margin-top:12px">
+      <button class="btn-cancel" onclick="fM('m-op-info')">Fechar</button>
+      <button class="btn-ok" onclick="opInfoAbrirDashboard()">📊 Ver no Dashboard</button>
+    </div>
+  </div>
+</div>
 <!-- PWA: instalação, Service Worker e aviso de conexão -->
 <div id="pwa-offline" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#c0392b;color:#fff;padding:8px 12px;font-size:13px;font-weight:700;text-align:center">⚠ Sem conexão com o servidor. Lançamentos só são confirmados quando a conexão voltar. Não feche o app.</div>
 <button id="pwa-instalar" type="button" style="display:none;position:fixed;right:12px;bottom:12px;z-index:9998;background:#024f2b;color:#fff;border:none;padding:10px 16px;border-radius:24px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3)">📲 Instalar app</button>
