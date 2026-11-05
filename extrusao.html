@@ -4219,9 +4219,22 @@ function gerarDashboard(){
     // Falha ao ler finos (ex.: regra do Firebase) não pode derrubar o Dashboard
     DB.ref("extrusao_finos").orderByChild("data").startAt(di).endAt(df).once("value").catch(function(e){
       console.warn("Finos:",e.message); toast("Não foi possível ler os finos: "+e.message,"err"); return null;
+    }),
+    // Últimos apontamentos antes do período: dão o produto de um turno parado no início do período.
+    // Se a leitura falhar, as horas desse turno apenas ficam sem família, como antes.
+    DB.ref("extrusao_apts").orderByChild("data").endAt(new Date((hdDiaNum(di)-1)*86400000).toISOString().slice(0,10)).limitToLast(LIMITE_APTS_ANTERIORES).once("value").catch(function(e){
+      console.warn("Apontamentos anteriores:",e.message); return null;
     })
   ]).then(function(results){
     var apts=[], paradas=[], finos=[];
+    var ultimoAptAnterior={};
+    if(results[3]&&results[3].exists()) results[3].forEach(function(c){
+      var a=c.val();
+      if(!a.linha||!a.cod) return;
+      var s=hdAbs(a.data,a.turno,a.horaIni); if(s===null) return;
+      var u=ultimoAptAnterior[a.linha];
+      if(!u||s>u.s) ultimoAptAnterior[a.linha]={s:s,a:a};
+    });
     if(results[2]&&results[2].exists()) results[2].forEach(function(c){
       var f=c.val();
       if(turnoF&&String(f.turno)!==turnoF) return;
@@ -4252,7 +4265,7 @@ function gerarDashboard(){
     var aptsLinhaTempo=aptsHD;
     if(skuF){apts=apts.filter(function(a){return (a.cod||"").toLowerCase().includes(skuF)||(a.desc||"").toLowerCase().includes(skuF);});}
 
-    dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, {diasProducao:Object.keys(diasProducao).sort(), turnoF:turnoF, linhaF:linhaF, paradasHD:paradasHD, finos:finos});
+    dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, {diasProducao:Object.keys(diasProducao).sort(), turnoF:turnoF, linhaF:linhaF, paradasHD:paradasHD, finos:finos, ultimoAptAnterior:ultimoAptAnterior});
   }).catch(function(e){toast("Erro: "+e.message,"err");});
 }
 
@@ -4434,11 +4447,13 @@ function verificarReprocessoNaCriacao(){
 // Atribuição por família: minuto apontado → produto do apontamento; minuto sem
 // apontamento → herda o apontamento anterior do mesmo turno (a OP continuava na
 // linha); início do turno sem apontamento → herda o 1º apontamento do turno;
-// turno inteiro sem apontamento → bucket "SEM" (conta no total, sem família).
+// turno coberto por paradas → último produto da linha; demais turnos sem apontamento → bucket "SEM" (conta no total, sem família).
 var GRUPO_PARADA_NAO_RODANDO="Fator Externo/Parada Planejada";
 var COD_PARADA_FINAL_TURNO=23; // catálogo PARADAS: "Parada Final de Turno"
 var EXT_MAX_FIM_TURNO_MIN=180; // Parada Final de Turno pode estender o turno em no máximo 3 h além da escala
 var MAX_MIN_APT_HORAS=600; // 10h — apontamento maior que isso é lançamento inconsistente
+var LIMITE_APTS_ANTERIORES=400; // apontamentos lidos antes do período para achar o último produto de cada linha
+var TOL_MIN_TURNO_PARADO=30; // minutos sem parada aceitos para considerar o turno sem apontamento como parado
 
 // TABELA DE ESCALAS — quando a escala mudar, adicionar uma nova linha com a data
 // de início (dia operacional). Cada turno: ini/fim em "HH:MM"; turno que começa
@@ -4499,7 +4514,7 @@ function calcHorasDisponiveis(aptsTL, paradas, skuF, opts){
   opts=opts||{};
   var FAMS=["AQUA","PET","HORSE","SEM"];
   function zf(){ return {AQUA:0,PET:0,HORSE:0,SEM:0}; }
-  var res={min:zf(), semApt:zf(), minRod:zf(), semAptRod:zf(), bruto:0, fe:0, disp:0, porLinha:{}, turnosEscala:{}, escalas:{}, aptsInvalidos:0, turnosSemApt:0, turnosFimParada:0, fePorMotivo:{}};
+  var res={min:zf(), semApt:zf(), minRod:zf(), semAptRod:zf(), bruto:0, fe:0, disp:0, porLinha:{}, turnosEscala:{}, escalas:{}, aptsInvalidos:0, turnosSemApt:0, turnosParadosFamilia:0, turnosParadosSemProduto:0, turnosFimParada:0, fePorMotivo:{}};
   function casaSku(a){
     if(!skuF) return true;
     return (a.cod||"").toLowerCase().includes(skuF)||(a.desc||"").toLowerCase().includes(skuF);
@@ -4564,7 +4579,18 @@ function calcHorasDisponiveis(aptsTL, paradas, skuF, opts){
           for(var i=Math.max(x.s,J.ini);i<Math.min(x.e,fimT);i++) outraPar[i-J.ini]=true;
         });
         var primeiro=null; for(var j=0;j<L;j++){ if(dono[j]){ primeiro=dono[j]; break; } }
-        if(!primeiro) res.turnosSemApt++;
+        if(!primeiro){
+          // Turno sem apontamento e coberto por paradas: as horas vão para o último produto que estava na linha.
+          // Com horas descobertas acima da tolerância, segue como "sem apontamento" (sem família) e gera alerta.
+          var descoberto=0;
+          for(var q=0;q<lim;q++){ if(!desc[q]&&!outraPar[q]) descoberto++; }
+          if(descoberto<=TOL_MIN_TURNO_PARADO){
+            var ultS=null, ultA=null;
+            (aptsPorLinha[linha]||[]).forEach(function(x){ if(x.s<J.ini&&x.a.cod&&(ultS===null||x.s>ultS)){ ultS=x.s; ultA=x.a; } });
+            if(!ultA&&opts.ultimoAptAnterior&&opts.ultimoAptAnterior[linha]) ultA=opts.ultimoAptAnterior[linha].a;
+            if(ultA){ primeiro=ultA; res.turnosParadosFamilia++; } else res.turnosParadosSemProduto++;
+          } else res.turnosSemApt++;
+        }
         var PL=res.porLinha[linha]=res.porLinha[linha]||{bruto:0,fe:0,disp:0,porTurno:{}};
         PL.porTurno[t]=PL.porTurno[t]||{bruto:0,fe:0,disp:0};
         var atual=null;
@@ -4575,10 +4601,10 @@ function calcHorasDisponiveis(aptsTL, paradas, skuF, opts){
           PL.bruto++; PL.porTurno[t].bruto++; res.bruto++;
           if(desc[m]){ PL.fe++; PL.porTurno[t].fe++; res.fe++; res.fePorMotivo[desc[m]]=(res.fePorMotivo[desc[m]]||0)+1; continue; }
           PL.disp++; PL.porTurno[t].disp++; res.disp++;
-          if(lacuna) PL.semApt=(PL.semApt||0)+1;
+          if(lacuna&&!outraPar[m]) PL.semApt=(PL.semApt||0)+1; // minuto coberto por parada não é falta de apontamento
           var fam=a?familiaProduto(a.cod):"SEM";
           res.min[fam]++;
-          if(lacuna) res.semApt[fam]++;
+          if(lacuna&&!outraPar[m]) res.semApt[fam]++;
           if(!outraPar[m]){ res.minRod[fam]++; if(lacuna) res.semAptRod[fam]++; }
         }
       });
@@ -4737,7 +4763,8 @@ function exportarHorasDispPDF(){
   ["Base = para cada dia operacional com produção na fábrica, cada linha x todos os turnos da escala. O turno termina no fim da Parada Final de Turno (máx. 3 h além da escala); sem ela, no horário da escala.",
    "Horas disponíveis = Base - paradas do grupo "+GRUPO_PARADA_NAO_RODANDO+", descontadas só na parte que cai dentro",
    "de cada turno da base (sem contar sobreposições em dobro). As demais paradas contam como disponível.",
-   "Parada ainda aberta conta até o fim do turno (ou até o momento da geração, se o turno estiver em andamento)."
+   "Parada ainda aberta conta até o fim do turno (ou até o momento da geração, se o turno estiver em andamento).",
+   "Turno com parada e sem apontamento: as horas ficam na família do último produto que estava na linha."
   ].forEach(function(t){ precisa(5); doc.text(t,ML,y); y+=4.3; });
   var al=[];
   if(C.skuF) al.push("Filtro de SKU ativo: contam só os minutos em que o SKU estava na linha.");
@@ -5339,7 +5366,7 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
           '<div><div style="font-size:9px;font-weight:700;color:#739630">⏱ HORAS DISPONÍVEIS</div>'+
             '<div style="font-size:15px;font-weight:800;color:'+card.c+'">'+fHd(card.min)+'</div>'+
             '<div style="font-size:10px;color:#4a664a">'+pctH+'% do tempo</div>'+
-            (card.semApt?'<div style="font-size:10px;color:#d29922" title="Horas sem apontamento que foram contadas como disponíveis">incl. '+fHd(card.semApt)+' sem apont.</div>':'')+
+            (card.semApt?'<div style="font-size:10px;color:#d29922" title="Horas sem apontamento e sem parada lançada, contadas como disponíveis">incl. '+fHd(card.semApt)+' sem apont.</div>':'')+
           '</div>'+
           '<div><div style="font-size:9px;font-weight:700;color:#739630">KG/H</div>'+
             '<div style="font-size:15px;font-weight:800;color:'+card.c+'">'+(card.min?fN(kgH):"—")+'</div>'+
@@ -5421,9 +5448,10 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
         '</details></div>';
     }
     var alertas='';
-    if(HR.turnosSemApt) alertas+='<div>⚠ <strong>'+HR.turnosSemApt+'</strong> turno(s)-linha da base sem nenhum apontamento — contaram como disponível (fora o Fator Externo). Se a linha estava parada o turno inteiro, lance a parada com o motivo correto.</div>';
+    if(HR.turnosSemApt) alertas+='<div>⚠ <strong>'+HR.turnosSemApt+'</strong> turno(s)-linha da base sem apontamento e sem parada cobrindo o turno — contaram como disponível, sem família. Se a linha estava parada, lance a parada com o motivo correto.</div>';
+    if(HR.turnosParadosSemProduto) alertas+='<div>⚠ <strong>'+HR.turnosParadosSemProduto+'</strong> turno(s)-linha parado(s) sem produto anterior identificado — as horas contam no total, mas ficam sem família.</div>';
     if(HR.aptsInvalidos) alertas+='<div>⚠ <strong>'+HR.aptsInvalidos+'</strong> apontamento(s) com horário vazio ou inconsistente — tratados como hora sem apontamento.</div>';
-    if(skuF) alertas+='<div>ℹ Filtro de SKU ativo: contam só os minutos em que o SKU estava na linha (turnos sem apontamento ficam fora).</div>';
+    if(skuF) alertas+='<div>ℹ Filtro de SKU ativo: contam só os minutos em que o SKU estava na linha (turnos sem apontamento só entram quando parados e com esse SKU como último produto da linha).</div>';
     elHD.innerHTML=
       '<div style="background:#fff;border-radius:12px;border:1px solid #d4e8d4;padding:14px 16px">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">'+
@@ -5439,7 +5467,7 @@ function dashRender(apts, paradas, di, df, areaF, aptsLinhaTempo, skuF, hdOpts){
         '</div>'+
         '<div style="font-size:11px;color:#4a664a;margin-bottom:10px">'+(escHtml||'Nenhum dia com produção no período.')+'</div>'+
         tab+
-        '<div style="font-size:11px;color:#4a664a;margin-top:10px;line-height:1.5">Regra: cada linha × todos os turnos da escala nos dias com produção na fábrica, menos paradas <strong>'+GRUPO_PARADA_NAO_RODANDO+'</strong> cortadas na janela de cada turno (sem contar em dobro). Demais paradas e horas sem apontamento contam como disponível. Turno em andamento conta até agora.</div>'+
+        '<div style="font-size:11px;color:#4a664a;margin-top:10px;line-height:1.5">Regra: cada linha × todos os turnos da escala nos dias com produção na fábrica, menos paradas <strong>'+GRUPO_PARADA_NAO_RODANDO+'</strong> cortadas na janela de cada turno (sem contar em dobro). Demais paradas e horas sem apontamento contam como disponível. Turno parado sem apontamento fica na família do último produto da linha. Turno em andamento conta até agora.</div>'+
         (alertas?'<div style="font-size:11px;color:#8a6d00;background:#fff8e6;border:1px solid #f0d99a;border-radius:8px;padding:6px 10px;margin-top:8px;line-height:1.6">'+alertas+'</div>':'')+
       '</div>';
   }
