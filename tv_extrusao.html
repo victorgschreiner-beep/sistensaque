@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#011a0a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Raguife — TV Extrusão</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
@@ -96,6 +100,53 @@ body{font-family:"Segoe UI",sans-serif;background:#060e06;color:#e8f0e8;height:1
 .qual-chip.bad .qc-v{color:#ff5c4d}
 @keyframes qflicker{0%,100%{box-shadow:0 0 0 rgba(231,76,60,0)}50%{box-shadow:0 0 9px rgba(231,76,60,.65)}}
 .qual-vazio{font-size:10px;color:#4a664a;text-align:center;padding:4px 0}
+
+/* ═══════════ RESPONSIVO — TABLET / CELULAR ═══════════
+   TV (tela larga, sem toque) permanece com o layout original.
+   Tablet/celular: página rola, cards empilham, rodapé vira lista. */
+@media (max-width:1100px) and (pointer:coarse), (max-width:900px){
+  body{height:auto;min-height:100vh;min-height:100dvh;overflow-x:hidden;overflow-y:auto}
+  .grid{grid-template-columns:1fr 1fr;flex:none;padding:10px}
+  .totais-bar{order:1}
+  .topbar{order:0;position:sticky;top:0;z-index:10}
+  .grid{order:2}
+  .rodape{order:3}
+  .op-desc{max-width:100%}
+}
+@media (max-width:640px){
+  .topbar{height:auto;padding:8px 12px;flex-wrap:wrap;gap:4px}
+  .top-sub{font-size:11px;letter-spacing:1px}
+  .top-right{gap:10px}
+  .top-hora{font-size:18px;letter-spacing:1px}
+  .top-turno{font-size:11px;padding:3px 10px}
+  .top-data{font-size:11px}
+
+  .totais-bar{flex-direction:column;padding:6px 12px;gap:4px}
+  .tot-sep{width:100%;height:1px}
+  .tot-item{width:100%;justify-content:space-between;gap:8px}
+  .tot-lbl{font-size:9px}
+  .tot-val{font-size:18px}
+
+  .grid{grid-template-columns:1fr;gap:10px;padding:10px}
+  .card{padding:12px 12px 10px}
+  .velocimetro-wrap svg{max-width:220px}
+  .met-v{font-size:17px}
+  .qual-chip .qc-l{font-size:9px}
+  .qual-chip .qc-v{font-size:13px}
+
+  /* Rodapé: letreiro rolante vira lista legível */
+  .rodape{height:auto;flex-direction:column;align-items:stretch;overflow:visible;padding-bottom:env(safe-area-inset-bottom)}
+  .rod-titulo{padding:8px 12px;height:auto}
+  .rodape > div:nth-child(2){overflow:visible!important}
+  .rod-scroll{animation:none;flex-direction:column;align-items:stretch;white-space:normal}
+  .rod-item{display:flex;flex-wrap:wrap;gap:4px 8px;padding:8px 12px;border-right:none;border-bottom:1px solid #1a3a1a;font-size:12px}
+  .rod-dup{display:none!important}
+  .rod-total{margin-left:0;border-left:none;padding:8px 12px;text-align:right}
+}
+@media (max-width:380px){
+  .qual-row{flex-wrap:wrap}
+  .qual-chip{flex:1 1 30%}
+}
 </style>
 </head>
 <body>
@@ -477,9 +528,9 @@ function renderRodape(){
 
   // Duplica para loop contínuo
   var h="";
-  [0,1].forEach(function(){
+  [0,1].forEach(function(_,copia){
     todasParadas.forEach(function(p){
-      h+='<span class="rod-item">';
+      h+='<span class="rod-item'+(copia?' rod-dup':'')+'">';
       h+='<span class="rod-linha">'+p.linha+'</span>';
       h+='<span class="rod-hora">'+p.horaIni+' → '+p.horaFim+'</span>';
       h+='<span class="rod-sep">·</span>';
