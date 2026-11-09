@@ -296,8 +296,8 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <select id="dash-turno" style="width:auto" onchange="gerarDashboardQual()">
         <option value="">Todos os turnos</option>
         <option value="1">Turno 1 (21h-06h)</option>
-        <option value="2">Turno 2 (06h-16h)</option>
-        <option value="3">Turno 3 (16h-21h)</option>
+        <option value="2">Turno 2 (06h-17h)</option>
+        <option value="3">Turno 3 (17h-21h)</option>
       </select>
       <select id="dash-analista" style="width:auto" onchange="gerarDashboardQual()">
         <option value="">Todos os analistas</option>
@@ -410,8 +410,8 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <div class="fg"><label class="fl">Turno</label>
         <select id="rt-turno">
           <option value="1">Turno 1 (21h-06h)</option>
-          <option value="2">Turno 2 (06h-16h)</option>
-          <option value="3">Turno 3 (16h-21h)</option>
+          <option value="2">Turno 2 (06h-17h)</option>
+          <option value="3">Turno 3 (17h-21h)</option>
         </select>
       </div>
       <div class="fg" style="align-self:flex-end;display:flex;gap:8px">
@@ -783,14 +783,28 @@ var INSPECOES_CACHE = [];
 // UTILS
 // ============================================================
 function G(id){return document.getElementById(id);}
+// CORREÇÃO (09/11/2026): data/hora de Brasília explícitas (fuso America/Sao_Paulo), independentes do
+// relógio/fuso do aparelho — mesmo padrão do extrusao.html (correções de 23/07 e 04/09/2026).
+// A versão anterior de hoje() usava getHours() + toISOString(): das 21h às 23h59 o dia avançava DUAS
+// vezes (toISOString já vira o dia sozinho às 21h Brasília = 00h UTC), gravando a inspeção com a data
+// de depois de amanhã. horaAtual() pegava a hora crua do aparelho (tablet com relógio errado).
+function dataBrasilia(d){
+  return new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(d);
+}
+function horaBrasilia(d){
+  return parseInt(new Intl.DateTimeFormat("en-US",{timeZone:"America/Sao_Paulo",hour:"2-digit",hour12:false}).format(d),10)%24;
+}
+function minutoBrasilia(d){
+  return parseInt(new Intl.DateTimeFormat("en-US",{timeZone:"America/Sao_Paulo",minute:"2-digit"}).format(d),10);
+}
 function hoje(){
   // Data operacional: a partir das 21h pertence ao próximo dia (início do T1) — mesma regra do extrusao.html
   var now=new Date();
-  if(now.getHours()>=21) now=new Date(now.getTime()+24*60*60*1000);
-  return now.toISOString().slice(0,10);
+  if(horaBrasilia(now)>=21) now=new Date(now.getTime()+24*60*60*1000);
+  return dataBrasilia(now);
 }
 function agora(){return new Date().toISOString();}
-function horaAtual(){var d=new Date();return pad(d.getHours())+":"+pad(d.getMinutes());}
+function horaAtual(){var d=new Date();return pad(horaBrasilia(d))+":"+pad(minutoBrasilia(d));}
 function pad(n){return String(n).padStart(2,"0");}
 function uid(){return Math.random().toString(36).slice(2,10);}
 function fN(n,dec){if(n===null||n===undefined||n==='')return '—';return Number(n).toLocaleString("pt-BR",{minimumFractionDigits:dec||0,maximumFractionDigits:dec!==undefined?dec:2});}
@@ -804,11 +818,15 @@ function toast(msg,tipo){
   G('twrap').appendChild(t);
   setTimeout(function(){t.remove();},3200);
 }
-function turnoAtual(){var h=new Date().getHours();return h>=21||h<6?1:h<16?2:3;}
+// Boundary do fim do Turno 2 / início do Turno 3 — fonte única de verdade, igual ao extrusao.html.
+// CORREÇÃO (09/11/2026): estava fixo em 16h; desde 14/09/2026 o T2 vai até 17h (T3 inativo).
+// Mudança futura de escala: alterar SÓ esta constante (e os rótulos "Turno 2/3" das telas).
+var FIM_TURNO2=17;
+function turnoAtual(){var h=horaBrasilia(new Date());return h>=21||h<6?1:h<FIM_TURNO2?2:3;}
 function turnoDeHora(horaStr){
   if(!horaStr) return turnoAtual();
   var h=parseInt(horaStr.split(":")[0]);
-  return h>=21||h<6?1:h<16?2:3;
+  return h>=21||h<6?1:h<FIM_TURNO2?2:3;
 }
 
 // ============================================================
@@ -2915,7 +2933,7 @@ function renderChartUmidadeTurno(insp){
     porTurno[t].soma+=Number(u);
     porTurno[t].n++;
   });
-  var labels=['Turno 1 (21h-06h)','Turno 2 (06h-16h)','Turno 3 (16h-21h)'];
+  var labels=['Turno 1 (21h-06h)','Turno 2 (06h-17h)','Turno 3 (17h-21h)'];
   var data=[1,2,3].map(function(t){ return porTurno[t].n ? +(porTurno[t].soma/porTurno[t].n).toFixed(2) : 0; });
   var qtd=[1,2,3].map(function(t){ return porTurno[t].n; });
   if(DASH_CHARTS.umidTurno) DASH_CHARTS.umidTurno.destroy();
