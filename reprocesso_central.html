@@ -1217,6 +1217,10 @@ var TIPO_GERAL_MAP = { 'Finos':'Finos', 'Finos Magisan':'Finos', 'Reprocesso Ger
 // consulta ao Firebase.
 var DASH_ROWS_ATUAIS = [];
 var DASH_PERIODO_ATUAL = { di:'', df:'' };
+// Produzido na Extrusao (extrusao_apts) no periodo, quebrado por linha, turno e
+// linha||turno — base do "% da produção" por maquina no drill-down da Extrusao.
+// total=null significa que a leitura da producao falhou (mostra '—', nunca 0%).
+var DASH_PROD_ATUAL = { total:null, linha:{}, turno:{}, lt:{} };
 var GRAFICO_MOTIVOS_CHART = null;
 
 // Cores fixas por fonte pro grafico de barras (mesma logica de cores dos
@@ -1260,6 +1264,18 @@ function renderCardsFinosExtrusao(fonteKey,linhas){
     cruz[l+'||'+m]=(cruz[l+'||'+m]||0)+r.peso;
   });
   function pct(v,base){ return base>0?(v/base*100).toFixed(1).replace('.',','):'0,0'; }
+  // % sobre o produzido da propria maquina/turno. Sem producao apontada -> '—'
+  // (evita dividir por zero e nao mostra 0% enganoso pra linha parada/sem apt).
+  var PROD=DASH_PROD_ATUAL;
+  function pctProdTxt(v,base){
+    if(PROD.total===null||!(base>0)) return '—';
+    return (v/base*100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%';
+  }
+  function prodTip(v,base){
+    if(PROD.total===null) return 'Produção da Extrusão indisponível';
+    if(!(base>0)) return 'Sem produção apontada na Extrusão para esta linha/turno';
+    return fN(v)+' kg de reprocesso sobre '+fN(base)+' kg produzidos';
+  }
   function card(cls,rot,v,sub,extra){
     return '<div class="mc '+cls+'" style="padding:10px 12px"><div class="ml">'+rot+'</div><div class="mv co" style="font-size:20px">'+fN(v)+'</div><div class="ms">'+sub+'</div>'+(extra||'')+'</div>';
   }
@@ -1271,23 +1287,23 @@ function renderCardsFinosExtrusao(fonteKey,linhas){
   var turnos=Object.keys(geralTurno).sort();
   h+='</div><div style="'+tit+'">Extrusão por turno</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin-bottom:12px">';
   turnos.forEach(function(t){
-    h+=card('mc-extrusao',t==='?'?'Sem turno':'Turno '+t,geralTurno[t],'kg — '+pct(geralTurno[t],total)+'% do total • finos '+fN(finosTurno[t]||0)+' kg');
+    h+=card('mc-extrusao',t==='?'?'Sem turno':'Turno '+t,geralTurno[t],'kg — '+pct(geralTurno[t],total)+'% do total • finos '+fN(finosTurno[t]||0)+' kg • <b title="'+prodTip(geralTurno[t],PROD.turno[t])+'">'+pctProdTxt(geralTurno[t],PROD.turno[t])+' da produção</b>');
   });
   // Geral: Extrusao (sem finos) + Finos = Soma, por linha e turno, com subtotal e total
   var thG='padding:6px 8px;font-size:10px;color:#fff;background:#024f2b;text-align:right;white-space:nowrap';
   var tdG='padding:5px 8px;border-bottom:1px solid #eef5ee;text-align:right';
-  function linhaG(rot,sub,soma,fin,estilo){
-    return '<tr style="'+(estilo||'')+'"><td style="'+tdG+';text-align:left">'+rot+'</td><td style="'+tdG+';text-align:left">'+sub+'</td><td style="'+tdG+'">'+fN(soma-fin)+'</td><td style="'+tdG+'">'+fN(fin)+'</td><td style="'+tdG+';font-weight:800">'+fN(soma)+'</td><td style="'+tdG+'">'+pct(soma,total)+'%</td></tr>';
+  function linhaG(rot,sub,soma,fin,estilo,baseProd){
+    return '<tr style="'+(estilo||'')+'"><td style="'+tdG+';text-align:left">'+rot+'</td><td style="'+tdG+';text-align:left">'+sub+'</td><td style="'+tdG+'">'+fN(soma-fin)+'</td><td style="'+tdG+'">'+fN(fin)+'</td><td style="'+tdG+';font-weight:800">'+fN(soma)+'</td><td style="'+tdG+'">'+pct(soma,total)+'%</td><td style="'+tdG+';color:#8a5700" title="'+prodTip(soma,baseProd)+'">'+pctProdTxt(soma,baseProd)+'</td></tr>';
   }
-  h+='</div><div style="'+tit+'">Geral por linha e turno (Extrusão + Finos)</div><div style="overflow-x:auto;margin-bottom:12px"><table style="width:100%;border-collapse:collapse;font-size:12px"><tr><th style="'+thG+';text-align:left">LINHA</th><th style="'+thG+';text-align:left">TURNO</th><th style="'+thG+'">EXTRUSÃO</th><th style="'+thG+'">FINOS</th><th style="'+thG+'">SOMA</th><th style="'+thG+'">% TOTAL</th></tr>';
+  h+='</div><div style="'+tit+'">Geral por linha e turno (Extrusão + Finos)</div><div style="overflow-x:auto;margin-bottom:12px"><table style="width:100%;border-collapse:collapse;font-size:12px"><tr><th style="'+thG+';text-align:left">LINHA</th><th style="'+thG+';text-align:left">TURNO</th><th style="'+thG+'">EXTRUSÃO</th><th style="'+thG+'">FINOS</th><th style="'+thG+'">SOMA</th><th style="'+thG+'">% TOTAL</th><th style="'+thG+'" title="Soma (reprocesso + finos) sobre o produzido na própria linha/turno (extrusao_apts)">% PROD.</th></tr>';
   linhasGeral.forEach(function(l){
     turnos.forEach(function(t,ix){
-      h+=linhaG(ix===0?'<b style="color:#024f2b">'+l+'</b>':'',t==='?'?'Sem turno':'T'+t,geralLT[l+'||'+t]||0,finosLT[l+'||'+t]||0);
+      h+=linhaG(ix===0?'<b style="color:#024f2b">'+l+'</b>':'',t==='?'?'Sem turno':'T'+t,geralLT[l+'||'+t]||0,finosLT[l+'||'+t]||0,'',PROD.lt[l+'||'+t]);
     });
-    h+=linhaG('','Geral',geralLinha[l]||0,finosLinha[l]||0,'background:#f4f9f4;font-weight:700');
+    h+=linhaG('','Geral',geralLinha[l]||0,finosLinha[l]||0,'background:#f4f9f4;font-weight:700',PROD.linha[l]);
   });
-  turnos.forEach(function(t){ h+=linhaG(t===turnos[0]?'<b>TODAS</b>':'',t==='?'?'Sem turno':'T'+t,geralTurno[t],finosTurno[t]||0,'background:#eef5ee;font-weight:700'); });
-  h+=linhaG('<b>TOTAL</b>','',total,totalFinos,'background:#d4e8d4;font-weight:800');
+  turnos.forEach(function(t){ h+=linhaG(t===turnos[0]?'<b>TODAS</b>':'',t==='?'?'Sem turno':'T'+t,geralTurno[t],finosTurno[t]||0,'background:#eef5ee;font-weight:700',PROD.turno[t]); });
+  h+=linhaG('<b>TOTAL</b>','',total,totalFinos,'background:#d4e8d4;font-weight:800',PROD.total);
   h+='</table></div><div>';
   h+='</div><div style="'+tit+'">Finos por motivo</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin-bottom:12px">';
   motivos.forEach(function(m){
@@ -1593,7 +1609,22 @@ function renderDashboardConsolidado(){
     // Percentuais sobre o produzido na Extrusao no periodo (sempre a fabrica inteira, sem filtro).
     // Descarte/perda = tipo Varredura, unico que nao volta para a fabrica.
     var produzidoKg=null;
-    if(res[8]){ produzidoKg=0; if(res[8].exists()) res[8].forEach(function(c){ produzidoKg+=Number(c.val().real)||0; }); }
+    var prodAtual={ total:null, linha:{}, turno:{}, lt:{} };
+    if(res[8]){
+      produzidoKg=0;
+      if(res[8].exists()) res[8].forEach(function(c){
+        var a=c.val()||{};
+        var kg=Number(a.real)||0;
+        produzidoKg+=kg;
+        // Mesmas chaves do drill-down: nome completo da linha e turno em texto
+        var l=a.linha||'Sem linha', t=String(a.turno||'?');
+        prodAtual.linha[l]=(prodAtual.linha[l]||0)+kg;
+        prodAtual.turno[t]=(prodAtual.turno[t]||0)+kg;
+        prodAtual.lt[l+'||'+t]=(prodAtual.lt[l+'||'+t]||0)+kg;
+      });
+      prodAtual.total=produzidoKg;
+    }
+    DASH_PROD_ATUAL=prodAtual;
     function pctProd(kg){
       if(!produzidoKg) return '—';
       return (kg/produzidoKg*100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%';
