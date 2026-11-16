@@ -708,8 +708,11 @@ function podeApontar(){return SES&&(SES.perfil==="moagem"||SES.perfil==="admin")
 function podeFila(){return SES&&(SES.perfil==="pcp"||SES.perfil==="admin");}
 function roboAtivo(){var r=S.robo;return !!(r&&r.modo==="real"&&r.ultimoCiclo&&Date.now()-r.ultimoCiclo<ROBO_TOL_MIN*MIN_MS);}
 function roboCaiu(){var r=S.robo;return !!(r&&r.modo==="real"&&r.ultimoCiclo&&!roboAtivo());}
-// Iniciar / apontar / pausar / concluir: com robô ativo, só o admin (correções)
-function podeOperarOp(){return podeApontar()&&(isAdmin()||!roboAtivo());}
+// Linha que o robô NÃO consegue tratar (lote não achado, erro, linha fora do robô) → manual liberado só nela
+function roboLinha(lk){var l=S.robo&&S.robo.linhas&&S.robo.linhas[lk];return l||{ok:true};}
+function roboCobre(lk){return roboAtivo()&&(!lk||roboLinha(lk).ok!==false);}
+// Iniciar / apontar / pausar / concluir: com robô cobrindo a linha, só o admin (correções)
+function podeOperarOp(lk){return podeApontar()&&(isAdmin()||!roboCobre(lk));}
 function msgRobo(){toast("Robô Libracom ativo: início, apontamento e conclusão são automáticos. Registre só as paradas.","warn");}
 
 // ════════════════════════════════════════════════════════════════════
@@ -1130,7 +1133,7 @@ function renderOperacao(){
   G("grid-linhas").innerHTML=LINHAS.map(function(l){return cardLinha(l);}).join("");
 }
 function cardLinha(l){
-  var lk=l.k, oa=S.opAtiva[lk], op=oa?opPorFk(oa.opFbKey):null, pa=podeApontar(), po=podeOperarOp();
+  var lk=l.k, oa=S.opAtiva[lk], op=oa?opPorFk(oa.opFbKey):null, pa=podeApontar(), po=podeOperarOp(lk);
   var h='<div class="card"><div class="card-h"><div><h3>'+l.cur+' <span style="font-weight:600;opacity:.8">· '+l.maq+'</span></h3>';
   h+='<div class="sub">Moinhos: '+moinhosDaLinha(lk).map(nomeMoinho).map(esc).join(" + ")+(USAR_SILOS?' · Silos: '+silosDaLinha(lk).map(nomeSilo).join(", "):'')+'</div></div>';
   var ef=S.extAtiva[lk], eo=opPorFk(ef);
@@ -1171,7 +1174,7 @@ function cardLinha(l){
 
   // Botões
   h+='<div class="btns">';
-  var robo=roboAtivo(), mostrarOp=!robo||isAdmin();
+  var robo=roboCobre(lk), mostrarOp=!robo||isAdmin(), rl=roboLinha(lk);
   if(oa){
     if(mostrarOp) h+='<button class="btn" '+(po?'':'disabled')+' onclick="abrirApt(\''+lk+'\')">＋ Apontar hora'+(robo?' (admin)':'')+'</button>';
     h+='<button class="btn'+(robo?'':' sec2')+'" '+(pa?'':'disabled')+' onclick="abrirParada(\''+lk+'\')">Parada</button>';
@@ -1183,6 +1186,7 @@ function cardLinha(l){
     h+='<button class="btn'+(robo?'':' sec2')+'" '+(pa?'':'disabled')+' onclick="abrirParada(\''+lk+'\')">Parada</button>';
   }
   if(robo) h+='<span class="chip in" title="Último ciclo do robô: '+hhmmDeTs(S.robo.ultimoCiclo)+'">🤖 Automático pelo Libracom'+(oa?'':' — a OP inicia quando o lote começar a dosar')+'</span>';
+  else if(roboAtivo()&&rl.ok===false) h+='<span class="chip wa" title="O robô não consegue tratar esta linha agora">⚠ Robô fora desta linha: '+esc(rl.motivo||"")+' — apontamento MANUAL</span>';
   h+='<button class="btn ghost" onclick="abrirPdfHora(\''+lk+'\')">PDF hora a hora</button>';
   h+='</div>';
 
@@ -1267,7 +1271,7 @@ function tabelaAptsTurno(lk){
     var curto=!a.marco&&(Number(a.minutos)||0)<MIN_APT_TAXA;
     var pm=(a.metaH&&!curto)?Math.round(a.kgH/a.metaH*100):null;
     var bc=pm==null?"":pm>=100?"g":pm>=80?"y":"r";
-    var podeEd=isAdmin()||(podeOperarOp()&&u&&u.fbKey===a.fbKey&&a.operador!==OPERADOR_ROBO);
+    var podeEd=isAdmin()||(podeOperarOp(lk)&&u&&u.fbKey===a.fbKey&&a.operador!==OPERADOR_ROBO);
     h+='<tr><td>'+(a.operador===OPERADOR_ROBO?'<span title="Apontado pelo robô (Libracom)">🤖</span> ':'')+(a.marco?'<span class="bdg">marco inicial</span>':esc(a.horaIni)+'–'+esc(a.horaFim))+(a.inconsistente?' <span class="bdg r" title="Acumulado menor que o anterior">!</span>':'')+'</td><td>'+esc(a.opNum)+'<div class="muted">'+esc(loteTxt(a.opFbKey,a.lote))+'</div></td>'+(USAR_SILOS?'<td>'+esc(nomeSilo(a.silo))+'</td>':'');
     h+='<td class="n">'+fN(a.acumulado)+'</td><td class="n">'+fN(a.kg)+'</td><td class="n">'+(a.marco?"—":curto?'<span class="muted" title="Intervalo curto: a balança pesa por batelada, o kg/h fica distorcido">—</span>':fN(a.kgH))+'</td><td class="n">'+(pm==null||a.marco?"—":'<span class="bdg '+bc+'">'+pm+'%</span>')+'</td>';
     h+='<td style="white-space:nowrap">'+(podeEd&&!a.marco?'<button class="btn xs ghost" title="Editar" onclick="editarApt(\''+a.fbKey+'\')">✏️</button> ':'')+(podeEd?'<button class="btn xs ghost" title="Excluir" onclick="excluirApt(\''+a.fbKey+'\')">🗑</button>':'')+(isAdmin()?' <button class="btn xs ghost" title="Trocar OP (apontado na OP errada)" onclick="trAbrir(\''+a.fbKey+'\')">⇄</button>':'')+'</td></tr>';
@@ -1309,7 +1313,7 @@ function preencherSilosSelect(sel,lk,valor,travar){
 }
 function abrirApt(lk){
   if(!podeApontar()) return;
-  if(!podeOperarOp()){msgRobo();return;}
+  if(!podeOperarOp(lk)){msgRobo();return;}
   var oa=S.opAtiva[lk];
   if(!oa){toast("Inicie uma OP antes de apontar","err");return;}
   var base=baseInicioApt(lk);
@@ -1612,7 +1616,7 @@ function excluirApt(fbKey){
 var MF=null;
 function abrirFechamento(lk,acao,siloNovo){
   var oa=S.opAtiva[lk];if(!oa) return;
-  if(!podeOperarOp()){msgRobo();return;}
+  if(!podeOperarOp(lk)){msgRobo();return;}
   MF={lk:lk,acao:acao,siloNovo:siloNovo||null,viz:null};
   MA={modo:"novo",lk:lk,opFbKey:oa.opFbKey,opNum:oa.opNum,cod:oa.cod,desc:oa.desc,lote:oa.lote,fbKey:null};
   var tit={concluir:"Concluir OP na moagem",pausar:"Pausar OP (volta para a fila)",silo:"Trocar silo destino"}[acao];
@@ -1784,7 +1788,7 @@ function restaurarFila(lk){
 var MS=null;
 function abrirSelOp(lk){
   if(!podeApontar()) return;
-  if(!podeOperarOp()) return; // robô ativo: início automático
+  if(!podeOperarOp(lk)) return; // robô ativo: início automático
   if(S.opAtiva[lk]){toast("Já existe OP ativa — conclua ou pause antes","err");return;}
   var lista=filaLinha(lk);
   MS={lk:lk,fk:null,silo:null,lista:lista};
