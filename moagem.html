@@ -1039,8 +1039,13 @@ function statusPeneira(m){
 // ════════════════════════════════════════════════════════════════════
 function aptsLinha(lk){return S.apts.filter(function(a){return a.lk===lk;});}
 function ultimoAptLinha(lk){var u=null;aptsLinha(lk).forEach(function(a){if(!a.marco&&(!u||(a.tsFim||0)>(u.tsFim||0))) u=a;});return u;}
-function paradasAbertasMoinho(m){return S.paradasAbertas.filter(function(p){return p.moinho===m;});}
-function linhaParadaTotal(lk){var ms=moinhosDaLinha(lk);if(!ms.length) return false;return ms.every(function(m){return paradasAbertasMoinho(m).length>0;});}
+// Parada pertence à LINHA onde foi lançada (p.lk; registros antigos: p.lkRef). Moinho compartilhado
+// (MM 1000 / MM 1200 atendem L1 e L2): parada lançada na L1 não afeta a L2. Só registro antigo sem
+// linha nenhuma cai na regra antiga (moinho da linha).
+function paradaLk(p){return (p&&(p.lk||p.lkRef))||null;}
+function paradaDaLinha(p,lk){var l=paradaLk(p);if(l) return l===lk;return moinhosDaLinha(lk).indexOf(p.moinho)>=0;}
+function paradasAbertasMoinho(m,lk){return S.paradasAbertas.filter(function(p){return p.moinho===m&&(!lk||paradaDaLinha(p,lk));});}
+function linhaParadaTotal(lk){var ms=moinhosDaLinha(lk);if(!ms.length) return false;return ms.every(function(m){return paradasAbertasMoinho(m,lk).length>0;});}
 // ── VISUALIZAÇÃO DE OUTROS TURNOS (admin) ─────────────────────────
 // turno "0" = turno atual (ao vivo). Dias fora do intervalo já carregado
 // (ontem/hoje) são lidos uma vez do Firebase só para exibição.
@@ -1085,7 +1090,7 @@ function paradasSobrepoe(lk,ini,fim,lista){
   var ms=moinhosDaLinha(lk), agoraTs=Date.now();
   var todas=lista||S.paradasRange.concat(S.paradasAbertas.filter(function(p){return !S.paradasRange.some(function(x){return x.fbKey===p.fbKey;});}));
   return todas.filter(function(p){
-    if(ms.indexOf(p.moinho)<0) return false;
+    if(ms.indexOf(p.moinho)<0||!paradaDaLinha(p,lk)) return false;
     var pi=p.tsIni||0, pf=p.tsFim||agoraTs;
     return pi<fim&&pf>ini;
   });
@@ -1142,7 +1147,7 @@ function cardLinha(l){
   // Moinhos: status + peneira
   h+='<div class="row-info">';
   moinhosDaLinha(lk).forEach(function(m){
-    var pa2=paradasAbertasMoinho(m), sp=statusPeneira(m);
+    var pa2=paradasAbertasMoinho(m,lk), sp=statusPeneira(m);
     if(pa2.length){
       var p=pa2[0];
       h+='<span class="chip pa" title="'+esc(p.descricao)+'">🔴 '+esc(nomeMoinho(m))+' parado · '+esc(p.descricao)+' desde '+esc(p.horaIni)+(pa?' <button class="btn xs rd" onclick="abrirFecharParada(\''+p.fbKey+'\')">Fechar</button>':'')+'</span>';
@@ -2028,10 +2033,10 @@ function abrirParada(lk){
   if(!podeApontar()) return;
   MP={lk:lk,mot:null};
   G("par-tit").textContent="Registrar parada — "+linhaK(lk).cur;
-  G("par-sub").textContent="Marque todos os moinhos que pararam pelo mesmo motivo.";
+  G("par-sub").textContent="Marque os moinhos que pararam pelo mesmo motivo. A parada vale só para a "+linhaK(lk).cur+".";
   var ms=moinhosDaLinha(lk);
   G("par-moinhos").innerHTML=ms.map(function(m){
-    var ab=paradasAbertasMoinho(m).length;
+    var ab=paradasAbertasMoinho(m,lk).length;
     return '<label><input type="checkbox" value="'+m+'" '+(ms.length===1?"checked":"")+(ab?" disabled":"")+'> '+esc(nomeMoinho(m))+(ab?' <span class="bdg r">já parado</span>':'')+'</label>';
   }).join("");
   var porG={};motivosAtivos().forEach(function(m){var g=m.grupo==="AUTO"?"Automático (conforme extrusão)":m.grupo;(porG[g]=porG[g]||[]).push(m);});
@@ -2053,7 +2058,7 @@ function parEscolher(id){
   MP.mot=id;
   G("par-motivos").querySelectorAll(".mot").forEach(function(el){el.classList.toggle("on",el.dataset.id===id);});
   var m=motivoPorId(id)||{};
-  G("par-silo-row").style.display=m.siloCheio?"":"none";
+  G("par-silo-row").style.display="none"; // silo cheio = silo da própria linha da parada
   parChkMalha();
 }
 function parChkMalha(){
@@ -2089,20 +2094,21 @@ function salvarParada(){
   var conflito=null;
   ms.forEach(function(m){
     S.paradasRange.concat(S.paradasAbertas).forEach(function(p){
-      if(p.moinho!==m) return;
+      if(p.moinho!==m||!paradaDaLinha(p,MP.lk)) return;
       var pf=p.tsFim||Infinity, nf=tsFim||Infinity;
       if(p.tsIni<nf&&pf>tsIni) conflito=p;
     });
   });
-  if(conflito){toast("Já existe parada de "+nomeMoinho(conflito.moinho)+" nesse horário ("+conflito.horaIni+(conflito.horaFim?"–"+conflito.horaFim:" em aberto")+")","err");return;}
-  var lkSilo=G("par-silo-linha").value;
+  if(conflito){toast("Já existe parada de "+nomeMoinho(conflito.moinho)+" na "+linhaK(MP.lk).cur+" nesse horário ("+conflito.horaIni+(conflito.horaFim?"–"+conflito.horaFim:" em aberto")+")","err");return;}
+  var lkSilo=MP.lk;
   var cls=mot.siloCheio?classificarSiloCheio(lkSilo,tsIni):Promise.resolve({grupo:mot.grupo,info:null,verificado:null});
   ld(true);
   cls.then(function(c){
     var upd={}, grp=uid(), ts=agora();
     ms.forEach(function(m){
       var k=DB.ref("moagem_paradas").push().key;
-      upd["moagem_paradas/"+k]={moinho:m,linhas:S.cfg.moinhos[m].linhas||{},lkRef:MP.lk,motivoId:mot.id,codMotivo:mot.cod||null,descricao:mot.desc,
+      var lsP={};lsP[MP.lk]=true;
+      upd["moagem_paradas/"+k]={moinho:m,lk:MP.lk,linhas:lsP,lkRef:MP.lk,motivoId:mot.id,codMotivo:mot.cod||null,descricao:mot.desc,
         grupo:c.grupo,grupoInfo:c.info||null,grupoVerificado:c.verificado,siloLinha:mot.siloCheio?lkSilo:null,zeraPeneira:!!mot.zeraPeneira,
         data:dataOpDeTs(tsIni),turno:turnoDeHora(hi),horaIni:hi,horaFim:hf||null,tsIni:tsIni,tsFim:tsFim,minutos:min,aberta:!hf,
         malhaInstalada:(hf&&mot.zeraPeneira&&num(G("par-malha").value))||null,obs:G("par-obs").value.trim()||null,
@@ -2111,7 +2117,7 @@ function salvarParada(){
     return DB.ref().update(fbLimpo(upd)).then(function(){
       ld(false);fM("m-par");
       toast("Parada registrada"+(mot.siloCheio?" — classificada como "+c.grupo:""),"ok");
-      log("parada_nova",ms.join("+")+" · "+mot.desc+" "+hi+(hf?"–"+hf:" (aberta)")+(c.info?" · "+c.info:""));
+      log("parada_nova",linhaK(MP.lk).cur+" · "+ms.join("+")+" · "+mot.desc+" "+hi+(hf?"–"+hf:" (aberta)")+(c.info?" · "+c.info:""));
       if(hf&&mot.zeraPeneira) calcPeneiras();
     });
   }).catch(function(e){ld(false);toast("Erro: "+e.message,"err");});
@@ -2121,7 +2127,7 @@ function paradaPorKey(k){return S.paradasAbertas.concat(S.paradasRange).concat(A
 function abrirFecharParada(fbKey){
   var p=paradaPorKey(fbKey);if(!p) return;
   MPF={p:p,admin:false};
-  G("pf-tit").textContent="Fechar parada — "+nomeMoinho(p.moinho);
+  G("pf-tit").textContent="Fechar parada — "+nomeMoinho(p.moinho)+(paradaLk(p)?" · "+linhaK(paradaLk(p)).cur:"");
   G("pf-sub").textContent=p.descricao+" · desde "+p.horaIni+" ("+fData(p.data)+")";
   G("pf-row-adm").style.display="none";
   G("pf-hf").value=horaAtual();G("pf-obs").value=p.obs||"";G("pf-malha").value="";
@@ -2193,7 +2199,7 @@ function gerarDashboard(){
     var apts=[], par=[];
     if(sn[0].exists()) sn[0].forEach(function(c){var a=c.val();if(!a) return;a.fbKey=c.key;if(lk&&a.lk!==lk) return;if(tf&&String(a.turno)!==tf) return;apts.push(a);});
     var msLinha=lk?moinhosDaLinha(lk):null;
-    if(sn[1].exists()) sn[1].forEach(function(c){var p=c.val();if(!p) return;p.fbKey=c.key;if(msLinha&&msLinha.indexOf(p.moinho)<0) return;if(tf&&String(p.turno)!==tf) return;par.push(p);});
+    if(sn[1].exists()) sn[1].forEach(function(c){var p=c.val();if(!p) return;p.fbKey=c.key;if(msLinha&&(msLinha.indexOf(p.moinho)<0||!paradaDaLinha(p,lk))) return;if(tf&&String(p.turno)!==tf) return;par.push(p);});
     DSH.apts=apts;DSH.paradas=par;
     return montarComparativo(apts).then(function(comp){DSH.comp=comp;renderDashboard(di,df);});
   }).catch(function(e){G("dsh-body").innerHTML='<div class="empty">Erro: '+esc(e.message)+'</div>';});
@@ -2400,10 +2406,11 @@ function admCarregarParadas(){
     ADM_PARADAS=[];
     if(s.exists()) s.forEach(function(c){var p=c.val();if(!p) return;p.fbKey=c.key;ADM_PARADAS.push(p);});
     ADM_PARADAS.sort(function(a,b){return a.tsIni-b.tsIni;});
-    var h='<table class="t"><thead><tr><th>Moinho</th><th>Turno</th><th>Início</th><th>Fim</th><th class="n">Min</th><th>Motivo</th><th>Grupo</th><th class="n">Malha</th><th>Operador</th><th></th></tr></thead><tbody>';
-    if(!ADM_PARADAS.length) h+='<tr><td colspan="10" class="muted">Nenhuma parada.</td></tr>';
+    var h='<table class="t"><thead><tr><th>Linha</th><th>Moinho</th><th>Turno</th><th>Início</th><th>Fim</th><th class="n">Min</th><th>Motivo</th><th>Grupo</th><th class="n">Malha</th><th>Operador</th><th></th></tr></thead><tbody>';
+    if(!ADM_PARADAS.length) h+='<tr><td colspan="11" class="muted">Nenhuma parada.</td></tr>';
     ADM_PARADAS.forEach(function(p){
-      h+='<tr><td>'+esc(nomeMoinho(p.moinho))+'</td><td>T'+p.turno+'</td><td>'+esc(p.horaIni)+'</td><td>'+(p.horaFim?esc(p.horaFim):'<span class="bdg r">aberta</span>')+'</td><td class="n">'+(p.minutos!=null?p.minutos:"—")+'</td>';
+      var lkp=paradaLk(p);
+      h+='<tr><td>'+(lkp&&linhaK(lkp)?linhaK(lkp).cur:'<span class="muted">—</span>')+'</td><td>'+esc(nomeMoinho(p.moinho))+'</td><td>T'+p.turno+'</td><td>'+esc(p.horaIni)+'</td><td>'+(p.horaFim?esc(p.horaFim):'<span class="bdg r">aberta</span>')+'</td><td class="n">'+(p.minutos!=null?p.minutos:"—")+'</td>';
       h+='<td>'+esc(p.descricao)+(p.zeraPeneira?' <span class="bdg b">peneira</span>':'')+'</td><td><span class="bdg" title="'+esc(p.grupoInfo||"")+'">'+esc(p.grupo)+'</span></td><td class="n">'+(p.malhaInstalada||"—")+'</td><td class="muted">'+esc(p.operador)+'</td>';
       h+='<td style="white-space:nowrap"><button class="btn xs ghost" onclick="admEditarParada(\''+p.fbKey+'\')">✏️</button> <button class="btn xs ghost" onclick="admExcluirParada(\''+p.fbKey+'\')">🗑</button></td></tr>';
     });
@@ -2762,7 +2769,7 @@ function gerarPdfHora(){
     var doc=new jspdf.jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
     linhas.forEach(function(lk,i){
       if(i>0) doc.addPage();
-      pdfPaginaLinha(doc,lk,dOp,t,j,apts.filter(function(a){return a.lk===lk;}),par.filter(function(p){return moinhosDaLinha(lk).indexOf(p.moinho)>=0;}));
+      pdfPaginaLinha(doc,lk,dOp,t,j,apts.filter(function(a){return a.lk===lk;}),par.filter(function(p){return moinhosDaLinha(lk).indexOf(p.moinho)>=0&&paradaDaLinha(p,lk);}));
     });
     // rodapé com numeração
     var n=doc.getNumberOfPages();
@@ -2960,13 +2967,13 @@ function pdfGeralTurno(dOp,t,j,apts,par){
     var lk=l.k;
     var ap=apts.filter(function(a){return a.lk===lk;});
     var ms=moinhosDaLinha(lk);
-    var pa=par.filter(function(p){return ms.indexOf(p.moinho)>=0;});
+    var pa=par.filter(function(p){return ms.indexOf(p.moinho)>=0&&paradaDaLinha(p,lk);});
     // mostra horas com apontamento, horas vencidas sem apontamento e horas com parada
     var horas=horasDoTurno(j,ap,pa,lk).filter(function(h){return h.minCob>0||(h.cobrada&&h.fim<=agoraTs)||h.par.length;});
     var oa=S.opAtiva[lk];
     var kgL=0,metaL=0,decL=0;horas.forEach(function(h){kgL+=h.kg;if(h.minCob){metaL+=h.meta*h.dec/60;decL+=h.dec;}});
     var parMin=0;pa.forEach(function(p){var pf=p.tsFim||agoraTs;var ov=(Math.min(pf,j.fim)-Math.max(p.tsIni,j.ini))/MIN_MS;if(ov>0){parMin+=ov;
-      // total geral: moinho compartilhado (M1000/M1200 atendem L1 e L2) conta uma vez só
+      // total geral: cada parada conta uma vez só
       if(!parContadas[p.fbKey]){parContadas[p.fbKey]=1;totParMin+=ov;}}});
     totKg+=kgL;totMeta+=metaL;
     var ader=metaL?kgL/metaL*100:null;
