@@ -522,6 +522,10 @@ var STATUS_ABERTOS=["Liberada","Em andamento","Reprogramada"];
 // do Victor (28/09/2026): fica para a próxima fase. Todo o código e o modelo de dados
 // continuam no arquivo; para religar basta mudar para true.
 var USAR_SILOS=false;
+// ROBÔ LIBRACOM — quando o robô está ativo (heartbeat em moagem_robo), ele faz início,
+// apontamento hora a hora, troca e conclusão de OP a partir do Libracom. O operador fica
+// só com PARADAS. Se o robô ficar sem ciclo por ROBO_TOL_MIN, o manual volta sozinho.
+var ROBO_TOL_MIN=15, OPERADOR_ROBO="robo_libracom";
 var GRUPOS=["Manutenção","Operacional","Fator Externo/Parada Planejada"]; // mesmos nomes da extrusão
 var GRUPO_EXTERNO="Fator Externo/Parada Planejada";
 
@@ -591,7 +595,7 @@ var S={
   opAtiva:{}, opConc:{}, opTot:{}, fila:{}, silos:{},
   apts:[], paradasRange:[], paradasAbertas:[], repr:[],
   opsBy:{}, ops:{}, extAtiva:{}, extConc:{}, metas:{}, metasOk:false,
-  peneira:{}, dataOpAtual:null
+  peneira:{}, dataOpAtual:null, robo:null
 };
 var _renderT=null, _tickN=0;
 
@@ -702,6 +706,11 @@ function log(tipo,desc){if(!DB||!SES) return;try{DB.ref("moagem_log").push({ts:a
 function isAdmin(){return SES&&SES.perfil==="admin";}
 function podeApontar(){return SES&&(SES.perfil==="moagem"||SES.perfil==="admin");}
 function podeFila(){return SES&&(SES.perfil==="pcp"||SES.perfil==="admin");}
+function roboAtivo(){var r=S.robo;return !!(r&&r.modo==="real"&&r.ultimoCiclo&&Date.now()-r.ultimoCiclo<ROBO_TOL_MIN*MIN_MS);}
+function roboCaiu(){var r=S.robo;return !!(r&&r.modo==="real"&&r.ultimoCiclo&&!roboAtivo());}
+// Iniciar / apontar / pausar / concluir: com robô ativo, só o admin (correções)
+function podeOperarOp(){return podeApontar()&&(isAdmin()||!roboAtivo());}
+function msgRobo(){toast("Robô Libracom ativo: início, apontamento e conclusão são automáticos. Registre só as paradas.","warn");}
 
 // ════════════════════════════════════════════════════════════════════
 // LOGIN
@@ -790,6 +799,7 @@ function iniciarApp(){
     if(G("sec-adm").classList.contains("on")) admRenderCfg();
   });
   DB.ref("moagem_op_ativa").on("value",function(s){S.opAtiva=s.val()||{};agendarRender();});
+  DB.ref("moagem_robo").on("value",function(s){S.robo=s.val()||null;agendarRender();});
   DB.ref("moagem_op_concluida").on("value",function(s){S.opConc=s.val()||{};agendarRender();});
   DB.ref("moagem_op_totais").on("value",function(s){S.opTot=s.val()||{};agendarRender();});
   DB.ref("moagem_fila").on("value",function(s){S.fila=s.val()||{};agendarRender();});
@@ -1113,12 +1123,14 @@ function alertasLinha(lk){
 }
 function renderOperacao(){
   resumoReprocessoTopo();
-  var al=[];LINHAS.forEach(function(l){al=al.concat(alertasLinha(l.k));});
+  var al=[];
+  if(roboCaiu()) al.push({c:"rd",t:"<b>🤖 Robô Libracom sem ciclo desde "+hhmmDeTs(S.robo.ultimoCiclo)+"</b> — apontamento manual LIBERADO até ele voltar."});
+  LINHAS.forEach(function(l){al=al.concat(alertasLinha(l.k));});
   G("alertas").innerHTML=al.map(function(a){return '<div class="al al-'+a.c+'">'+(a.c==="rd"?"⛔":a.c==="or"?"⚠️":"ℹ️")+" <span>"+a.t+"</span></div>";}).join("");
   G("grid-linhas").innerHTML=LINHAS.map(function(l){return cardLinha(l);}).join("");
 }
 function cardLinha(l){
-  var lk=l.k, oa=S.opAtiva[lk], op=oa?opPorFk(oa.opFbKey):null, pa=podeApontar();
+  var lk=l.k, oa=S.opAtiva[lk], op=oa?opPorFk(oa.opFbKey):null, pa=podeApontar(), po=podeOperarOp();
   var h='<div class="card"><div class="card-h"><div><h3>'+l.cur+' <span style="font-weight:600;opacity:.8">· '+l.maq+'</span></h3>';
   h+='<div class="sub">Moinhos: '+moinhosDaLinha(lk).map(nomeMoinho).map(esc).join(" + ")+(USAR_SILOS?' · Silos: '+silosDaLinha(lk).map(nomeSilo).join(", "):'')+'</div></div>';
   var ef=S.extAtiva[lk], eo=opPorFk(ef);
@@ -1159,16 +1171,18 @@ function cardLinha(l){
 
   // Botões
   h+='<div class="btns">';
+  var robo=roboAtivo(), mostrarOp=!robo||isAdmin();
   if(oa){
-    h+='<button class="btn" '+(pa?'':'disabled')+' onclick="abrirApt(\''+lk+'\')">＋ Apontar hora</button>';
-    h+='<button class="btn sec2" '+(pa?'':'disabled')+' onclick="abrirParada(\''+lk+'\')">Parada</button>';
+    if(mostrarOp) h+='<button class="btn" '+(po?'':'disabled')+' onclick="abrirApt(\''+lk+'\')">＋ Apontar hora'+(robo?' (admin)':'')+'</button>';
+    h+='<button class="btn'+(robo?'':' sec2')+'" '+(pa?'':'disabled')+' onclick="abrirParada(\''+lk+'\')">Parada</button>';
     if(USAR_SILOS) h+='<button class="btn sec2" '+(pa?'':'disabled')+' onclick="abrirTrocaSilo(\''+lk+'\')">⇄ Silo</button>';
-    h+='<button class="btn sec2" '+(pa?'':'disabled')+' onclick="abrirFechamento(\''+lk+'\',\'pausar\')">Pausar OP</button>';
-    h+='<button class="btn or" '+(pa?'':'disabled')+' onclick="abrirFechamento(\''+lk+'\',\'concluir\')">✔ Concluir OP</button>';
+    if(mostrarOp) h+='<button class="btn sec2" '+(po?'':'disabled')+' onclick="abrirFechamento(\''+lk+'\',\'pausar\')">Pausar OP</button>';
+    if(mostrarOp) h+='<button class="btn or" '+(po?'':'disabled')+' onclick="abrirFechamento(\''+lk+'\',\'concluir\')">✔ Concluir OP</button>';
   } else {
-    h+='<button class="btn" '+(pa?'':'disabled')+' onclick="abrirSelOp(\''+lk+'\')">▶ Iniciar OP</button>';
-    h+='<button class="btn sec2" '+(pa?'':'disabled')+' onclick="abrirParada(\''+lk+'\')">Parada</button>';
+    if(mostrarOp) h+='<button class="btn" '+(po?'':'disabled')+' onclick="abrirSelOp(\''+lk+'\')">▶ Iniciar OP</button>';
+    h+='<button class="btn'+(robo?'':' sec2')+'" '+(pa?'':'disabled')+' onclick="abrirParada(\''+lk+'\')">Parada</button>';
   }
+  if(robo) h+='<span class="chip in" title="Último ciclo do robô: '+hhmmDeTs(S.robo.ultimoCiclo)+'">🤖 Automático pelo Libracom'+(oa?'':' — a OP inicia quando o lote começar a dosar')+'</span>';
   h+='<button class="btn ghost" onclick="abrirPdfHora(\''+lk+'\')">PDF hora a hora</button>';
   h+='</div>';
 
@@ -1253,8 +1267,8 @@ function tabelaAptsTurno(lk){
     var curto=!a.marco&&(Number(a.minutos)||0)<MIN_APT_TAXA;
     var pm=(a.metaH&&!curto)?Math.round(a.kgH/a.metaH*100):null;
     var bc=pm==null?"":pm>=100?"g":pm>=80?"y":"r";
-    var podeEd=isAdmin()||(podeApontar()&&u&&u.fbKey===a.fbKey);
-    h+='<tr><td>'+(a.marco?'<span class="bdg">marco inicial</span>':esc(a.horaIni)+'–'+esc(a.horaFim))+(a.inconsistente?' <span class="bdg r" title="Acumulado menor que o anterior">!</span>':'')+'</td><td>'+esc(a.opNum)+'<div class="muted">'+esc(loteTxt(a.opFbKey,a.lote))+'</div></td>'+(USAR_SILOS?'<td>'+esc(nomeSilo(a.silo))+'</td>':'');
+    var podeEd=isAdmin()||(podeOperarOp()&&u&&u.fbKey===a.fbKey&&a.operador!==OPERADOR_ROBO);
+    h+='<tr><td>'+(a.operador===OPERADOR_ROBO?'<span title="Apontado pelo robô (Libracom)">🤖</span> ':'')+(a.marco?'<span class="bdg">marco inicial</span>':esc(a.horaIni)+'–'+esc(a.horaFim))+(a.inconsistente?' <span class="bdg r" title="Acumulado menor que o anterior">!</span>':'')+'</td><td>'+esc(a.opNum)+'<div class="muted">'+esc(loteTxt(a.opFbKey,a.lote))+'</div></td>'+(USAR_SILOS?'<td>'+esc(nomeSilo(a.silo))+'</td>':'');
     h+='<td class="n">'+fN(a.acumulado)+'</td><td class="n">'+fN(a.kg)+'</td><td class="n">'+(a.marco?"—":curto?'<span class="muted" title="Intervalo curto: a balança pesa por batelada, o kg/h fica distorcido">—</span>':fN(a.kgH))+'</td><td class="n">'+(pm==null||a.marco?"—":'<span class="bdg '+bc+'">'+pm+'%</span>')+'</td>';
     h+='<td style="white-space:nowrap">'+(podeEd&&!a.marco?'<button class="btn xs ghost" title="Editar" onclick="editarApt(\''+a.fbKey+'\')">✏️</button> ':'')+(podeEd?'<button class="btn xs ghost" title="Excluir" onclick="excluirApt(\''+a.fbKey+'\')">🗑</button>':'')+(isAdmin()?' <button class="btn xs ghost" title="Trocar OP (apontado na OP errada)" onclick="trAbrir(\''+a.fbKey+'\')">⇄</button>':'')+'</td></tr>';
   });
@@ -1295,6 +1309,7 @@ function preencherSilosSelect(sel,lk,valor,travar){
 }
 function abrirApt(lk){
   if(!podeApontar()) return;
+  if(!podeOperarOp()){msgRobo();return;}
   var oa=S.opAtiva[lk];
   if(!oa){toast("Inicie uma OP antes de apontar","err");return;}
   var base=baseInicioApt(lk);
@@ -1597,6 +1612,7 @@ function excluirApt(fbKey){
 var MF=null;
 function abrirFechamento(lk,acao,siloNovo){
   var oa=S.opAtiva[lk];if(!oa) return;
+  if(!podeOperarOp()){msgRobo();return;}
   MF={lk:lk,acao:acao,siloNovo:siloNovo||null,viz:null};
   MA={modo:"novo",lk:lk,opFbKey:oa.opFbKey,opNum:oa.opNum,cod:oa.cod,desc:oa.desc,lote:oa.lote,fbKey:null};
   var tit={concluir:"Concluir OP na moagem",pausar:"Pausar OP (volta para a fila)",silo:"Trocar silo destino"}[acao];
@@ -1768,6 +1784,7 @@ function restaurarFila(lk){
 var MS=null;
 function abrirSelOp(lk){
   if(!podeApontar()) return;
+  if(!podeOperarOp()) return; // robô ativo: início automático
   if(S.opAtiva[lk]){toast("Já existe OP ativa — conclua ou pause antes","err");return;}
   var lista=filaLinha(lk);
   MS={lk:lk,fk:null,silo:null,lista:lista};
@@ -2436,7 +2453,7 @@ function admRenderCfg(){
   (c.parametrosTec||[]).forEach(function(r){h+=linhaParamTec(r);});
   h+='</tbody></table></div><button class="btn sm sec2" style="margin-top:6px" onclick="admNovaLinhaPT()">+ Linha</button></div>';
   // Regras Firebase
-  h+='<div class="panel"><h4>Índices recomendados (regras do Firebase)</h4><div class="muted">Sem estes índices, as consultas funcionam, mas baixam o nó inteiro. Adicionar em Realtime Database → Regras:</div><pre style="background:#f5f9f2;border:1px solid var(--brd);border-radius:8px;padding:10px;font-size:11px;overflow-x:auto;margin-top:6px">"moagem_apts":     { ".indexOn": ["data", "opFbKey", "tsFim"] },\n"moagem_paradas":  { ".indexOn": ["data", "aberta", "zeraPeneira"] }</pre></div>';
+  h+='<div class="panel"><h4>Índices recomendados (regras do Firebase)</h4><div class="muted">Sem estes índices, as consultas funcionam, mas baixam o nó inteiro. Adicionar em Realtime Database → Regras:</div><pre style="background:#f5f9f2;border:1px solid var(--brd);border-radius:8px;padding:10px;font-size:11px;overflow-x:auto;margin-top:6px">"moagem_apts":     { ".indexOn": ["data", "opFbKey", "tsFim"] },\n"moagem_paradas":  { ".indexOn": ["data", "aberta", "zeraPeneira"] },\n"ops":             { ".indexOn": ["status", "idBusca"] }   ← usado também pelo robô Libracom</pre></div>';
   G("adm-cfg").innerHTML=h;
 }
 function linhaMotivoCfg(k,m){
