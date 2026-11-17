@@ -64,6 +64,11 @@ body{font-family:"Segoe UI",sans-serif;background:#060e06;color:#e8f0e8;height:1
 .prox-op-lbl{font-size:9px;color:#4a664a;font-weight:700;text-transform:uppercase;letter-spacing:1px}
 .prox-op-num{font-size:11px;font-weight:700;color:#739630;margin-top:2px}
 .prox-op-desc{font-size:10px;color:#aaa;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prox-op.aguardando{background:#1f2a05;border:2px solid #d29922;animation:piscaProx 1.6s ease-in-out infinite}
+.prox-op.aguardando .prox-op-lbl{color:#f3c13a}
+.prox-op.aguardando .prox-op-num{font-size:14px;color:#f3c13a}
+.prox-op-pos{font-size:9px;color:#739630;font-weight:600;margin-left:4px}
+@keyframes piscaProx{0%,100%{box-shadow:0 0 0 rgba(210,153,34,0)}50%{box-shadow:0 0 12px rgba(210,153,34,.55)}}
 
 /* BARRA TOTAIS */
 .totais-bar{background:#011a0a;border-top:1px solid #1a3a1a;border-bottom:1px solid #1a3a1a;padding:6px 24px;display:flex;align-items:center;gap:0;flex-shrink:0}
@@ -218,6 +223,7 @@ function ultimaQualidade(linha, opFbKey){
   return arr[arr.length-1];
 }
 var OPS=[];
+var OP_CONC_EXT={};   // extrusao_op_concluida/{fbKey} — OPs já finalizadas na extrusão (somente leitura)
 var TOT_MES=0;
 var TOT_DIA=0;
 var METAS_FB={};        // metas do Firebase (têm prioridade)
@@ -434,6 +440,22 @@ function renderLinha(linha){
   // Velocímetro
   h+='<div class="velocimetro-wrap">'+drawVelocimetro(Math.min(pct,100), corVal)+'</div>';
 
+  // Próxima OP = primeira da FILA DO ENSAQUE (ops/filaPosicao, mesma ordem do index.html),
+  // ignorando a OP ativa e as OPs já finalizadas na extrusão (extrusao_op_concluida).
+  // Obs.: o fluxo normal do operador NÃO muda ops/status ao concluir na extrusão —
+  // por isso o status sozinho não basta (ver learnings: ops/status x extrusao_op_concluida).
+  var proxOp=null;
+  var opsLinha=OPS.filter(function(o){
+    return o.linha===linha && o.status!=="Concluida" && o.status!=="Reprogramada" && o.status!=="Excluida" &&
+           !OP_CONC_EXT[o.fbKey] &&
+           (!opAtiva || o.fbKey!==opAtiva.fbKey);
+  }).sort(function(a,b){
+    var pa=a.filaPosicao!==undefined?a.filaPosicao:9999;
+    var pb=b.filaPosicao!==undefined?b.filaPosicao:9999;
+    return pa!==pb?pa-pb:((a.criadoEm||"")>(b.criadoEm||"")?1:-1);
+  });
+  if(opsLinha.length) proxOp=opsLinha[0];
+
   // OP atual
   if(opAtiva){
     h+='<div class="op-info">';
@@ -441,21 +463,14 @@ function renderLinha(linha){
     h+='<div class="op-desc">'+(opAtiva.desc||opAtiva.cod)+'</div>';
     h+='</div>';
   } else {
-    h+='<div class="op-info"><div class="op-desc" style="color:#555">Sem OP ativa</div></div>';
+    h+='<div class="op-info"><div class="op-desc" style="color:#888">'+(proxOp?'⏳ Aguardando início da próxima OP':'Sem OP ativa')+'</div></div>';
   }
 
-  // Próxima OP da fila
-  var proxOp=null;
-  var opsLinha=OPS.filter(function(o){
-    return o.linha===linha && o.status!=="Concluida" && o.status!=="Reprogramada" &&
-           (!opAtiva || o.fbKey!==opAtiva.fbKey);
-  }).sort(function(a,b){return (a.criadoEm||"")>(b.criadoEm||"")?1:-1;});
-  if(opsLinha.length) proxOp=opsLinha[0];
-
   if(proxOp){
-    h+='<div class="prox-op">';
-    h+='<div class="prox-op-lbl">↓ PRÓXIMA OP</div>';
-    h+='<div class="prox-op-num">'+proxOp.id+'</div>';
+    var posTxt=proxOp.filaPosicao!==undefined?'<span class="prox-op-pos">#'+(Number(proxOp.filaPosicao)+1)+' fila ensaque</span>':'';
+    h+='<div class="prox-op'+(opAtiva?'':' aguardando')+'">';
+    h+='<div class="prox-op-lbl">'+(opAtiva?'↓ PRÓXIMA OP':'▶ PRÓXIMA A INICIAR')+'</div>';
+    h+='<div class="prox-op-num">'+proxOp.id+posTxt+'</div>';
     h+='<div class="prox-op-desc">'+(proxOp.desc||proxOp.cod)+'</div>';
     h+='</div>';
   } else {
@@ -552,10 +567,20 @@ function iniciar(){
   if(!DB){renderTudo();return;}
   var dt=hoje(), t=turnoAtual();
 
-  DB.ref("ops").orderByChild("data").equalTo(dt).on("value",function(s){
+  // startAt(dt): pega OPs de hoje E as já programadas para os próximos dias,
+  // pra próxima da fila do ensaque aparecer mesmo se estiver com data futura.
+  DB.ref("ops").orderByChild("data").startAt(dt).on("value",function(s){
     OPS=[];
     if(s.exists()) s.forEach(function(c){var v=c.val();v.fbKey=c.key;OPS.push(v);});
     LINHAS.forEach(function(l){EST[l].ops=OPS.filter(function(o){return o.linha===l;});});
+    renderTudo();
+  });
+
+  // OPs finalizadas na extrusão — somente leitura. Quando o operador conclui,
+  // a TV já pula para a próxima da fila do ensaque; "Voltar à Fila" (admin) remove o registro e ela volta.
+  DB.ref("extrusao_op_concluida").on("value",function(s){
+    OP_CONC_EXT={};
+    if(s.exists()) s.forEach(function(c){ if(c.val()) OP_CONC_EXT[c.key]=c.val(); });
     renderTudo();
   });
 
