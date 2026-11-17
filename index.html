@@ -232,7 +232,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <select id="fln" style="width:auto" onchange="renderOPs()"><option value="">Todas linhas</option><option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option><option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option></select>
     <select id="ftp" style="width:auto" onchange="renderOPs()"><option value="">Todos tipos</option><option>KG</option><option>SC</option><option>BG</option></select>
     <input type="date" id="fdt" style="width:auto" onchange="renderOPs()">
-    <input type="text" id="flote" style="width:auto;max-width:160px" placeholder="Buscar lote..." oninput="renderOPs()">
+    <input type="text" id="flote" style="width:auto;max-width:200px" placeholder="Buscar lote ou OP..." title="Busca pelo número do lote ou da OP" oninput="renderOPs()">
   </div>
   <div class="card" style="padding:0"><div class="tw"><table>
     <thead><tr><th>OP</th><th>Codigo</th><th>Produto</th><th>Lote</th><th>Linha</th><th>Tipo</th><th>Prog.</th><th>Real. (bom)</th><th>Perda</th><th>Total Proc.</th><th>%</th><th>Status</th><th>Acoes</th></tr></thead>
@@ -2030,7 +2030,11 @@ function renderOPs(){
     var ativaNesseDia=(o.data===dt)&&o.status!=='Concluida';
     return produziuNesseDia||ativaNesseDia;
   });
-  if(lote) ops=ops.filter(function(o){return (o.lote||'').toLowerCase().indexOf(lote)!==-1;});
+  // Busca unica: casa tanto pelo lote quanto pelo numero da OP (o.id)
+  if(lote) ops=ops.filter(function(o){
+    return String(o.lote||'').toLowerCase().indexOf(lote)!==-1
+        || String(o.id||'').toLowerCase().indexOf(lote)!==-1;
+  });
 
   if(!ops.length){
     G('opsbody').innerHTML='<tr><td colspan="13" style="text-align:center;color:#4a664a;padding:20px">Nenhuma OP encontrada. Crie uma nova OP ou limpe os filtros.</td></tr>';
