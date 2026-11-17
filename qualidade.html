@@ -372,6 +372,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
       <button class="btn bsm bp" id="rast-tab-lote" style="flex:1" onclick="rastMudarAba('lote')">🔍 Por Lote/OP</button>
       <button class="btn bsm" id="rast-tab-data" style="flex:1" onclick="rastMudarAba('data')">📅 Por Data de Inspeção</button>
       <button class="btn bsm" id="rast-tab-sku" style="flex:1" onclick="rastMudarAba('sku')">🏷️ Por SKU / Período</button>
+      <button class="btn bsm" id="rast-tab-turno" style="flex:1" onclick="rastMudarAba('turno')">📊 Resumo do Turno (Excel)</button>
     </div>
     <div id="rast-painel-lote" class="fr">
       <div class="fg"><label class="fl">Buscar por Lote ou OP</label><input type="text" id="rast-busca" placeholder="Digite o lote ou número da OP" onkeydown="if(event.key==='Enter')buscarRastreio()"></div>
@@ -393,6 +394,20 @@ tr:hover td{background:rgba(2,79,43,.03)}
         <button class="btn bp" style="flex:1" onclick="buscarRastreioPorSku()">🔍 Buscar</button>
       </div>
       <div class="alw" style="grid-column:1/-1;margin-bottom:0">Considera o SKU produzido no período <strong>ou</strong> com inspeção de qualidade lançada no período (o que for mais amplo).</div>
+    </div>
+    <div id="rast-painel-turno" class="fr3" style="display:none">
+      <div class="fg"><label class="fl">Data operacional</label><input type="date" id="rast-turno-data"></div>
+      <div class="fg"><label class="fl">Turno</label>
+        <select id="rast-turno-turno">
+          <option value="1">Turno 1 (21h-06h)</option>
+          <option value="2">Turno 2 (06h-17h)</option>
+          <option value="3">Turno 3 (17h-21h)</option>
+        </select>
+      </div>
+      <div class="fg" style="align-self:flex-end;display:flex;gap:8px">
+        <button class="btn bp" id="btn-rast-turno-xlsx" style="flex:1" onclick="exportarResumoTurnoExcel()">⇣ Gerar e Baixar Excel</button>
+      </div>
+      <div class="alw" style="grid-column:1/-1;margin-bottom:0">Gera a planilha no padrão da <strong>Base de dados</strong> da planilha de conformidade (Índice → Cozimento), uma linha por inspeção do turno, pronta para colar na base. O Turno 1 que começa às 21h pertence à data do dia seguinte (data operacional).</div>
     </div>
     <div style="text-align:right">
       <button class="btn bsm" id="btn-rast-pdf" style="display:none" onclick="exportarRastreabilidadePDF()">⇣ Exportar PDF</button>
@@ -3157,9 +3172,15 @@ function rastMudarAba(aba){
   G('rast-painel-lote').style.display=aba==='lote'?'':'none';
   G('rast-painel-data').style.display=aba==='data'?'':'none';
   G('rast-painel-sku').style.display=aba==='sku'?'':'none';
+  G('rast-painel-turno').style.display=aba==='turno'?'':'none';
   G('rast-tab-lote').className='btn bsm'+(aba==='lote'?' bp':'');
   G('rast-tab-data').className='btn bsm'+(aba==='data'?' bp':'');
   G('rast-tab-sku').className='btn bsm'+(aba==='sku'?' bp':'');
+  G('rast-tab-turno').className='btn bsm'+(aba==='turno'?' bp':'');
+  if(aba==='turno' && !G('rast-turno-data').value){
+    G('rast-turno-data').value=hoje();
+    G('rast-turno-turno').value=String(turnoAtual());
+  }
   G('rast-resultado').innerHTML='';
   G('btn-rast-pdf').style.display='none';
   RAST_CACHE=[];
@@ -3910,12 +3931,11 @@ function montarCardResumoTurno(grupo){
   return h;
 }
 
-function gerarResumoTurno(){
-  var data=G('rt-data').value, turno=G('rt-turno').value;
-  if(!data){ toast('Selecione a data','err'); return; }
-  G('rt-preview').innerHTML='<div class="card" style="text-align:center;padding:30px;color:#739630">Gerando...</div>';
-
-  Promise.all([
+// Carga compartilhada do resumo de turno — usada pela tela "Resumo de Turno" (cards + PDF) e pela
+// exportação Excel da Rastreabilidade. Fonte única para não haver divergência entre os dois relatórios.
+// Retorna {insp: inspeções do turno, grupos: [Linha+OP] ordenados}.
+function carregarGruposResumoTurno(data, turno){
+  return Promise.all([
     DB.ref('qualidade_inspecoes').orderByChild('data').equalTo(data).once('value'),
     DB.ref('qualidade_retencoes').orderByChild('status').equalTo('Pendente').once('value')
   ]).then(function(r){
@@ -3939,11 +3959,6 @@ function gerarResumoTurno(){
       grupos[k].insps.push(i);
     });
 
-    if(!ordem.length){
-      G('rt-preview').innerHTML='<div class="card" style="text-align:center;color:#999">Nenhuma inspeção lançada em '+data.split('-').reverse().join('/')+' — Turno '+turno+'</div>';
-      return;
-    }
-
     // Ordena pela ordem natural do array LINHAS — e, dentro de cada linha, inclui TODAS as OPs
     // que rodaram naquele turno (não só a primeira), ordenadas cronologicamente entre si.
     var chavesOrdenadas = [];
@@ -3956,15 +3971,34 @@ function gerarResumoTurno(){
       });
       chavesOrdenadas=chavesOrdenadas.concat(chavesDaLinha);
     });
+    // Inspeções gravadas com um nome de linha fora do array LINHAS (ver "__DESCONHECIDA__" em
+    // carregarLinhasAtivas) antes sumiam do resumo sem aviso — agora entram no final da lista.
+    ordem.forEach(function(k){ if(chavesOrdenadas.indexOf(k)===-1) chavesOrdenadas.push(k); });
 
-    var corpo = chavesOrdenadas.map(function(k){ return montarBlocoResumoTurno(grupos[k]); }).join('\n');
+    return {insp:insp, grupos:chavesOrdenadas.map(function(k){ return grupos[k]; })};
+  });
+}
+
+function gerarResumoTurno(){
+  var data=G('rt-data').value, turno=G('rt-turno').value;
+  if(!data){ toast('Selecione a data','err'); return; }
+  G('rt-preview').innerHTML='<div class="card" style="text-align:center;padding:30px;color:#739630">Gerando...</div>';
+
+  carregarGruposResumoTurno(data, turno).then(function(res){
+    var listaGrupos=res.grupos;
+    if(!listaGrupos.length){
+      G('rt-preview').innerHTML='<div class="card" style="text-align:center;color:#999">Nenhuma inspeção lançada em '+data.split('-').reverse().join('/')+' — Turno '+turno+'</div>';
+      return;
+    }
+
+    var corpo = listaGrupos.map(montarBlocoResumoTurno).join('\n');
     var textoCompleto = 'RESUMO T'+turno+' DE '+data.split('-').reverse().join('/')+'\n'+corpo;
-    RESUMO_TURNO_ATUAL={texto:textoCompleto, data:data, turno:turno, grupos:chavesOrdenadas.map(function(k){return grupos[k];})};
+    RESUMO_TURNO_ATUAL={texto:textoCompleto, data:data, turno:turno, grupos:listaGrupos};
 
-    var cardsHtml = chavesOrdenadas.map(function(k){ return montarCardResumoTurno(grupos[k]); }).join('');
+    var cardsHtml = listaGrupos.map(montarCardResumoTurno).join('');
     G('rt-preview').innerHTML =
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
-      '<span style="font-size:13px;color:#4a664a;font-weight:600">'+chavesOrdenadas.length+' ordem(ns) lançada(s) no Turno '+turno+' — '+data.split('-').reverse().join('/')+'</span>'+
+      '<span style="font-size:13px;color:#4a664a;font-weight:600">'+listaGrupos.length+' ordem(ns) lançada(s) no Turno '+turno+' — '+data.split('-').reverse().join('/')+'</span>'+
       '<button class="btn bsm" onclick="baixarResumoTurnoPDF()">⇣ Baixar PDF p/ WhatsApp</button>'+
       '</div>'+cardsHtml;
   }).catch(function(e){
@@ -4080,6 +4114,166 @@ function baixarResumoTurnoPDF(){
   var nomearq='Resumo_Turno'+RESUMO_TURNO_ATUAL.turno+'_'+RESUMO_TURNO_ATUAL.data+'.pdf';
   doc.save(nomearq);
   toast('PDF exportado!','ok');
+}
+
+// ============================================================
+// EXPORTAÇÃO EXCEL — RESUMO DO TURNO (Rastreabilidade)
+// Modelo: "Dashboard - Conformidade Qualidade" / FML 31 RA CQ — Controle de Processamento Hora/Hora
+// ============================================================
+// Por que ExcelJS e não o SheetJS já carregado: a versão community do SheetJS (0.18.5) não grava
+// estilos (cores, bordas, negrito, formato de número) — o arquivo sairia "cru", fora do padrão do
+// modelo. O ExcelJS é carregado SOB DEMANDA (só no clique do botão), então não pesa no carregamento
+// da página nem afeta nenhuma outra tela. Duas CDNs em sequência, como redundância.
+var EXCELJS_URLS=[
+  'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',
+  'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js'
+];
+var _excelJsPromise=null;
+function carregarExcelJS(){
+  if(window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  if(_excelJsPromise) return _excelJsPromise;
+  _excelJsPromise=new Promise(function(resolve,reject){
+    var i=0;
+    (function tentar(){
+      if(i>=EXCELJS_URLS.length){ _excelJsPromise=null; reject(new Error('não foi possível carregar a biblioteca de Excel (verifique a internet)')); return; }
+      var s=document.createElement('script');
+      s.src=EXCELJS_URLS[i++]; s.async=true;
+      s.onload=function(){ if(window.ExcelJS) resolve(window.ExcelJS); else tentar(); };
+      s.onerror=function(){ s.remove(); tentar(); };
+      document.head.appendChild(s);
+    })();
+  });
+  return _excelJsPromise;
+}
+
+// Nome da linha no padrão usado na planilha de conformidade (coluna "Linha" da Base de dados)
+var LINHA_EXCEL_RT={
+  'Linha 1 (E-240)':'E-240',
+  'Linha 2 (E-200)':'E-200',
+  'Linha 4 (Andritz I)':'Linha 4',
+  'Linha 5 (Andritz II)':'Linha 5'
+};
+function rotuloTurnoRT(t){
+  t=String(t);
+  return t==='1' ? 'Turno 1 (21h-06h)' : t==='2' ? 'Turno 2 (06h-'+FIM_TURNO2+'h)' : 'Turno 3 ('+FIM_TURNO2+'h-21h)';
+}
+// Ordenação cronológica DENTRO do turno: 21h-23h59 do T1 vêm antes de 00h-05h59 (mesmo dia operacional)
+function minutoNoTurnoRT(hora){
+  var p=String(hora||'00:00').split(':');
+  var h=parseInt(p[0],10)||0, m=parseInt(p[1],10)||0;
+  if(h>=21) h-=24;
+  return h*60+m;
+}
+
+function exportarResumoTurnoExcel(){
+  var data=G('rast-turno-data').value, turno=G('rast-turno-turno').value;
+  if(!data){ toast('Selecione a data','err'); return; }
+  var btn=G('btn-rast-turno-xlsx');
+  btn.disabled=true; btn.textContent='Gerando...';
+  G('rast-resultado').innerHTML='<div class="card" style="text-align:center;padding:30px;color:#739630">Buscando inspeções do turno...</div>';
+  G('btn-rast-pdf').style.display='none';
+  function liberarBotao(){ btn.disabled=false; btn.textContent='⇣ Gerar e Baixar Excel'; }
+
+  Promise.all([carregarGruposResumoTurno(data, turno), carregarExcelJS()]).then(function(r){
+    var res=r[0], ExcelJS=r[1];
+    if(!res.insp.length){
+      G('rast-resultado').innerHTML='<div class="card" style="text-align:center;color:#999">Nenhuma inspeção lançada em '+fDtBR(data)+' — '+rotuloTurnoRT(turno)+'</div>';
+      liberarBotao();
+      return;
+    }
+    var wb=montarWorkbookResumoTurno(ExcelJS, {
+      data:data, turno:turno, insp:res.insp, grupos:res.grupos,
+      emitidoPor:SES?(SES.nome||SES.login):'—', emitidoEm:new Date().toLocaleString('pt-BR')
+    });
+    return wb.xlsx.writeBuffer().then(function(buf){
+      var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement('a');
+      a.href=url; a.download='Resumo_Qualidade_T'+turno+'_'+data+'.xlsx';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); },2000);
+
+      // Pré-visualização na tela — mesmos cards da tela "Resumo de Turno", para conferência rápida
+      G('rast-resultado').innerHTML=
+        '<div style="font-size:13px;color:#4a664a;font-weight:600;margin-bottom:10px">✔ Excel gerado — '+res.insp.length+' inspeção(ões) em '+res.grupos.length+' ordem(ns) · '+rotuloTurnoRT(turno)+' · '+fDtBR(data)+'</div>'+
+        res.grupos.map(montarCardResumoTurno).join('');
+      toast('Excel exportado!','ok');
+      liberarBotao();
+    });
+  }).catch(function(e){
+    G('rast-resultado').innerHTML='<div style="color:#c0392b;padding:20px">Erro ao gerar Excel: '+e.message+'</div>';
+    toast('Erro: '+e.message,'err');
+    liberarBotao();
+  });
+}
+
+// Monta o arquivo (sem acesso ao Firebase/DOM — recebe tudo pronto; facilita teste e manutenção).
+// Layout = aba "Base de dados" da planilha de conformidade, colunas A (Índice) → AC (Cozimento).
+// Inclusão de Óleo, Temp. Óleo, Acidez e Peróxido não são lançados no sistema: as colunas existem
+// (mantém a mesma posição de colunas do modelo para colar direto na base) mas ficam ocultas, como no modelo.
+function montarWorkbookResumoTurno(ExcelJS, d){
+  var wb=new ExcelJS.Workbook();
+  wb.creator='Raguife — Qualidade'; wb.created=new Date();
+
+  var BORDA={top:{style:'thin',color:{argb:'FFFFFFFF'}},left:{style:'thin',color:{argb:'FFFFFFFF'}},bottom:{style:'thin',color:{argb:'FFFFFFFF'}},right:{style:'thin',color:{argb:'FFFFFFFF'}}};
+  function dataExcel(iso){ var p=String(iso).split('-'); return new Date(Date.UTC(+p[0],+p[1]-1,+p[2])); } // UTC = sem deslocamento de fuso
+  function horaExcel(h){ var p=String(h||'').split(':'); if(p.length<2) return h||''; return ((parseInt(p[0],10)||0)*60+(parseInt(p[1],10)||0))/1440; }
+  function loteExcel(l){ l=String(l||'').trim(); return /^\d{1,15}$/.test(l) ? Number(l) : (l||''); }
+  function num(i,k){ var v=i.resultados?i.resultados[k]:undefined; return (v===undefined||v===null||v==='') ? null : Number(v); }
+  function txt(i,k){ var v=i.resultados?i.resultados[k]:undefined; return (v===undefined||v===null||v==='') ? null : String(v); }
+
+  var insp=d.insp.slice().sort(function(a,b){
+    var da=minutoNoTurnoRT(a.hora), db=minutoNoTurnoRT(b.hora);
+    if(da!==db) return da-db;
+    var la=LINHAS.indexOf(a.linha), lb=LINHAS.indexOf(b.linha);
+    return (la===-1?99:la)-(lb===-1?99:lb);
+  });
+
+  // [cabeçalho, largura, formato, oculta]
+  var COLS=[
+    ['Índice',8],['Data',12.5,'dd/mm/yyyy'],['Turno',8.7],['Hora',7.6,'hh:mm'],['Linha',8.5],['Lote',13.3,'0'],['Coluna1',30],
+    ['Umidade (%)',8.1],['AW (%)',8],['Densidade (g/L)',8],['Flutuabilidade (%)',8.3],['Finos Ensaque (%)',7.1],
+    ['Corte (mm)',7.9],['Diâmetro (mm)',6.7],['Temp. Ração (C°)',7.6],['Temp. Ambiente',6.9],['Umidade Ambiente',6.3],
+    ['Visual',6.6],['Resistência dos Pellets',7.9],['Inclusão de Óleo',15,null,true],['Temp. Óleo',9.6,null,true],
+    ['PB (%)',8.4],['EE (%)',7.7],['MM (%)',9.9],['Acidez (%)',8,null,true],['Peróxido (%)',8,null,true],
+    ['Embalagem',13.7],['Caixa',12],['Cozimento',14.4]
+  ];
+  var ws=wb.addWorksheet('Base de dados',{views:[{state:'frozen',ySplit:1}]});
+  ws.columns=COLS.map(function(c){ return {width:c[1], hidden:!!c[3]}; });
+
+  var hdr=ws.getRow(1);
+  COLS.forEach(function(c,idx){
+    var cell=hdr.getCell(idx+1); cell.value=c[0];
+    cell.font={bold:true,size:14};
+    cell.alignment={horizontal:'center',vertical:'bottom',wrapText:true};
+    cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFFFFF'}};
+    cell.border=BORDA;
+  });
+  hdr.height=78.75;
+
+  insp.forEach(function(i, idx){
+    var vals=[
+      idx+1, dataExcel(i.data||d.data), 'Turno '+i.turno, horaExcel(i.hora), LINHA_EXCEL_RT[i.linha]||i.linha, loteExcel(i.lote), i.desc||i.cod||'',
+      num(i,'umid'), num(i,'aw'), num(i,'dens'), num(i,'flu'), num(i,'finos'), num(i,'corte'), num(i,'diam'),
+      num(i,'tempMedida'), num(i,'tempAmbiente'), num(i,'umidAr'),
+      txt(i,'visual'), txt(i,'resistencia'), null, null,
+      num(i,'pb'), num(i,'ee'), num(i,'mm'), null, null,
+      txt(i,'embalagem'), txt(i,'caixa'), num(i,'coz')
+    ];
+    var row=ws.getRow(idx+2);
+    COLS.forEach(function(c,ci){
+      var cell=row.getCell(ci+1), v=vals[ci];
+      cell.value=(v===null||v===undefined||v==='')?null:v;
+      if(c[2]) cell.numFmt=c[2];
+      cell.font={size:11};
+      cell.alignment={horizontal:'center',vertical:'middle'};
+      cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFDDEBF7'}};
+      cell.border=BORDA;
+    });
+  });
+  ws.autoFilter={from:{row:1,column:1},to:{row:1,column:COLS.length}};
+
+  return wb;
 }
 
 function renderParamsLista(){
