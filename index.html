@@ -725,6 +725,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <div class="fg"><label class="fl">Lote</label><input type="text" id="edlote" placeholder="ex: LOT-2026-XXX"><button class="btn bsm" style="margin-top:4px;width:100%;background:#eef2ee;font-size:11px" onclick="copiarLoteParaOP()">&#8593; Usar lote como No da OP</button></div>
   </div>
   <div class="fr"><div class="fg"><label class="fl">Qtd. Programada</label><input type="number" id="edq" min="0"></div><div class="fg"><label class="fl">Status</label><select id="edst"><option>Liberada</option><option>Em andamento</option><option>Concluida</option><option>Reprogramada</option></select></div></div>
+  <div class="fg"><label class="fl">Tipo da OP</label><select id="edtp" onchange="atualizarHintTipoEd()"><option value="SC">Sacaria (SC)</option><option value="BG">Big Bag (BG)</option><option value="KG">KG Granel</option></select><div id="edtp-hint" style="display:none;margin-top:4px;padding:6px 10px;border-radius:var(--r);font-size:11px"></div></div>
   <div class="fr"><div class="fg"><label class="fl">Linha</label><select id="edln"><option>Linha 1 (E-240)</option><option>Linha 2 (E-200)</option><option>Linha 4 (Andritz I)</option><option>Linha 5 (Andritz II)</option></select></div><div class="fg"><label class="fl">Data</label><input type="date" id="eddt"></div></div>
   <div class="fg"><label class="fl">Observacoes</label><input type="text" id="edo"></div>
   <input type="hidden" id="edid">
@@ -2348,7 +2349,46 @@ function abrirEd(fbKey){
   G('edln').value=op.linha;
   G('eddt').value=op.data;
   G('edo').value=op.obs||'';
+  G('edtp').value=(op.tipo==='SC'||op.tipo==='BG')?op.tipo:'KG';
+  atualizarHintTipoEd();
   G('medit').classList.add('on');
+}
+
+// Fator de conversao KG -> unidade de exibicao da OP (SC=25, BG=750, KG=1)
+function fatorTipoOP(tipo){ return tipo==='SC'?25:tipo==='BG'?750:1; }
+
+// Aviso ao trocar o tipo da OP no modal de edicao: mostra como o que ja foi
+// produzido (sempre gravado em KG) vai aparecer na nova unidade. So visual.
+function atualizarHintTipoEd(){
+  var el=G('edtp-hint'); if(!el) return;
+  var fbKey=G('edid').value, op=null;
+  for(var i=0;i<OPS.length;i++){if(OPS[i].fbKey===fbKey){op=OPS[i];break;}}
+  if(!op){ el.style.display='none'; return; }
+  var tipoAnt=op.tipo||'KG', tipoNovo=G('edtp').value;
+  if(tipoNovo===tipoAnt){ el.style.display='none'; return; }
+  var fat=fatorTipoOP(tipoNovo);
+  var realKg=(Number(op.t1)||0)+(Number(op.t2)||0)+(Number(op.t3)||0);
+  var prodKg=Number(op.prog)||0;
+  var unidN=tipoNovo==='SC'?'sc':tipoNovo==='BG'?'bg':'kg';
+  var fmt=function(kg){ return fat===1?fN(kg)+' kg':fN(Math.round(kg/fat))+' '+unidN+' ('+fN(kg)+' kg)'; };
+  var msg='Tipo: <strong>'+tipoAnt+' &rarr; '+tipoNovo+'</strong>. Quantidades continuam em KG; muda só a exibição/apontamento.<br>'+
+          'Programado: '+fmt(prodKg)+(realKg>0?' &middot; Já apontado: '+fmt(realKg):'');
+  var alerta=false;
+  if(fat>1&&realKg>0&&realKg%fat!==0){
+    alerta=true;
+    msg+='<br>&#9888; O já apontado ('+fN(realKg)+' kg) não é múltiplo de '+fat+' kg — o valor em '+unidN+' será arredondado. Confira os apontamentos.';
+  }
+  var prod=null;
+  for(var p=0;p<PRODS.length;p++){if(PRODS[p].cod===op.cod){prod=PRODS[p];break;}}
+  if(prod&&prod.unid&&prod.unid!==tipoNovo){
+    alerta=true;
+    msg+='<br>&#9888; O cadastro do produto '+op.cod+' está como <strong>'+prod.unid+'</strong>. Se o erro veio do cadastro, corrija lá também para não repetir nas próximas OPs.';
+  }
+  el.innerHTML=msg;
+  el.style.background=alerta?'rgba(210,153,34,.12)':'rgba(2,79,43,.06)';
+  el.style.border='1px solid '+(alerta?'rgba(210,153,34,.4)':'rgba(2,79,43,.2)');
+  el.style.color=alerta?'#7a5a10':'#024f2b';
+  el.style.display='block';
 }
 
 function copiarLoteParaOP(){
@@ -2382,8 +2422,32 @@ function salvarEdicao(){
     lote:novoLote
   };
 
+  // TROCA DE TIPO (KG <-> SC <-> BG) — corrige OP aberta no tipo errado.
+  // prog/real/t1/t2/t3/apontamentos ficam em KG e NAO mudam; so os campos
+  // guardados na unidade de exibicao (t1sc/t2sc/t3sc/perdaSC) sao recalculados.
+  var tipoAnt=op?(op.tipo||'KG'):'';
+  var tipoNovo=G('edtp')?G('edtp').value:tipoAnt;
+  var tipoMudou=!!op&&!!tipoNovo&&tipoNovo!==tipoAnt;
+  if(tipoMudou){
+    var fatN=fatorTipoOP(tipoNovo);
+    var kgApt=(Number(op.t1)||0)+(Number(op.t2)||0)+(Number(op.t3)||0);
+    var txt='Alterar o tipo da OP '+(op.id||'')+' de '+tipoAnt+' para '+tipoNovo+'?\n\n'+
+            'As quantidades em KG não mudam. Muda a unidade de exibição, o apontamento dos operadores e a classificação nos relatórios (sacaria / big bag / granel).';
+    if(kgApt>0) txt+='\n\nATENÇÃO: esta OP já tem '+fN(kgApt)+' kg apontados'+(fatN>1?' (= '+fN(Math.round(kgApt/fatN))+' '+(tipoNovo==='SC'?'sc':'bg')+')':'')+'. Confira se os apontamentos foram feitos na unidade correta.';
+    if(!confirm(txt)) return;
+    upd.tipo=tipoNovo;
+    upd.t1sc=Math.round((Number(op.t1)||0)/fatN);
+    upd.t2sc=Math.round((Number(op.t2)||0)/fatN);
+    upd.t3sc=Math.round((Number(op.t3)||0)/fatN);
+    upd.perdaSC=Math.round((Number(op.perda)||0)/fatN);
+    upd.tipoAlteradoPor=SES.login;
+    upd.tipoAlteradoEm=agora();
+    upd.tipoAnterior=tipoAnt;
+  }
+
   ld(true,'Salvando...');
   DB.ref('ops/'+fbKey).update(upd).then(function(){
+    if(tipoMudou) addLog('ALTERAR_TIPO_OP', (op.id||fbKey)+' | '+tipoAnt+' -> '+tipoNovo);
     // Se a data da OP mudou, atualiza tambem todos os apontamentos e perdas_diarias desta OP
     if(dataMudou){
       return _atualizarDataApontamentos(fbKey, novaData);
@@ -2392,8 +2456,11 @@ function salvarEdicao(){
     ld(false);
     var msg='OP atualizada!';
     if(dataMudou) msg+=' Data dos apontamentos atualizada de '+dataAnt+' para '+novaData;
+    if(tipoMudou) msg+=' Tipo alterado: '+tipoAnt+' → '+tipoNovo;
     toast(msg,'ok');
     fM('medit');
+    // Mesmo fluxo da criacao: OP que virou KG granel ja abre a tela de silos
+    if(tipoMudou&&tipoNovo==='KG'&&!(op&&op.silos)) setTimeout(function(){abrirSilos(fbKey);},400);
     addLog('EDITAR_OP', fbKey+' | No: '+novoId+' | Data: '+dataAnt+'->'+novaData);
   }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
 }
