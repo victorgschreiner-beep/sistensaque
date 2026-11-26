@@ -1664,15 +1664,18 @@ function renderProgramacao(){
       var m=metas[l.id]||{};
       h+='<div class="card" style="padding:14px">';
       h+='<div style="font-weight:700;font-size:14px;color:#024f2b;margin-bottom:8px">'+l.nome+' ('+l.maq+')</div>';
-      h+='<div class="fg" style="margin-bottom:8px"><label class="fl">Meta do dia (kg)</label><input type="number" min="0" id="progr-'+l.id+'" value="'+(m.metaKG!==undefined?m.metaKG:'')+'" placeholder="ex: 50000"></div>';
+      h+='<div class="fg" style="margin-bottom:8px"><label class="fl">Meta do dia (kg)</label><input type="number" min="0" id="progr-'+l.id+'" value="'+(m.metaKG!==undefined?m.metaKG:'')+'" placeholder="ex: 50000" data-lid="'+l.id+'" oninput="progSugCompararMeta(this.dataset.lid)"></div>';
       h+='<div style="font-size:11px;color:#4a664a;display:flex;justify-content:space-between">'+
            '<span>Soma das OPs do dia: <strong>'+fN(progOPs)+' kg</strong></span>'+
            '<span>Real até agora: <strong>'+fN(realOPs)+' kg</strong></span>'+
          '</div>';
-      if(m.atualizadoPor) h+='<div style="font-size:10px;color:#888780;margin-top:6px">Ultima edicao: '+m.atualizadoPor+' em '+(m.atualizadoEm?m.atualizadoEm.slice(0,16).replace('T',' '):'')+'</div>';
+      if(m.atualizadoPor) h+='<div style="font-size:10px;color:#888780;margin-top:6px">Ultima edicao: '+m.atualizadoPor+' em '+(m.atualizadoEm?m.atualizadoEm.slice(0,16).replace('T',' '):'')+(m.sugestaoKG!==undefined?' · sugestão na época: '+fN(m.sugestaoKG)+' kg':'')+'</div>';
+      // Sugestão de capacidade (preenchida de forma assíncrona por progSugCalcular)
+      h+='<div id="progr-sug-'+l.id+'" style="margin-top:10px;border-top:1px dashed #d4e8d4;padding-top:8px;font-size:11px;color:#888780">⏳ Calculando sugestão pelo histórico da extrusão...</div>';
       h+='</div>';
     });
     G('progr-grid').innerHTML=h;
+    progSugCalcular(dt);
   }).catch(function(e){ toast('Erro ao carregar programacao: '+e.message,'err'); });
 }
 
@@ -1686,7 +1689,11 @@ function salvarProgramacao(){
     var v=el.value===''?null:(parseInt(el.value)||0);
     if(v===null) return; // campo vazio: nao mexe (nao apaga meta ja existente sem querer)
     updates[l.id]={metaKG:v, atualizadoPor:SES.login, atualizadoEm:agora()};
-    log.push(l.nome+':'+v);
+    // Auditoria: grava a sugestão vigente no momento do salvamento (permite medir
+    // depois meta PCP x sugestão x realizado). So grava se a sugestão e do mesmo dia.
+    var sg=(PROG_SUG.dt===dt&&PROG_SUG.res)?PROG_SUG.res[l.id]:null;
+    if(sg&&sg.sugestao!==null){ updates[l.id].sugestaoKG=sg.sugestao; updates[l.id].sugestaoConfianca=sg.confianca; updates[l.id].sugestaoHoras=Math.round(sg.horasDisp*10)/10; }
+    log.push(l.nome+':'+v+(sg&&sg.sugestao!==null?' (sug '+sg.sugestao+')':''));
   });
   if(!Object.keys(updates).length){ toast('Nenhuma meta preenchida','err'); return; }
   ld(true,'Salvando programação...');
@@ -1695,6 +1702,264 @@ function salvarProgramacao(){
     addLog('META_DEFINIDA', dt+' | '+log.join(' | '));
     renderProgramacao();
   }).catch(function(e){ ld(false); toast('Erro: '+e.message,'err'); });
+}
+
+// ============================================================
+// SUGESTÃO DE META (PCP) — cruza a fila do dia com o histórico da EXTRUSÃO
+// ============================================================
+// Somente leitura: lê extrusao_apts / extrusao_paradas, não grava nada nesses nós.
+// Para cada linha:
+//   1. kg/h histórico de cada SKU da fila naquela linha (kg ÷ horas apontadas com produção,
+//      janela de PROG_SUG_JANELA dias antes do dia). Sem histórico suficiente cai em cascata:
+//      SKU → fórmula/marca → diâmetro (aqua) ou família → média da linha.
+//   2. Horas disponíveis = horas da escala do dia × disponibilidade histórica da linha
+//      (últimos PROG_SUG_JANELA_DISP dias com produção, SEM descontar setups) − setups previstos
+//      na sequência da fila × tempo médio de setup da linha.
+//   3. Simula a fila na ordem (filaPosicao): cada OP consome saldo/kg_h horas até acabar
+//      o tempo disponível. Sugestão = kg que cabem (arredondado p/ baixo em 500 kg).
+//   Saldo da OP = prog − extrusado ANTES do dia (produção do próprio dia conta para a meta).
+var PROG_SUG_JANELA=90;        // dias de histórico para kg/h por SKU
+var PROG_SUG_JANELA_DISP=30;   // dias recentes para disponibilidade da linha
+var PROG_SUG_MIN_HORAS=6;      // horas mínimas apontadas para confiar num kg/h
+var PROG_SUG_SETUP_PADRAO=60;  // min por setup quando a linha não tem histórico (< 3 setups)
+var PROG_SUG_MAX_MIN_APT=600;  // apontamento acima de 10h = lançamento inconsistente → 60 min
+var PROG_SUG_SETUP_DESCS=['Troca de Formato (SETUP)','Limpeza de Linha(PET)'];
+// ESCALAS — CÓPIA de ESCALAS_TURNO do extrusao.html. Ao mudar a escala lá, mudar aqui também.
+var PROG_SUG_ESCALAS=[
+  {desde:'2000-01-01', turnos:{1:{ini:'21:00',fim:'05:00'},2:{ini:'05:00',fim:'13:00'},3:{ini:'13:00',fim:'21:00'}}},
+  {desde:'2026-08-03', turnos:{1:{ini:'21:00',fim:'06:00'},2:{ini:'06:00',fim:'15:00'}}},
+  {desde:'2026-10-01', turnos:{1:{ini:'21:00',fim:'06:00'},2:{ini:'06:00',fim:'17:00'}}}
+];
+var PROG_SUG={dt:null, token:0, res:null, cache:{}};
+
+function progSugAddDias(dt,n){ var p=dt.split('-'); var d=new Date(Date.UTC(+p[0],+p[1]-1,+p[2]+n)); return d.toISOString().slice(0,10); }
+function progSugMin(hi,hf){
+  if(!hi||!hf) return null;
+  var a=hi.split(':'),b=hf.split(':');
+  var m=(parseInt(b[0],10)*60+parseInt(b[1],10))-(parseInt(a[0],10)*60+parseInt(a[1],10));
+  if(isNaN(m)) return null;
+  if(m<0) m+=1440; // virada da meia-noite
+  return m;
+}
+function progSugMinApt(a){
+  if(!a.horaIni||!a.horaFim||a.horaIni===a.horaFim) return 60;
+  var m=progSugMin(a.horaIni,a.horaFim);
+  return (m&&m>0&&m<=PROG_SUG_MAX_MIN_APT)?m:60;
+}
+function progSugHorasEscala(dt){
+  var e=PROG_SUG_ESCALAS[0];
+  PROG_SUG_ESCALAS.forEach(function(x){ if(dt>=x.desde) e=x; });
+  var tot=0; Object.keys(e.turnos).forEach(function(k){ tot+=progSugMin(e.turnos[k].ini,e.turnos[k].fim)||0; });
+  return tot/60;
+}
+// Níveis de agrupamento do SKU para a cascata de fallback
+function progSugChaves(cod){
+  var c=(cod||'').toString().trim().toUpperCase();
+  var fam=classificarFamilia(c);
+  var semEmb=c.replace(/(SC|KG|BG)$/,'');
+  var n2=(semEmb!==c)?semEmb:c.slice(0,8);           // aqua/horse: mesma fórmula sem embalagem · pet: espécie+marca
+  var n3=(fam==='AQUA'&&c.indexOf('RGF')===0)?c.slice(0,5):fam; // aqua: faixa de diâmetro (RGF04…) · demais: família
+  return {sku:c, n2:'F2:'+n2, n3:'F3:'+n3};
+}
+function progSugNomeFonte(k){ return {sku:'SKU',n2:'fórmula/marca',n3:'diâmetro/família',linha:'média da linha'}[k]||k; }
+
+function progSugCalcular(dt){
+  var tk=++PROG_SUG.token;
+  PROG_SUG.dt=dt; PROG_SUG.res=null;
+  var di=progSugAddDias(dt,-PROG_SUG_JANELA);
+  var chave=di+'|'+dt;
+  var prom=PROG_SUG.cache[chave]?Promise.resolve(PROG_SUG.cache[chave]):Promise.all([
+    DB.ref('extrusao_apts').orderByChild('data').startAt(di).endAt(dt).once('value'),
+    DB.ref('extrusao_paradas').orderByChild('data').startAt(di).endAt(dt).once('value').catch(function(){ return null; })
+  ]).then(function(r){
+    var apts=[], paradas=[];
+    if(r[0]&&r[0].exists()) r[0].forEach(function(c){ var a=c.val(); if(a&&!a.substituido) apts.push(a); });
+    if(r[1]&&r[1].exists()) r[1].forEach(function(c){ var p=c.val(); if(p&&!p.substituido) paradas.push(p); });
+    var d={apts:apts,paradas:paradas}; PROG_SUG.cache={}; PROG_SUG.cache[chave]=d; return d;
+  });
+  prom.then(function(d){
+    if(tk!==PROG_SUG.token) return; // usuário trocou a data no meio — descarta
+    var res={};
+    LINHAS.forEach(function(l){ res[l.id]=progSugLinha(l, dt, d.apts, d.paradas); });
+    PROG_SUG.res=res;
+    LINHAS.forEach(function(l){ progSugRender(l.id); });
+  }).catch(function(e){
+    if(tk!==PROG_SUG.token) return;
+    LINHAS.forEach(function(l){ var el=G('progr-sug-'+l.id); if(el) el.innerHTML='<span style="color:#c0392b">Não foi possível calcular a sugestão: '+e.message+'</span>'; });
+  });
+}
+
+function progSugLinha(l, dt, aptsTodos, paradasTodas){
+  var nm=l.nome+' ('+l.maq+')';
+  var dtDisp=progSugAddDias(dt,-PROG_SUG_JANELA_DISP);
+  var aptsL=aptsTodos.filter(function(a){ return a.linha===nm; });
+  var hist=aptsL.filter(function(a){ return a.data<dt && (Number(a.real)||0)>0; });
+
+  // --- 1. Filtro de outlier: kg/h acima de 1,5× o P95 da linha (lançamento errado)
+  var taxas=hist.map(function(a){ return (Number(a.real)||0)/(progSugMinApt(a)/60); }).sort(function(x,y){return x-y;});
+  var p95=taxas.length?taxas[Math.min(taxas.length-1,Math.floor(taxas.length*0.95))]:0;
+  var tetoKgh=p95?p95*1.5:Infinity, descartados=0;
+  var acc={}; // chave → {kg,min}
+  function soma(k,kg,min){ var x=acc[k]=acc[k]||{kg:0,min:0}; x.kg+=kg; x.min+=min; }
+  hist.forEach(function(a){
+    var min=progSugMinApt(a), kg=Number(a.real)||0;
+    if(kg/(min/60)>tetoKgh){ descartados++; return; }
+    var ch=progSugChaves(a.cod);
+    soma(ch.sku,kg,min); soma(ch.n2,kg,min); soma(ch.n3,kg,min); soma('__LINHA__',kg,min);
+  });
+  function taxaDe(cod){
+    var ch=progSugChaves(cod), niveis=[['sku',ch.sku],['n2',ch.n2],['n3',ch.n3],['linha','__LINHA__']];
+    for(var i=0;i<niveis.length;i++){
+      var x=acc[niveis[i][1]];
+      if(x&&x.min/60>=PROG_SUG_MIN_HORAS) return {kgh:x.kg/(x.min/60), fonte:niveis[i][0], horas:x.min/60};
+    }
+    var t=acc['__LINHA__'];
+    if(t&&t.min>0) return {kgh:t.kg/(t.min/60), fonte:'linha', horas:t.min/60};
+    return null;
+  }
+
+  // --- 2. Setups: tempo médio histórico da linha
+  var setups=paradasTodas.filter(function(p){
+    return p.linha===nm && p.data<dt && (PROG_SUG_SETUP_DESCS.indexOf(p.descricao)>=0||Number(p.codMotivo)===1||Number(p.codMotivo)===2);
+  });
+  var setupMinLista=setups.map(function(p){ var m=Number(p.minutos)||progSugMin(p.horaIni,p.horaFim)||0; return (m>0&&m<=PROG_SUG_MAX_MIN_APT)?m:0; }).filter(function(m){return m>0;});
+  var setupMed=setupMinLista.length>=3?setupMinLista.reduce(function(a,b){return a+b;},0)/setupMinLista.length:PROG_SUG_SETUP_PADRAO;
+
+  // --- 3. Disponibilidade (sem descontar setup — setup é descontado pela sequência da fila)
+  var porDia={};
+  aptsL.forEach(function(a){
+    if(a.data<dtDisp||a.data>=dt||!((Number(a.real)||0)>0)) return;
+    (porDia[a.data]=porDia[a.data]||{apt:0,setup:0}).apt+=progSugMinApt(a);
+  });
+  setups.forEach(function(p){
+    if(p.data<dtDisp||!porDia[p.data]) return;
+    var m=Number(p.minutos)||progSugMin(p.horaIni,p.horaFim)||0;
+    if(m>0&&m<=PROG_SUG_MAX_MIN_APT) porDia[p.data].setup+=m;
+  });
+  var diasDisp=Object.keys(porDia), dispSoma=0;
+  diasDisp.forEach(function(d){ var esc=progSugHorasEscala(d)*60; dispSoma+=Math.min(1,(porDia[d].apt+porDia[d].setup)/esc); });
+  var disp=diasDisp.length?dispSoma/diasDisp.length:null;
+
+  // --- 4. Fila do dia na ordem do PCP + saldo
+  var extAntes={};
+  aptsL.forEach(function(a){ if(a.data<dt&&a.opFbKey) extAntes[a.opFbKey]=(extAntes[a.opFbKey]||0)+(Number(a.real)||0); });
+  var ops=OPS.filter(function(o){ return o.linha===nm && o.data===dt; });
+  ops.sort(function(a,b){
+    var pa=a.filaPosicao!==undefined?a.filaPosicao:9999, pb=b.filaPosicao!==undefined?b.filaPosicao:9999;
+    return pa!==pb?pa-pb:(a.criadoEm||'')>(b.criadoEm||'')?1:-1;
+  });
+  // Último SKU extrusado na linha antes do dia (define se a 1ª OP já exige setup)
+  var ultCod=null, ultTs='';
+  // T1 começa às 21h do dia civil ANTERIOR ao dia operacional: horas ≥21h vêm antes das demais do mesmo dia
+  aptsL.forEach(function(a){ if(a.data<dt&&a.cod){ var hi=a.horaIni||''; var k=a.data+' '+(hi>='21:00'?'0':'1')+hi; if(k>ultTs){ ultTs=k; ultCod=(a.cod||'').toUpperCase(); } } });
+
+  var horasEscala=progSugHorasEscala(dt);
+  var itens=[], codAnt=ultCod, nSetups=0, semTaxa=0;
+  ops.forEach(function(o){
+    var conclAntes=EXT_CONCLUIDA&&EXT_CONCLUIDA[o.fbKey]&&EXT_CONCLUIDA[o.fbKey].data&&EXT_CONCLUIDA[o.fbKey].data<dt;
+    var saldo=conclAntes?0:Math.max((Number(o.prog)||0)-(extAntes[o.fbKey]||0),0);
+    var cod=(o.cod||'').toUpperCase();
+    var setup=false;
+    if(saldo>0){ if(codAnt&&codAnt!==cod){ setup=true; nSetups++; } codAnt=cod; }
+    var tx=taxaDe(cod); if(!tx&&saldo>0) semTaxa++;
+    itens.push({op:o, cod:cod, saldo:saldo, taxa:tx, setup:setup, horas:(tx&&saldo>0)?saldo/tx.kgh:0, kgCabe:0, status:''});
+  });
+
+  if(disp===null||!ops.length){
+    return {sugestao:null, motivo:!ops.length?'Sem OPs programadas para este dia.':'Linha sem apontamentos de extrusão nos últimos '+PROG_SUG_JANELA_DISP+' dias — sem base para disponibilidade.', itens:itens, horasEscala:horasEscala, disp:disp, horasDisp:0, nSetups:nSetups, setupMed:setupMed, confianca:'—', descartados:descartados, somaSaldo:0, horasNec:0};
+  }
+
+  var horasDisp=Math.max(0, horasEscala*disp - nSetups*setupMed/60);
+  var restante=horasDisp, kgCabe=0, somaSaldo=0, horasNec=0, piorFonte=0;
+  var ordemFonte={sku:0,n2:1,n3:2,linha:3};
+  itens.forEach(function(it){
+    somaSaldo+=it.saldo;
+    if(it.saldo<=0){ it.status='zerada'; return; }
+    if(!it.taxa){ it.status='sem histórico'; return; }
+    piorFonte=Math.max(piorFonte,ordemFonte[it.taxa.fonte]);
+    horasNec+=it.horas;
+    if(restante<=0){ it.status='não cabe'; return; }
+    if(it.horas<=restante){ it.kgCabe=it.saldo; restante-=it.horas; it.status='cabe'; }
+    else { it.kgCabe=Math.round(restante*it.taxa.kgh); restante=0; it.status='parcial'; }
+    kgCabe+=it.kgCabe;
+  });
+  var confianca=semTaxa>0?'Baixa':piorFonte===0?'Alta':piorFonte<=1?'Média':'Baixa';
+  return {sugestao:Math.floor(kgCabe/500)*500, itens:itens, horasEscala:horasEscala, disp:disp, horasDisp:horasDisp, nSetups:nSetups, setupMed:setupMed,
+          confianca:confianca, descartados:descartados, somaSaldo:somaSaldo, horasNec:horasNec, folgaH:restante, semTaxa:semTaxa, diasDisp:diasDisp.length};
+}
+
+function progSugRender(lid){
+  var el=G('progr-sug-'+lid); if(!el||!PROG_SUG.res) return;
+  var r=PROG_SUG.res[lid];
+  if(!r||r.sugestao===null){ el.innerHTML='<span style="color:#888780">💡 '+(r?r.motivo:'Sem dados')+'</span>'; return; }
+  var corConf=r.confianca==='Alta'?'#024f2b':r.confianca==='Média'?'#d29922':'#c0392b';
+  var ocup=r.horasDisp>0?Math.round(r.horasNec/r.horasDisp*100):0;
+  var corOcup=ocup>110?'#c0392b':ocup>95?'#d29922':'#024f2b';
+  var naoCabe=Math.max(0,r.somaSaldo-r.itens.reduce(function(a,x){return a+x.kgCabe;},0));
+  var h='';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;color:#1a2e1a">';
+  h+='<div><span style="font-size:11px;color:#739630;font-weight:700">💡 SUGESTÃO (histórico extrusão)</span><br>';
+  h+='<span style="font-size:18px;font-weight:800;color:#024f2b">'+fN(r.sugestao)+' kg</span> ';
+  h+='<span style="font-size:10px;font-weight:700;color:'+corConf+';border:1px solid '+corConf+';border-radius:10px;padding:1px 7px;margin-left:4px">confiança '+r.confianca+'</span></div>';
+  h+='<button class="btn bg2 bsm" data-lid="'+lid+'" onclick="progSugUsar(this.dataset.lid)">Usar sugestão</button>';
+  h+='</div>';
+  h+='<div style="margin-top:4px;color:#4a664a">'+
+     fN(Math.round(r.horasEscala*10)/10)+' h escala × '+Math.round(r.disp*100)+'% disp. − '+r.nSetups+' setup(s) × '+Math.round(r.setupMed)+' min = <strong>'+(Math.round(r.horasDisp*10)/10).toLocaleString('pt-BR')+' h</strong>'+
+     ' · fila precisa de <strong style="color:'+corOcup+'">'+(Math.round(r.horasNec*10)/10).toLocaleString('pt-BR')+' h ('+ocup+'%)</strong></div>';
+  if(naoCabe>0) h+='<div style="margin-top:3px;color:#c0392b;font-weight:600">⚠ '+fN(naoCabe)+' kg do saldo da fila não cabem no dia</div>';
+  else if(r.folgaH>0.5) h+='<div style="margin-top:3px;color:#d29922;font-weight:600">⚠ Sobra ~'+(Math.round(r.folgaH*10)/10).toLocaleString('pt-BR')+' h de linha — fila curta para o dia</div>';
+  if(r.semTaxa) h+='<div style="margin-top:3px;color:#c0392b">⚠ '+r.semTaxa+' OP(s) sem histórico na linha — fora da conta</div>';
+  h+='<div id="progr-sug-cmp-'+lid+'" style="margin-top:3px"></div>';
+  // Quanto cada OP da fila consegue rodar no dia — SEMPRE visível no card
+  var corSt={'cabe':'#024f2b','parcial':'#d29922','não cabe':'#c0392b','sem histórico':'#c0392b','zerada':'#888780'};
+  var rotSt={'cabe':'✔ completa','parcial':'◐ parcial','não cabe':'✖ não cabe hoje','sem histórico':'? sem histórico','zerada':'— já extrusada'};
+  h+='<div style="margin-top:8px;font-size:10px;font-weight:700;color:#4a664a;text-transform:uppercase;letter-spacing:.4px">Quanto consegue rodar hoje — fila de OPs</div>';
+  h+='<table style="width:100%;border-collapse:collapse;margin-top:4px;font-size:11px">';
+  h+='<tr style="background:#f5f9f2;color:#024f2b"><th style="text-align:left;padding:4px">#</th><th style="text-align:left;padding:4px">OP / Produto</th><th style="text-align:right;padding:4px">Saldo (kg)</th><th style="text-align:right;padding:4px">kg/h hist.</th><th style="text-align:right;padding:4px">Horas</th><th style="text-align:right;padding:4px">Consegue hoje (kg)</th></tr>';
+  var totCabe=0;
+  r.itens.forEach(function(it,ix){
+    totCabe+=it.kgCabe;
+    var c=corSt[it.status]||'#4a664a';
+    h+='<tr style="border-bottom:1px solid #eef2ee">';
+    h+='<td style="padding:4px;color:#888780">'+(ix+1)+'</td>';
+    h+='<td style="padding:4px">'+(it.setup?'<span title="Setup previsto antes desta OP" style="color:#d29922">⚙ </span>':'')+'<strong>'+it.op.id+'</strong> <span style="color:#4a664a">'+(it.op.desc||it.cod)+'</span></td>';
+    h+='<td style="padding:4px;text-align:right">'+fN(it.saldo)+'</td>';
+    h+='<td style="padding:4px;text-align:right" title="'+(it.taxa?'base: '+progSugNomeFonte(it.taxa.fonte)+' · '+Math.round(it.taxa.horas)+' h de histórico':'')+'">'+(it.taxa?fN(Math.round(it.taxa.kgh))+(it.taxa.fonte!=='sku'?' <span style="color:#d29922">*</span>':''):'—')+'</td>';
+    h+='<td style="padding:4px;text-align:right">'+(it.horas?(Math.round(it.horas*10)/10).toLocaleString('pt-BR'):'—')+'</td>';
+    h+='<td style="padding:4px;text-align:right;color:'+c+';font-weight:700;white-space:nowrap">'+fN(it.kgCabe)+' <span style="font-size:10px;font-weight:600">'+(rotSt[it.status]||it.status)+'</span></td>';
+    h+='</tr>';
+  });
+  h+='<tr style="background:#f5f9f2;font-weight:700;color:#024f2b"><td></td><td style="padding:4px">TOTAL</td><td style="padding:4px;text-align:right">'+fN(r.somaSaldo)+'</td><td></td><td style="padding:4px;text-align:right">'+(Math.round(r.horasNec*10)/10).toLocaleString('pt-BR')+'</td><td style="padding:4px;text-align:right">'+fN(totCabe)+'</td></tr>';
+  h+='</table>';
+  h+='<div style="margin-top:3px;color:#888780;font-size:10px">⚙ = setup previsto antes da OP · * kg/h estimado por fórmula/diâmetro/família (SKU sem histórico suficiente na linha)</div>';
+  h+='<details style="margin-top:4px"><summary style="cursor:pointer;color:#739630;font-weight:600;font-size:10px">Como é calculado</summary>';
+  h+='<div style="margin-top:4px;color:#888780;font-size:10px">kg/h = kg ÷ horas apontadas com produção, últimos '+PROG_SUG_JANELA+' dias (mín. '+PROG_SUG_MIN_HORAS+' h; sem isso usa fórmula → diâmetro/família → linha). '+
+     'Disponibilidade = (horas produzindo + setup) ÷ escala, média de '+r.diasDisp+' dia(s) com produção nos últimos '+PROG_SUG_JANELA_DISP+'. Saldo = programado − extrusado antes do dia.'+
+     (r.descartados?' '+r.descartados+' apontamento(s) descartado(s) como outlier.':'')+'</div>';
+  h+='</details>';
+  el.innerHTML=h;
+  progSugCompararMeta(lid);
+}
+
+function progSugUsar(lid){
+  var r=PROG_SUG.res&&PROG_SUG.res[lid]; var inp=G('progr-'+lid);
+  if(!r||r.sugestao===null||!inp) return;
+  inp.value=r.sugestao;
+  progSugCompararMeta(lid);
+  toast('Sugestão aplicada — confira e clique em Salvar Metas do Dia','ok');
+}
+
+// Compara, ao vivo, a meta digitada com a sugestão
+function progSugCompararMeta(lid){
+  var el=G('progr-sug-cmp-'+lid), inp=G('progr-'+lid);
+  var r=PROG_SUG.res&&PROG_SUG.res[lid];
+  if(!el||!inp||!r||!r.sugestao){ if(el) el.innerHTML=''; return; }
+  var v=parseInt(inp.value,10);
+  if(isNaN(v)){ el.innerHTML=''; return; }
+  var dif=Math.round((v-r.sugestao)/r.sugestao*100);
+  if(dif>10) el.innerHTML='<span style="color:#c0392b;font-weight:600">Meta '+dif+'% acima da capacidade histórica</span>';
+  else if(dif<-10) el.innerHTML='<span style="color:#d29922;font-weight:600">Meta '+Math.abs(dif)+'% abaixo da capacidade histórica</span>';
+  else el.innerHTML='<span style="color:#024f2b;font-weight:600">Meta alinhada à capacidade histórica ('+(dif>=0?'+':'')+dif+'%)</span>';
 }
 
 // PROGRAMADO por linha/dia: vem EXCLUSIVAMENTE da META que o PCP cadastra na aba
