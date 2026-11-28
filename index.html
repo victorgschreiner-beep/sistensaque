@@ -1453,7 +1453,7 @@ function renderSilos(){
   var r=SIL.robo,mr=r?silMin(r.ts):null,okR=r&&r.ok!==false&&mr!=null&&mr<=10;
   G('silos-status').innerHTML='<span class="badge '+(okR?'bvd':'bam')+'">'+(r?(okR?'Libracom lido às '+silDt(r.ts).slice(6):'Sem leitura há '+(mr==null?'?':mr)+' min'+(r.erro?' · '+silEsc(r.erro):'')):'Robô ainda não leu os silos')+'</span>';
   var h='';
-  if(!L.length){box.innerHTML='<div class="ali">Aguardando a primeira leitura dos silos pelo robô de rotas (PC do ensaque). Confira se o usuário e a senha do Libracom estão no <b>robo_rotas.ini</b>.</div>';return;}
+  if(!L.length){box.innerHTML='<div class="ali">Aguardando a primeira leitura dos silos pelo robô de rotas (PC do ensaque). Confira se o usuário e a senha do Libracom estão no <b>robo_rotas.ini</b>.'+(r&&r.erro?'<br><b>Situação informada pelo robô:</b> '+silEsc(r.erro)+' ('+silDt(r.ts)+')':'')+'</div>';return;}
   if(!okR)h+='<div class="alw">⚠ O robô não está lendo o Libracom agora. Os saldos abaixo são da última leitura ('+silDt(r&&r.ts)+').</div>';
   // indicadores
   var kgG=gran.reduce(function(a,x){return a+(x.kg||0);},0),kgE=ens.reduce(function(a,x){return a+(x.kg||0);},0);
