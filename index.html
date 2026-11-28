@@ -107,7 +107,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
 .opcard.and{border-left-color:#d29922}.opcard.dn{border-left-color:#739630}
 .sgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin:10px 0}
 .sbt{padding:8px 4px;border:1px solid #c8d8c8;border-radius:var(--r);background:#f4f6f4;cursor:pointer;text-align:center;font-size:12px;font-weight:600;transition:.12s;color:#1a2e1a}
-.sbt:hover{border-color:#024f2b}.sbt.on{border-color:#024f2b;background:rgba(2,79,43,.1);color:#024f2b}
+.sbt:hover{border-color:#024f2b}.sbt.on{border-color:#024f2b;background:rgba(2,79,43,.1);color:#024f2b;box-shadow:inset 0 0 0 3px #024f2b}
 .excard{background:#f4f6f4;border:1px solid #c8d8c8;border-radius:var(--r2);padding:16px;cursor:pointer;text-align:center;transition:.15s}
 .excard:hover{border-color:#024f2b;background:rgba(2,79,43,.07)}
 .pdfprev{background:#fff;color:#111;border-radius:var(--r);padding:20px;font-family:Georgia,serif;font-size:12px;line-height:1.6}
@@ -169,6 +169,7 @@ tr:hover td{background:rgba(2,79,43,.03)}
     <button class="nb" id="nb-op" onclick="go('operador',this)">Apontamento</button>
     <button class="nb" id="nb-exp" onclick="go('exportar',this)">Exportar</button>
     <button class="nb" id="nb-bal" onclick="go('balancas',this)">⚖️ Balanças</button>
+    <button class="nb" id="nb-silos" onclick="go('silos',this)">🏭 Silos</button>
     <button class="nb" id="nb-envase" onclick="go('envase',this)">Envase PET</button>
     <button class="nb" id="nb-geral" onclick="go('geral',this)">Finos / Reprocesso Geral</button>
     <button class="nb" id="nb-adm" onclick="go('admin',this)">Admin</button>
@@ -560,6 +561,15 @@ tr:hover td{background:rgba(2,79,43,.03)}
   </div>
 </div>
 
+<!-- SILOS DE EXPEDICAO — saldo do Libracom, FIFO por SKU e rastreio por OP/lote -->
+<div class="scr" id="scr-silos">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <h2 style="font-size:16px;font-weight:700;color:#024f2b">Silos de expedição <span style="font-size:11px;color:#739630;font-weight:500">&#9679; ao vivo</span></h2>
+    <div id="silos-status"></div>
+  </div>
+  <div id="silos-corpo"></div>
+</div>
+
 <!-- ADMIN -->
 <div class="scr" id="scr-admin">
   <h2 style="font-size:16px;font-weight:700;color:#024f2b;margin-bottom:16px">Administracao</h2>
@@ -668,6 +678,11 @@ tr:hover td{background:rgba(2,79,43,.03)}
 </div>
 
 <!-- MODAIS -->
+<div class="ov" id="ov-silo" onclick="if(event.target===this)silFecharDet()"><div class="modal" style="width:760px">
+  <div class="mt" id="sil-mt">Silo</div>
+  <div id="sil-mb"></div>
+  <div class="mfoot"><button class="btn bsm" onclick="silMovDoSilo()">Ver movimentos deste silo</button><button class="btn bp bsm" onclick="silFecharDet()">Fechar</button></div>
+</div></div>
 <div class="ov" id="mop"><div class="modal">
   <div class="mt">Nova Ordem de Producao
     <label style="float:right;cursor:pointer;font-size:12px;background:#739630;color:#fff;padding:4px 10px;border-radius:4px;font-weight:600" title="Importar dados do PDF do TOTVS">
@@ -847,10 +862,9 @@ tr:hover td{background:rgba(2,79,43,.03)}
   <div class="mfoot"><button class="btn bsm" onclick="fM('mcorr')">Cancelar</button><button class="btn bsm bp" onclick="salvarCorrecao()">Salvar Correcao</button></div>
 </div></div>
 
-<div class="ov" id="msilo"><div class="modal">
+<div class="ov" id="msilo"><div class="modal" style="width:700px">
   <div class="mt">Destino de Producao em KG</div>
-  <div class="ali">Selecione os silos de destino.</div>
-  <div class="sgrid" id="silog"></div>
+  <div id="silog"></div>
   <div id="siloq"></div>
   <div class="mfoot"><button class="btn bsm" onclick="fM('msilo')">Cancelar</button><button class="btn bsm bg2" onclick="salvarSilos()">Confirmar</button></div>
 </div></div>
@@ -1350,6 +1364,7 @@ function aplicarSessao(){
   G('nb-op').style.display=(isPCP||isSup)?'none':'';
   G('nb-exp').style.display=isOP?'none':'';
   G('nb-bal').style.display=''; // todos podem ver balanças
+  G('nb-silos').style.display=(isPCP||isSup)?'':'none'; // silos: PCP, admin e supervisor
   G('nb-envase').style.display=isPCP?'':'none';
   G('nb-progr').style.display=isPCP?'':'none';
   G('nb-adm').style.display=(p==='admin')?'':'none';
@@ -1357,6 +1372,7 @@ function aplicarSessao(){
 }
 
 function doLogout(){
+  try{ silosParar(); }catch(e){}
   // Remove listener
   DB.ref('ops').off();
   DB.ref('extrusao_op_concluida').off();
@@ -1366,6 +1382,274 @@ function doLogout(){
   AUTO_AVANCO_ENVASE_FEITO=false;
   G('pg-app').style.display='none';
   G('pg-login').style.display='flex';
+}
+
+// ============================================================
+// NAVEGACAO (aba Silos logo abaixo)
+// ============================================================
+// ============================================================
+// SILOS DE EXPEDICAO — saldo (Libracom), FIFO por SKU e rastreio por OP/lote
+// Dados gravados pelo robo de rotas (PC do ensaque): silos_estado, silos_mov, silos_camadas, silos_robo
+// ============================================================
+var SIL={est:{},datas:{},mov:[],robo:null,rotas:null,ouvindo:false,cam:null,camTs:0,filtroMov:''};
+function silKg(v){return v==null?'—':Math.round(v).toLocaleString('pt-BR');}
+function silT(v){return v==null?'—':(v/1000).toLocaleString('pt-BR',{maximumFractionDigits:1})+' t';}
+function silDt(iso){if(!iso)return '—';var d=new Date(iso);if(isNaN(d))return '—';return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);}
+function silEsc(t){return String(t==null?'':t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function silMin(iso){var d=Date.parse(iso);return isNaN(d)?null:Math.floor((Date.now()-d)/60000);}
+function silOrdemTag(a,b){var r=/^SL-(\d+)([A-Z])$/,x=a.match(r),y=b.match(r);if(x&&y)return (x[1]-y[1])||x[2].localeCompare(y[2]);return a.localeCompare(b,'pt-BR',{numeric:true});}
+
+function silosIniciar(){
+  if(!SIL.ouvindo){
+    SIL.ouvindo=true;
+    DB.ref('silos_estado').on('value',function(s){SIL.est=s.val()||{};renderSilos();});
+    DB.ref('silos_robo').on('value',function(s){SIL.robo=s.val();renderSilos();});
+    DB.ref('silos_datas').on('value',function(s){SIL.datas=s.val()||{};renderSilos();});
+    DB.ref('rotas_status').on('value',function(s){SIL.rotas=s.val();renderSilos();});
+    DB.ref('silos_mov').limitToLast(300).on('value',function(s){
+      var v=s.val()||{},a=[];Object.keys(v).forEach(function(k){if(v[k]&&v[k].ts)a.push(v[k]);});
+      a.sort(function(x,y){return x.ts<y.ts?1:-1;});SIL.mov=a;renderSilos();});
+  }
+  renderSilos();
+}
+function silosParar(){
+  if(!SIL.ouvindo)return;
+  ['silos_estado','silos_robo','rotas_status','silos_datas'].forEach(function(p){DB.ref(p).off();});
+  DB.ref('silos_mov').limitToLast(300).off();DB.ref('silos_mov').off();
+  SIL.ouvindo=false;
+}
+
+// linha -> silo que esta enchendo agora (robo de rotas)
+function silEnchendo(){var r=SIL.rotas||{},m={};['L1','L2','L4','L5'].forEach(function(l){var x=r[l];if(x&&x.silo&&x.silo!=='SEM ROTA')m[x.silo]=l;});return m;}
+function silLista(){return Object.keys(SIL.est).map(function(k){return SIL.est[k];}).filter(function(x){return x&&x.tag;});}
+function silDataMan(x){var d=SIL.datas[(x.tag||'').replace(/[ .]/g,'_')];return x.anterior&&d&&d.data?d.data:null;}
+// anterior ao sistema = mais antigo; entre os anteriores vale a data informada pelo PCP (sem data = desconhecida)
+function silIdade(x){return x.anterior?(silDataMan(x)?'0'+silDataMan(x):'0z'):(x.cheio_desde||'9');}
+function silDataTxt(x){return x.anterior?(silDataMan(x)?'antes do sistema · ~'+silDataMan(x).split('-').reverse().slice(0,2).join('/'):'antes do sistema · data?'):silDt(x.cheio_desde);}
+// FIFO por SKU: silos com saldo, do mais antigo para o mais novo
+function silFifo(){
+  var g={},enc=silEnchendo();
+  silLista().forEach(function(x){if(!x.sku||!(x.kg>1))return;(g[x.sku]=g[x.sku]||{sku:x.sku,desc:x.desc||'',silos:[],kg:0}).silos.push(x);g[x.sku].kg+=x.kg;});
+  return Object.keys(g).map(function(k){var o=g[k];
+    o.silos.sort(function(a,b){return silIdade(a)<silIdade(b)?-1:silIdade(a)>silIdade(b)?1:silOrdemTag(a.tag,b.tag);});
+    o.proximo=null;o.ambiguo=false;var cand=o.silos.filter(function(s){return s.hab_dosagem!==false&&!enc[s.tag];});
+    // sem data nos silos anteriores ao sistema nao da para saber qual e o mais antigo: nao chuta
+    var semData=cand.filter(function(s){return s.anterior&&!silDataMan(s);});
+    if(semData.length>1||(semData.length===1&&cand.some(function(s){return s.anterior&&silDataMan(s);})))o.ambiguo=true;
+    else if(cand.length)o.proximo=cand[0].tag;
+    return o;}).sort(function(a,b){return b.kg-a.kg;});
+}
+function silHoje(ts){var d=new Date(ts),n=new Date();return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate();}
+
+function renderSilos(){
+  var box=G('silos-corpo');if(!box||!G('scr-silos').classList.contains('on'))return;
+  var L=silLista(),enc=silEnchendo(),fifo=silFifo(),prox={};
+  fifo.forEach(function(f){if(f.proximo)prox[f.proximo]=f.silos.length>1;});
+  var gran=L.filter(function(x){return x.tipo!=='ensaque';}).sort(function(a,b){return silOrdemTag(a.tag,b.tag);});
+  var ens=L.filter(function(x){return x.tipo==='ensaque';}).sort(function(a,b){return silOrdemTag(a.tag,b.tag);});
+  var acima=L.filter(function(x){return x.cap&&x.kg>x.cap;});
+  var foraHoje=SIL.mov.filter(function(m){return m.fifo&&m.fifo.ok===false&&silHoje(m.ts);});
+  // status do robo
+  var r=SIL.robo,mr=r?silMin(r.ts):null,okR=r&&r.ok!==false&&mr!=null&&mr<=10;
+  G('silos-status').innerHTML='<span class="badge '+(okR?'bvd':'bam')+'">'+(r?(okR?'Libracom lido às '+silDt(r.ts).slice(6):'Sem leitura há '+(mr==null?'?':mr)+' min'+(r.erro?' · '+silEsc(r.erro):'')):'Robô ainda não leu os silos')+'</span>';
+  var h='';
+  if(!L.length){box.innerHTML='<div class="ali">Aguardando a primeira leitura dos silos pelo robô de rotas (PC do ensaque). Confira se o usuário e a senha do Libracom estão no <b>robo_rotas.ini</b>.</div>';return;}
+  if(!okR)h+='<div class="alw">⚠ O robô não está lendo o Libracom agora. Os saldos abaixo são da última leitura ('+silDt(r&&r.ts)+').</div>';
+  // indicadores
+  var kgG=gran.reduce(function(a,x){return a+(x.kg||0);},0),kgE=ens.reduce(function(a,x){return a+(x.kg||0);},0);
+  h+='<div class="mrow">'+
+    '<div class="mc"><div class="ml">Silos com produto</div><div class="mv cg">'+L.filter(function(x){return x.kg>1;}).length+' / '+L.length+'</div></div>'+
+    '<div class="mc"><div class="ml">Granel</div><div class="mv">'+silT(kgG)+'</div></div>'+
+    '<div class="mc"><div class="ml">Ensaque / bag</div><div class="mv">'+silT(kgE)+'</div></div>'+
+    '<div class="mc"><div class="ml">Enchendo agora</div><div class="mv cb">'+Object.keys(enc).length+'</div><div class="ms">'+Object.keys(enc).map(function(t){return enc[t]+'→'+t;}).join(' · ')+'</div></div>'+
+    '<div class="mc"><div class="ml">Acima da capacidade</div><div class="mv '+(acima.length?'co':'')+'">'+acima.length+'</div><div class="ms">baixa não lançada?</div></div>'+
+    '<div class="mc"><div class="ml">Baixas fora do FIFO hoje</div><div class="mv '+(foraHoje.length?'cr':'')+'">'+foraHoje.length+'</div></div></div>';
+  // rastreio
+  h+='<div class="card"><div class="ch"><span class="ct">Rastreio por OP ou lote</span></div>'+
+     '<div style="display:flex;gap:8px;flex-wrap:wrap"><input id="sil-busca" placeholder="Número da OP ou do lote" style="max-width:280px" onkeydown="if(event.key===\'Enter\')silRastrear()"><button class="btn bp bsm" onclick="silRastrear()">Buscar</button></div>'+
+     '<div id="sil-rastreio" style="margin-top:10px"></div></div>';
+  // FIFO
+  h+='<div class="card"><div class="ch"><span class="ct">FIFO por SKU — qual silo sai primeiro</span><span style="font-size:11px;color:#4a664a">do mais antigo para o mais novo · 🥇 = próximo a sair</span></div>';
+  if(!fifo.length)h+='<div class="ms">Nenhum silo com saldo.</div>';
+  fifo.forEach(function(f){
+    h+='<div style="padding:8px 0;border-bottom:1px solid var(--bd)"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b style="color:#024f2b">'+silEsc(f.sku)+(f.ambiguo?' <span class="badge bam">ordem desconhecida: informe a data dos silos antigos</span>':'')+'</b><span style="font-size:12px;color:#4a664a">'+silEsc(f.desc)+' · '+silT(f.kg)+'</span></div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">';
+    f.silos.forEach(function(s,i){
+      var st=s.tag===f.proximo?'background:rgba(2,79,43,.12);border-color:#024f2b;color:#024f2b':(enc[s.tag]?'background:rgba(31,111,235,.08);border-color:#1f6feb;color:#1f6feb':'');
+      h+='<span class="badge" onclick="silDetalhe(\''+silEsc(s.tag)+'\')" style="cursor:pointer;border:1px solid #c8d8c8;padding:5px 9px;border-radius:8px;font-weight:600;'+st+'">'+(s.tag===f.proximo?'🥇 ':(s.anterior&&!silDataMan(s)?'? ':(i+1)+'º '))+silEsc(s.tag)+' · '+silT(s.kg)+' · '+silDataTxt(s)+(enc[s.tag]?' · enchendo ('+enc[s.tag]+')':'')+(s.hab_dosagem===false?' · bloqueado':'')+'</span>';
+    });
+    h+='</div></div>';
+  });
+  h+='</div>';
+  // mapas
+  function mapa(tit,arr){
+    var t='<div class="card"><div class="ch"><span class="ct">'+tit+'</span></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px">';
+    arr.forEach(function(x){
+      var cap=x.cap||0,pc=cap?Math.min(100,Math.round((x.kg||0)/cap*100)):null,ac=cap&&x.kg>cap,ch=enc[x.tag],pr=prox[x.tag]!==undefined;
+      var bd=ac?'#d29922':(ch?'#1f6feb':(pr?'#024f2b':'#c8d8c8')),bg=x.kg>1?'#fff':'#f4f6f4';
+      t+='<div onclick="silDetalhe(\''+silEsc(x.tag)+'\')" style="cursor:pointer;background:'+bg+';border:1.5px solid '+bd+';border-radius:8px;padding:7px 8px;font-size:12px">'+
+        '<div style="display:flex;justify-content:space-between"><b>'+silEsc(x.tag)+'</b><span>'+(pr?'🥇':'')+(ch?'⬇':'')+(ac?'⚠':'')+'</span></div>'+
+        '<div style="color:#4a664a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+silEsc(x.produto)+'">'+silEsc(x.kg>1?(x.sku||'—'):'vazio')+'</div>'+
+        '<div style="font-weight:700;font-size:14px">'+(x.kg>1?silT(x.kg):'')+'</div>'+
+        (pc!=null&&x.kg>1?'<div style="height:5px;background:#eef2ee;border-radius:3px;margin-top:3px"><div style="height:5px;border-radius:3px;width:'+pc+'%;background:'+(ac?'#d29922':'#739630')+'"></div></div>':'')+
+        (ch?'<div style="font-size:10px;color:#1f6feb;margin-top:2px">enchendo · '+ch+'</div>':'')+'</div>';
+    });
+    return t+'</div></div>';
+  }
+  h+=mapa('Silos a granel',gran)+mapa('Silos de ensaque / bag',ens);
+  // movimentos
+  var mv=SIL.mov.filter(function(m){return !SIL.filtroMov||m.tag===SIL.filtroMov;}).slice(0,60);
+  var TIP={entrada:['Entrada','bvd'],baixa:['Baixa','bam'],zerado:['Esvaziado','bam'],troca_sku:['Troca de SKU','bpx']};
+  h+='<div class="card"><div class="ch"><span class="ct">Movimentos'+(SIL.filtroMov?' — '+silEsc(SIL.filtroMov)+' <button class="btn bxs" onclick="SIL.filtroMov=\'\';renderSilos()">ver todos</button>':'')+'</span><span style="font-size:11px;color:#4a664a">entradas agrupadas pela leitura do Libracom (a cada 2 min)</span></div>'+
+     '<div class="tw"><table><thead><tr><th>Quando</th><th>Silo</th><th>Movimento</th><th style="text-align:right">kg</th><th style="text-align:right">Saldo</th><th>Detalhe</th></tr></thead><tbody>';
+  if(!mv.length)h+='<tr><td colspan="6" style="color:#4a664a">Nenhum movimento registrado ainda.</td></tr>';
+  mv.forEach(function(m){var t=TIP[m.tipo]||[m.tipo,'bcz'],det='';
+    if(m.tipo==='troca_sku')det=silEsc(m.de)+' → '+silEsc(m.para);
+    else if(m.camadas&&m.camadas.length)det=m.camadas.map(function(c){return (c.op?'OP '+silEsc(c.op):'anterior')+(c.lote?' / lote '+silEsc(c.lote):'')+': '+silKg(c.kg)+' kg';}).join(' · ');
+    else if(m.linha)det='Linha '+silEsc(m.linha);
+    if(m.fifo&&m.fifo.ok===false)det+=' <span class="badge" style="background:rgba(192,57,43,.12);color:#c0392b">fora do FIFO: havia '+silEsc((m.fifo.mais_antigos||[]).join(', '))+'</span>';
+    h+='<tr><td style="white-space:nowrap">'+silDt(m.ts)+'</td><td><a href="#" onclick="silDetalhe(\''+silEsc(m.tag)+'\');return false">'+silEsc(m.tag)+'</a></td><td><span class="badge '+t[1]+'">'+t[0]+'</span></td><td style="text-align:right">'+(m.kg!=null?silKg(m.kg):'')+'</td><td style="text-align:right">'+silKg(m.kg_depois)+'</td><td style="font-size:12px">'+det+'</td></tr>';});
+  h+='</tbody></table></div></div>';
+  var busca=G('sil-busca')?G('sil-busca').value:'',res=G('sil-rastreio')?G('sil-rastreio').innerHTML:'';
+  box.innerHTML=h;
+  if(busca){G('sil-busca').value=busca;G('sil-rastreio').innerHTML=res;}
+}
+
+// ---------- detalhe do silo ----------
+function silDetalhe(tag){
+  var k=tag.replace(/[ .]/g,'_'),x=SIL.est[k]||{};
+  G('sil-mt').textContent=tag+(x.sku?' · '+x.sku:'');
+  G('sil-mb').innerHTML='<div class="ms">Carregando…</div>';G('ov-silo').classList.add('on');
+  DB.ref('silos_camadas/'+k).once('value').then(function(s){
+    var cs=s.val()||{},arr=Object.keys(cs).sort(function(a,b){return a-b;}).map(function(i){return cs[i];});
+    var enc=silEnchendo()[tag],h='<div class="mrow">'+
+      '<div class="mc"><div class="ml">Saldo (Libracom)</div><div class="mv">'+silKg(x.kg)+' kg</div><div class="ms">'+(x.cap?'capacidade '+silKg(x.cap)+' kg':'')+'</div></div>'+
+      '<div class="mc"><div class="ml">Com produto desde</div><div class="mv" style="font-size:16px">'+silDataTxt(x)+'</div></div>'+
+      '<div class="mc"><div class="ml">Situação</div><div class="mv" style="font-size:15px">'+(enc?'Enchendo ('+enc+')':(x.kg>1?'Com saldo':'Vazio'))+'</div><div class="ms">'+(x.hab_dosagem===false?'descarga bloqueada no Libracom':'')+'</div></div></div>';
+    if(x.cap&&x.kg>x.cap)h+='<div class="alw">⚠ Saldo acima da capacidade. Provável baixa não lançada no Libracom.</div>';
+    if(x.anterior&&x.kg>1&&SES&&['pcp','admin','supervisor'].indexOf(SES.perfil)>=0){
+      var dm=silDataMan(x)||'',dd=SIL.datas[k]||{};
+      h+='<div class="ali" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">Estoque de antes do sistema: informe quando este silo foi enchido, para o FIFO saber a ordem.'+
+        '<input type="date" id="sil-dman" value="'+dm+'" style="width:auto"><button class="btn bp bsm" onclick="silSalvarData(\''+silEsc(tag)+'\')">Salvar data</button>'+
+        (dd.por?'<span style="font-size:11px">informado por '+silEsc(dd.por)+'</span>':'')+'<span id="sil-dman-err" style="color:#c0392b;font-size:12px"></span></div>';
+    }
+    h+='<div class="ct" style="margin:6px 0">Camadas (ordem de entrada → sai primeiro a de cima)</div><div class="tw"><table><thead><tr><th>OP / lote</th><th>Linha</th><th>Entrou</th><th style="text-align:right">kg</th><th style="text-align:right">Resta</th><th>Saiu</th></tr></thead><tbody>';
+    if(!arr.length)h+='<tr><td colspan="6" style="color:#4a664a">Sem camadas registradas.</td></tr>';
+    arr.forEach(function(c){var ab=c.resta>0;
+      h+='<tr style="'+(ab?'':'color:#9aaa9a')+'"><td>'+(c.anterior?'<i>Estoque anterior ao sistema</i>':'OP '+silEsc(c.op||'—')+(c.lote?'<br><span style="font-size:11px">lote '+silEsc(c.lote)+'</span>':''))+'<div style="font-size:11px;color:#4a664a">'+silEsc(c.desc||'')+'</div></td><td>'+silEsc(c.linha||'—')+'</td><td style="font-size:12px;white-space:nowrap">'+(c.ini?silDt(c.ini)+'<br>até '+silDt(c.fim):'—')+'</td><td style="text-align:right">'+silKg(c.kg)+'</td><td style="text-align:right;font-weight:700">'+silKg(c.resta)+'</td><td style="font-size:12px">'+(c.saiu?silDt(c.saiu):(ab?'':'—'))+'</td></tr>';});
+    h+='</tbody></table></div><div class="ms" style="margin-top:8px">As camadas são estimadas pelo robô de rotas (silo × OP × kg do VC, por hora). Dentro do silo a ordem de saída é aproximada; entre silos, o FIFO é exato.</div>';
+    G('sil-mb').innerHTML=h;
+  }).catch(function(e){G('sil-mb').innerHTML='<div class="aler">Erro: '+silEsc(e.message)+'</div>';});
+}
+function silFecharDet(){G('ov-silo').classList.remove('on');}
+function silMovDoSilo(){var t=G('sil-mt').textContent.split(' · ')[0];SIL.filtroMov=t;silFecharDet();renderSilos();}
+
+// ---------- rastreio ----------
+function silRastrear(){
+  var q=(G('sil-busca').value||'').trim().toLowerCase(),out=G('sil-rastreio');
+  if(q.length<3){out.innerHTML='<div class="ms" style="color:#c0392b">Digite pelo menos 3 caracteres da OP ou do lote.</div>';return;}
+  function mostrar(){
+    var hits=[];Object.keys(SIL.cam||{}).forEach(function(k){var cs=SIL.cam[k]||{};Object.keys(cs).forEach(function(i){var c=cs[i];
+      if(String(c.op||'').toLowerCase().indexOf(q)>=0||String(c.lote||'').toLowerCase().indexOf(q)>=0)hits.push(Object.assign({tag:k.replace(/_/g,' ')},c));});});
+    hits.sort(function(a,b){return (a.ini||'')<(b.ini||'')?-1:1;});
+    if(!hits.length){out.innerHTML='<div class="ms">Nenhuma entrada em silo encontrada para "'+silEsc(q)+'".</div>';return;}
+    var tot=hits.reduce(function(a,c){return a+(c.kg||0);},0),rest=hits.reduce(function(a,c){return a+(c.resta||0);},0);
+    var h='<div class="ms" style="margin-bottom:6px">Entrou '+silKg(tot)+' kg em '+hits.length+' passagem(ns) · ainda nos silos (estimado): <b>'+silKg(rest)+' kg</b></div><div class="tw"><table><thead><tr><th>Silo</th><th>OP / lote</th><th>Linha</th><th>Entrou</th><th style="text-align:right">kg</th><th style="text-align:right">Resta</th><th>Saiu</th></tr></thead><tbody>';
+    hits.forEach(function(c){h+='<tr><td><a href="#" onclick="silDetalhe(\''+silEsc(c.tag)+'\');return false">'+silEsc(c.tag)+'</a></td><td>OP '+silEsc(c.op)+(c.lote?' / '+silEsc(c.lote):'')+'</td><td>'+silEsc(c.linha||'')+'</td><td style="font-size:12px">'+silDt(c.ini)+' – '+silDt(c.fim)+'</td><td style="text-align:right">'+silKg(c.kg)+'</td><td style="text-align:right;font-weight:700">'+silKg(c.resta)+'</td><td style="font-size:12px">'+(c.saiu?silDt(c.saiu):'')+'</td></tr>';});
+    out.innerHTML=h+'</tbody></table></div>';
+  }
+  if(SIL.cam&&Date.now()-SIL.camTs<120000){mostrar();return;}
+  out.innerHTML='<div class="ms">Buscando…</div>';
+  DB.ref('silos_camadas').once('value').then(function(s){SIL.cam=s.val()||{};SIL.camTs=Date.now();mostrar();})
+    .catch(function(e){out.innerHTML='<div class="aler">Erro: '+silEsc(e.message)+'</div>';});
+}
+
+function silSalvarData(tag){
+  var v=G('sil-dman').value,err=G('sil-dman-err');
+  if(!v){err.textContent='Escolha a data';return;}
+  if(v>new Date().toISOString().slice(0,10)){err.textContent='A data não pode ser futura';return;}
+  err.textContent='';
+  DB.ref('silos_datas/'+tag.replace(/[ .]/g,'_')).set({data:v,por:SES.login||SES.nome,ts:new Date().toISOString()})
+    .then(function(){toast('Data do '+tag+' salva','ok');if(typeof addLog==='function')addLog('SILO_DATA',tag+' = '+v);silDetalhe(tag);})
+    .catch(function(e){err.textContent='Erro: '+e.message;});
+}
+
+// ============================================================
+// DESTINO DA OP GRANEL (tela do PCP): sugere silos e avisa os que nao devem receber
+// ============================================================
+var SIL_DEST={info:{},op:null,todos:false,confirmado:false};
+function silTagDe(s){var m=String(s).match(/^(\d+)-([A-Z])$/);return m?'SL-'+m[1]+m[2]:s;}
+function silLkDe(linha){var m=String(linha||'').match(/Linha\s*(\d)/);return m?'L'+m[1]:'';}
+function silFaixa(linha){var lk=silLkDe(linha);return (lk==='L1'||lk==='L2')?[1,7]:((lk==='L4'||lk==='L5')?[8,11]:[1,11]);}
+function silAvaliarDestino(op){
+  var sku=op.cod||'',lk=silLkDe(op.linha),fx=silFaixa(op.linha),enc=silEnchendo(),prog=op.prog||0,info={},prox={};
+  silFifo().forEach(function(f){var c=f.silos.filter(function(s){return s.hab_dosagem!==false&&!enc[s.tag];});if(c.length)prox[f.sku]=c[0].tag;});
+  SILOS.forEach(function(s){
+    var tag=silTagDe(s),x=SIL.est[tag.replace(/[ .]/g,'_')]||{},row=parseInt(s,10),kg=x.kg||0,cap=x.cap||null,livre=cap!=null?cap-kg:null;
+    var o={s:s,tag:tag,x:x,alcance:row>=fx[0]&&row<=fx[1],bloq:'',score:0,motivo:''};
+    if(!SIL.est[tag.replace(/[ .]/g,'_')])o.motivo='sem leitura do Libracom';
+    if(x.hab_abast===false)o.bloq='abastecimento desabilitado no Libracom';
+    else if(kg>1&&x.sku&&sku&&x.sku!==sku)o.bloq='tem outro produto: '+x.sku+' ('+silT(kg)+')';
+    else if(sku&&prox[sku]===tag)o.bloq='é o próximo a sair do FIFO deste SKU (não completar com produto novo)';
+    else if(cap&&kg>=cap*0.98)o.bloq='silo cheio';
+    if(!o.bloq&&o.alcance&&SIL.est[tag.replace(/[ .]/g,'_')]){
+      if(enc[tag]===lk&&x.sku===sku){o.score=100;o.motivo='a linha já está enchendo este silo'+(livre!=null?' · cabe mais '+silT(livre):'');}
+      else if(kg<=1){o.score=80+(x.sku===sku?10:0);o.motivo='vazio'+(x.sku===sku?' · último produto foi o mesmo SKU':'');}
+      else if(x.sku===sku){o.score=60;o.motivo='mesmo SKU · cabe mais '+(livre!=null?silT(livre):'?');}
+      if(o.score&&livre!=null&&prog>0&&livre<prog){o.score-=15;o.motivo+=' (não cabe a OP inteira)';}
+      if(o.score&&enc[tag]&&enc[tag]!==lk){o.score=0;o.bloq='outra linha está enchendo ('+enc[tag]+')';}
+    }
+    info[s]=o;
+  });
+  return info;
+}
+function abrirSilos(fbKey){
+  SEL_SILOS=[];SILO_OPID=fbKey;SIL_DEST={info:{},op:null,todos:false,confirmado:false};
+  G('silog').innerHTML='<div class="ms">Carregando os silos…</div>';G('siloq').innerHTML='';G('msilo').classList.add('on');
+  var pOp=DB.ref('ops/'+fbKey).once('value'),pEst=Object.keys(SIL.est).length?Promise.resolve(null):DB.ref('silos_estado').once('value'),
+      pRot=SIL.rotas?Promise.resolve(null):DB.ref('rotas_status').once('value'),pDat=DB.ref('silos_datas').once('value');
+  Promise.all([pOp,pEst,pRot,pDat]).then(function(r){
+    SIL_DEST.op=r[0].val()||(OPS.find(function(o){return o.fbKey===fbKey;})||{});
+    if(r[1])SIL.est=r[1].val()||{};if(r[2])SIL.rotas=r[2].val();SIL.datas=r[3].val()||SIL.datas||{};
+    SIL_DEST.info=silAvaliarDestino(SIL_DEST.op);silDestinoGrade();
+  }).catch(function(){SIL_DEST.info={};silDestinoGrade();});
+}
+function silDestinoGrade(){
+  var op=SIL_DEST.op||{},I=SIL_DEST.info,temDados=Object.keys(SIL.est).length>0;
+  var sug=Object.keys(I).map(function(k){return I[k];}).filter(function(o){return o.score>0;}).sort(function(a,b){return b.score-a.score||silOrdemTag(a.tag,b.tag);}).slice(0,3);
+  var h='<div style="font-size:12px;color:#4a664a;margin-bottom:8px">OP <b>'+silEsc(op.id||'')+'</b> · '+silEsc(op.cod||'')+' · '+silEsc(op.linha||'')+(op.prog?' · '+silKg(op.prog)+' kg programados':'')+'</div>';
+  if(!temDados)h+='<div class="alw">Sem leitura dos silos do Libracom: não dá para sugerir. Escolha manualmente.</div>';
+  else if(sug.length){h+='<div class="ali" style="margin-bottom:8px"><b>Sugestão de destino</b>';
+    sug.forEach(function(o,i){h+='<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:6px"><span>'+(i===0?'🥇 ':'')+'<b>'+silEsc(o.tag)+'</b> — '+silEsc(o.motivo)+'</span><button class="btn bxs" onclick="if(SEL_SILOS.indexOf(\''+o.s+'\')<0)tgSilo(\''+o.s+'\')">usar</button></div>';});
+    h+='</div>';}
+  else h+='<div class="alw">Nenhum silo livre ou do mesmo SKU ao alcance desta linha.</div>';
+  h+='<div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0"><span style="font-size:11px;color:#4a664a">verde = sugerido · vermelho = não deve receber (passe o mouse para ver o motivo)</span><label style="font-size:11px;display:flex;gap:4px;align-items:center;width:auto"><input type="checkbox" style="width:auto" '+(SIL_DEST.todos?'checked':'')+' onchange="SIL_DEST.todos=this.checked;silDestinoGrade()"> mostrar silos fora do alcance da linha</label></div>';
+  h+='<div class="sgrid">';
+  SILOS.forEach(function(s){var o=I[s]||{alcance:true,x:{}};if(!o.alcance&&!SIL_DEST.todos)return;
+    var x=o.x||{},on=SEL_SILOS.indexOf(s)>=0,st=o.bloq?'border-color:#c0392b;background:rgba(192,57,43,.06)':(o.score?'border-color:#024f2b;background:rgba(2,79,43,.08)':'');
+    h+='<div class="sbt'+(on?' on':'')+'" data-s="'+s+'" onclick="tgSilo(this.dataset.s)" title="'+silEsc(o.bloq||o.motivo||'')+'" style="'+st+(o.alcance?'':';opacity:.55')+'"><div>'+s+'</div><div style="font-size:10px;font-weight:500;color:#4a664a">'+(x.kg>1?silEsc(x.sku||'')+' · '+silT(x.kg):(temDados?'vazio':''))+'</div></div>';});
+  G('silog').innerHTML=h+'</div>';
+  silDestinoAvisos();
+}
+function silDestinoAvisos(){
+  var av=SEL_SILOS.map(function(s){var o=SIL_DEST.info[s]||{};return o.bloq?('<b>'+silEsc(o.tag||s)+'</b>: '+silEsc(o.bloq)):(o.alcance===false?('<b>'+silEsc(o.tag||s)+'</b>: fora do alcance da '+silEsc(silLkDe((SIL_DEST.op||{}).linha))):'');}).filter(Boolean);
+  var el=G('sil-dest-av');if(el)el.remove();
+  if(av.length){var d=document.createElement('div');d.id='sil-dest-av';d.className='aler';d.style.marginTop='8px';
+    d.innerHTML='⚠ '+av.join('<br>⚠ ')+(SIL_DEST.confirmado?'<br><b>Clique em Confirmar de novo para salvar assim mesmo.</b>':'');G('siloq').appendChild(d);}
+}
+function tgSilo(s){
+  var idx=SEL_SILOS.indexOf(s);
+  var el=document.querySelector('.sbt[data-s="'+s+'"]');
+  if(idx!==-1){SEL_SILOS.splice(idx,1);if(el)el.classList.remove('on');}
+  else{SEL_SILOS.push(s);if(el)el.classList.add('on');}
+  SIL_DEST.confirmado=false;
+  if(!SEL_SILOS.length){G('siloq').innerHTML='';return;}
+  var vals={};SEL_SILOS.forEach(function(x){var e=G('sq'+x);if(e)vals[x]=e.value;});
+  var hEl=G('sh'),hor=hEl?hEl.value:horaAtual();
+  var h='<div style="margin-top:10px;font-size:13px;font-weight:600;margin-bottom:8px">Quantidade por silo (kg):</div>';
+  for(var i=0;i<SEL_SILOS.length;i++){var o=SIL_DEST.info[SEL_SILOS[i]]||{},x=o.x||{},livre=x.cap?Math.max(0,x.cap-(x.kg||0)):null;
+    h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><label style="min-width:64px;font-size:13px;font-weight:600">Silo '+SEL_SILOS[i]+':</label><input type="number" id="sq'+SEL_SILOS[i]+'" style="max-width:160px" placeholder="ex: 25000" min="0" value="'+(vals[SEL_SILOS[i]]||'')+'">'+(livre!=null?'<span style="font-size:11px;color:#4a664a">cabe ~'+silKg(livre)+' kg</span>':'')+'</div>';}
+  h+='<div style="margin-top:8px"><label class="fl">Horario</label><input type="time" id="sh" value="'+hor+'" style="max-width:140px"></div>';
+  G('siloq').innerHTML=h;silDestinoAvisos();
 }
 
 // ============================================================
@@ -1405,6 +1689,7 @@ function go(s,btn){
       renderBalCards();
       renderBalHistorico();
     }
+    else if(s==='silos'){ silosIniciar(); }
     else if(s==='geral'){ if(!G('ger-fdti').value){ G('ger-fdti').value=hoje(); G('ger-fdtf').value=hoje(); } renderApontamentosGerais(); }
   }
   var needsOPS = (s==='dashboard'||s==='ops'||s==='fila'||s==='fila-op'||s==='operador'||s==='exportar'||s==='envase'||s==='programacao');
@@ -3314,28 +3599,13 @@ var SILOS=[
   '11-A','11-B','11-C','11-D','11-E','11-F'
 ];
 
-function abrirSilos(fbKey){
-  SEL_SILOS=[]; SILO_OPID=fbKey;
-  var h='';
-  for(var i=0;i<SILOS.length;i++) h+='<div class="sbt" data-s="'+SILOS[i]+'" onclick="tgSilo(this.dataset.s)">'+SILOS[i]+'</div>';
-  G('silog').innerHTML=h; G('siloq').innerHTML='';
-  G('msilo').classList.add('on');
-}
-
-function tgSilo(s){
-  var idx=SEL_SILOS.indexOf(s);
-  var el=document.querySelector('.sbt[data-s="'+s+'"]');
-  if(idx!==-1){SEL_SILOS.splice(idx,1);if(el)el.classList.remove('on');}
-  else{SEL_SILOS.push(s);if(el)el.classList.add('on');}
-  if(!SEL_SILOS.length){G('siloq').innerHTML='';return;}
-  var h='<div style="margin-top:10px;font-size:13px;font-weight:600;margin-bottom:8px">Quantidade por silo (kg):</div>';
-  for(var i=0;i<SEL_SILOS.length;i++) h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><label style="min-width:64px;font-size:13px;font-weight:600">Silo '+SEL_SILOS[i]+':</label><input type="number" id="sq'+SEL_SILOS[i]+'" style="max-width:160px" placeholder="ex: 25000" min="0"></div>';
-  h+='<div style="margin-top:8px"><label class="fl">Horario</label><input type="time" id="sh" value="'+horaAtual()+'" style="max-width:140px"></div>';
-  G('siloq').innerHTML=h;
-}
+// abrirSilos e tgSilo: ver "DESTINO DA OP GRANEL" (aba Silos)
 
 function salvarSilos(){
   if(!SEL_SILOS.length){toast('Selecione ao menos um silo','err');return;}
+  // silo que nao deveria receber (outro SKU, proximo do FIFO, desabilitado, fora do alcance): pede confirmacao
+  var _bloq=SEL_SILOS.filter(function(x){var o=(SIL_DEST.info||{})[x]||{};return o.bloq||o.alcance===false;});
+  if(_bloq.length&&!SIL_DEST.confirmado){SIL_DEST.confirmado=true;silDestinoAvisos();toast('Confira os avisos dos silos','err');return;}
   var pts=[];
   for(var i=0;i<SEL_SILOS.length;i++){
     var el=G('sq'+SEL_SILOS[i]);
@@ -3353,7 +3623,7 @@ function salvarSilos(){
     var acumulado=(op&&op.silos)?(op.silos+' | '+str):str;
     return DB.ref('ops/'+SILO_OPID).update({silos:acumulado,silosHora:hor});
   }).then(function(){
-    ld(false);toast('Silos registrados!','ok');fM('msilo');addLog('SILOS',SILO_OPID+'->'+str);
+    ld(false);toast('Silos registrados!','ok');fM('msilo');addLog('SILOS',SILO_OPID+'->'+str+(SIL_DEST.confirmado?' (com aviso)':''));
   }).catch(function(e){ld(false);toast('Erro: '+e.message,'err');});
 }
 
